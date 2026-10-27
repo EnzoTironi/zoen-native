@@ -7,6 +7,12 @@ impl State {
         let Some(p) = &req.tool_proposal else {
             return false;
         };
+        if !super::super::source_scope::proposal_valid(self, space, p, &req.agent) {
+            return false;
+        }
+        if p.schema == crate::agent_scenes::SCHEMA {
+            return crate::agent_scenes::matches(self, req, space);
+        }
         if p.schema == 5 {
             return crate::agent_sites::matches(self, req, space);
         }
@@ -32,6 +38,9 @@ impl State {
         let ItemContent::App(app) = &item.current().content else {
             return false;
         };
+        let Some(format) = agent_tools::format(&p.canonical_tool) else {
+            return false;
+        };
         req.proposal.is_none()
             && req.item.is_none()
             && req.line.is_none()
@@ -42,8 +51,8 @@ impl State {
             && p.serving != req.agent
             && item.space == space
             && item.current().number == p.version
-            && app.app == deckcraft::APP
-            && app.resource_uri == deckcraft::RESOURCE
+            && app.app == format.id()
+            && app.resource_uri == format.resource()
             && app.document.as_ref().is_some_and(|file| {
                 file.sha256 == p.sha256 && file.bytes <= AGENT_BINARY_DOCUMENT_LIMIT as u64
             })
@@ -59,6 +68,9 @@ impl State {
     }
 
     pub(crate) fn tool_app_act(&self, p: &ToolProposal, at: i64) -> bool {
+        if p.schema == crate::agent_scenes::SCHEMA {
+            return crate::agent_scenes::access(self, p, at);
+        }
         if p.schema == 5 {
             return crate::agent_sites::access(self, p);
         }

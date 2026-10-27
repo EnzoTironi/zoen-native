@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { ActivityIndicator, ScrollView, Text, View, type ScrollViewInstance } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { EphemeralConversation } from '../../assistant/conversation';
+import { useConversationAssistant } from '../../assistant/use-conversation-assistant';
+import type { EphemeralConversation } from '../../assistant/conversation';
 import type { AssistantUnavailableReason } from '../../assistant/types';
 import { readAssistantLaunch, releaseAssistantLaunch } from '../../assistant/launch';
 import {
@@ -34,54 +35,32 @@ function unavailable(reason: AssistantUnavailableReason | undefined): string {
 export default function AskZoen() {
   const { space, ticket } = useLocalSearchParams<{ space: string; ticket?: string }>();
   const { store } = useClient();
-  const port = store.driver.assistant;
-  const launch = useMemo(() => readAssistantLaunch(ticket, space), [ticket, space]);
-  const [restart, setRestart] = useState(0);
-  const [fresh, setFresh] = useState(false);
-  const scope = `${space}:${ticket ?? ''}:${restart}`;
-  const [owned, setOwned] = useState<{ scope: string; owner: EphemeralConversation } | null>(null);
-  const [draft, setDraft] = useState('');
-  const [inputError, setInputError] = useState(false);
+  const launch = useMemo(() => readAssistantLaunch(ticket, space, store), [ticket, space, store]);
+  const assistant = useConversationAssistant(
+    space,
+    launch?.query ?? '',
+    locale,
+    !ticket || !!launch,
+  );
+  const { owner, draft, inputError, setDraft, setInputError } = assistant;
   useEffect(() => () => releaseAssistantLaunch(ticket), [ticket]);
-  useEffect(() => {
-    if (!port) return;
-    let active = true;
-    const owner = new EphemeralConversation(port);
-    const question = fresh ? '' : (launch?.query ?? '');
-    let unregister = () => {};
-    const close = async () => {
-      await owner.close();
-      unregister();
-    };
-    unregister = store.registerDeviceCleanup(close);
-    void owner.open(space, locale).then(async () => {
-      if (!active) return;
-      setOwned({ scope, owner });
-      setDraft(question);
-      if (owner.getSnapshot().phase !== 'ready' || !question) return;
-      if (new TextEncoder().encode(question).byteLength > 512) {
-        setInputError(true);
-        return;
-      }
-      setDraft('');
-      const accepted = await owner.ask(question);
-      if (active && !accepted) setDraft((current) => current || question);
-    });
-    return () => {
-      active = false;
-      void close().catch(() => {});
-    };
-  }, [port, space, scope, launch, fresh, store]);
   return (
     <>
       <Stack.Screen options={{ title: t('agents.temporaryChat') }} />
-      {!port ? (
-        <EmptyState title={t('agents.temporaryUnavailable')} detail={unavailable('unsupported')} />
-      ) : !owned || owned.scope !== scope ? (
+      {!assistant.available ? (
+        <EmptyState
+          title={t('agents.temporaryUnavailable')}
+          detail={unavailable(assistant.reason)}
+        />
+      ) : assistant.cleanupFailed ? (
+        <EmptyState title={t('agents.temporaryUnavailable')} detail={t('agents.temporaryFailed')}>
+          <NativeButton label={t('agents.tryAgain')} onPress={assistant.restart} />
+        </EmptyState>
+      ) : !owner ? (
         <Loading />
       ) : (
         <Conversation
-          owner={owned.owner}
+          owner={owner}
           space={space}
           draft={draft}
           inputError={inputError}
@@ -93,12 +72,11 @@ export default function AskZoen() {
           onRestoreDraft={(question) => setDraft((current) => current || question)}
           onRestart={() => {
             setInputError(false);
-            setRestart((value) => value + 1);
+            assistant.restart();
           }}
           onNew={() => {
             setInputError(false);
-            setFresh(true);
-            setRestart((value) => value + 1);
+            assistant.restart();
           }}
         />
       )}

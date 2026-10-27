@@ -5,7 +5,10 @@ not a second MCP server. `upstream.json` records upstream commit
 `157aa23ceb1976008aadc89eb05e3444060f09d6`, PR #89 commit
 `aafc247efb8ba0689e193557749784ea80ee4996`, exact source hashes and dependency
 source pins. The original early-notification and initial-host-context patches
-remain under `patches/`. The canonical scene adapter is separate readable source.
+remain under `patches/`. The canonical scene adapter is separate readable source. The maintained legacy
+adaptation keeps host lifecycle in `mcp-app.tsx`, streaming SVG rendering in
+`mcp-diagram.tsx`, scene conversion in `mcp-diagram-scene.ts`, and editor chrome
+in `mcp-chrome.tsx`; each remains covered by the pinned build source inventory.
 
 ## Build
 
@@ -28,6 +31,18 @@ Outputs are `apps/zoen/src/miniapps/vendor/excalidraw-ui.ts` (default HTML and n
 `crates/miniapps/resources/excalidraw.*`. Resource identity is
 `ui://zoen/excalidraw.html`. Provenance distinguishes this patched presentation
 from the original remote provider resource; it does not attest a vendor signature.
+
+For an independently admitted external release, use an isolated destination:
+
+```sh
+node miniapps/excalidraw-ui/build.mjs --package-output /tmp/zoen-excalidraw-package
+node miniapps/excalidraw-ui/build.mjs --package-output /tmp/zoen-excalidraw-package --check
+```
+
+This writes HTML, manifest, provenance, license and third-party notices only to that
+directory. It leaves the built-in renderer and Rust resources unchanged. Upload and
+admission still use the authenticated File/App commands; this builder grants no
+permissions and does not change an existing App's captured resource pin.
 
 ## Canonical drawing behavior
 
@@ -54,12 +69,33 @@ staged result for lost-ACK retries. The native host owns visible save/retry/copy
 controls. Account privacy retirement can interrupt this in-memory guest; this
 renderer does not claim process-death recovery of unsaved browser edits.
 
+The canonical marker remains version 1. This renderer additionally reports
+`sceneSave.liveRefresh: 1`, readiness, clean status and the exact read/save head.
+Readiness starts after the canvas callback and MCP handlers are installed. The host
+only enables owned-scene agent access after that observation. Older releases keep
+their existing manual editing behavior and cannot falsely advertise agent support.
+
+Host-called `refresh_scene` pauses a clean editor, waits for view-only acknowledgment,
+reads a separately staged candidate through the same chunk tools, and applies it
+using Excalidraw's public `restore`, `addFiles` and `updateScene` APIs. Its exact
+normalized scene must return through `onChange` before acknowledging the new head.
+The host retains its previous save base until that acknowledgment, then calls
+`resume_scene` to restore editing. Lost application/context/resume acknowledgments
+can be retried in the same frame without creating another document version. Dirty input,
+image import, release/owner changes and missing acknowledgments refuse the update;
+there is no automatic reload that drops a draft. Agent prompts and review use the
+same native sheet/session, and its head is checked by a pinned Core read before
+publishing a request. These are controller/React guarantees; iPhone WebKit acceptance
+remains a separate native journey.
+
 ## Embedded assets and explicit exclusions
 
 `library-assets.mjs` verifies pinned Excalidraw module hashes before applying
 bounded source repairs. It embeds the standard Excalifont, Virgil, Cascadia and
 other distributed non-Xiaolai font assets. Optional Xiaolai's large CJK font
 subsets use the native `system-ui` fallback; Unicode scene strings are unchanged.
+The host touch stylesheet hides only Excalidraw’s keyboard hint row for a coarse
+pointer; toolbar controls and accessible names remain available.
 The canonical editor has no CDN fallback or browser-local scene persistence.
 
 Public `aiEnabled=false` hides provider AI. Two pinned repairs also guard the

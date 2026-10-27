@@ -60,6 +60,19 @@ class ChangedFileSizeTests(GitFixture, unittest.TestCase):
         self.commit()
         self.assertEqual(self.check(base).returncode, 0)
 
+    def test_excalidraw_manifest_codegen_does_not_exempt_authored_neighbors(self):
+        import json
+        self.write("seed.rs", b"seed")
+        base = self.commit()
+        value = json.dumps({"fixture": "x" * 20_001}).encode()
+        self.write("crates/miniapps/resources/excalidraw.manifest.json", value)
+        self.commit()
+        self.assertEqual(self.check(base).returncode, 0)
+        neighbor = "crates/miniapps/resources/authored.manifest.json"
+        self.write(neighbor, value)
+        self.commit()
+        self.assertIn(neighbor.encode(), self.check(base).stderr)
+
     def test_missing_base_fails_closed(self):
         self.write("seed.rs", b"seed")
         self.commit()

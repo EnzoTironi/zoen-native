@@ -67,20 +67,32 @@ type Bindings = Record<string, unknown> & {
   zoenHostStart(): unknown;
   zoenHostRetire(): unknown;
 };
-export type RuntimeClient = { load(): Promise<Bindings>; dispose(): void };
+export type RuntimeClient = {
+  load(): Promise<Bindings>;
+  onBeforeDispose(cleanup: () => void): void;
+  dispose(): void;
+};
 
 /** Runs inside the opaque App. Its CSP permits no network; only parent transfers code. */
 export function installRuntimeClient(input: RuntimePackage, target: Window = window) {
   const runtime = parseRuntimePackage(input);
   let active = true;
   let bindings: Bindings | undefined;
+  let bindingsReady = false;
+  let bindingsRetired = false;
   let moduleUrl: string | undefined;
   let pending: Promise<Bindings> | undefined;
   let rejectPending: ((error: Error) => void) | undefined;
   let admitted = false;
+  let ownerCleanup: (() => void) | undefined;
   const current = () => {
     if (!active) throw new Error('App runtime retired');
   };
+  function retireBindings() {
+    if (!bindingsReady || bindingsRetired) return;
+    bindingsRetired = true;
+    bindings?.zoenHostRetire();
+  }
   function dispose() {
     if (!active) return;
     active = false;
@@ -88,11 +100,19 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
     target.removeEventListener('pagehide', dispose);
     rejectPending?.(new Error('App runtime retired'));
     rejectPending = undefined;
+    const cleanup = ownerCleanup;
+    ownerCleanup = undefined;
     try {
-      bindings?.zoenHostRetire();
+      // The loader registers pagehide first. Retire document callbacks while
+      // bindings are still live, independent of later pagehide listener order.
+      cleanup?.();
     } finally {
-      if (moduleUrl) URL.revokeObjectURL(moduleUrl);
-      moduleUrl = undefined;
+      try {
+        retireBindings();
+      } finally {
+        if (moduleUrl) URL.revokeObjectURL(moduleUrl);
+        moduleUrl = undefined;
+      }
     }
   }
   let accept: ((value: Bindings) => void) | undefined;
@@ -141,6 +161,7 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
         throw new Error('App runtime does not implement the managed host ABI');
       bindings = module;
       await bindings.default({ module_or_path: data.wasm });
+      bindingsReady = true;
       current();
       stage = 'runtime_start_failed';
       await bindings.zoenHostStart();
@@ -149,7 +170,7 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
       rejectPending = undefined;
     } catch (error) {
       try {
-        bindings?.zoenHostRetire();
+        retireBindings();
       } finally {
         rejectPending?.(
           Object.assign(new Error('App runtime failed', { cause: error }), {
@@ -164,6 +185,11 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
     }
   }
   const client: RuntimeClient = Object.freeze({
+    onBeforeDispose(cleanup: () => void) {
+      current();
+      if (ownerCleanup) throw new Error('App runtime already has an owner');
+      ownerCleanup = cleanup;
+    },
     load() {
       current();
       if (!pending) {

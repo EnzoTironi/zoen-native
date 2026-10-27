@@ -195,11 +195,12 @@ function Editor({ initialPage, blockId }: { initialPage: PageDto; blockId: strin
   );
 }
 export default function PageBlock() {
-  const { id, block, recover, mode } = useLocalSearchParams<{
+  const { id, block, recover, mode, target } = useLocalSearchParams<{
     id: string;
     block: string;
     recover?: string;
     mode?: string;
+    target?: string;
   }>();
   const { store } = useClient();
   const { data: page, error, retry } = useCoreQuery({ op: 'page', item_id: id });
@@ -214,11 +215,12 @@ export default function PageBlock() {
   if (store.driver.pageInput && store.getSnapshot().mode === 'account' && page.can_edit)
     return (
       <DurablePageEditor
-        key={`${id}:${block}:${recover ?? ''}:${mode ?? ''}`}
+        key={`${id}:${block}:${recover ?? ''}:${mode ?? ''}:${target ?? ''}`}
         page={page}
         blockId={block}
         port={store.driver.pageInput}
         resume={recover === '1'}
+        target={target === 'document' ? 'document' : undefined}
         mode={
           ['rich', 'markdown', 'lossless-text'].includes(mode ?? '')
             ? (mode as PageInputMode)
@@ -226,5 +228,6 @@ export default function PageBlock() {
         }
       />
     );
+  if (target === 'document') return <EmptyState title={t('documents.theEditorCouldNotBeOpened')} />;
   return <Editor key={`${id}:${block}`} initialPage={page} blockId={block} />;
 }

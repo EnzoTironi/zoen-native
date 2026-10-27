@@ -1,4 +1,5 @@
-import type { ReactNode, Ref } from 'react';
+import type { ReplySelection } from '../core/generated/ReplySelection';
+import { createRef, type ReactNode, type Ref } from 'react';
 import { Text, View, Pressable, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardMotion } from './keyboard-motion';
@@ -27,6 +28,8 @@ import { composerExternalWidth } from '../core/telegram-composer-motion';
 import { ConversationComposerAccess } from './conversation-composer-access';
 import { ComposerTextField } from './composer-text-field';
 import { NativeButton } from './primitives';
+import { useClient } from '../core/provider';
+import { homeOwnerFor } from '../home/access';
 import { ComposerGlyph } from './composer-control-surface';
 import {
   AttachmentKeyboardProvider,
@@ -111,10 +114,17 @@ export function MessageComposer({
   mediaEnabled?: boolean;
   suspended?: boolean;
   search?: ComposerSearchMode;
-  context?: { entry?: TimelineEntry; onCancel: () => void };
+  context?: { entry?: TimelineEntry; quote?: ReplySelection | null; onCancel: () => void };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
   const { colors, scheme, presentation: p, reducedMotion } = useTheme();
+  const client = useClient();
+  const sessionScope = JSON.stringify([
+    homeOwnerFor(client),
+    client.store.sessionEpoch,
+    client.snapshot?.account?.relay_url ?? null,
+    client.store.isSessionRetiring,
+  ]);
   const insets = useSafeAreaInsets();
   const { progress } = useKeyboardMotion();
   const restingBottom = Math.max(insets.bottom, 12);
@@ -156,10 +166,21 @@ export function MessageComposer({
       hasSend: inlineAction,
       accessoryButtonsWidth: hasInputMode ? 34 : 0,
     }).total;
+    const send = createRef<() => void>();
     const field = (
       <ComposerTextField
         inputRef={inputRef}
-        context={`${spaceId}:${threadRootId ?? ''}:${search ? 'search' : files ? `caption:${files.position}` : editing ? 'edit' : 'normal'}`}
+        bindSend={(capture) => {
+          send.current = capture;
+        }}
+        onSend={onSend}
+        context={JSON.stringify([
+          spaceId,
+          threadRootId ?? null,
+          search ? 'search' : files ? 'caption' : editing ? 'edit' : 'normal',
+          files?.mutationId ?? (editing ? (context?.entry?.id ?? null) : null),
+          sessionScope,
+        ])}
         testID="message-input"
         accessibilityLabel={
           search
@@ -241,7 +262,7 @@ export function MessageComposer({
           label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
           prominent
           disabled={(!hasText && !allowEmptyEdit) || sending || draft?.ready === false}
-          onPress={onSend}
+          onPress={() => send.current?.()}
         />
       );
     const searchNavigation = (
@@ -314,7 +335,12 @@ export function MessageComposer({
             }
           />
         ) : !files && context ? (
-          <MessageContext entry={context.entry} editing={editing} onCancel={context.onCancel} />
+          <MessageContext
+            entry={context.entry}
+            quote={context.quote}
+            editing={editing}
+            onCancel={context.onCancel}
+          />
         ) : null}
         {search ? (
           <Text
@@ -330,7 +356,17 @@ export function MessageComposer({
             {search.status}
           </Text>
         ) : (
-          review
+          <>
+            {context?.quote ? (
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{ color: colors.secondary, paddingHorizontal: 12, paddingBottom: 6 }}
+              >
+                {t('chat.quoteTextReplyOnly')}
+              </Text>
+            ) : null}
+            {review}
+          </>
         )}
         <ComposerGlassContainer
           testID="message-composer-row"
@@ -395,14 +431,15 @@ export function MessageComposer({
   }
   const composer = (
     <AttachmentKeyboardProvider
-      scope={`${spaceId}:${threadRootId ?? ''}`}
+      scope={JSON.stringify([sessionScope, spaceId, threadRootId ?? null])}
       enabled={!search && !suspended}
     >
       <Animated.View
         style={[
           {
             // f1dd7a2 textFieldInsets:1432; separate action gap:3537.
-            paddingHorizontal: process.env.EXPO_OS === 'ios' ? 8 : 12,
+            paddingLeft: insets.left + (process.env.EXPO_OS === 'ios' ? 8 : 12),
+            paddingRight: insets.right + (process.env.EXPO_OS === 'ios' ? 8 : 12),
             paddingTop: process.env.EXPO_OS === 'ios' ? 0 : 10,
             gap: process.env.EXPO_OS === 'ios' ? 0 : 8,
           },
@@ -442,7 +479,7 @@ export function MessageComposer({
             threadRootId={threadRootId ?? null}
             thread={thread}
             disabled={sending || editing || Boolean(search) || draft?.ready === false}
-            suspended={suspended || Boolean(search)}
+            suspended={suspended || Boolean(search) || Boolean(context?.quote)}
             onSent={onMediaSent}
             renderControls={({ attachment, voice, review, files }) =>
               controls({

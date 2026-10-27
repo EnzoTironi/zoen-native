@@ -1,8 +1,9 @@
 use super::*;
 #[test]
-fn unoffered_binary_binding_cannot_replay_a_cached_success_without_authority() {
+fn unoffered_binary_binding_cannot_replay_a_cached_success_without_authority(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let e = Client::open(":memory:".into(), "en".into()).unwrap();
-    let dir = std::env::temp_dir().join(types::new_id("worker-unoffered"));
+    let dir = std::env::temp_dir().join(types::new_id("worker-unoffered")?);
     std::fs::create_dir_all(&dir).unwrap();
     let journal = dir.join("steps.json");
     let item = format!("it_deck_{}", "ab".repeat(32));
@@ -23,6 +24,7 @@ fn unoffered_binary_binding_cannot_replay_a_cached_success_without_authority() {
         deckcraft: None,
         deckcraft_items: vec![],
         page_items: vec![],
+        scene_items: vec![],
     };
     host.record(ToolStep {
         call: call.clone(),
@@ -34,6 +36,7 @@ fn unoffered_binary_binding_cannot_replay_a_cached_success_without_authority() {
     assert!(host.call(&call).is_err());
     assert_eq!(std::fs::read(&journal).unwrap(), before);
     std::fs::remove_dir_all(dir).unwrap();
+    Ok(())
 }
 #[tokio::test]
 async fn runtime_public_references_preserve_gate_on_semantics_and_exact_mismatch() {

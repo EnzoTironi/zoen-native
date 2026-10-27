@@ -58,13 +58,23 @@ export function createSceneSaves(options: {
       publish({ phase: accepted < sequence ? "pending" : "saved", sequence });
     })();
     running = task.finally(() => {
-      if (running === tracked) running = null;
+      if (running === tracked) {
+        running = null;
+        publish(state);
+      }
     });
     const tracked = running;
     return running;
   };
   return {
     getSnapshot: () => state,
+    clean: () => active && !attempt && !running && accepted === sequence && state.phase === "saved",
+    rebase(json: string) {
+      check();
+      if (!paused || attempt || running || accepted !== sequence || state.phase !== "saved")
+        throw new Error("Your drawing has unsaved changes.");
+      latest = json;
+    },
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {

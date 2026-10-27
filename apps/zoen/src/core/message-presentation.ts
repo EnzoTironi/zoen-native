@@ -96,3 +96,19 @@ export function messageHasStandaloneAppCard(entry: TimelineEntry): boolean {
   const card = messageCard(entry);
   return entry.author.kind === 'Person' && card?.kind_id === 'app' && card.app != null;
 }
+
+/** Only visible message text/captions participate in native quote selection. */
+export function messageCanSelectText(entry: TimelineEntry | null): boolean {
+  if (
+    !entry ||
+    !messageCanInteract(entry) ||
+    entry.voice ||
+    !entry.text_revision ||
+    !('Message' in entry.kind)
+  )
+    return false;
+  return (
+    Boolean(entry.kind.Message.text.trim()) &&
+    (!entry.kind.Message.card || entry.kind.Message.card.kind_id === 'file')
+  );
+}

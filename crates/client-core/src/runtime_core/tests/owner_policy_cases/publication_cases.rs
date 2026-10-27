@@ -2,7 +2,7 @@
 use super::*;
 
 type ProviderRows = Vec<(Vec<u8>, String, Vec<u8>, i64)>;
-fn provider_rows(engine: &Engine) -> rusqlite::Result<ProviderRows> {
+pub(super) fn provider_rows(engine: &Engine) -> rusqlite::Result<ProviderRows> {
     let mut query = engine.store.conn().prepare(
         "SELECT group_id,data_type,group_data,provider_version FROM openmls_group_data ORDER BY group_id,data_type",
     )?;
@@ -93,7 +93,7 @@ fn control_echo_rejects_missing_or_changed_producer_proof_and_signed_header() ->
                         policy_digest: "cc".repeat(32),
                         outcome: types::OwnerPolicyOutcome::Installed,
                     },
-                );
+                )?;
                 f.core.engine.store.conn().execute(
                     "UPDATE outbox SET json=?1 WHERE client_id=?2",
                     rusqlite::params![serde_json::to_string(&event)?, client_id],
@@ -103,7 +103,7 @@ fn control_echo_rejects_missing_or_changed_producer_proof_and_signed_header() ->
             "pending" => {
                 f.core.engine.net.pending.remove(&client_id);
             }
-            "plaintext" => echo = Envelope::plain(&pending),
+            "plaintext" => echo = Envelope::plain(&pending)?,
             "timestamp" => {
                 let actor = f.core.engine.net.author.clone().ok_or("missing agent")?;
                 echo = Envelope::sealed(
@@ -121,7 +121,7 @@ fn control_echo_rejects_missing_or_changed_producer_proof_and_signed_header() ->
                             .1
                             .to_vec(),
                     ),
-                );
+                )?;
             }
             _ => return Err("unknown case".into()),
         }
@@ -129,7 +129,7 @@ fn control_echo_rejects_missing_or_changed_producer_proof_and_signed_header() ->
             f.core = DeviceCore::restore(f.core.image()?, f.credential())?;
         }
         let head = f.core.engine.logs[&scope.space_id].head();
-        let frame = ordered(&f.owner, echo);
+        let frame = ordered(&f.owner, echo)?;
         assert!(
             matches!(f.core.ingest(vec![frame]), Err(NativeError::History)),
             "{case}"
@@ -193,8 +193,8 @@ fn failed_control_reference_write_rolls_back_outbox_ratchet_and_remains_retryabl
 
 #[test]
 fn explicit_options_refusal_is_a_retained_non_model_control_after_cold_restore() -> TestResult {
-    let (mut f, request, hash, envelope) = super::super::image_review_cases::pending();
-    let frame = ordered(&f.owner, envelope);
+    let (mut f, request, hash, envelope) = super::super::image_review_cases::pending().unwrap();
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
     f.owner.set_registered(true)?;
@@ -228,7 +228,7 @@ fn accepted_control_replay_keeps_exact_original_after_outbox_removal_and_cold_re
 {
     for case in ["reference", "opening", "position", "pruned", "timestamp"] {
         let (mut f, scope, _, envelope) = receipt()?;
-        let original = ordered(&f.owner, envelope.clone());
+        let original = ordered(&f.owner, envelope.clone())?;
         deliver_agent(&mut f)?;
         assert_eq!(f.core.engine.store.outbox_len()?, 0);
         f.core = DeviceCore::restore(f.core.image()?, f.credential())?;
@@ -265,7 +265,7 @@ fn accepted_control_replay_keeps_exact_original_after_outbox_removal_and_cold_re
                             .1
                             .to_vec(),
                     ),
-                );
+                )?;
             }
             _ => return Err("unknown replay case".into()),
         }

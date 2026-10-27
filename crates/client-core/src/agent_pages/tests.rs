@@ -9,14 +9,15 @@ use types::{Capability, EventBody, Grant, GrantScope, TrustLevel};
 
 mod continuation;
 mod contracts;
+mod locale_projection;
 mod recovery;
 
 struct PageFixture {
     actor: Fixture,
     page: String,
 }
-fn fixture() -> PageFixture {
-    let actor = agent_fixture();
+fn fixture() -> std::result::Result<PageFixture, Box<dyn std::error::Error>> {
+    let actor = agent_fixture()?;
     let page = actor
         .agent
         .page_import_markdown(
@@ -35,7 +36,7 @@ fn fixture() -> PageFixture {
             &actor.owner,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: types::new_id("page_trust"),
+                    id: types::new_id("page_trust")?,
                     grantor: actor.owner.clone(),
                     grantee: Some(agent),
                     scope: GrantScope::Space(actor.space.clone()),
@@ -46,7 +47,7 @@ fn fixture() -> PageFixture {
         )
         .unwrap();
     }
-    PageFixture { actor, page }
+    Ok(PageFixture { actor, page })
 }
 fn turn(f: &PageFixture) -> AgentPageTurn {
     f.actor
@@ -166,7 +167,7 @@ fn counts(f: &PageFixture) -> Vec<i64> {
 fn page(f: &PageFixture) -> crate::PageDto {
     f.actor.agent.page(f.page.clone()).unwrap()
 }
-fn block(f: &PageFixture) {
+fn block(f: &PageFixture) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut e = f.actor.agent.lock();
     let agent = e.me_id().unwrap();
     e.append(
@@ -174,7 +175,7 @@ fn block(f: &PageFixture) {
         &f.actor.owner,
         EventBody::GrantIssued {
             grant: Grant {
-                id: types::new_id("block_page"),
+                id: types::new_id("block_page")?,
                 grantor: f.actor.owner.clone(),
                 grantee: Some(agent),
                 scope: GrantScope::Space(f.actor.space.clone()),
@@ -184,6 +185,8 @@ fn block(f: &PageFixture) {
         },
     )
     .unwrap();
+
+    Ok(())
 }
 
 mod renewal;

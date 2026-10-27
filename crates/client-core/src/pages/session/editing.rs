@@ -1,5 +1,6 @@
-//! Editing operations on the original PageSession state.
+//! Editing operations on the original `PageSession` state.
 
+use super::super::doc_err;
 use super::*;
 
 impl PageSession {
@@ -220,26 +221,36 @@ impl PageSession {
             .collect();
         let edits: Vec<_> = changed
             .iter()
-            .map(|dto| BlockEdit {
-                id: dto.id.clone(),
-                kind: super::super::kind_from_dto(dto, current.get(&dto.id)),
-                text: dto.text.clone(),
-                spans: dto
-                    .spans
-                    .iter()
-                    .map(|span| documents::Span {
-                        start: span.start,
-                        end: span.end,
-                        key: span.key.clone(),
-                        value: span.value.clone(),
-                    })
-                    .collect(),
+            .map(|dto| {
+                Ok(BlockEdit {
+                    id: dto.id.clone(),
+                    kind: super::super::kind_from_dto(dto, current.get(&dto.id))?,
+                    text: dto.text.clone(),
+                    spans: dto
+                        .spans
+                        .iter()
+                        .map(|span| documents::Span {
+                            start: span.start,
+                            end: span.end,
+                            key: span.key.clone(),
+                            value: span.value.clone(),
+                        })
+                        .collect(),
+                })
             })
-            .collect();
+            .collect::<R<Vec<_>>>()?;
         let context_hash = drafts::context_hash(context);
-        let (observed, base) = if let Some(prior) = journal.continuation(&context_hash) {
+        // One native capture is consumed once, then its exact receipt replays.
+        // It is a distinct editor intent, never a replacement of another
+        // editor's earlier draft merely because they observed the same context.
+        let continuation = if input_fingerprint.is_none() {
+            journal.continuation(&context_hash)
+        } else {
+            None
+        };
+        let (observed, base) = if let Some(prior) = continuation {
             desired
-                .apply(order, &edits)
+                .apply_editor(order, &edits)
                 .map_err(super::super::doc_err)?;
             let previous = Frontiers::decode(&prior.frontiers).map_err(plan_error)?;
             let observed = doc.at(&previous).map_err(super::super::doc_err)?;
@@ -255,20 +266,24 @@ impl PageSession {
                 })
                 .collect();
             observed
-                .apply(order, &complete)
+                .apply_editor(order, &complete)
                 .map_err(super::super::doc_err)?;
             (observed, base)
         } else {
             let base = desired.version();
             desired
-                .apply(order, &edits)
+                .apply_editor(order, &edits)
                 .map_err(super::super::doc_err)?;
             (desired, base)
         };
         let live = doc.at(&doc.frontiers()).map_err(super::super::doc_err)?;
-        live.import(&observed.updates_since(&base))
-            .map_err(super::super::doc_err)?;
-        let hash = observed.content_hash();
+        if observed.version() != base {
+            // A semantic no-op has no Loro update. It still receives the exact
+            // durable mutation receipt below; nonempty changes must import fully.
+            live.import(&observed.updates_since(&base))
+                .map_err(super::super::doc_err)?;
+        }
+        let hash = observed.content_hash().map_err(doc_err)?;
         let fronts = observed.frontiers().encode();
         let mut journal = journal.clone();
         journal.accept(

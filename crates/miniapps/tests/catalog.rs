@@ -15,7 +15,11 @@ fn portable_catalog_keeps_resource_integrity_and_instance_identity() {
     for language in [Lang::En, Lang::Pt] {
         set(language);
         let catalog = specs();
-        assert_eq!(catalog.len(), 9);
+        assert_eq!(
+            catalog.len(),
+            9 + usize::from(miniapps::deckcraft::registration::available())
+                + usize::from(miniapps::binary::gridcraft_registration::available())
+        );
         for entry in catalog {
             let start = entry
                 .tools

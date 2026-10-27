@@ -62,7 +62,7 @@ const require = createRequire(import.meta.url);
 const tick = async () => {
   for (let i = 0; i < 32; i++) await Promise.resolve();
 };
-function fixture() {
+function fixture(owned = false) {
   let current!: { slots: Slot[]; cursor: number; effects: (() => void)[]; focus?: Effect };
   let hashes = 0,
     preflights = 0,
@@ -90,6 +90,8 @@ function fixture() {
   };
   const scene = '{"elements":[]}';
   const html = '<html><head></head><body>Drawing</body></html>';
+  const uri = owned ? `ui://zoen/package/file/1/${'a'.repeat(64)}` : 'ui://zoen/excalidraw.html';
+  const commands: { op: string; expected_resource_uri?: string }[] = [];
   const store = {
     sessionEpoch: 1,
     getSnapshot: () => ({
@@ -107,10 +109,11 @@ function fixture() {
       },
     }),
     driver: {
-      request: async (request: { op: string }) => {
-        if (request.op === 'app_resource')
+      request: async (request: { op: string; expected_resource_uri?: string }) => {
+        commands.push(request);
+        if (request.op === 'app_resource' || request.op === 'app_document_resource')
           return {
-            uri: 'ui://zoen/excalidraw.html',
+            uri,
             mime_type: 'text/html;profile=mcp-app',
             text: html,
             prefers_border: false,
@@ -123,7 +126,7 @@ function fixture() {
               bytes: Buffer.byteLength(html),
             }),
           };
-        if (request.op === 'app_document_read')
+        if (request.op === 'app_document_read' || request.op === 'app_document_read_pinned')
           return {
             item_id: 'item',
             version: 1,
@@ -135,6 +138,7 @@ function fixture() {
       },
     },
     subscribe: () => () => {},
+    subscribeCanonicalChanges: () => () => {},
     registerSessionPreflight: () => {
       preflights++;
       return () => {
@@ -262,13 +266,23 @@ function fixture() {
       },
     };
   };
+  const item = {
+    id: 'item',
+    space_id: 'space',
+    title: 'Drawing',
+    app: owned ? { app_id: 'excalidraw', resource_uri: uri } : undefined,
+  };
   const wrapper = mount(module.exports.CanonicalDrawingView, {
-    item: { id: 'item', space_id: 'space', title: 'Drawing' },
+    item,
     spec: { id: 'excalidraw', resource_uri: 'ui://zoen/excalidraw.html' },
   });
   return {
     wrapper,
     mount,
+    commands,
+    changePin: (next: string) => {
+      if (item.app) item.app.resource_uri = next;
+    },
     counts: () => ({ hashes, preflights, retired }),
     hold() {
       let release!: () => void, enter!: () => void;
@@ -283,6 +297,38 @@ function fixture() {
     },
   };
 }
+
+test('actual owned drawing pins both Core reads and keeps its mounted resource when another device changes release', async () => {
+  const app = fixture(true);
+  app.wrapper.render();
+  app.wrapper.focus();
+  const focused = app.wrapper.render()!;
+  const child = app.mount(focused.type as (props: never) => unknown, focused.props);
+  child.render();
+  await tick();
+  const first = child.render()!;
+  assert.equal(typeof first.type, 'function');
+  const uri = `ui://zoen/package/file/1/${'a'.repeat(64)}`;
+  assert.deepEqual(
+    app.commands.map((request) => [request.op, request.expected_resource_uri]),
+    [
+      ['app_document_resource', uri],
+      ['app_document_read_pinned', uri],
+    ],
+  );
+  app.changePin(`ui://zoen/package/file/2/${'b'.repeat(64)}`);
+  const second = child.render()!;
+  assert.equal(second.props.verified, first.props.verified, 'no resource reload or replacement');
+  assert.equal(second.props.doc, first.props.doc, 'no replacement of the editor draft/base');
+  assert.equal(
+    app.commands.length,
+    2,
+    'the live resource never follows mutable spec/item metadata',
+  );
+  assert.equal(app.counts().hashes, 1);
+  child.unmount();
+  app.wrapper.unmount();
+});
 
 test('compiled drawing wrapper cancels pending verification synchronously on blur before child React cleanup', async () => {
   const app = fixture();

@@ -26,9 +26,11 @@ O usuário ampliou essa seleção para **todo o sistema de design e todas as tel
 do Telegram iOS**, incluindo perfil, edição, detalhes, compositor, ajustes e
 personalização de temas. Home, Apps/cards, agentes e criação entram como extensões
 do Zoen. Portar superfícies e animações em lotes grandes de fonte, preservando
-estado e autorização, antes da validação nativa integrada. A aparência inicial
-terá somente **Céu diurno** e **Céu noturno**, com modo automático; não oferecer
-as antigas fases como presets adicionais. Registrar diferenças e lacunas reais,
+estado e autorização, antes da validação nativa integrada. A direção inicial de
+aparência selecionou **Céu diurno** e **Céu noturno**, com modo automático. A seleção
+vigente foi ampliada para **seis temas**: esses dois céus do Zoen e os quatro temas
+Telegram **Classic, Day, Night e Tinted**. Os céus permanecem os padrões do Zoen;
+as antigas fases não voltam como presets adicionais. Registrar diferenças e lacunas reais,
 sem chamar uma tradução parcial de reprodução pixel perfect concluída.
 
 As 506 entradas em 23 áreas são pesquisa de referência, não 506 capacidades
@@ -42,10 +44,21 @@ as partes derivadas mantêm suas atribuições e termos próprios.
 Reprodução com nossos componentes e eventual adaptação de código precisam de
 avaliação específica de comportamento, dependências, licença e manutenção.
 
+A [revisão integral das 506 capacidades e o inventário de telas](../roadmap/README.md)
+registram seleção de escopo, implementação, evidências e lacunas por capacidade e
+superfície. A cobertura dessa revisão não significa paridade funcional completa
+nem aceitação do produto ou das jornadas nativas.
+
 Preservar a identidade de céu do Zoen, os cards consistentes e Apps em tela cheia,
-os agentes, as permissões e os contratos do núcleo/backend. Signal continua como
-referência de confiabilidade e testes comportamentais; Notion e ChatGPT Spaces
-continuam como referências para documentos vivos e criação. As trinta jornadas
+os agentes, as permissões e os contratos do núcleo/backend. Pela direção mais
+recente de Enzo, **Signal tem prioridade como referência para chamadas e huddles**,
+com estudo de fonte fixado no [issue #178](https://github.com/EnzoTironi/zoen-native/issues/178).
+Telegram iOS permanece a referência principal da UI de conversação. Signal também
+continua orientando confiabilidade e testes comportamentais; Notion, ChatGPT Spaces/Live Pages
+e [Morrow](../product/live-pages.md#product-references) orientam documentos vivos e criação,
+por confirmação de Enzo em 26 de outubro de 2026. Essas referências de criação
+permanecem no produto futuro, com sua execução pausada conforme a prioridade ativa
+da meta completa. As trinta jornadas
 existentes permanecem inalteradas; nenhuma paridade ou validação nativa decorre
 da importação do catálogo ou da seleção da referência visual. Registrar as
 diferenças visuais e comportamentais até suas provas no iPhone.

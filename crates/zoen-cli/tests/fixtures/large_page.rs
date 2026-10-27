@@ -70,7 +70,7 @@ fn checked_page() -> (String, Vec<u8>) {
     verify_bytes(markdown.as_bytes());
     let page = Page::from_markdown(&markdown).expect("valid fixture Markdown");
     assert_eq!(
-        page.to_markdown(),
+        page.to_markdown().unwrap(),
         markdown,
         "fixture import preserves exact UTF-8"
     );
@@ -96,7 +96,7 @@ fn fixture_has_fixed_utf8_bytes_and_an_external_snapshot_roundtrip() {
     assert!(markdown.contains("```json"));
     let remote = Page::new();
     remote.import(&snapshot).expect("complete fixture snapshot");
-    let restored = remote.to_markdown();
+    let restored = remote.to_markdown().unwrap();
     verify_bytes(restored.as_bytes());
     assert_eq!(restored, markdown);
 }

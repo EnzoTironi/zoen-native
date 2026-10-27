@@ -57,7 +57,7 @@ struct Fixture {
     now: i64,
 }
 
-fn fixture() -> Fixture {
+fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let alice = NativeSigner::from_secret(&[101; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[102; 32]));
     let bob = NativeSigner::from_secret(&[103; 32]);
@@ -66,7 +66,7 @@ fn fixture() -> Fixture {
     let bob_agreement = AgreementKey::from_secret([106; 32]);
     let mut account = account(&alice, &host.0);
     account.agreement_secret = hex::encode(alice_agreement.secret());
-    account.profile_key = ProfileKey::generate().to_hex();
+    account.profile_key = ProfileKey::generate()?.to_hex();
     account.profile_key_version = 1;
     account.profile_seen_version = 1;
     account.profile_fields = hex::encode(
@@ -141,7 +141,7 @@ fn fixture() -> Fixture {
     ));
     assert!(outgoing[0].seen().is_none());
     let member = client
-        .receive(&sequence(&mut log, outgoing[0].clone()), now + 2)
+        .receive(&sequence(&mut log, outgoing[0].clone())?, now + 2)
         .unwrap();
     let addition = published(&member).into_iter().find(|env| matches!(env.body(),
         Some(EventBody::MemberAdded { identity, role: Role::Member }) if identity == bob.id()
@@ -152,7 +152,7 @@ fn fixture() -> Fixture {
         "the member event observes the ordered creation"
     );
     let claiming = client
-        .receive(&sequence(&mut log, addition), now + 3)
+        .receive(&sequence(&mut log, addition)?, now + 3)
         .unwrap();
     let (operation, targets) = claim(&claiming);
     assert_eq!(targets, vec![bob.id()]);
@@ -186,7 +186,7 @@ fn fixture() -> Fixture {
         env.sealed_kind(),
         Some(SealedKind::Commit | SealedKind::Welcome)
     )));
-    Fixture {
+    Ok(Fixture {
         client,
         account,
         host,
@@ -199,12 +199,13 @@ fn fixture() -> Fixture {
         staged,
         operation,
         now: now + 5,
-    }
+    })
 }
 
 #[test]
-fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sqlite() {
-    let mut f = fixture();
+fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sqlite(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
     let commit = f
         .client
         .saved
@@ -258,7 +259,7 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
         .iter()
         .any(|env| env.sealed_kind() == Some(SealedKind::Welcome)));
     let accepted = client
-        .receive(&sequence(&mut f.log, commit), f.now + 2)
+        .receive(&sequence(&mut f.log, commit)?, f.now + 2)
         .unwrap();
     let welcome = handshake(&accepted, SealedKind::Welcome);
     let roster = BTreeSet::from([f.account.identity.clone(), f.bob.id()]);
@@ -282,7 +283,7 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
         );
     }
     client
-        .receive(&sequence(&mut f.log, welcome), f.now + 3)
+        .receive(&sequence(&mut f.log, welcome)?, f.now + 3)
         .unwrap();
     let sent = client
         .queue_message(&f.space, "Criado na Web, aberto no iOS 🌱", f.now + 4)
@@ -330,11 +331,13 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
     assert!(
         matches!(event.body, EventBody::MessagePosted { text, .. } if text == "Criado na Web, aberto no iOS 🌱")
     );
+    Ok(())
 }
 
 #[test]
-fn refused_browser_commit_abandons_pending_epoch_and_never_releases_its_welcome() {
-    let mut f = fixture();
+fn refused_browser_commit_abandons_pending_epoch_and_never_releases_its_welcome(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
     assert!(f
         .client
         .device()
@@ -402,4 +405,5 @@ fn refused_browser_commit_abandons_pending_epoch_and_never_releases_its_welcome(
     assert!(!published(&resumed)
         .iter()
         .any(|env| env.sealed_kind() == Some(SealedKind::Welcome)));
+    Ok(())
 }

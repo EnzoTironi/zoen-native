@@ -1,6 +1,10 @@
 //! Actual normal citizen ToolHost -> private IPC -> production executable.
 #[path = "account_controls.rs"]
 mod account_controls;
+#[path = "first_account_context.rs"]
+mod first_account_context;
+#[path = "first_account_disable.rs"]
+mod first_account_disable;
 #[path = "owner_controls.rs"]
 mod owner_controls;
 use super::*;
@@ -16,12 +20,26 @@ use std::{
 mod provider;
 pub(super) use provider::Provider;
 
+pub(super) async fn initial_account_context(
+    w: &World,
+    path: &Path,
+    owner: Arc<Client>,
+    config: &config::Config,
+    space: &str,
+    provider: &Provider,
+) -> Result<(Arc<Client>, String), Box<dyn std::error::Error>> {
+    first_account_context::run(w, path, owner, config, space, provider).await
+}
+
 struct Host {
     child: Child,
     log: std::path::PathBuf,
 }
 impl Host {
-    async fn start(w: &World, config: &Path) -> Self {
+    async fn start(
+        w: &World,
+        config: &Path,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let script = w.dir.join("image-script.json");
         if !script.exists() {
             write_json(
@@ -35,7 +53,7 @@ impl Host {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => panic!("ready cleanup: {e}"),
         }
-        let log = w.dir.join(types::new_id("image-agent-log"));
+        let log = w.dir.join(types::new_id("image-agent-log")?);
         let output = std::fs::File::create(&log).unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_zoen"))
             .arg("--home")
@@ -60,7 +78,7 @@ impl Host {
             );
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        host
+        Ok(host)
     }
     fn output(&self) -> String {
         std::fs::read_to_string(&self.log).unwrap()
@@ -94,7 +112,12 @@ fn owner_client(w: &World) -> Arc<Client> {
     client.start_sync(None).unwrap();
     client
 }
-pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: &RuntimeAuthority) {
+pub(super) async fn install_policy(
+    w: &World,
+    config: &config::Config,
+    runtime: &RuntimeAuthority,
+    previous_digest: &str,
+) {
     // These are only this World's generated keys. Use the same actual owner
     // device/certificate; no SQL policy/financial authority rows are inserted.
     let vault = file_vault::FileVault {
@@ -116,13 +139,16 @@ pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: 
         config.image_price.digest().unwrap(),
         config.chat_price.digest().unwrap(),
     ];
+    profiles.extend((0xa0..0xae).map(|value| format!("{value:02x}").repeat(32)));
     profiles.sort();
+    profiles.dedup();
+    assert_eq!(profiles.len(), 16);
     let policy = zoen_runtime::OwnerPeriodPolicy {
         owner: author.identity.clone(),
         year: year.parse().unwrap(),
         month: month.parse().unwrap(),
-        version: 1,
-        previous_digest: None,
+        version: 2,
+        previous_digest: Some(previous_digest.into()),
         currency: "USD".into(),
         scale: 6,
         limit_units: 100,
@@ -131,6 +157,26 @@ pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: 
         enabled: true,
         allowed_profiles: profiles,
     };
+    // The first OFF is already canonical. The next enabled policy cannot skip
+    // its version or discard its exact predecessor, even with a valid signature.
+    let mut wrong_predecessor = policy.clone();
+    wrong_predecessor.previous_digest = Some("ff".repeat(32));
+    assert_ne!(wrong_predecessor.previous_digest, policy.previous_digest);
+    let mut skipped_version = policy.clone();
+    skipped_version.version += 1;
+    for invalid in [wrong_predecessor, skipped_version] {
+        assert!(invalid.valid_shape());
+        let signed_invalid = event_log::owner_budget::sign(&author, invalid)
+            .expect("valid fixture policy must retain its certified signature");
+        assert!(event_log::owner_budget::verify(&signed_invalid));
+        assert_eq!(
+            runtime
+                .install_policy(signed_invalid)
+                .await
+                .expect_err("a valid signature cannot replace the actual policy chain"),
+            zoen_runtime::RuntimeError::InvalidPolicy
+        );
+    }
     let signed = event_log::owner_budget::sign(&author, policy).unwrap();
     let mut tampered = signed.clone();
     tampered.policy.limit_units += 1;
@@ -138,8 +184,9 @@ pub(super) async fn install_policy(w: &World, config: &config::Config, runtime: 
         runtime.install_policy(tampered).await.unwrap_err(),
         zoen_runtime::RuntimeError::InvalidPolicy
     );
-    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 0);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 1);
     runtime.install_policy(signed).await.unwrap();
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);
 }
 async fn review(owner: &Client, space: &str, source: &str, host: &mut Host) -> AgentRequestDto {
     let deadline = Instant::now() + Duration::from_secs(60);
@@ -204,7 +251,7 @@ pub(super) async fn run(
     runtime: RuntimeAuthority,
     space: &str,
     provider: &Provider,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let runtime = runtime
         .open_managed_image_continuity(&config.continuity, &config.agent, &config.device)
         .await
@@ -227,7 +274,7 @@ pub(super) async fn run(
         .set_trust(config.agent.clone(), space.into(), TrustLevelDto::Act)
         .unwrap();
     owner.wait_until_settled(20_000).await.unwrap();
-    let mut host = Host::start(w, path).await;
+    let mut host = Host::start(w, path).await?;
     let source = owner
         .send_message(space.into(), "Create the image through the tool".into())
         .unwrap()
@@ -240,7 +287,7 @@ pub(super) async fn run(
         "provider reached before owner review"
     );
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
-    owner_controls::run(w, path, &owner, config, &request, &mut host, provider).await;
+    owner_controls::run(w, path, &owner, config, &request, &mut host, provider).await?;
     // Stop the actual ordinary host before the human's decision; the new host
     // must recover the same scheduling/review through its existing journal.
     drop(host);
@@ -271,7 +318,7 @@ pub(super) async fn run(
         )
         .unwrap();
     owner.wait_until_settled(20_000).await.unwrap();
-    let mut restarted = Host::start(w, path).await;
+    let mut restarted = Host::start(w, path).await?;
     let first = delivered(w, &source, &mut restarted).await;
     assert_eq!(provider.sends.load(Ordering::SeqCst), 1);
     let item = first["item"].as_str().unwrap().to_owned();
@@ -303,7 +350,7 @@ pub(super) async fn run(
         provider::PNG
     );
     drop(restarted);
-    let mut cold = Host::start(w, path).await;
+    let mut cold = Host::start(w, path).await?;
     let recovered = delivered(w, &source, &mut cold).await;
     assert_eq!(
         recovered, first,
@@ -385,7 +432,8 @@ pub(super) async fn run(
             .count(),
         1
     );
-    account_controls::run(w, path, &owner, config, space, provider).await;
+    account_controls::run(w, path, &owner, config, space, provider).await?;
     owner.stop_sync();
     println!("image product: actual ToolHost IPC review -> owner ApproveOnce -> cold restart -> one provider/charge/accepted FileDoc -> same output PASS");
+    Ok(())
 }

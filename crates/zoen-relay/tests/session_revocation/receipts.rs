@@ -1,10 +1,11 @@
 use super::*;
 
-async fn receipt_sync_fixture() -> (TestRelay, Author, String, Socket) {
-    let test = TestRelay::new().await;
+async fn receipt_sync_fixture(
+) -> std::result::Result<(TestRelay, Author, String, Socket), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
     *test.log.sync_spaces.lock().unwrap() =
         Some(vec![RECEIPT_SPACE.into(), EMPTY_RECEIPT_SPACE.into()]);
-    let author = Author::device(&Signer::generate(), Signer::generate());
+    let author = Author::device(&Signer::generate()?, Signer::generate()?);
     let mut socket = connect(&test.ws_url, &author).await;
     request(
         &mut socket,
@@ -21,7 +22,7 @@ async fn receipt_sync_fixture() -> (TestRelay, Author, String, Socket) {
         (RECEIPT_SPACE.into(), author.identity.clone()),
         (EMPTY_RECEIPT_SPACE.into(), author.identity.clone()),
     ]);
-    let peer = Signer::generate().id();
+    let peer = Signer::generate()?.id();
     test.state.receipts.raise(RECEIPT_SPACE, &peer, 9, 7);
     assert_eq!(
         test.state
@@ -31,7 +32,7 @@ async fn receipt_sync_fixture() -> (TestRelay, Author, String, Socket) {
             .unwrap(),
         1
     );
-    (test, author, peer, socket)
+    Ok((test, author, peer, socket))
 }
 
 async fn assert_sync_receipt_failure(socket: &mut Socket, timeout: Duration) {
@@ -80,8 +81,9 @@ async fn assert_healthy_receipt_replay(socket: &mut Socket, peer: &str) {
 }
 
 #[tokio::test]
-async fn receipt_sync_requires_current_membership_even_when_discovery_is_stale() {
-    let (test, author, peer, mut socket) = receipt_sync_fixture().await;
+async fn receipt_sync_requires_current_membership_even_when_discovery_is_stale(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (test, author, peer, mut socket) = receipt_sync_fixture().await?;
     assert_healthy_receipt_replay(&mut socket, &peer).await;
     let pair = (RECEIPT_SPACE.into(), author.identity.clone());
     assert!(test.log.sync_members.lock().unwrap().remove(&pair));
@@ -114,11 +116,13 @@ async fn receipt_sync_requires_current_membership_even_when_discovery_is_stale()
     assert_healthy_receipt_replay(&mut socket, &peer).await;
     socket.close(None).await.unwrap();
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn sync_receipt_query_failure_is_unavailable_then_reconnect_replays() {
-    let (test, author, peer, mut socket) = receipt_sync_fixture().await;
+async fn sync_receipt_query_failure_is_unavailable_then_reconnect_replays(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (test, author, peer, mut socket) = receipt_sync_fixture().await?;
     // No receipt SELECT has run on this fresh pool, so renaming the table makes
     // the real query fail independently of statement-cache invalidation behavior.
     sqlx::query("ALTER TABLE space_receipts RENAME TO receipt_replay_unavailable")
@@ -160,11 +164,13 @@ async fn sync_receipt_query_failure_is_unavailable_then_reconnect_replays() {
     ));
     recovered.close(None).await.unwrap();
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn sync_receipt_query_deadline_is_unavailable_then_reconnect_replays() {
-    let (test, author, peer, mut socket) = receipt_sync_fixture().await;
+async fn sync_receipt_query_deadline_is_unavailable_then_reconnect_replays(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (test, author, peer, mut socket) = receipt_sync_fixture().await?;
     // A separate connection blocks only the receipt SELECT. Request admission
     // and outgoing delivery keep their ordinary independent authorization pools.
     let mut lock = PgConnection::connect(&test.database_url).await.unwrap();
@@ -194,4 +200,5 @@ async fn sync_receipt_query_deadline_is_unavailable_then_reconnect_replays() {
     recovered.close(None).await.unwrap();
     drop(lock);
     test.close().await;
+    Ok(())
 }

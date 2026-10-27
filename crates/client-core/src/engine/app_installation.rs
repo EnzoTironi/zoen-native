@@ -101,6 +101,7 @@ impl Engine {
         let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
         let doc = AppDoc {
+            view: None,
             document: None,
             app: spec.id.into(),
             resource_uri: spec.resource_uri.into(),
@@ -108,6 +109,7 @@ impl Engine {
             state_json: state.to_string(),
         };
         let message = match spec.id {
+            "gridcraft" => t("Criei a planilha. Podemos editar o mesmo documento aqui.", "Created the spreadsheet. We can edit the same document here."),
             "deckcraft" => t("Criei a apresentação. Podemos editar o mesmo documento aqui.", "Created the presentation. We can edit the same document here."),
             "pet" => t(
                 "Ele mora aqui agora. Dá para dar comida, jogar a Corrida do Jumento e revezar quem cuida dele.",
@@ -136,7 +138,7 @@ impl Engine {
                 "Made the list “{title}”. Check off what you’re bringing."
             ),
         };
-        let item = new_id("it");
+        let item = new_id("it")?;
         let doc = self.attach_app_document(space, &item, doc)?;
         let proposal = ItemProposal {
             item,
@@ -161,36 +163,77 @@ impl Engine {
 
     /// Installs a catalog mini-app as the current user, with an Item-scoped grant.
     pub fn install_app(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
-        if app_id == apps::deckcraft::APP {
-            return self.install_deckcraft(space, args_json);
+        if let Some(format) = apps::binary::Format::for_id(app_id) {
+            return match format {
+                apps::binary::Format::Deckcraft => self.install_deckcraft(space, args_json),
+                apps::binary::Format::Gridcraft
+                | apps::binary::Format::Wordcraft
+                | apps::binary::Format::Pdfcraft
+                | apps::binary::Format::Photocraft => self.install_binary(space, format, args_json),
+            };
         }
         self.atomic_agent_action(|e| e.install_app_inner(space, app_id, args_json))
     }
 
     pub(super) fn install_deckcraft(&mut self, space: &str, args_json: &str) -> R<ItemDetail> {
-        fn default_title() -> String {
-            t("Apresentação", "Presentation")
-        }
+        self.install_binary(space, apps::binary::Format::Deckcraft, args_json)
+    }
+    fn install_binary(
+        &mut self,
+        space: &str,
+        format: apps::binary::Format,
+        args_json: &str,
+    ) -> R<ItemDetail> {
         #[derive(serde::Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Args {
-            #[serde(default = "default_title")]
-            title: String,
+            #[serde(default)]
+            title: Option<serde_json::Value>,
             #[serde(rename = "mutationId")]
             mutation_id: String,
         }
-        let args: Args = serde_json::from_str(args_json).map_err(|_| CoreError::Invalid {
+        let invalid = || CoreError::Invalid {
             reason: t(
-                "Argumentos de apresentação inválidos.",
-                "Invalid presentation arguments.",
+                "Argumentos do documento inválidos.",
+                "Invalid document arguments.",
             ),
-        })?;
-        let (title, _) = apps::deckcraft::registration::create(&json!({"title":args.title}))
-            .map_err(|reason| CoreError::Invalid { reason })?;
+        };
+        let args: Args = serde_json::from_str(args_json).map_err(|_| invalid())?;
+        // Read the original object too: explicit null is not an omitted title.
+        let raw: serde_json::Value = serde_json::from_str(args_json).map_err(|_| invalid())?;
+        let title = match args.title {
+            Some(serde_json::Value::String(title)) => title,
+            None if raw.get("title").is_none() => match format {
+                apps::binary::Format::Deckcraft => t("Apresentação", "Presentation"),
+                apps::binary::Format::Gridcraft => t("Planilha", "Spreadsheet"),
+                apps::binary::Format::Wordcraft => t("Documento", "Document"),
+                apps::binary::Format::Photocraft => t("Imagem", "Image"),
+                apps::binary::Format::Pdfcraft => "PDF".into(),
+            },
+            _ => return Err(invalid()),
+        };
+        let (title, _) = match format {
+            apps::binary::Format::Pdfcraft => {
+                apps::binary::pdfcraft_registration::create(&json!({"title":title}))
+            }
+            apps::binary::Format::Photocraft => {
+                apps::binary::photocraft_registration::create(&json!({"title":title}))
+            }
+            apps::binary::Format::Wordcraft => {
+                apps::binary::wordcraft_registration::create(&json!({"title":title}))
+            }
+            apps::binary::Format::Deckcraft => {
+                apps::deckcraft::registration::create(&json!({"title":title}))
+            }
+            apps::binary::Format::Gridcraft => {
+                apps::binary::gridcraft_registration::create(&json!({"title":title}))
+            }
+        }
+        .map_err(|reason| CoreError::Invalid { reason })?;
         use base64::Engine as _;
-        let initial =
-            base64::engine::general_purpose::STANDARD.encode(apps::deckcraft::registration::EMPTY);
-        let accepted = self.app_binary_create(space, &title, &initial, &args.mutation_id)?;
+        let initial = base64::engine::general_purpose::STANDARD.encode(format.seed());
+        let accepted =
+            self.app_binary_create_format(format, space, &title, &initial, &args.mutation_id)?;
         self.item(&accepted.item_id)
     }
 
@@ -234,11 +277,12 @@ impl Engine {
         };
         let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
-        let item = new_id("it");
+        let item = new_id("it")?;
         let document = self.attach_app_document(
             space,
             &item,
             AppDoc {
+                view: None,
                 document: None,
                 app: spec.id.into(),
                 resource_uri: spec.resource_uri.into(),
@@ -261,7 +305,7 @@ impl Engine {
             &me,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: new_id("gr"),
+                    id: new_id("gr")?,
                     grantor: me.clone(),
                     grantee: Some(format!("app:{item}")),
                     scope: GrantScope::Item(item.clone()),

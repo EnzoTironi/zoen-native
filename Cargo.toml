@@ -4,6 +4,7 @@ members = [
   "crates/types",
   "crates/localization",
   "crates/miniapps",
+  "crates/wordcraft-profile",
   "crates/device-link",
   "crates/event-log",
   "crates/grants",
@@ -52,6 +53,7 @@ argon2 = "0.5"
 rusqlite = { version = "0.37", features = ["bundled", "serialize"] }
 uniffi = "0.32"
 prost = "0.14"
+num-traits = "0.2.19"
 types = { path = "crates/types" }
 localization = { path = "crates/localization" }
 miniapps = { path = "crates/miniapps" }

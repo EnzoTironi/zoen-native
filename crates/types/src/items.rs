@@ -139,6 +139,10 @@ pub struct ChunkRef {
 /// chunks that didn't change), plus an optional preview made on the device.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct FileDoc {
+    /// Origin of the App referenced by this owned manifest, not decoding, bytes,
+    /// historical access or a grant. Absent on regular/legacy files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_origin: Option<crate::AppItemOrigin>,
     pub name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub path: String,
@@ -255,4 +259,8 @@ pub struct AppDoc {
     /// Optional owned document. Its encrypted chunks share this App Item's history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub document: Option<FileDoc>,
+    /// Immutable owned MCP UI bytes. Disclosed with the current App, never by
+    /// granting access to the source package Item or its history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<Box<FileDoc>>,
 }

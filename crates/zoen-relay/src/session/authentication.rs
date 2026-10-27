@@ -7,6 +7,7 @@ pub(super) struct LoggedIn {
     pub(super) cert: String,
     pub(super) registered: bool,
     pub(super) claim_receipts: bool,
+    pub(super) complete_reads: bool,
 }
 
 /// Hello → Challenge → Auth. `None` when the client is refused; the reason has been sent.
@@ -70,6 +71,9 @@ pub(super) async fn handshake(
         .await;
     }
     let capabilities = negotiate(&capabilities);
+    let complete_reads = capabilities
+        .iter()
+        .any(|c| c == protocol::complete_reads::CAPABILITY);
     let claim_receipts = capabilities
         .iter()
         .any(|c| c == protocol::KEY_PACKAGE_CLAIM_CAPABILITY);
@@ -182,6 +186,7 @@ pub(super) async fn handshake(
         cert,
         registered,
         claim_receipts,
+        complete_reads,
     })
 }
 

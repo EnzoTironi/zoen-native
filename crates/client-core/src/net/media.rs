@@ -1,6 +1,9 @@
 //! Encrypted media HTTP transfer and existing bounded retry ownership.
 
-use super::*;
+use super::{
+    now_ms, tracing_like, Arc, CoreListener, Duration, EngineLease, MediaDownloadRetries,
+    RecoveryRetries,
+};
 
 /// Uploads queued encrypted copies and downloads the ones the chats need, retrying with
 /// backoff (a peer's event can arrive before their upload finishes).
@@ -21,7 +24,11 @@ pub(super) async fn media_worker(
         };
     }
 
-    let Ok(http) = crate::https::client()
+    let Ok(builder) = crate::https::client() else {
+        tracing_like("media: no TLS configuration");
+        return;
+    };
+    let Ok(http) = builder
         .timeout(Duration::from_secs(60))
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -80,6 +87,11 @@ pub(super) async fn media_worker(
         // its content address must match the signed commit before MLS sees any bytes.
         let wanted = engine!(|engine| engine.wanted_recovery_contexts());
         if let Some(reference) = recovery_retries.next(wanted, tokio::time::Instant::now()) {
+            if !engine!(|engine| engine.net.synced.contains(&reference.space)
+                && engine.wants_recovery_context(&reference))
+            {
+                continue;
+            }
             let bytes = bounded_blob(
                 &http,
                 &format!("{base}/v1/blobs/{}", reference.blob),
@@ -141,8 +153,8 @@ pub(super) async fn media_worker(
         }
 
         tokio::select! {
-            _ = kick.notified() => {}
-            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+            () = kick.notified() => {}
+            () = tokio::time::sleep(Duration::from_secs(5)) => {}
         }
     }
 }

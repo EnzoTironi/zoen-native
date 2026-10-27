@@ -11,10 +11,10 @@ fn issue(
     space: &str,
     capability: Capability,
     expiry: Option<i64>,
-) -> String {
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let mut e = c.lock();
     let owner = e.me_id().unwrap();
-    let id = types::new_id("grant_test");
+    let id = types::new_id("grant_test")?;
     e.append(
         space,
         &owner,
@@ -30,7 +30,7 @@ fn issue(
         },
     )
     .unwrap();
-    id
+    Ok(id)
 }
 fn revoke(c: &Client, space: &str, grant: &str) {
     let mut e = c.lock();
@@ -57,14 +57,16 @@ fn newest_revoked_trust_blocks_actions_and_reply_without_reviving_old_autonomy()
         &space,
         Capability::Trust(TrustLevel::Autonomous),
         None,
-    );
+    )
+    .unwrap();
     let lower = issue(
         &c,
         &agent,
         &space,
         Capability::Trust(TrustLevel::Suggest),
         None,
-    );
+    )
+    .unwrap();
     assert!(matches!(
         decision(&c, &agent, &space),
         grants::Decision::Request(_)
@@ -85,7 +87,7 @@ fn newest_revoked_trust_blocks_actions_and_reply_without_reviving_old_autonomy()
 fn explicit_regrant_restores_authority_but_expired_newest_regrant_cannot() {
     let c = seeded();
     let (agent, space) = context(&c);
-    let first = issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None);
+    let first = issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None).unwrap();
     revoke(&c, &space, &first);
     assert!(matches!(
         decision(&c, &agent, &space),
@@ -97,7 +99,8 @@ fn explicit_regrant_restores_authority_but_expired_newest_regrant_cannot() {
         &space,
         Capability::Trust(TrustLevel::Suggest),
         None,
-    );
+    )
+    .unwrap();
     assert!(matches!(
         decision(&c, &agent, &space),
         grants::Decision::Request(_)
@@ -108,12 +111,13 @@ fn explicit_regrant_restores_authority_but_expired_newest_regrant_cannot() {
         &space,
         Capability::Trust(TrustLevel::Act),
         Some(crate::engine::now_ms() - 1),
-    );
+    )
+    .unwrap();
     assert!(matches!(
         decision(&c, &agent, &space),
         grants::Decision::Block(_)
     ));
-    issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None);
+    issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None).unwrap();
     assert!(matches!(
         decision(&c, &agent, &space),
         grants::Decision::Act { .. }
@@ -129,7 +133,8 @@ fn pending_approval_does_not_regrant_revoked_trust_and_can_still_be_denied() {
         &space,
         Capability::Trust(TrustLevel::Suggest),
         None,
-    );
+    )
+    .unwrap();
     let request = c
         .lock()
         .open_request(
@@ -159,7 +164,8 @@ fn invalid_newest_standing_baseline_does_not_revive_previous_always_allow() {
         &space,
         Capability::Trust(TrustLevel::Suggest),
         None,
-    );
+    )
+    .unwrap();
     let action = grants::standing_key(&ActionClass::Reversible).to_string();
     issue(
         &c,
@@ -170,7 +176,8 @@ fn invalid_newest_standing_baseline_does_not_revive_previous_always_allow() {
             allow: true,
         },
         None,
-    );
+    )
+    .unwrap();
     assert!(matches!(
         decision(&c, &agent, &space),
         grants::Decision::Act { .. }
@@ -184,7 +191,8 @@ fn invalid_newest_standing_baseline_does_not_revive_previous_always_allow() {
             allow: false,
         },
         None,
-    );
+    )
+    .unwrap();
     assert!(matches!(
         decision(&c, &agent, &space),
         grants::Decision::Block(_)
@@ -203,7 +211,8 @@ fn invalid_newest_standing_baseline_does_not_revive_previous_always_allow() {
             allow: true,
         },
         Some(crate::engine::now_ms() - 1),
-    );
+    )
+    .unwrap();
     assert!(matches!(
         decision(&c, &agent, &space),
         grants::Decision::Request(_)
@@ -211,7 +220,7 @@ fn invalid_newest_standing_baseline_does_not_revive_previous_always_allow() {
 }
 #[test]
 fn revoked_baseline_survives_cold_replay_of_the_same_signed_logs() {
-    let dir = std::env::temp_dir().join(types::new_id("trust_reopen"));
+    let dir = std::env::temp_dir().join(types::new_id("trust_reopen").unwrap());
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("core.sqlite").to_string_lossy().into_owned();
     let (agent, space) = {
@@ -224,7 +233,8 @@ fn revoked_baseline_survives_cold_replay_of_the_same_signed_logs() {
             &space,
             Capability::Trust(TrustLevel::Suggest),
             None,
-        );
+        )
+        .unwrap();
         revoke(&c, &space, &grant);
         (agent, space)
     };
@@ -244,10 +254,10 @@ fn app_grant(
     item: &str,
     level: TrustLevel,
     expiry: Option<i64>,
-) -> String {
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let mut e = c.lock();
     let owner = e.me_id().unwrap();
-    let id = types::new_id("app_trust_test");
+    let id = types::new_id("app_trust_test")?;
     e.append(
         space,
         &owner,
@@ -263,7 +273,7 @@ fn app_grant(
         },
     )
     .unwrap();
-    id
+    Ok(id)
 }
 #[test]
 fn invalid_newest_app_baseline_blocks_mutation_until_explicit_regrant() {
@@ -284,7 +294,8 @@ fn invalid_newest_app_baseline_blocks_mutation_until_explicit_regrant() {
             &item.id,
             TrustLevel::Suggest,
             expired.then(|| crate::engine::now_ms() - 1),
-        );
+        )
+        .unwrap();
         if !expired {
             revoke(&c, &space, &lower);
         }
@@ -299,7 +310,7 @@ fn invalid_newest_app_baseline_blocks_mutation_until_explicit_regrant() {
             "confirmation cannot regrant an invalid baseline"
         );
         assert_eq!(c.item(item.id.clone()).unwrap().version, before);
-        app_grant(&c, &space, &item.id, TrustLevel::Act, None);
+        app_grant(&c, &space, &item.id, TrustLevel::Act, None).unwrap();
         assert_eq!(
             c.app_call_tool(item.id.clone(), "pet_feed".into(), "{}".into(), false)
                 .unwrap()
@@ -321,7 +332,7 @@ fn app_confirmation_cannot_override_invalid_trust_for_an_external_action() {
             r#"{"name":"Confirm test"}"#.into(),
         )
         .unwrap();
-    let lower = app_grant(&c, &space, &item.id, TrustLevel::Suggest, None);
+    let lower = app_grant(&c, &space, &item.id, TrustLevel::Suggest, None).unwrap();
     revoke(&c, &space, &lower);
     let before = c.item(item.id.clone()).unwrap().version;
     let refused = c
@@ -348,7 +359,8 @@ fn app_grant_cannot_replace_the_calling_agents_suggest_or_revoked_authority() {
         &space,
         Capability::Trust(TrustLevel::Suggest),
         None,
-    );
+    )
+    .unwrap();
     let before = c.item(item.id.clone()).unwrap().version;
     let unapproved = c
         .lock()
@@ -356,7 +368,7 @@ fn app_grant_cannot_replace_the_calling_agents_suggest_or_revoked_authority() {
         .unwrap();
     assert_eq!(unapproved.status, AppCallStatus::NeedsConfirmation);
     assert_eq!(c.item(item.id.clone()).unwrap().version, before);
-    let agent_grant = issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None);
+    let agent_grant = issue(&c, &agent, &space, Capability::Trust(TrustLevel::Act), None).unwrap();
     let first = c
         .lock()
         .app_call_as(&item.id, &agent, "pet_feed", "{}", false, Some(&owner))
@@ -390,7 +402,8 @@ fn revoked_agent_cannot_read_app_state_but_humans_and_valid_listen_can() {
         &space,
         Capability::Trust(TrustLevel::Listen),
         None,
-    );
+    )
+    .unwrap();
     assert_eq!(
         c.lock()
             .app_call_as(&item.id, &agent, "pet_get_state", "{}", false, Some(&owner))
@@ -419,7 +432,8 @@ fn revoked_agent_cannot_read_app_state_but_humans_and_valid_listen_can() {
         &space,
         Capability::Trust(TrustLevel::Listen),
         None,
-    );
+    )
+    .unwrap();
     assert_eq!(
         c.lock()
             .app_call_as(&item.id, &agent, "pet_get_state", "{}", false, Some(&owner))

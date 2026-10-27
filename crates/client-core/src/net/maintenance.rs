@@ -1,12 +1,19 @@
 //! A completed catch-up permits one existing ordered maintenance pass.
 
-use super::*;
+use super::{
+    complete_reads, flush, free, report_rejection, send, tracing_like, ClaimClockSample,
+    ClientFrame, Ctx, Duration, EphemeralKind, Exit, HashMap, HashSet, Op, ProfileTraffic,
+    PublicationRetries, Sink, Waiting, PROFILE_TIMEOUT,
+};
+
+use crate::sync::RejectionOutcome;
 
 /// Borrows the active session; the caller still owns scheduling and watchdogs.
 pub(super) struct MaintenanceContext<'a> {
     pub(super) ctx: &'a Ctx,
     pub(super) sink: &'a mut Sink,
     pub(super) sent: &'a mut HashMap<String, Option<u64>>,
+    pub(super) retries: &'a mut PublicationRetries,
     pub(super) waiting: &'a mut HashMap<u64, Waiting>,
     pub(super) next_id: &'a mut u64,
     pub(super) dirty: &'a mut HashSet<String>,
@@ -16,6 +23,8 @@ pub(super) struct MaintenanceContext<'a> {
     pub(super) claim_clock: &'a Option<ClaimClockSample>,
     pub(super) claim_refusal_reported: &'a mut bool,
     pub(super) media_kick: &'a tokio::sync::Notify,
+    pub(super) read_owner: Option<&'a (String, String)>,
+    pub(super) deferred_reads: &'a mut complete_reads::Deferred,
 }
 
 pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit> {
@@ -23,6 +32,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         ctx,
         sink,
         sent,
+        retries,
         waiting,
         next_id,
         dirty,
@@ -32,6 +42,8 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         claim_clock,
         claim_refusal_reported,
         media_kick,
+        read_owner,
+        deferred_reads,
     } = context;
     macro_rules! engine {
         ($work:expr) => {
@@ -42,7 +54,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         };
     }
     if profiles_inflight.is_none() {
-        let unknown = engine!(|engine| engine.take_unknown());
+        let unknown = engine!(super::super::engine::Engine::take_unknown);
         if !unknown.is_empty() {
             let id = *next_id;
             *next_id += 1;
@@ -63,10 +75,10 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
             *profiles_inflight = Some(tokio::time::Instant::now());
         }
     }
-    let shared = engine!(|engine| engine.profile_share_pass());
+    let shared = engine!(super::super::engine::Engine::profile_share_pass);
     match shared {
         Ok(true) => {
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
         }
@@ -88,7 +100,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         }
     }
     if free(&mut traffic.upload) {
-        let upload = engine!(|engine| engine.profile_to_upload());
+        let upload = engine!(super::super::engine::Engine::profile_to_upload);
         if let Some(profile) = upload {
             traffic.upload = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
             let version = profile.version;
@@ -109,10 +121,11 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         }
     }
     if free(&mut traffic.profiles) {
-        let ids = engine!(|engine| engine.take_need_profiles());
+        let ids = engine!(super::super::engine::Engine::take_need_profiles);
         if !ids.is_empty() {
             traffic.profiles = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
             *opening = Some(tokio::time::Instant::now());
+            tracing_like(&format!("sealed profiles prepared asked={}", ids.len()));
             reqs.push((
                 Op::GetProfiles { ids: ids.clone() },
                 Waiting::SealedProfiles(ids),
@@ -120,7 +133,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         }
     }
     if free(&mut traffic.key_packages) {
-        let publish = engine!(|engine| engine.mls_key_packages_to_publish());
+        let publish = engine!(super::super::engine::Engine::mls_key_packages_to_publish);
         if let Some((packages, last_resort)) = publish {
             traffic.key_packages = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
             reqs.push((
@@ -132,7 +145,7 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
             ));
         }
     }
-    for (to, sealed) in engine!(|engine| engine.take_device_outbox()) {
+    for (to, sealed) in engine!(super::super::engine::Engine::take_device_outbox) {
         tracing_like(&format!(
             "device message to {} ({} bytes)",
             &to[..12.min(to.len())],
@@ -140,10 +153,10 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         ));
         reqs.push((Op::SendDevice { to, sealed }, Waiting::Ignored));
     }
-    if engine!(|engine| engine.take_ask_devices()) {
+    if engine!(super::super::engine::Engine::take_ask_devices) {
         reqs.push((Op::Devices, Waiting::Devices));
     }
-    match engine!(|engine| engine.mls_recovery_pass()) {
+    match engine!(super::super::engine::Engine::mls_recovery_pass) {
         Ok(true) => media_kick.notify_one(),
         Ok(false) => {}
         Err(e) => tracing_like(&format!("group recovery: {e}")),
@@ -171,35 +184,47 @@ pub(super) async fn maintain(context: MaintenanceContext<'_>) -> Result<(), Exit
         }
         Err(_) => {}
     }
-    let checkpoints = engine!(|engine| engine.mls_checkpoints());
+    let checkpoints = engine!(super::super::engine::Engine::mls_checkpoints);
     match checkpoints {
         Ok(true) => {
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
         }
         Ok(false) => {}
         Err(e) => tracing_like(&format!("checkpoints: {e}")),
     }
-    let sealed = engine!(|engine| engine.mls_seal_outbox());
+    let sealing_started = std::time::Instant::now();
+    let sealed = engine!(super::super::engine::Engine::mls_seal_outbox_changes);
+    if sealing_started.elapsed() >= Duration::from_millis(100) {
+        tracing_like(&format!(
+            "outbox sealing elapsed_ms={}",
+            sealing_started.elapsed().as_millis()
+        ));
+    }
     match sealed {
-        Ok(true) => {
-            if let Err(e) = flush(ctx, sink, sent).await {
-                return Err(Exit::Retry(e));
+        Ok((sealed, refused)) => {
+            let changed = !refused.is_empty();
+            if changed {
+                dirty.extend(refused);
+                report_rejection(ctx, &RejectionOutcome::UserFailed);
+            }
+            if sealed || changed {
+                if let Err(e) = flush(ctx, sink, sent, retries).await {
+                    return Err(Exit::Retry(e));
+                }
             }
         }
-        Ok(false) => {}
         Err(e) => tracing_like(&format!("sealing: {e}")),
     }
     let mut failed = None;
     for (op, w) in reqs {
-        let id = *next_id;
-        *next_id += 1;
-        if let Err(e) = send(sink, &ClientFrame::Req { id, op }).await {
+        let (op, w) = complete_reads::start(op, w, read_owner);
+        if let Err(e) = complete_reads::submit(op, w, sink, waiting, next_id, deferred_reads).await
+        {
             failed = Some(e);
             break;
         }
-        remember_waiting(waiting, id, w);
     }
     if let Some(e) = failed {
         return Err(Exit::Retry(e));

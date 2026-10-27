@@ -10,10 +10,14 @@ mod agent_binary_documents;
 #[path = "agent_pages/contract.rs"]
 pub mod agent_page_tools;
 mod agent_pages;
+pub mod agent_scenes;
 pub use agent_pages::approvals::ApprovedPageTurn;
 pub use agent_pages::{AgentPageDelivery, AgentPageResult, AgentPageSnapshot, AgentPageTurn};
 pub mod agent_app_creation;
+mod agent_control;
 mod agent_definition;
+mod agent_owner_scope;
+pub use agent_control::{AgentControlDto, AgentControlOutcome};
 pub mod agent_sites;
 pub use agent_definition::{
     AgentDefinitionDto, AgentDefinitionPreviewDto, AgentDefinitionUpdateDto,
@@ -25,6 +29,7 @@ pub use agent_enrollment::{
     AgentEnrollmentHostProgress, AgentEnrollmentHostRequest, AgentEnrollmentPreviewDto,
     AgentEnrollmentStatusDto,
 };
+pub use miniapps::binary::agent_tools as binary_agent_tools;
 /// Closed, shared schema validation only; this module grants no execution authority.
 pub use miniapps::deckcraft::agent_tools as deckcraft_agent_tools;
 mod agent_notes;
@@ -35,7 +40,10 @@ pub use agent_binary_documents::{
 };
 mod app_binary_documents;
 pub use app_binary_documents::AppBinaryDocumentDto;
+mod app_current_share;
 mod app_documents;
+mod app_edit_requests;
+mod app_resources;
 pub use app_documents::AppDocumentDto;
 mod api;
 pub use api::call_turn::CallTurnDto;
@@ -49,6 +57,8 @@ pub use backup_api::BackupStatusDto;
 #[cfg(feature = "client-types")]
 pub use client_api::export_typescript;
 mod files;
+mod forwarding;
+pub use forwarding::{ForwardReview, ForwardScope, ForwardSource};
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
 mod file_demand;
@@ -73,8 +83,10 @@ pub use recent_attachments::{
     RecentAttachment, RecentAttachmentKind, RecentAttachmentPage, RecentAttachmentReference,
     RecentAttachmentSourceBinding,
 };
+mod chat_mute;
 mod message_drafts;
 mod native_surfaces;
+pub use chat_mute::ChatMuteMode;
 pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};
 mod pages;
 pub use files::FileDto;
@@ -96,6 +108,8 @@ mod net;
 mod profile;
 mod provider_auth;
 mod replies;
+mod selected_quotes;
+pub use selected_quotes::{QuoteSpan, ReplySelection};
 pub mod runtime_core;
 pub use profile::{PhotoChange, ProfileDto, ProfilePhotoBytes};
 mod sync;

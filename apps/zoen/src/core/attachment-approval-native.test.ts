@@ -144,6 +144,7 @@ function fixture() {
       error: null,
     },
     field: {
+      mutationId: 'a',
       scope,
       targetFrozen: false,
       value: 'Caption a',
@@ -383,12 +384,12 @@ test('nonterminal suspension retains its native token and resumes only fresh cur
   f.unmount();
 });
 
-test('selected mode stays native and reorder requires an exact unique permutation of current IDs', () => {
+test('one native review keeps reorder fenced to an exact unique permutation and Back closes directly', () => {
   const f = fixture(),
     first = f.required();
   f.act(first, 'selected');
   const selected = f.required();
-  assert.equal(JSON.parse(selected.props.model).screen, 'selected');
+  assert.equal(JSON.parse(selected.props.model).screen, 'preview');
   assert.equal(f.calls.length, 0);
   for (const ids of [
     [],
@@ -406,8 +407,6 @@ test('selected mode stays native and reorder requires an exact unique permutatio
   f.act(selected, 'back');
   const preview = f.required();
   assert.equal(JSON.parse(preview.props.model).screen, 'preview');
-  assert.equal(f.calls.filter((v) => v.kind === 'close').length, 0);
-  f.act(preview, 'back');
   assert.equal(f.calls.filter((v) => v.kind === 'close').length, 1);
   f.unmount();
 });
@@ -467,4 +466,50 @@ test('native close addresses its committed owner and retired contexts or unmount
   f.close(replacement);
   f.act(replacement, 'send', 'a', { text: 'Unmounted' });
   assert.equal(f.calls.length, 0);
+});
+
+test('the real native Gallery model binds a mixed GeoJSON page to its retained URI/hash without changing order, reply/thread or captions', () => {
+  const f = fixture();
+  const threaded = { ...scope, replyTo: 'original-reply', thread: true };
+  const items = [
+    item('a'),
+    {
+      ...item('point'),
+      name: 'location.geojson',
+      mime: 'application/geo+json',
+      sha256: 'a'.repeat(64),
+      caption: 'Exact point caption',
+    },
+    { ...item('c'), mime: 'video/mp4' },
+  ];
+  let tree = f.required({
+    state: { ...f.props().state, scope: threaded, items },
+    field: { ...f.field({ value: 'Exact point caption' }), scope: threaded },
+    selectedId: 'point',
+    canEdit: false,
+  });
+  const model = JSON.parse(tree.props.model);
+  assert.deepEqual(
+    Array.from(model.items, (value: { id: string }) => value.id),
+    ['a', 'point', 'c'],
+  );
+  assert.equal(model.items[1].uri, items[1]!.uri);
+  assert.equal(
+    model.items[1].sha256,
+    'a'.repeat(64),
+    'the map must verify the existing journal bytes, not accept coordinate props',
+  );
+  assert.equal(model.caption.value, 'Exact point caption');
+  assert.deepEqual(JSON.parse(JSON.parse(tree.props.binding).context), threaded);
+  assert.equal(model.canEdit, false);
+  const old = tree;
+  f.act(tree, 'caption', 'point', { text: 'Updated caption' });
+  f.act(tree, 'preview', 'a');
+  tree = f.required({ selectedId: 'a', field: f.field({ value: 'Photo caption' }) });
+  f.act(old, 'send', 'point', { text: 'stale' });
+  f.close(tree);
+  assert.deepEqual(
+    f.calls.map((call) => call.kind),
+    ['caption', 'preview', 'close'],
+  );
 });

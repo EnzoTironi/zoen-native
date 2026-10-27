@@ -2,6 +2,7 @@
 """Select existing Expo jobs from immutable inputs, with a full-lane default."""
 import argparse
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -12,16 +13,32 @@ import tarfile
 import tempfile
 
 from expo_artifact_dependencies import compiler_inputs, graph
+from expo_artifact_candidate import tested_candidate
+from ci_static_documents import validate as validate_static_documents
+
+_proof = importlib.util.spec_from_file_location(
+    "expo_frontend_proof", Path(__file__).with_name("ci-documentation-scope.py"))
+FRONTEND_PROOF = importlib.util.module_from_spec(_proof)
+_proof.loader.exec_module(FRONTEND_PROOF)
 
 
 # These reviewed build contracts establish the roots in the metadata reader.
 # Drift disables optimization, never a build or test. It does not require an ACK.
-CONTRACTS = {
-    ".github/workflows/expo.yml": "085e800264619bcc17f43b676a40b9ee682cb8e7dff845058b9ff4247e1bf7e7",
-    "scripts/build-expo-core.mjs": "2f3d480e8b2ca4d57496aafe919f74a28371daf2ef3e92831258435d6422db47",
-    "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
-    "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
-}
+# Share reviewed bytes with the frontend selector so one producer change cannot
+# leave the artifact selector pinned to an obsolete copy. Each selector retains
+# its own positive classification and conservative fallback checks.
+from ci_frontend_inputs import FRONTEND_CONTRACTS
+
+CONTRACTS = {path: FRONTEND_CONTRACTS[path] for path in (
+    "scripts/expo-cargo-artifacts.mjs",
+    ".github/workflows/expo.yml",
+    "scripts/install-android-sdk.py",
+    "scripts/test-install-android-sdk.py",
+    "scripts/build-expo-core.mjs",
+    "scripts/build-expo-web-core.mjs",
+    "apps/zoen/package.json",
+)}
+
 JOBS = ("android", "client", "release_web")
 
 
@@ -41,9 +58,8 @@ def changes(base, head):
                 or fields[1] != b"100644"
                 or (fields[4] == b"M" and fields[0] != b":100644")):
             raise ValueError("Deletion, rename, mode change or unusual diff")
-        if (PurePosixPath(path).is_absolute() or ".." in PurePosixPath(path).parts
-                or not path.endswith(".rs") or PurePosixPath(path).name == "build.rs"):
-            raise ValueError("Cargo/config/tooling/unknown input requires all Expo jobs")
+        if PurePosixPath(path).is_absolute() or ".." in PurePosixPath(path).parts:
+            raise ValueError("Unknown input requires all Expo jobs")
         result.append(path)
     if not result:
         raise ValueError("Empty diff requires all Expo jobs")
@@ -96,14 +112,14 @@ def foreign_consumer(tree, owners):
     return result.returncode == 0
 
 
-def classify(base, head, event, cargo="cargo"):
+def classify(base, head, event, cargo="cargo", candidate=None):
     result = {"run_" + job: True for job in JOBS}
-    result.update(reason="Full Expo lane default", paths=[], packages={})
+    result.update(run_android_js=False, reason="Full Expo lane default", paths=[], packages={})
     try:
         if event not in ("pull_request", "push"):
             raise ValueError("Unknown event requires all Expo jobs")
-        base = git("rev-parse", "--verify", base + "^{commit}").decode().strip()
-        head = git("rev-parse", "--verify", head + "^{commit}").decode().strip()
+        head = tested_candidate(git, base, head, event, candidate)
+        result["tested_candidate"] = head
         ancestors = git("merge-base", "--all", base, head).decode().splitlines()
         if len(ancestors) != 1 or ancestors[0] != base:
             # A stale branch can omit new base consumers. Do not guess the
@@ -111,6 +127,20 @@ def classify(base, head, event, cargo="cargo"):
             raise ValueError("Ambiguous, stale-base or non-ancestral comparison")
         paths = changes(ancestors[0], head)
         result["paths"] = paths
+        try:
+            validate_static_documents(git, base, head, paths, artifacts=True)
+            result.update({"run_" + job: False for job in JOBS},
+                          reason="Verified static documentation/evidence; no Expo artifact inputs")
+            return result
+        except ValueError:
+            pass  # Unknown paths/consumers retain the full existing artifact lane.
+        if event == "pull_request" and all(FRONTEND_PROOF.frontend_path(path) for path in paths):
+            FRONTEND_PROOF.validate_frontend(base, head, base, paths)
+            result.update(run_android=False, run_android_js=True,
+                          reason="Verified frontend inputs; Android JS bundle/checks replace only native compilation")
+            return result
+        if any(not path.endswith(".rs") or PurePosixPath(path).name == "build.rs" for path in paths):
+            raise ValueError("Cargo/config/tooling/unknown input requires all Expo jobs")
         if manifests(base) != manifests(head):
             raise ValueError("Cargo/config inputs differ between endpoints")
         for tree in (base, head):
@@ -147,19 +177,23 @@ def main():
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
     parser.add_argument("--event", required=True)
+    parser.add_argument("--candidate", required=True)
     parser.add_argument("--cargo", default="cargo")
     args = parser.parse_args()
-    result = classify(args.base, args.head, args.event, args.cargo)
+    result = classify(args.base, args.head, args.event, args.cargo, args.candidate)
     print(json.dumps(result, indent=2))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             for job in JOBS:
                 output.write("run_" + job + "=" + str(result["run_" + job]).lower() + "\n")
+            output.write("run_android_js=" + str(result["run_android_js"]).lower() + "\n")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
             summary.write("### Expo scope\n\n" + result["reason"] + "\n\n")
             for job in JOBS:
                 summary.write("- " + job + ": " + ("selected" if result["run_" + job] else "SKIPPED; no matching artifact input") + "\n")
+            if result["run_android_js"]:
+                summary.write("- Android native compilation omitted; Android JS bundle/checks remain required in android-build.\n")
             summary.write("\nRust/relay CI is unchanged. SKIPPED jobs did not execute their builds/tests.\n")
 
 

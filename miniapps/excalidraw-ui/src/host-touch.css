@@ -1,0 +1,6 @@
+/* Keyboard-only hints consume canvas space on touch screens. Keep toolbar labels intact. */
+@media (pointer: coarse) {
+  .excalidraw .HintViewer {
+    display: none;
+  }
+}

@@ -1,5 +1,9 @@
 //! Plan creation, guarded edits and undo/version restoration.
-use super::*;
+use super::{
+    money, new_id, not_found, plan_from_dto, t, tr, ts, CoreError, EditOutcome, Engine, EventBody,
+    IdentityKind, ItemContent, ItemDetail, ItemKind, ItemProposal, PlanDoc, PlanDto, PlanLine,
+    PlanOutcome, Privacy, Role, SpaceId, SpaceKind, UndoToken, R,
+};
 
 impl Engine {
     /// O agente transforma um pedido num Item (plano). O plano em si vem do cliente
@@ -27,7 +31,7 @@ impl Engine {
                 reason: t("custo de IA negativo", "negative AI cost"),
             });
         }
-        let doc = plan_from_dto(plan);
+        let doc = plan_from_dto(plan)?;
         if doc.sections.iter().all(|s| s.lines.is_empty()) {
             return Err(CoreError::Invalid {
                 reason: t("plano vazio", "empty plan"),
@@ -62,7 +66,7 @@ impl Engine {
             ),
         };
         let proposal = ItemProposal {
-            item: new_id("it"),
+            item: new_id("it")?,
             kind: ItemKind::Plan,
             content: ItemContent::Plan(doc),
             origin: tr!(
@@ -104,7 +108,7 @@ impl Engine {
         if let Some(personal) = self.personal_space() {
             return Ok(personal);
         }
-        let personal = new_id("sp");
+        let personal = new_id("sp")?;
         self.append(
             &personal,
             &me,
@@ -155,7 +159,7 @@ impl Engine {
                 reason: t("este Item não é um plano", "this Item is not a plan"),
             });
         };
-        let creator = it.versions[0].author.clone();
+        let creator = it.versions.initial().author.clone();
         let old_total = Self::plan_total(&doc).ok_or_else(|| CoreError::Invalid {
             reason: t(
                 "total do plano fora do limite",
@@ -193,8 +197,7 @@ impl Engine {
                 .find(|m| {
                     self.identities
                         .get(m)
-                        .map(|i| i.kind == IdentityKind::Agent && i.handle == "financeiro")
-                        .unwrap_or(false)
+                        .is_some_and(|i| i.kind == IdentityKind::Agent && i.handle == "financeiro")
                 })
                 .or_else(|| {
                     self.identities
@@ -365,7 +368,7 @@ impl Engine {
                 .get_mut(section as usize)
                 .ok_or_else(|| not_found(&t("seção", "section")))?;
             s.lines.push(PlanLine {
-                id: new_id("ln"),
+                id: new_id("ln")?,
                 text,
                 cost_cents,
                 done: false,

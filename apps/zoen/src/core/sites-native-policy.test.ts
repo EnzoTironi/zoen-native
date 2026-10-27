@@ -29,6 +29,10 @@ test(
           '6',
           '-strict-concurrency=complete',
           '-warnings-as-errors',
+          // Compile both actual files in one frontend, rather than loading
+          // Foundation in separate primary-file jobs with a cold module cache.
+          // This keeps -Onone assertions, strict flags and the 40-second bound.
+          '-whole-module-optimization',
           '-module-cache-path',
           join(directory, 'module-cache'),
           ...files,

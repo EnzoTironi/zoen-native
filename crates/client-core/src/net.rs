@@ -27,11 +27,13 @@ use crate::engine::Engine;
 use crate::sync::{Ingest, RejectionOutcome};
 use crate::CoreListener;
 
+mod complete_reads;
 mod dispatch;
 mod maintenance;
 mod media;
 mod pickup;
 mod profile_traffic;
+mod publication_retries;
 mod receipts;
 mod responses;
 mod session;
@@ -42,9 +44,12 @@ use media::bounded_blob;
 use media::media_worker;
 pub(crate) use pickup::fetch_link_box;
 use profile_traffic::{free, remember_waiting, settle};
+use publication_retries::PublicationRetries;
+#[cfg(test)]
 use session::session;
 #[cfg(test)]
 use session::session_with_repair_policy;
+use session::session_with_retries;
 use transport::{flush, recv, refused, register, run, send};
 
 mod cursor_repair;
@@ -111,19 +116,26 @@ impl EngineLease {
     }
 
     fn with<T>(&self, work: impl FnOnce(&mut Engine) -> T) -> Option<T> {
-        let holder = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        let holder = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         holder.as_ref().map(|engine| work(&mut lock(engine)))
     }
 
     fn revoke(&self) {
-        let engine = self.0.lock().unwrap_or_else(|p| p.into_inner()).take();
+        let engine = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         // Finish releasing ownership here; task cancellation is asynchronous.
         drop(engine);
     }
 }
 
 fn lock(e: &Shared) -> std::sync::MutexGuard<'_, Engine> {
-    e.lock().unwrap_or_else(|p| p.into_inner())
+    e.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// The relay's HTTP base (blobs): `wss://x` → `https://x`, no trailing slash.
@@ -219,9 +231,31 @@ impl Net {
         identity: &str,
         device: &str,
     ) -> Option<String> {
+        self.relay_name(url, identity, device, false)
+    }
+
+    /// Call allocation needs authentication and catch-up from one socket status
+    /// snapshot; reconnect must not combine old synced with new authentication.
+    pub(crate) fn authenticated_synced_relay_name(
+        &self,
+        url: &str,
+        identity: &str,
+        device: &str,
+    ) -> Option<String> {
+        self.relay_name(url, identity, device, true)
+    }
+
+    fn relay_name(
+        &self,
+        url: &str,
+        identity: &str,
+        device: &str,
+        require_synced: bool,
+    ) -> Option<String> {
         let status = self.status.borrow();
         let relay = status.authenticated_relay.as_ref()?;
         (status.state == ConnState::Online
+            && (!require_synced || status.synced)
             && relay.base == http_base(url)
             && relay.identity == identity
             && relay.device == device)
@@ -334,6 +368,11 @@ type Stream = futures_util::stream::SplitStream<
 >;
 
 enum Waiting {
+    Paged {
+        assembly: Box<protocol::complete_reads::Assembly>,
+        deadline: tokio::time::Instant,
+        done: Box<Waiting>,
+    },
     External(oneshot::Sender<Result<Reply, String>>),
     /// The ids asked for, so ones the relay doesn't know aren't asked again forever.
     Profiles(Vec<String>),
@@ -431,7 +470,7 @@ impl RecoveryRetries {
         });
         wanted
             .into_iter()
-            .find(|r| !self.by_space.get(&r.space).is_some_and(|(_, at)| *at > now))
+            .find(|r| self.by_space.get(&r.space).is_none_or(|(_, at)| *at <= now))
     }
 
     fn defer(&mut self, reference: crate::mls_recovery::ContextRef, now: tokio::time::Instant) {
@@ -466,7 +505,7 @@ impl MediaDownloadRetries {
     }
 
     fn failed(&mut self, blob: &str, now: tokio::time::Instant) {
-        let tries = self.0.get(blob).map(|(_, n)| n + 1).unwrap_or(1);
+        let tries = self.0.get(blob).map_or(1, |(_, n)| n.saturating_add(1));
         let wait =
             Duration::from_secs(2u64.saturating_pow(tries.min(8))).min(Duration::from_secs(300));
         self.0.insert(blob.into(), (now + wait, tries));
@@ -475,7 +514,11 @@ impl MediaDownloadRetries {
 
 pub(crate) fn tracing_like(msg: &str) {
     if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
-        eprintln!("[zoen-net] {msg}");
+        // Relative process-local time correlates existing request/arrival facts.
+        // It neither changes scheduling nor exports a wall clock or private scope.
+        static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let elapsed = ORIGIN.get_or_init(std::time::Instant::now).elapsed();
+        eprintln!("[zoen-net] t_ms={} {msg}", elapsed.as_millis());
     }
 }
 

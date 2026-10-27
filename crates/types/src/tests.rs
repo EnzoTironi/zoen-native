@@ -1,6 +1,6 @@
 #[test]
 fn ids_sort_by_creation_and_carry_their_time() {
-    let ids: Vec<String> = (0..2000).map(|_| new_id("sp")).collect();
+    let ids: Vec<String> = (0..2000).map(|_| new_id("sp").unwrap()).collect();
     let mut sorted = ids.clone();
     sorted.sort();
     assert_eq!(ids, sorted, "same-millisecond ids keep creation order");
@@ -15,13 +15,13 @@ fn ids_sort_by_creation_and_carry_their_time() {
     .unwrap();
     assert!((now - t).abs() < 5_000);
     assert_eq!(id_time_ms(&format!("sp_{}", "ab".repeat(16))), None);
-    let before = new_ulid(now);
+    let before = new_ulid(now).unwrap();
     assert!(
-        new_ulid(now - 60_000) > before,
+        new_ulid(now - 60_000).unwrap() > before,
         "a clock step back still sorts later"
     );
     assert_eq!(
-        id_time_ms(&new_ulid(1_700_000_000_123)).map(|t| t >= 1_700_000_000_123),
+        id_time_ms(&new_ulid(1_700_000_000_123).unwrap()).map(|t| t >= 1_700_000_000_123),
         Some(true)
     );
 }
@@ -62,17 +62,17 @@ fn plan_total_and_line_ops() {
 
 #[test]
 fn ulids_sort_by_time_and_are_unique() {
-    let a = new_ulid(1_000);
-    let b = new_ulid(2_000);
+    let a = new_ulid(1_000).unwrap();
+    let b = new_ulid(2_000).unwrap();
     assert_eq!(a.len(), 26);
     assert!(a < b);
-    assert_ne!(new_ulid(5), new_ulid(5));
+    assert_ne!(new_ulid(5).unwrap(), new_ulid(5).unwrap());
 }
 
 #[test]
 fn ids_are_unique_and_prefixed() {
-    let a = new_id("sp");
-    let b = new_id("sp");
+    let a = new_id("sp").unwrap();
+    let b = new_id("sp").unwrap();
     assert_ne!(a, b);
     assert!(a.starts_with("sp_"));
     assert_eq!(a.len(), 3 + 26);

@@ -1,6 +1,9 @@
 //! Server-side Agent identity and runtime commands; the same Client owns state.
 
-use super::*;
+use super::{
+    invalid, unexpected, AccountDto, Arc, Client, CoreError, Op, Reply, SecretVault,
+    VAULT_AGREEMENT, VAULT_DEVICE, VAULT_IDENTITY,
+};
 
 /// The Agent identity id a root secret signs as (server-side runtime).
 pub fn agent_id_for_root(root: Vec<u8>) -> Result<String, CoreError> {
@@ -61,13 +64,29 @@ impl Client {
 
     /// The relay's record for this agent runtime: status, definition and cursors.
     pub async fn agent_state(&self) -> Result<protocol::AgentStateRecord, CoreError> {
-        match self
-            .request(Op::Agent(protocol::AgentRequest::State))
-            .await?
+        let (owner, channel) = self.device_directory_owner()?;
+        let reply = channel
+            .clone()
+            .send(Op::Agent(protocol::AgentRequest::State))
+            .await
+            .map_err(invalid)?;
+        let Reply::AgentState(state) = reply else {
+            return Err(unexpected());
+        };
+        if state.cursors.len() > protocol::complete_reads::CURSOR_ROWS
+            || state.definition.len() > protocol::complete_reads::DEFINITION_BYTES
         {
-            Reply::AgentState(s) => Ok(s),
-            _ => Err(unexpected()),
+            return Err(invalid(protocol::complete_reads::PROFILE_EXCEEDED));
         }
+        let mut spaces = std::collections::BTreeSet::new();
+        if state.cursors.iter().any(|(space, _)| {
+            space.is_empty()
+                || space.len() > protocol::complete_reads::KEY_BYTES
+                || !spaces.insert(space.clone())
+        }) {
+            return Err(invalid(protocol::complete_reads::INVALID));
+        }
+        self.with_device_directory_completion(&owner, &channel, |_| Ok(state))
     }
 
     /// This agent runtime handled `space` through `seq` (inclusive).
@@ -96,8 +115,12 @@ impl Client {
     /// Owner: "pause", "resume" or "revoke" one of your agents.
     pub async fn agent_control(&self, agent: String, action: String) -> Result<(), CoreError> {
         let action = protocol::AgentAction::parse(&action).ok_or_else(|| invalid("action"))?;
-        self.agent_done(protocol::AgentRequest::Control { agent, action })
-            .await
+        let action = match action {
+            protocol::AgentAction::Pause => crate::AgentControl::Pause,
+            protocol::AgentAction::Resume => crate::AgentControl::Resume,
+            protocol::AgentAction::Revoke => crate::AgentControl::Revoke,
+        };
+        self.control_agent(agent, action).await
     }
 
     pub(super) async fn agent_done(&self, req: protocol::AgentRequest) -> Result<(), CoreError> {

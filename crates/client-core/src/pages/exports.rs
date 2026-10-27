@@ -1,5 +1,5 @@
 //! Export an observed historical document, never the private live draft.
-use super::*;
+use super::{doc_err, invalid, t, CoreError, Engine, ItemContent, R};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -46,7 +46,7 @@ impl Engine {
             // is downloading. binary_at refuses an unavailable selected frontier.
             session.read(self)?;
             let page = session.binary_at(version)?;
-            let content_hash = page.content_hash();
+            let content_hash = page.content_hash().map_err(doc_err)?;
             if content_hash != observed_hash {
                 return Err(invalid(
                     "esta versão mudou; abra a prévia novamente",
@@ -67,7 +67,7 @@ impl Engine {
                 version,
                 title: content.title.clone(),
                 content_hash,
-                markdown: page.to_markdown(),
+                markdown: page.to_markdown().map_err(doc_err)?,
             })
         })
     }

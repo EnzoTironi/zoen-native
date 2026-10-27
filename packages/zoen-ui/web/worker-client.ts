@@ -21,6 +21,7 @@ export type CoreOperation =
   | { kind: 'cursor_repair_config' }
   | { kind: 'reconcile'; now: number }
   | { kind: 'claim_clock'; value: string }
+  | { kind: 'read_capability'; enabled: boolean }
   | { kind: 'maintenance'; now: number }
   | { kind: 'membership_request'; request: string; now: number }
   | { kind: 'receive'; bytes: Uint8Array; now: number; repairNow: number }

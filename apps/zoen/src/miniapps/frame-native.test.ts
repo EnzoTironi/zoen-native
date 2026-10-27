@@ -32,7 +32,7 @@ const compiled = await build({
 const require = createRequire(import.meta.url);
 type Element = { type: unknown; props: Record<string, unknown> };
 type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
-function fixture(platform: string, qa = false) {
+function fixture(platform: string, qa = false, wordQa = false) {
   const slots: Slot[] = [];
   let cursor = 0;
   let sequence = 0;
@@ -107,7 +107,12 @@ function fixture(platform: string, qa = false) {
     TextEncoder,
     TextDecoder,
     URL,
-    process: { env: { EXPO_PUBLIC_ZOEN_DECKCRAFT_INPUT_QA: qa ? '1' : undefined } },
+    process: {
+      env: {
+        EXPO_PUBLIC_ZOEN_DECKCRAFT_INPUT_QA: qa ? '1' : undefined,
+        EXPO_PUBLIC_ZOEN_WORDCRAFT_RUNTIME_QA: wordQa ? '1' : undefined,
+      },
+    },
     exports: module.exports,
     require: (name: string) => ports[name] ?? require(name),
   });
@@ -153,6 +158,7 @@ function fixture(platform: string, qa = false) {
       qaScript: web.props.injectedJavaScriptBeforeContentLoaded as string | undefined,
       qaMainOnly: web.props.injectedJavaScriptBeforeContentLoadedForMainFrameOnly,
       qaLabel: children[1]?.props.accessibilityLabel as string | undefined,
+      wordQaLabel: children[2]?.props.accessibilityLabel as string | undefined,
       key: web.props.key,
       touch: web.props.onTouchStart as () => void,
       fail: web.props.onError as (event: unknown) => void,
@@ -451,4 +457,52 @@ test('replacement and explicit disposal retire diagnostic state and old callback
   assert.equal(disposed.source, current.source);
   assert.equal(disposed.qaLabel, 'input trace: pending');
   assert.deepEqual(f.deliveries, []);
+});
+
+test('Word QA uses the existing bounded observer and retains native focus markers without reloading', () => {
+  const revision = 'd1b0bfc3f9dd83126b162a42b667facecb003b7f';
+  const runtime = {
+    ...inputQaRuntime,
+    engine: 'wordcraft' as const,
+    revision,
+    module: {
+      ...inputQaRuntime.module,
+      url: inputQaRuntime.module.url.replace(
+        'deckcraft/' + inputQaRevision,
+        'wordcraft/' + revision,
+      ),
+    },
+    wasm: {
+      ...inputQaRuntime.wasm,
+      url: inputQaRuntime.wasm.url.replace('deckcraft/' + inputQaRevision, 'wordcraft/' + revision),
+    },
+  };
+  const disabled = fixture('ios').render(undefined, undefined, runtime);
+  assert.equal(disabled.qaScript, undefined);
+  const f = fixture('ios', false, true),
+    first = f.render(undefined, undefined, runtime);
+  const session = inputQaSession(first.qaScript);
+  assert.ok(first.qaScript?.includes('wordcraft_canvas'));
+  assert.equal(first.qaMainOnly, false);
+  first.touch();
+  const after = f.render(undefined, undefined, runtime);
+  assert.equal(after.source, first.source);
+  assert.ok(after.wordQaLabel?.includes('RNfocusRequests=1'));
+  const ready = {
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'ui/update-model-context',
+    params: { structuredContent: { zoen: { binarySave: { ready: true } } } },
+  };
+  after.receive({
+    nativeEvent: {
+      url: 'about:blank',
+      data: JSON.stringify({ nonce: first.nonce, message: JSON.stringify(ready) }),
+    },
+  });
+  assert.ok(f.injected.some((s) => s.includes('"kind":"snapshot"') && s.includes(session)));
+  const next = f.render('<!doctype html><p>Replacement</p>', undefined, runtime);
+  first.touch();
+  assert.ok(next.wordQaLabel?.includes('RNfocusRequests=0'));
+  assert.equal(f.focused.length, 1);
 });

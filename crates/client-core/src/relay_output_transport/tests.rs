@@ -28,14 +28,14 @@ async fn requires_negotiated_capability_and_exact_fresh_reply_before_effects() {
         "wrong-id",
         "wrong-actor",
     ] {
-        let root = event_log::Signer::generate();
-        let actor = Author::device(&root, event_log::Signer::generate());
+        let root = event_log::Signer::generate().unwrap();
+        let actor = Author::device(&root, event_log::Signer::generate().unwrap());
         let expected = expected(&actor, 41);
         let request = expected.request().clone();
         let proof = match mode {
             "replayed" => self::expected(&actor, 42).proof(),
             "wrong-actor" => {
-                let other = Author::device(&root, event_log::Signer::generate());
+                let other = Author::device(&root, event_log::Signer::generate().unwrap());
                 self::expected(&other, 41).proof()
             }
             _ => expected.proof(),

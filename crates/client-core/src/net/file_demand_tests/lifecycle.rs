@@ -2,8 +2,9 @@
 use super::*;
 
 #[tokio::test]
-async fn historical_file_demand_timeout_cancel_and_invalid_requests_leave_no_demand() {
-    let f = Fixture::new();
+async fn historical_file_demand_timeout_cancel_and_invalid_requests_leave_no_demand(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     assert!(f
         .reader
         .ensure_file_version(f.item.clone(), 1, 1, 100)
@@ -75,13 +76,15 @@ async fn historical_file_demand_timeout_cancel_and_invalid_requests_leave_no_dem
             .is_empty(),
         "canceled future releases lease"
     );
+    Ok(())
 }
 
 /// Original C17 adaptation: immutable item/version IDs replace Signal's positional
 /// backfill pointers. A bad historical item must not poison its successful neighbor.
 #[tokio::test]
-async fn historical_file_demand_rechecks_membership_before_accepting_inflight_bytes() {
-    let mut f = Fixture::new();
+async fn historical_file_demand_rechecks_membership_before_accepting_inflight_bytes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut server = BlobServer::start(f.uploads(), f.old_blob.clone(), false);
     let waiting = ensure(&f.reader, &f.item, HTTP_JOURNEY_TIMEOUT_MS);
     until(|| {
@@ -99,7 +102,7 @@ async fn historical_file_demand_rechecks_membership_before_accepting_inflight_by
     f.sender
         .remove_member(f.space.clone(), f.reader.account().unwrap().identity_id)
         .unwrap();
-    f.catch_up();
+    f.catch_up()?;
     server.allow_old.store(true, Ordering::SeqCst);
     assert!(matches!(
         waiting.await.unwrap(),
@@ -129,11 +132,13 @@ async fn historical_file_demand_rechecks_membership_before_accepting_inflight_by
     server
         .stop()
         .expect("fixture HTTP worker must finish cleanly");
+    Ok(())
 }
 
 #[tokio::test]
-async fn historical_file_demand_rejects_corrupt_ciphertext_and_clears_on_deadline() {
-    let f = Fixture::new();
+async fn historical_file_demand_rejects_corrupt_ciphertext_and_clears_on_deadline(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     let mut server = BlobServer::start(f.uploads(), f.old_blob.clone(), true);
     server.allow_old.store(true, Ordering::SeqCst);
     let waiting = ensure(&f.reader, &f.item, HTTP_JOURNEY_TIMEOUT_MS);
@@ -168,11 +173,13 @@ async fn historical_file_demand_rejects_corrupt_ciphertext_and_clears_on_deadlin
     server
         .stop()
         .expect("fixture HTTP worker must finish cleanly");
+    Ok(())
 }
 
 #[tokio::test]
-async fn historical_file_demand_sync_stop_cancels_waiters_and_account_change_is_rejected() {
-    let f = Fixture::new();
+async fn historical_file_demand_sync_stop_cancels_waiters_and_account_change_is_rejected(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     f.reader.start_sync(None).unwrap();
     let waiting = ensure(&f.reader, &f.item, 2000);
     until(|| {
@@ -219,11 +226,13 @@ async fn historical_file_demand_sync_stop_cancels_waiters_and_account_change_is_
         .active()
         .unwrap()
         .is_empty());
+    Ok(())
 }
 
 #[tokio::test]
-async fn historical_file_demand_stop_without_a_connection_cancels_pending_open() {
-    let f = Fixture::new();
+async fn historical_file_demand_stop_without_a_connection_cancels_pending_open(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new()?;
     assert!(f.reader.net.lock().unwrap().is_none());
     let waiting = ensure(&f.reader, &f.item, 2000);
     until(|| {
@@ -254,11 +263,13 @@ async fn historical_file_demand_stop_without_a_connection_cancels_pending_open()
         f.reader.file_bytes_bounded(f.item, Some(1), 1024).unwrap(),
         None
     );
+    Ok(())
 }
 
 #[tokio::test]
-async fn poisoned_demand_refuses_inflight_history_but_background_media_continues() {
-    let mut f = Fixture::new();
+async fn poisoned_demand_refuses_inflight_history_but_background_media_continues(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
     let mut server = BlobServer::start(f.uploads(), f.old_blob.clone(), false);
     let kick = Arc::new(tokio::sync::Notify::new());
     let task = worker(&f.reader, &server, kick.clone());
@@ -297,14 +308,13 @@ async fn poisoned_demand_refuses_inflight_history_but_background_media_continues
         .unwrap();
     let marker_blob = {
         let engine = f.sender.lock();
-        let types::ItemContent::File(doc) =
-            &engine.state.items[&f.item].versions.last().unwrap().content
+        let types::ItemContent::File(doc) = &engine.state.items[&f.item].versions.current().content
         else {
             panic!("file");
         };
         doc.chunks[0].blob.clone()
     };
-    f.catch_up();
+    f.catch_up()?;
     server.blobs.lock().unwrap().extend(f.uploads());
     let before = (
         f.reader.item(f.item.clone()).unwrap().version,
@@ -348,4 +358,5 @@ async fn poisoned_demand_refuses_inflight_history_but_background_media_continues
     server
         .stop()
         .expect("fixture HTTP worker must finish cleanly");
+    Ok(())
 }

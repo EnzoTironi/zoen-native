@@ -88,7 +88,7 @@ async fn immutable_fixture_executes_with_open_case_data_and_keeps_concurrent_cas
         .unwrap();
     let (version_a, version_b) = tokio::join!(fixture_version(&a), fixture_version(&b));
     assert_eq!(version_a, "codex-cli 0.162.0\n");
-    assert_eq!(version_b, "codex-cli 0.163.0\n");
+    assert_eq!(version_b, "codex-cli 0.164.0\n");
     assert_eq!(std::fs::read(FIXTURE).unwrap(), original);
     for marker in [marker_a, marker_b] {
         assert!(!marker.exists());
@@ -152,7 +152,7 @@ fn tool() -> ToolDef {
         parameters: json!({"type":"object","properties":{"shapeId":{"type":"integer"},"text":{"type":"string"}},"required":["shapeId","text"]}),
     }
 }
-async fn think(brain: &CodexBrain) -> Result<BrainOut, String> {
+async fn think(brain: &CodexBrain) -> Result<BrainOut, BrainError> {
     let def = definition();
     let cx = TurnContext {
         agent: "agent",
@@ -212,7 +212,7 @@ async fn output_bound_is_enforced_before_a_missing_newline_allocates_unbounded_m
     let (_dir, brain, _) = fixture("oversize");
     assert_eq!(
         think(&brain).await.unwrap_err(),
-        "Codex output exceeds limit"
+        BrainError::OutcomeUnknown("Codex output exceeds limit".into())
     );
 }
 #[tokio::test]
@@ -262,7 +262,7 @@ async fn full_brain_timeout_bounds_admission_without_assuming_a_started_session(
     brain.timeout = Duration::from_millis(500);
     assert_eq!(
         think(&brain).await.unwrap_err(),
-        "Codex local inference timed out"
+        BrainError::OutcomeUnknown("Codex local inference timed out".into())
     );
     // This timeout includes version and admission subprocesses. A PID marker
     // may not exist yet; only the prestarted-session test proves a stalled child.

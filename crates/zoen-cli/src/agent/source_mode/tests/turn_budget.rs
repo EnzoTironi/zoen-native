@@ -2,11 +2,14 @@
 use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn cold_host_restarts_cannot_reset_normal_source_model_attempts() {
-    let mut f = Fixture::new("http://127.0.0.1:1");
+async fn cold_host_restarts_cannot_reset_normal_source_model_attempts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new("http://127.0.0.1:1")?;
     let calls = Arc::new(AtomicUsize::new(0));
     for attempt in 0..MAX_TRIES + 2 {
-        let cx = context(&f, &calls, true);
+        // This adapter explicitly refuses before dispatch. Opaque failures have
+        // a separate cold-restart regression and never regain this retry budget.
+        let cx = super::uncertain_outcome::not_dispatched_context(&f, &calls);
         let timeline = f.client.timeline(f.space.clone()).unwrap();
         let index = timeline.iter().position(|t| t.id == f.source).unwrap();
         let outcome = super::super::super::turn::turn(
@@ -49,12 +52,14 @@ async fn cold_host_restarts_cannot_reset_normal_source_model_attempts() {
     let encoded = std::fs::read_to_string(journal).unwrap();
     assert!(!encoded.contains("Inspect only the selected source."));
     assert!(!encoded.contains("synthetic unknown outcome"));
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn corrupt_or_busy_source_journal_refuses_before_model_without_becoming_handled() {
+async fn corrupt_or_busy_source_journal_refuses_before_model_without_becoming_handled(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for corrupt in [false, true] {
-        let f = Fixture::new("http://127.0.0.1:1");
+        let f = Fixture::new("http://127.0.0.1:1")?;
         let calls = Arc::new(AtomicUsize::new(0));
         let cx = context(&f, &calls, true);
         let path = if corrupt {
@@ -86,11 +91,13 @@ async fn corrupt_or_busy_source_journal_refuses_before_model_without_becoming_ha
             .tool_approval_requests(&f.space, &f.source)
             .is_empty());
     }
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn source_binding_change_cannot_reset_budget_but_another_source_has_its_own_limit() {
-    let f = Fixture::new("http://127.0.0.1:1");
+async fn source_binding_change_cannot_reset_budget_but_another_source_has_its_own_limit(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new("http://127.0.0.1:1")?;
     let calls = Arc::new(AtomicUsize::new(0));
     let cx = context(&f, &calls, true);
     let timeline = f.client.timeline(f.space.clone()).unwrap();
@@ -115,11 +122,13 @@ async fn source_binding_change_cannot_reset_budget_but_another_source_has_its_ow
         2
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+    Ok(())
 }
 
 #[test]
-fn acknowledged_source_retirement_preserves_other_sources_and_review_budgets() {
-    let f = Fixture::new("http://127.0.0.1:1");
+fn acknowledged_source_retirement_preserves_other_sources_and_review_budgets(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = Fixture::new("http://127.0.0.1:1")?;
     let calls = Arc::new(AtomicUsize::new(0));
     let cx = context(&f, &calls, true);
     let timeline = f.client.timeline(f.space.clone()).unwrap();
@@ -139,12 +148,14 @@ fn acknowledged_source_retirement_preserves_other_sources_and_review_budgets() {
     let before = std::fs::read(&cx.journal).unwrap();
     JournalState::retire_turn(&cx.journal, &cx, &f.space, &f.source).unwrap();
     assert_eq!(std::fs::read(&cx.journal).unwrap(), before);
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn canonical_cursor_ack_and_cold_selector_do_not_replay_a_retired_silent_turn() {
+async fn canonical_cursor_ack_and_cold_selector_do_not_replay_a_retired_silent_turn(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::CursorAck).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     f.publish_owner_packages(&server).await;
     server.released.store(true, Ordering::SeqCst);
     online(&f.client, true).await;
@@ -206,12 +217,14 @@ async fn canonical_cursor_ack_and_cold_selector_do_not_replay_a_retired_silent_t
         .unwrap()
         .contains(&"forbidden_agent_operation"));
     assert!(!server.calls.lock().unwrap().contains(&"read_receipt"));
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn account_retirement_during_inference_prevents_result_delivery() {
+async fn account_retirement_during_inference_prevents_result_delivery(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let f = Fixture::new(&server.url);
+    let f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
     let mut run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
@@ -248,4 +261,5 @@ async fn account_retirement_during_inference_prevents_result_delivery() {
     assert!(state.steps.is_empty());
     assert_eq!(state.continuations.len(), 1);
     assert_eq!(state.continuations.values().next().unwrap().attempts, 1);
+    Ok(())
 }

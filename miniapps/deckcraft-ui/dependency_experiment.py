@@ -20,12 +20,19 @@ EXPERIMENT_FILES = {
     ],
 }
 EXPERIMENT_NAMES = tuple(EXPERIMENT_FILES)
+# One exact sibling input is shared with Grid/Word/Photo/PDF. This is not a
+# general external-patch path: every recipe still has a closed ordered chain.
+SHARED_PRIMARY_CONTACT = '../gridcraft-ui/mobile-input/patches/eframe-primary-contact.patch'
 IOS_INPUT_PATCHES = (
     'patches/0017a-eframe-vendor-binding.patch',
     'patches/0017b-eframe-text-activation.patch',
-    'patches/0017c-eframe-primary-contact.patch',
+    SHARED_PRIMARY_CONTACT,
     'patches/0017d-deckcraft-text-admission.patch',
     'patches/0017e-deckcraft-input-contracts.patch',
+)
+TOUCH_INPUT_PATCHES = (
+    'patches/0018-egui-touch-input.patch',
+    'patches/0019-notes-owner-contract.patch',
 )
 EXPERIMENT_CHAINS = (('eframe-shift',), ('eframe-ios-input',),
                      ('eframe-ios-input', 'egui-touch-input'))
@@ -76,16 +83,20 @@ def experiment_patches(data):
     if 'patches' not in data:
         return [data.get('patch')]
     patches = data['patches']
-    if ('patch' in data or data.get('name') != 'eframe-ios-input'
+    expected = {'eframe-ios-input': IOS_INPUT_PATCHES,
+                'egui-touch-input': TOUCH_INPUT_PATCHES}.get(data.get('name'))
+    if ('patch' in data or expected is None
             or not isinstance(patches, list)
             or any(not isinstance(item, dict) for item in patches)
-            or [item.get('path') for item in patches] != list(IOS_INPUT_PATCHES)):
+            or [item.get('path') for item in patches] != list(expected)):
         raise ValueError('Unexpected experiment patch sequence')
     return patches
 
 
 def valid_patch(patch):
     patch_path = patch.get('path') if isinstance(patch, dict) else None
+    if patch_path == SHARED_PRIMARY_CONTACT:
+        return is_sha(patch.get('sha256'))
     return (isinstance(patch_path, str) and '\\' not in patch_path
             and PurePosixPath(patch_path).parts[:1] == ('patches',)
             and len(PurePosixPath(patch_path).parts) == 2

@@ -1,21 +1,22 @@
 //! Existing SQLite crash/confirmation assertions, invoked by stable test entrypoints.
 use super::*;
 
-pub(super) fn plain_receive_scope_failure_rolls_back_event_and_delivered_progress_across_reopen() {
-    let database = Database::new();
+pub(super) fn plain_receive_scope_failure_rolls_back_event_and_delivered_progress_across_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let path = database.path("receiver.sqlite");
     let (mut receiver, _, secret) = member(&path);
     let (_, peer, _) = member(":memory:");
     let space = "plain-receive-transaction";
-    closed_space(&mut receiver, &peer, space);
+    closed_space(&mut receiver, &peer, space)?;
     let pending = peer.sign_event(
         space,
         "peer-message",
         10,
         seen(&receiver, space),
         post("Retain me only after the complete receipt commits"),
-    );
-    let frame = ordered(&receiver, Envelope::plain(&pending));
+    )?;
+    let frame = ordered(&receiver, Envelope::plain(&pending)?)?;
     let before = receiver.store.event_count().unwrap();
     let delivered_before = receiver.delivered_to_announce(space);
     receiver
@@ -52,12 +53,15 @@ pub(super) fn plain_receive_scope_failure_rolls_back_event_and_delivered_progres
     let receiver = reopen(&path, &secret);
     assert_eq!(receiver.next_seq(space), frame.seq + 1);
     assert_eq!(receiver.delivered_to_announce(space), Some(frame.seq));
+
+    Ok(())
 }
 
-pub(super) fn failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_retry() {
-    let database = Database::new();
+pub(super) fn failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_retry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let space = "sealed-send-retention";
-    let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space);
+    let (mut owner, secret, mut peer, _) = encrypted_pair(&database, space)?;
     let message = owner
         .send_message(space, "One retained ciphertext per generation")
         .unwrap();
@@ -125,38 +129,47 @@ pub(super) fn failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_
     assert_eq!(owner.sealed_copy(&queued).unwrap().1, retained);
     assert!(owner.outbox_envelopes().contains(&retained));
     assert!(!owner.mls_seal_outbox().unwrap());
-    let frame = ordered(&owner, retained);
+    let frame = ordered(&owner, retained)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
     assert_eq!(peer.ingest(frame), Ingest::Duplicate);
     assert_eq!(message_count(&peer, space, &message.id), 1);
+
+    Ok(())
 }
 
-pub(super) fn sealed_receive_record_failure_rolls_back_ratchet_event_and_readable_receipt() {
+pub(super) fn sealed_receive_record_failure_rolls_back_ratchet_event_and_readable_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     assert_sealed_receive_rollback(
         "CREATE TEMP TRIGGER fail_opening_record BEFORE INSERT ON meta
          WHEN NEW.key LIKE 'runtime.mls-opening.v1/%'
          BEGIN SELECT RAISE(ABORT, 'injected opened receipt failure'); END;",
         "injected opened receipt failure",
-    );
+    )?;
+
+    Ok(())
 }
 
-pub(super) fn sealed_receive_scope_failure_rolls_back_ratchet_and_retained_opening() {
+pub(super) fn sealed_receive_scope_failure_rolls_back_ratchet_and_retained_opening(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     assert_sealed_receive_rollback(
         "CREATE TEMP TRIGGER fail_scope BEFORE INSERT ON synced_spaces
          BEGIN SELECT RAISE(ABORT, 'injected sealed scope failure'); END;",
         "injected sealed scope failure",
-    );
+    )?;
+
+    Ok(())
 }
 
-pub(super) fn pruned_receive_scope_failure_preserves_the_group_until_the_whole_receipt_commits() {
-    let database = Database::new();
+pub(super) fn pruned_receive_scope_failure_preserves_the_group_until_the_whole_receipt_commits(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let path = database.path("pruned-receiver.sqlite");
     let (mut receiver, author, secret) = member(&path);
     let space = "pruned-receive-scope";
-    start_space(&mut receiver, &author, space);
+    start_space(&mut receiver, &author, space)?;
     receiver.create_mls_group(space).unwrap();
-    let frame = pruned_frame(&receiver, &author, space);
+    let frame = pruned_frame(&receiver, &author, space)?;
     let before = provider_rows(&receiver);
     let count_before = receiver.store.event_count().unwrap();
     receiver
@@ -198,4 +211,6 @@ pub(super) fn pruned_receive_scope_failure_preserves_the_group_until_the_whole_r
     assert!(!receiver.device().unwrap().has_group(space));
     assert_eq!(receiver.next_seq(space), frame.seq + 1);
     assert_eq!(receiver.store.event_count().unwrap(), count_before + 1);
+
+    Ok(())
 }

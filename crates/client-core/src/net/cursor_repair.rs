@@ -17,7 +17,7 @@ pub(super) async fn drive(
             let current = *deadline.borrow_and_update();
             match current {
                 Some(until) => tokio::select! {
-                    _ = tokio::time::sleep_until(until) => {
+                    () = tokio::time::sleep_until(until) => {
                         // A completion may already have cleared/retargeted this
                         // timer while both select arms became ready.
                         if *deadline.borrow() == Some(until) { return; }
@@ -39,7 +39,7 @@ pub(super) async fn drive(
     };
     tokio::select! {
         exit = work => (exit, false),
-        _ = expired => (super::Exit::Retry("cursor reconciliation timed out".into()), true),
+        () = expired => (super::Exit::Retry("cursor reconciliation timed out".into()), true),
     }
 }
 

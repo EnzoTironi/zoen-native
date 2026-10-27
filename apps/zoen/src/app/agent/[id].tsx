@@ -1,45 +1,30 @@
 import { t, formatLocale } from '../../i18n/index.ts';
 import { useState } from 'react';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Pressable, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useClient } from '../../core/provider';
 import { useCoreQuery } from '../../core/query';
 import { money } from '../../core/presentation';
-import type { TrustLevelDto } from '../../core/generated/TrustLevelDto';
+import { agentTrustLevels, confirmAgentTrust } from '../../agents/trust-confirmation';
 import { Avatar, EmptyState, Loading, NativeButton, Surface } from '../../components/primitives';
 import { SettingsRows } from '../../components/settings-rows';
+import { NavigationScrollView } from '../../components/navigation-scroll-view';
 import { useTheme } from '../../theme';
 import { useDialogs } from '../../components/dialogs';
+import { useAgentControl } from '../../agents/use-agent-control';
+import { AgentControlView } from '../../agents/agent-control-view';
 
-const levels: { value: TrustLevelDto; title: string; detail: string }[] = [
-  { value: 'Listen', title: t('agents.listen'), detail: t('agents.followsTheConversation') },
-  {
-    value: 'Suggest',
-    title: t('agents.suggest'),
-    detail: t('agents.proposesChangesAndAsksForYourApproval'),
-  },
-  {
-    value: 'Act',
-    title: t('agents.act'),
-    detail: t('agents.performsAllowedActionsWithAnOptionToUndo'),
-  },
-  {
-    value: 'Autonomous',
-    title: t('agents.autonomous'),
-    detail: t('agents.actsWithinThePermissionsAndBudgetYouSet'),
-  },
-];
 export default function Agent() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { store, mode } = useClient();
   const { colors } = useTheme();
   const dialogs = useDialogs();
+  const levels = agentTrustLevels();
   const { data: agent, error, retry } = useCoreQuery({ op: 'agent_profile', agent_id: id });
   const standing = useCoreQuery({ op: 'standing_decisions' });
-  const status = useCoreQuery(
-    mode === 'account' && agent?.persona.is_mine ? { op: 'agent_status', agent_id: id } : null,
-  );
+  const control = useAgentControl(id, mode === 'account' && !!agent?.persona.is_mine);
+  const lifecycleTicket = control.session.ticket();
   const activity = useCoreQuery({ op: 'agent_activity', agent_id: id });
   const [previewSpace, setPreviewSpace] = useState<string | null>(null);
   const selectedSpace = previewSpace ?? agent?.spaces[0]?.space_id;
@@ -49,34 +34,41 @@ export default function Agent() {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  async function act(action: () => Promise<unknown>) {
-    if (busy) return;
+  async function act(action: () => Promise<unknown>, current: () => boolean = () => true) {
+    if (busy || !current()) return;
     setBusy(true);
     setFailure(null);
     setMessage(null);
     try {
       await action();
-      status.retry();
+      if (!current()) return;
+      void control.session.refresh();
       retry();
       standing.retry();
       activity.retry();
       previews.retry();
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : t('agents.thisCouldNotBeCompleted'));
+      if (current())
+        setFailure(reason instanceof Error ? reason.message : t('agents.thisCouldNotBeCompleted'));
     } finally {
       setBusy(false);
     }
   }
   if (!agent)
-    return error ? (
-      <EmptyState title={t('agents.agentUnavailable')} detail={error}>
-        <NativeButton label={t('agents.tryAgain')} onPress={retry} />
-      </EmptyState>
-    ) : (
-      <Loading />
+    return (
+      <NavigationScrollView title={t(error ? 'agents.agentUnavailable' : 'common.loading')}>
+        {error ? (
+          <EmptyState title={t('agents.agentUnavailable')} detail={error}>
+            <NativeButton label={t('agents.tryAgain')} onPress={retry} />
+          </EmptyState>
+        ) : (
+          <Loading />
+        )}
+      </NavigationScrollView>
     );
   return (
-    <ScrollView
+    <NavigationScrollView
+      title={agent.persona.name}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
         padding: 24,
@@ -87,7 +79,6 @@ export default function Agent() {
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: agent.persona.name }} />
       <View style={{ alignItems: 'center', gap: 14, paddingVertical: 18 }}>
         <Avatar name={agent.persona.name} color={agent.persona.tint_hex} size={88} agent />
         <Text style={{ color: colors.text, fontSize: 29, fontWeight: '600' }}>
@@ -154,35 +145,39 @@ export default function Agent() {
           {levels.map((level) => (
             <Pressable
               key={level.value}
-              disabled={busy || !agent.persona.is_mine}
+              disabled={busy || !agent.persona.is_mine || !lifecycleTicket}
               accessibilityRole="radio"
               aria-checked={space.level === level.value}
               onPress={() => {
-                if (space.level === level.value) return;
+                if (
+                  space.level === level.value ||
+                  !lifecycleTicket ||
+                  !control.session.accepts(lifecycleTicket)
+                )
+                  return;
+                const current = () => control.session.continues(lifecycleTicket);
                 void act(async () => {
                   if (
-                    levels.findIndex((item) => item.value === level.value) >
-                      levels.findIndex((item) => item.value === space.level) &&
-                    !(await dialogs.confirm({
-                      title: t('agents.allowAutonomy', { level: level.title }),
-                      message: t('agents.autonomyConfirmation', {
-                        name: agent.persona.name,
-                        chat: space.space_title,
-                        detail: level.detail,
-                      }),
-                      confirmLabel: t('agents.updateAutonomy'),
-                    }))
+                    !(await confirmAgentTrust(
+                      dialogs,
+                      agent.persona.name,
+                      space.space_title,
+                      space.level,
+                      level.value,
+                    ))
                   )
                     return;
+                  if (!control.session.accepts(lifecycleTicket)) return;
                   await store.request({
                     op: 'set_trust',
                     agent_id: id,
                     space_id: space.space_id,
                     level: level.value,
                   });
+                  if (!current()) return;
                   setPreviewSpace(space.space_id);
                   setMessage(t('agents.autonomyUpdatedInThisChat'));
-                });
+                }, current);
               }}
               style={{ flexDirection: 'row', gap: 12, paddingVertical: 9 }}
             >
@@ -293,20 +288,7 @@ export default function Agent() {
           <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
             {t('agents.yourAgent')}
           </Text>
-          {status.error ? (
-            <Text selectable style={{ color: colors.danger }}>
-              {status.error}
-            </Text>
-          ) : null}
-          <Text style={{ color: colors.secondary }}>
-            {status.data === 'Active'
-              ? t('agents.active')
-              : status.data === 'Paused'
-                ? t('agents.paused')
-                : status.data === 'Revoked'
-                  ? t('agents.revoked')
-                  : t('agents.checkingStatus')}
-          </Text>
+          <AgentControlView state={control.state} session={control.session} disabled={busy} />
           {process.env.EXPO_OS === 'ios' ? (
             <NativeButton
               testID="agent-definition-open"
@@ -315,53 +297,46 @@ export default function Agent() {
               onPress={() => router.push({ pathname: '/agent-definition/[id]', params: { id } })}
             />
           ) : null}
-          {status.data === 'Active' || status.data === 'Paused' ? (
-            <NativeButton
-              secondary
-              disabled={busy}
-              label={status.data === 'Active' ? t('agents.pauseAgent') : t('agents.resumeAgent')}
-              onPress={() => {
-                void act(() =>
-                  store.request({
-                    op: 'control_agent',
-                    agent_id: id,
-                    action: status.data === 'Active' ? 'Pause' : 'Resume',
-                  }),
-                );
-              }}
-            />
+          {control.state.status !== 'Revoked' ? (
+            <>
+              <NativeButton
+                secondary
+                disabled={busy || !lifecycleTicket}
+                label={t('agents.shareAgent')}
+                onPress={() => {
+                  if (!lifecycleTicket || !control.session.accepts(lifecycleTicket)) return;
+                  void act(async () => {
+                    const invite = await store.driver.request({
+                      op: 'create_agent_invite',
+                      agent_id: id,
+                    });
+                    // A late response must not open Share after lifecycle/owner retirement.
+                    if (!lifecycleTicket || !control.session.accepts(lifecycleTicket)) return;
+                    if (process.env.EXPO_OS === 'web') {
+                      await Clipboard.setStringAsync(invite.link);
+                      setMessage(t('agents.inviteLinkCopied'));
+                    } else await Share.share({ message: invite.link });
+                  });
+                }}
+              />
+              <NativeButton
+                secondary
+                disabled={busy || !lifecycleTicket}
+                label={t('agents.disableInviteLink')}
+                onPress={() => {
+                  if (!lifecycleTicket || !control.session.accepts(lifecycleTicket)) return;
+                  void act(() => store.request({ op: 'revoke_agent_invite', agent_id: id }));
+                }}
+              />
+            </>
           ) : null}
-          <NativeButton
-            secondary
-            disabled={busy}
-            label={t('agents.shareAgent')}
-            onPress={() => {
-              void act(async () => {
-                const invite = await store.driver.request({
-                  op: 'create_agent_invite',
-                  agent_id: id,
-                });
-                if (process.env.EXPO_OS === 'web') {
-                  await Clipboard.setStringAsync(invite.link);
-                  setMessage(t('agents.inviteLinkCopied'));
-                } else await Share.share({ message: invite.link });
-              });
-            }}
-          />
-          <NativeButton
-            secondary
-            disabled={busy}
-            label={t('agents.disableInviteLink')}
-            onPress={() => {
-              void act(() => store.request({ op: 'revoke_agent_invite', agent_id: id }));
-            }}
-          />
-          {status.data && status.data !== 'Revoked' ? (
+          {control.state.status && control.state.status !== 'Revoked' ? (
             <NativeButton
               secondary
-              disabled={busy}
+              disabled={busy || !lifecycleTicket}
               label={t('agents.revokeAgent')}
               onPress={() => {
+                if (!lifecycleTicket || !control.session.accepts(lifecycleTicket)) return;
                 void dialogs
                   .confirm({
                     title: t('agents.revokeThisAgent'),
@@ -370,10 +345,8 @@ export default function Agent() {
                     destructive: true,
                   })
                   .then((accepted) => {
-                    if (accepted)
-                      void act(() =>
-                        store.request({ op: 'control_agent', agent_id: id, action: 'Revoke' }),
-                      );
+                    if (accepted && control.session.accepts(lifecycleTicket))
+                      void act(() => control.session.revoke(lifecycleTicket));
                   });
               }}
             />
@@ -417,6 +390,6 @@ export default function Agent() {
           ))
         )}
       </Surface>
-    </ScrollView>
+    </NavigationScrollView>
   );
 }

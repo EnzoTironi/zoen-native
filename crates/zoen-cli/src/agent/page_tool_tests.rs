@@ -116,9 +116,9 @@ pub(super) fn cx(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn canonical_page_read_approve_once_write_and_cold_resume_use_the_normal_host_without_worker()
-{
-    let fixture = crate::deckcraft::tests::fixture();
+async fn canonical_page_read_approve_once_write_and_cold_resume_use_the_normal_host_without_worker(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = crate::deckcraft::tests::fixture()?;
     let client = &fixture.client;
     let space = client.item(fixture.base.item_id.clone()).unwrap().space_id;
     let item = client
@@ -173,7 +173,7 @@ async fn canonical_page_read_approve_once_write_and_cold_resume_use_the_normal_h
     let owner = fixture.owner.clone();
     drop(context);
     drop(fixture);
-    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &request, &owner);
+    canonical_tool_approval_tests::signed_owner_resolution(&path, &space, &request, &owner)?;
     let client = canonical_tool_approval_tests::reopen(&path, vault.clone());
     let context = cx(&client, &journal, &item, starts.clone());
     canonical_tool_approval_tests::handle(&client, &context, &space, &source).await;
@@ -200,6 +200,7 @@ async fn canonical_page_read_approve_once_write_and_cold_resume_use_the_normal_h
     drop(context);
     drop(client);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 
 mod renewal;

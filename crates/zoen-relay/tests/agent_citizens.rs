@@ -14,9 +14,9 @@ struct Database {
 }
 
 impl Database {
-    async fn new() -> Self {
+    async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let admin = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
-        let name = format!("zoen_agents_{}", &Signer::generate().id()[..16]);
+        let name = format!("zoen_agents_{}", &Signer::generate()?.id()[..16]);
         let mut c = PgConnection::connect(&admin).await.unwrap();
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
             .execute(&mut c)
@@ -25,7 +25,7 @@ impl Database {
         let base = admin.rsplit_once('/').unwrap().0;
         let pool = PgPool::connect(&format!("{base}/{name}")).await.unwrap();
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-        Self { pool, admin, name }
+        Ok(Self { pool, admin, name })
     }
 
     async fn finish(self) {
@@ -55,9 +55,12 @@ impl Database {
         tx.commit().await.unwrap();
     }
 
-    async fn person(&self, handle: &str) -> (Identity, Author) {
-        let root = Signer::generate();
-        let author = Author::device(&root, Signer::generate());
+    async fn person(
+        &self,
+        handle: &str,
+    ) -> std::result::Result<(Identity, Author), Box<dyn std::error::Error>> {
+        let root = Signer::generate()?;
+        let author = Author::device(&root, Signer::generate()?);
         let p = Identity {
             owner_proof: None,
             id: root.id(),
@@ -70,7 +73,7 @@ impl Database {
             bio: String::new(),
         };
         self.register(&p, &author).await;
-        (p, author)
+        Ok((p, author))
     }
 
     /// An agent registered from its own runtime device, authorized by `owner`'s device.
@@ -79,9 +82,9 @@ impl Database {
         handle: &str,
         owner: &Identity,
         owner_dev: &Author,
-    ) -> (Identity, Author) {
-        let root = Signer::generate();
-        let author = Author::device(&root, Signer::generate());
+    ) -> std::result::Result<(Identity, Author), Box<dyn std::error::Error>> {
+        let root = Signer::generate()?;
+        let author = Author::device(&root, Signer::generate()?);
         let proof = agent_owner::authorize(owner_dev, &root.id()).unwrap();
         let p = Identity {
             owner_proof: Some(Box::new(proof)),
@@ -95,7 +98,7 @@ impl Database {
             bio: String::new(),
         };
         self.register(&p, &author).await;
-        (p, author)
+        Ok((p, author))
     }
 
     async fn claim(&self, agent: &str, device: &str) -> Result<(), AgentCitizenError> {
@@ -122,11 +125,12 @@ fn dev(a: &Author) -> &str {
 }
 
 #[tokio::test]
-async fn only_the_agents_own_active_device_claims_it() {
-    let d = Database::new().await;
-    let (bruno, bruno_dev) = d.person("bruno").await;
-    let (carla, carla_dev) = d.person("carla").await;
-    let (bot, bot_dev) = d.agent("agenda_bruno", &bruno, &bruno_dev).await;
+async fn only_the_agents_own_active_device_claims_it(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let (bruno, bruno_dev) = d.person("bruno").await?;
+    let (carla, carla_dev) = d.person("carla").await?;
+    let (bot, bot_dev) = d.agent("agenda_bruno", &bruno, &bruno_dev).await?;
 
     // Registration already claimed it, owner-bound, with no definition yet.
     let st = agents::state(&d.pool, &bot.id, dev(&bot_dev), &[])
@@ -157,14 +161,16 @@ async fn only_the_agents_own_active_device_claims_it() {
         Err(AgentCitizenError::Device)
     ));
     d.finish().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn definitions_are_versioned_and_owner_controlled() {
-    let d = Database::new().await;
-    let (bruno, bruno_dev) = d.person("bruno").await;
-    let (carla, _) = d.person("carla").await;
-    let (bot, bot_dev) = d.agent("agenda_bruno", &bruno, &bruno_dev).await;
+async fn definitions_are_versioned_and_owner_controlled(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let (bruno, bruno_dev) = d.person("bruno").await?;
+    let (carla, _) = d.person("carla").await?;
+    let (bot, bot_dev) = d.agent("agenda_bruno", &bruno, &bruno_dev).await?;
     let bd = dev(&bot_dev);
     let bruno_d = dev(&bruno_dev);
 
@@ -281,13 +287,15 @@ async fn definitions_are_versioned_and_owner_controlled() {
         Err(AgentCitizenError::Revoked)
     ));
     d.finish().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn cursors_never_move_back_and_leave_with_the_space() {
-    let d = Database::new().await;
-    let (bruno, bruno_dev) = d.person("bruno").await;
-    let (bot, bot_dev) = d.agent("agenda_bruno", &bruno, &bruno_dev).await;
+async fn cursors_never_move_back_and_leave_with_the_space(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let (bruno, bruno_dev) = d.person("bruno").await?;
+    let (bot, bot_dev) = d.agent("agenda_bruno", &bruno, &bruno_dev).await?;
     let bd = dev(&bot_dev);
     agents::advance_cursor(&d.pool, &bot.id, bd, "sp_a", 5)
         .await
@@ -308,15 +316,26 @@ async fn cursors_never_move_back_and_leave_with_the_space() {
         .await
         .unwrap();
     assert_eq!(st.cursors, vec![("sp_a".to_string(), 5)]);
+    // Reads filter membership but cannot destroy a physical high watermark; an
+    // unproven timestamp cleanup fence must not erase a concurrent Advance.
+    agents::advance_cursor(&d.pool, &bot.id, bd, "sp_b", 9)
+        .await
+        .unwrap();
+    let restored = agents::state(&d.pool, &bot.id, bd, &["sp_b".into()])
+        .await
+        .unwrap();
+    assert_eq!(restored.cursors, vec![("sp_b".into(), 9)]);
     d.finish().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn competing_exact_next_definitions_do_not_overwrite_and_owner_reads_exact_bounded_bytes() {
-    let d = Database::new().await;
-    let (owner, owner_device) = d.person("definition_owner").await;
-    let (stranger, _) = d.person("definition_stranger").await;
-    let (agent, runtime) = d.agent("definition_agent", &owner, &owner_device).await;
+async fn competing_exact_next_definitions_do_not_overwrite_and_owner_reads_exact_bounded_bytes(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let (owner, owner_device) = d.person("definition_owner").await?;
+    let (stranger, _) = d.person("definition_stranger").await?;
+    let (agent, runtime) = d.agent("definition_agent", &owner, &owner_device).await?;
     agents::define(
         &d.pool,
         &agent.id,
@@ -412,4 +431,8 @@ async fn competing_exact_next_definitions_do_not_overwrite_and_owner_reads_exact
     assert_eq!(oversized.definition_version, 4);
     assert!(oversized.definition.is_empty() && oversized.cursors.is_empty());
     d.finish().await;
+    Ok(())
 }
+
+#[path = "agent_citizens/control_cases.rs"]
+mod control_cases;

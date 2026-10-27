@@ -179,7 +179,7 @@ impl Execution {
             1
         };
         let fence = Fence {
-            holder: types::new_id("native-worker"),
+            holder: types::new_id("native-worker").map_err(|_| RuntimeError::Unavailable)?,
             token,
         };
         trx.set(
@@ -290,6 +290,24 @@ impl Execution {
         Ok(stage)
     }
 
+    async fn check_native_retirement_capacity(
+        &self,
+        trx: &Transaction,
+        principal: &Principal,
+    ) -> Result<(), RuntimeError> {
+        let retained = bounded_rows(
+            trx,
+            foundationdb::RangeOption::from(self.native_retired(principal).range()),
+            MAX_RETIRED,
+            8192,
+        )
+        .await?;
+        if retained.len() >= MAX_RETIRED {
+            return Err(RuntimeError::EvidenceTooLarge);
+        }
+        Ok(())
+    }
+
     pub(super) async fn stage_native(
         &self,
         principal: &Principal,
@@ -342,6 +360,13 @@ impl Execution {
         range.limit = Some(1);
         if !trx.get_range(&range, 1, false).await?.is_empty() {
             return Err(RuntimeError::InvalidBinding);
+        }
+        // A known full retirement window is backpressure, not an interrupted
+        // activation. Leave no stage or chunks that would obstruct a later
+        // retry after normal GC. Activation still rechecks this same bound.
+        if staged.previous.is_some() {
+            self.check_native_retirement_capacity(&trx, principal)
+                .await?;
         }
         trx.set(
             &self.native_key(principal, "stage"),
@@ -431,16 +456,8 @@ impl Execution {
         }
         let principal = &staged.root.context.principal;
         if let Some(previous) = &staged.previous {
-            let retained = bounded_rows(
-                trx,
-                foundationdb::RangeOption::from(self.native_retired(principal).range()),
-                MAX_RETIRED,
-                8192,
-            )
-            .await?;
-            if retained.len() >= MAX_RETIRED {
-                return Err(RuntimeError::EvidenceTooLarge);
-            }
+            self.check_native_retirement_capacity(trx, principal)
+                .await?;
             trx.set(
                 &self
                     .native_retired(principal)

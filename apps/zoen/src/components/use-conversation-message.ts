@@ -32,6 +32,7 @@ import type { MessageContextRequest } from './message-context-ports';
 import { MessagePressable as Pressable } from './message-interaction';
 import { messageDeliveryLabel } from './message-receipt';
 import type { MessageActionMode, MessageAnchor } from './use-message-actions';
+import { useConversationRevealAnchor } from './conversation-reveal-content-view';
 
 export type ConversationMessageProps = {
   spaceId: string;
@@ -89,6 +90,7 @@ export function useConversationMessage({
   onQuote,
 }: ConversationMessageProps) {
   const { colors, presentation: p, reducedMotion } = useTheme();
+  const revealAnchor = useConversationRevealAnchor(entry.id);
   const { width, scale, fontScale } = useWindowDimensions();
   const pixel = 1 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
   const bubble = useRef<ComponentRef<typeof View>>(null);
@@ -351,6 +353,7 @@ export function useConversationMessage({
 
   return {
     entry,
+    revealAnchor,
     onStatusLayout,
     appCard,
     inlineStatus,

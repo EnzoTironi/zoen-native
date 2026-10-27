@@ -6,13 +6,13 @@ mod sql_gate;
 
 use super::*;
 
-async fn original() -> (Fixture, ReplyRun) {
-    let mut fixture = Fixture::new().await;
-    fixture.grant("admitted-owner-trust").await;
-    fixture.message(ORIGINAL).await;
+async fn original() -> std::result::Result<(Fixture, ReplyRun), Box<dyn std::error::Error>> {
+    let mut fixture = Fixture::new().await?;
+    fixture.grant("admitted-owner-trust").await?;
+    fixture.message(ORIGINAL).await?;
     let mut runs = fixture.sync(false).await.unwrap().runs;
     assert_eq!(runs.len(), 1);
-    (fixture, runs.remove(0))
+    Ok((fixture, runs.remove(0)))
 }
 
 fn binding(runtime: &RuntimeAuthority, step: &VerifiedStep) -> Binding {
@@ -90,9 +90,10 @@ async fn assert_one_release(fixture: &Fixture) {
     );
 }
 
-pub(in crate::tests) async fn run() {
-    Box::pin(progress::run()).await;
-    Box::pin(cancellation::run()).await;
-    Box::pin(deadlines::run()).await;
-    Box::pin(sql_gate::run()).await;
+pub(in crate::tests) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(progress::run()).await?;
+    Box::pin(cancellation::run()).await?;
+    Box::pin(deadlines::run()).await?;
+    Box::pin(sql_gate::run()).await?;
+    Ok(())
 }

@@ -7,6 +7,14 @@ export type PageBlockDto = { id: string,
  */
 kind: string, level: number, indent: number, number: number, checked: boolean, lang: string, url: string, alt: string, 
 /**
+ * Heading syntax. Absent only in legacy editor requests; false is explicit ATX.
+ */
+setext?: boolean, 
+/**
+ * Image title. Absent legacy requests preserve the existing canonical title.
+ */
+title?: string, 
+/**
  * Line breaks inside a block are U+2028.
  */
 text: string, spans: Array<TextSpanDto>, };

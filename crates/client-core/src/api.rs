@@ -1,10 +1,11 @@
-//! The account and sync surface of the core (UniFFI).
+//! The account and sync surface of the core (`UniFFI`).
 //!
 //! Swift supplies two things: a [`SecretVault`] (the Keychain) and a [`CoreListener`]
 //! (callbacks that trigger a refresh on the main actor). Everything else stays in Rust.
 
 mod agent_runtime;
 pub(crate) mod call_turn;
+mod member_roles;
 mod sync_completion;
 
 pub use agent_runtime::agent_id_for_root;
@@ -151,11 +152,12 @@ fn net_err(e: String) -> CoreError {
     }
 }
 
+#[must_use]
 pub fn normalize_code(raw: &str) -> String {
     let s = raw.trim();
     let s = s.rsplit('/').next().unwrap_or(s);
     s.chars()
-        .filter(|c| c.is_ascii_alphanumeric())
+        .filter(char::is_ascii_alphanumeric)
         .collect::<String>()
         .to_uppercase()
 }
@@ -183,7 +185,7 @@ impl Client {
     pub(crate) fn with_net<T>(&self, f: impl FnOnce(&Net) -> T) -> Option<T> {
         self.net
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .map(f)
     }
@@ -222,7 +224,10 @@ impl Client {
     pub(crate) async fn request(&self, op: Op) -> Result<Reply, CoreError> {
         // Clone the command channel out of the lock; never hold a lock across an await.
         let fut = {
-            let guard = self.net.lock().unwrap_or_else(|p| p.into_inner());
+            let guard = self
+                .net
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let net = guard.as_ref().ok_or_else(|| net_err("offline".into()))?;
             net.request_handle()
         };
@@ -323,16 +328,31 @@ impl Client {
         agent_id: String,
         action: AgentControl,
     ) -> Result<(), CoreError> {
-        let action = match action {
-            AgentControl::Pause => protocol::AgentAction::Pause,
-            AgentControl::Resume => protocol::AgentAction::Resume,
-            AgentControl::Revoke => protocol::AgentAction::Revoke,
+        let account = self
+            .account()
+            .ok_or_else(|| invalid("No active account."))?;
+        let target = || crate::agent_definition::DefinitionTarget {
+            agent: agent_id.clone(),
+            identity: account.identity_id.clone(),
+            device: account.device_id.clone(),
         };
-        self.agent_done(protocol::AgentRequest::Control {
-            agent: agent_id,
-            action,
-        })
-        .await
+        let observed = self.agent_control_read(target()).await?;
+        if observed.pending.is_some() {
+            return Err(invalid("Agent control delivery is unresolved."));
+        }
+        let result = self
+            .agent_control_change(target(), &observed.revision, action)
+            .await?;
+        let target_status = match action {
+            AgentControl::Pause => AgentStatus::Paused,
+            AgentControl::Resume => AgentStatus::Active,
+            AgentControl::Revoke => AgentStatus::Revoked,
+        };
+        if result.outcome != crate::AgentControlOutcome::Confirmed || result.status != target_status
+        {
+            return Err(invalid("Agent control delivery is unresolved."));
+        }
+        Ok(())
     }
 
     /// Takes the agent's share link down; the next `create_agent_invite` mints a new one.

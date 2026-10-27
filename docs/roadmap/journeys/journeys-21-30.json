@@ -1,0 +1,198 @@
+[
+  {
+    "id": "release-without-metro-and-reproducible-ci",
+    "title": "Instalar release sem Metro e reproduzir no CI",
+    "phase": "later-ios",
+    "issues": [
+      183,
+      200
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/183"
+    ],
+    "remaining": [
+      "Produzir release físico assinado com fonte e Core correspondentes",
+      "Qualificar instalação, atualização, migração e rollback reproduzíveis"
+    ]
+  },
+  {
+    "id": "local-device-signout-erasure-keys-data-cache-cleanup",
+    "title": "Sair e apagar chaves, dados e cache locais",
+    "phase": "later-ios",
+    "issues": [
+      177
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/177"
+    ],
+    "remaining": [
+      "Qualificar encerramento de donos e limpeza local completa",
+      "Preservar dados duráveis e bloquear trabalho tardio de sessão aposentada"
+    ]
+  },
+  {
+    "id": "english-pt-br-consistent-ui-provider-formatting",
+    "title": "Usar interface e formatação consistentes em português e inglês",
+    "phase": "active-ios",
+    "issues": [
+      181
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/181",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Revisar todas as telas e erros EN/PT-BR",
+      "Qualificar formatação de provedores, acessibilidade e contexto"
+    ]
+  },
+  {
+    "id": "damaged-log-integrity-warnings-verification-audit",
+    "title": "Detectar log danificado e apresentar integridade e auditoria",
+    "phase": "active-ios",
+    "issues": [
+      176,
+      182
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/176",
+      "https://github.com/EnzoTironi/zoen-native/pull/632"
+    ],
+    "remaining": [
+      "Qualificar avisos e auditoria na UI atual",
+      "Cobrir corrupção, ciphertext e sucessores sem sucesso inventado"
+    ]
+  },
+  {
+    "id": "encrypted-voice-video-calls-reconnect-permissions-and-platform-lifecycle",
+    "title": "Fazer chamadas privadas de voz e vídeo sob falhas e ciclo de vida",
+    "phase": "later-ios",
+    "issues": [
+      178,
+      266,
+      288,
+      296,
+      312,
+      305
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/178"
+    ],
+    "remaining": [
+      "Concluir admissão TURN, criptografia e chamadas reais",
+      "Qualificar câmera/mic, interrupções, reconexão, background e cold delivery físicos"
+    ]
+  },
+  {
+    "id": "desktop-install-signing-updates-and-native-system-integration",
+    "title": "Instalar desktop com assinatura, atualizações e integração nativa",
+    "phase": "desktop",
+    "issues": [
+      184
+    ],
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/184"
+    ],
+    "remaining": [
+      "Após Web/Android, qualificar macOS, Windows e Linux",
+      "Concluir instalação, assinatura, atualização e integrações por sistema"
+    ]
+  },
+  {
+    "id": "production-public-backend-complete-protocol-and-client-interoperability",
+    "title": "Interoperar com backend público completo de produção",
+    "phase": "production",
+    "issues": [
+      182
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/182",
+      "docs/dev/zoen-operating-envelope-v1.json"
+    ],
+    "remaining": [
+      "Implantar backend Rust compatível e provedores reais",
+      "Qualificar protocolo completo com artefatos finais sem extrapolar provas locais"
+    ]
+  },
+  {
+    "id": "multi-device-offline-recovery-and-data-integrity-under-declared-faults",
+    "title": "Recuperar múltiplos dispositivos offline sob falhas declaradas",
+    "phase": "production",
+    "issues": [
+      176,
+      177,
+      182
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/176",
+      "https://github.com/EnzoTironi/zoen-native/pull/632"
+    ],
+    "remaining": [
+      "Qualificar matriz de falhas e dispositivos independentes",
+      "Provar zero perda confirmada, zero efeitos duplicados e recuperação autorizada"
+    ]
+  },
+  {
+    "id": "declared-production-load-latency-availability-recovery-and-cost-verified",
+    "title": "Comprovar carga, latência, disponibilidade, recuperação e custo",
+    "phase": "production",
+    "issues": [
+      182,
+      184
+    ],
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/182",
+      "docs/dev/zoen-operating-envelope-v1.json"
+    ],
+    "remaining": [
+      "Congelar inventário e hashes antes de duas execuções completas",
+      "Medir metas do envelope por plataforma/local e observar disponibilidade por 30 dias"
+    ]
+  },
+  {
+    "id": "production-observability-abuse-controls-incident-restore-and-rollback",
+    "title": "Operar observabilidade, proteção contra abuso, incidentes e rollback",
+    "phase": "production",
+    "issues": [
+      182
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/182",
+      "docs/dev/zoen-operating-envelope-v1.json"
+    ],
+    "remaining": [
+      "Qualificar alertas privados, quotas, pressão e resposta a incidentes",
+      "Exercitar backup/restauração, atualização, migração e rollback com durabilidade"
+    ]
+  }
+]

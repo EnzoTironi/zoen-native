@@ -1,4 +1,4 @@
-use super::*;
+use super::Message;
 
 #[derive(Clone, PartialEq, Message)]
 pub struct PbClientFrame {
@@ -7,7 +7,7 @@ pub struct PbClientFrame {
 }
 
 pub mod pb_client_frame {
-    use super::*;
+    use super::{PbEmpty, PbEnvelope, PbEphemeral, PbHello, PbReq, PbSync};
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum F {
@@ -59,13 +59,17 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24"
     )]
     pub op: Option<pb_req::Op>,
 }
 
 pub mod pb_req {
-    use super::*;
+    use super::{
+        PbAgentReq, PbAgreementKey, PbCallTurnRequest, PbClaimKeyPackages, PbCreateInvite,
+        PbDeviceMessage, PbEmpty, PbIds, PbLinkBox, PbLookup, PbProfile, PbPublishKeyPackages,
+        PbPushToken, PbRuntimeBindingRequest, PbSealedProfile,
+    };
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum Op {
@@ -113,10 +117,12 @@ pub mod pb_req {
         CallTurn(PbCallTurnRequest),
         #[prost(message, tag = "23")]
         RuntimeBinding(PbRuntimeBindingRequest),
+        #[prost(message, tag = "24")]
+        CompleteRead(crate::complete_reads::Request),
     }
 }
 
-/// `op`: "state", "advance", "define", "pause", "resume" or "revoke".
+/// Agent runtime operations, legacy owner control, and revision-bound `control_*`.
 #[derive(Clone, PartialEq, Message)]
 pub struct PbAgentReq {
     #[prost(string, tag = "1")]
@@ -133,6 +139,10 @@ pub struct PbAgentReq {
     pub kind: String,
     #[prost(bytes = "vec", tag = "7")]
     pub definition: Vec<u8>,
+    #[prost(string, tag = "8")]
+    pub operation: String,
+    #[prost(uint64, tag = "9")]
+    pub revision: u64,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -410,7 +420,7 @@ pub struct PbEphemeral {
 }
 
 pub mod pb_ephemeral {
-    use super::*;
+    use super::PbEmpty;
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum Kind {
@@ -437,7 +447,10 @@ pub struct PbServerFrame {
 }
 
 pub mod pb_server_frame {
-    use super::*;
+    use super::{
+        PbAccepted, PbChallenge, PbClock, PbDeviceMessage, PbEmpty, PbEphemeral, PbError,
+        PbKeyPackagesLow, PbPresence, PbProfileChanged, PbReady, PbRejected, PbRes, PbSequenced,
+    };
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum F {
@@ -508,13 +521,17 @@ pub struct PbRes {
     pub id: u64,
     #[prost(
         oneof = "pb_res::R",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
     )]
     pub r: Option<pb_res::R>,
 }
 
 pub mod pb_res {
-    use super::*;
+    use super::{
+        PbAgentState, PbAgreementKeys, PbCallTurnReply, PbDevices, PbEmpty, PbInviteCreated,
+        PbInvitePreview, PbKeyPackages, PbLinkBox, PbProfile, PbProfiles, PbRuntimeBindingProof,
+        PbSealedProfiles,
+    };
 
     #[derive(Clone, PartialEq, prost::Oneof)]
     pub enum R {
@@ -546,6 +563,10 @@ pub mod pb_res {
         CallTurn(PbCallTurnReply),
         #[prost(message, tag = "15")]
         RuntimeBinding(PbRuntimeBindingProof),
+        #[prost(message, tag = "16")]
+        CompletePage(crate::complete_reads::Page),
+        #[prost(message, tag = "17")]
+        AgentControl(crate::agent_control::Record),
     }
 }
 

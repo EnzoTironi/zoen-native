@@ -2,7 +2,9 @@
 export function messageMayContainMarkdown(text: string, nativeMediaDisabled = false): boolean {
   return (
     (nativeMediaDisabled || !messageMarkdownMayLoadMedia(text)) &&
-    /[*_`~[\]|]|(?:^|\n) {0,3}(?:#{1,6}\s|>\s?|[-+]\s|\d{1,9}[.)]\s)/u.test(text)
+    (/[*_`~[\]|]|(?:^|\n) {0,3}(?:#{1,6}\s|>\s?|[-+]\s|\d{1,9}[.)]\s)/u.test(text) ||
+      /https?:\/\/|www\./iu.test(text) ||
+      (text.includes('@') && text.includes('.')))
   );
 }
 

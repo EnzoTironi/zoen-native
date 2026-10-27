@@ -1,0 +1,17 @@
+diff --git a/crates/ui-egui/src/edit_text_ui.rs b/crates/ui-egui/src/edit_text_ui.rs
+index 65c7bd7..76ee22b 100644
+--- a/crates/ui-egui/src/edit_text_ui.rs
++++ b/crates/ui-egui/src/edit_text_ui.rs
+@@ -1307,7 +1307,11 @@ pub(crate) fn page_input(
+         view.block_drag = Some(BlockDrag { page, block, generation: doc.edit_generation(), start: o, grip });
+         return true;
+     }
+-    let Some(p) = ui.input(|i| i.pointer.hover_pos()).filter(|p| xf.rect.contains(*p)) else { return false };
++    // Touch ends with PointerGone: hover is absent in the admitted release frame.
++    // Only this response's real click may use its recorded interaction position;
++    // do not resurrect a stale contact, drag or pointer outside this page.
++    let click = resp.interact_pointer_pos().filter(|_| resp.clicked());
++    let Some(p) = ui.input(|i| i.pointer.hover_pos()).or(click).filter(|p| xf.rect.contains(*p)) else { return false };
+     let Some((hit, grip)) = grab_at(&boxes, p, upright) else { return false };
+     if active != Some(hit) {
+         painter.rect_stroke(boxes[hit], CornerRadius::same(2), Stroke::new(1.5, ACCENT), egui::StrokeKind::Outside);

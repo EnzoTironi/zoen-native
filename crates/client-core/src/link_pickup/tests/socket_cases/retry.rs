@@ -5,7 +5,8 @@ use futures_util::SinkExt;
 use protocol::{Reply, ServerFrame};
 use tokio_tungstenite::tungstenite::Message;
 
-pub(super) async fn lost_transport_response_retries_the_original_pending_and_installs_only_once() {
+pub(super) async fn lost_transport_response_retries_the_original_pending_and_installs_only_once(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let relay = format!("http://{}", listener.local_addr().unwrap());
     let core = crate::Client::open(":memory:".into(), "en".into()).unwrap();
@@ -15,7 +16,7 @@ pub(super) async fn lost_transport_response_retries_the_original_pending_and_ins
     let material: Pending = serde_json::from_slice(&original_pending).unwrap();
     let secret: [u8; 32] = hex::decode(&material.secret).unwrap().try_into().unwrap();
     let box_id = crate::link::box_id(&secret, "identity");
-    let sealed = sealed_identity(&material);
+    let sealed = sealed_identity(&material)?;
     let plain = crate::link::open(
         &hex::decode(&material.hpke_secret).unwrap(),
         &secret,
@@ -97,4 +98,6 @@ pub(super) async fn lost_transport_response_retries_the_original_pending_and_ins
         5,
         "one pending write and exactly one installation"
     );
+
+    Ok(())
 }

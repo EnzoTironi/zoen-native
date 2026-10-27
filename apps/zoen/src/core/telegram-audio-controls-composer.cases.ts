@@ -45,7 +45,7 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
   let tree = controls(props);
   const field = nodes(tree).find((node) => node.type === 'ComposerTextField')!;
   assert.equal(nodes(tree).filter((node) => node.type === 'ComposerTextField').length, 1);
-  assert.equal(field.props.context, 'one::normal');
+  assert.deepEqual(JSON.parse(field.props.context).slice(0, 4), ['one', null, 'normal', null]);
   assert.ok(nodes(tree).some((node) => node.type === 'MessageContext'));
   assert.equal(
     interactiveNodes(tree).some((node) => node.props.accessibilityLabel === 'chat.sendMessage'),
@@ -62,9 +62,12 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
   oldVoiceTap();
   await tick();
   tree = controls({ ...props, value: 'text', editing: true });
-  assert.equal(
-    nodes(tree).find((node) => node.type === 'ComposerTextField')!.props.context,
-    'one::edit',
+  assert.deepEqual(
+    JSON.parse(nodes(tree).find((node) => node.type === 'ComposerTextField')!.props.context).slice(
+      0,
+      4,
+    ),
+    ['one', null, 'edit', 'reply'],
   );
   assert.ok(nodes(tree).some((node) => node.props.testID === 'record-voice'));
   assert.equal(
@@ -107,6 +110,7 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
   );
   oldAsk();
   tree = controls(props, {
+    mutationId: 'caption-selected',
     value: 'caption',
     position: 1,
     total: 2,

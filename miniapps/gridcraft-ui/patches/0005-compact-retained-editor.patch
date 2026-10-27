@@ -1,0 +1,361 @@
+--- /dev/null
++++ b/crates/ui-egui/src/compact_chrome.rs
+@@ -0,0 +1,100 @@
++//! A short embedded viewport keeps the existing live editor visible. No saved UI
++//! preference, document mutation, keyboard permission or synthetic focus is added.
++use crate::{SheetApp, formula_bar, grid, ribbon, tabs};
++use egui::{Context, Ui};
++use serde_json::json;
++
++pub(crate) fn active(app: &SheetApp, ctx: &Context) -> bool {
++    if app.chrome.title_bar || app.chrome.file_tab || app.editor.is_none() {
++        return false;
++    }
++    let formula = if app.session.prefs.formula_bar {
++        formula_bar::height(app)
++    } else {
++        0.0
++    };
++    let status = if app.ui.status_bar {
++        tabs::status_height(app)
++    } else {
++        0.0
++    };
++    let normal_chrome = ribbon::height(app) + formula + status + tabs::SHEET_TABS_HEIGHT;
++    // The real current safe canvas must fit the requested chrome plus column
++    // headings and an interaction row. No device model/orientation/keyboard guess.
++    let row = ctx.global_style().spacing.interact_size.y;
++    ctx.content_rect().height() < normal_chrome + grid::COL_HEADER_H + row
++}
++
++pub(crate) fn commands(app: &mut SheetApp, ui: &mut Ui) {
++    // The same catalog and run_or_alert boundary as the existing command palette.
++    // No auto-focused search field, fixed320pt dialog or new command authority.
++    let share = app.services.host_export_intent.is_some();
++    let label = app.ui.language.tr("Commands");
++    let menu = ui.menu_button(label, |ui| {
++        let catalog: Vec<_> = app
++            .session
++            .commands()
++            .into_iter()
++            .filter(|c| c.enabled)
++            .collect();
++
++        let safe = ui.ctx().content_rect();
++        let margin = ui.spacing().menu_margin.sum();
++        let height = (safe.height() - margin.y).max(1.0);
++        ui.set_max_width((safe.width() - margin.x).clamp(1.0, 420.0));
++        let row = ui.spacing().interact_size.y.max(20.0);
++        egui::ScrollArea::vertical()
++            .id_salt("compact_commands")
++            .min_scrolled_height(0.0)
++            .max_height(height)
++            .auto_shrink([false, true])
++            .show_rows(ui, row, catalog.len() + usize::from(share), |ui, rows| {
++                for index in rows {
++                    if share && index == 0 {
++                        if ui
++                            .add(
++                                egui::Button::new(app.ui.language.tr("Share"))
++                                    .min_size(egui::vec2(ui.available_width(), row)),
++                            )
++                            .clicked()
++                        {
++                            if let Some(export) = &app.services.host_export_intent {
++                                let _ = export("xlsx");
++                            }
++                            ui.close();
++                        }
++                        continue;
++                    }
++                    let Some(command) = index
++                        .checked_sub(usize::from(share))
++                        .and_then(|index| catalog.get(index))
++                    else {
++                        continue;
++                    };
++                    let response = ui.add(
++                        egui::Button::new(format!(
++                            "{}    {}",
++                            command.label,
++                            command.menu.join(" › ")
++                        ))
++                        .truncate()
++                        .min_size(egui::vec2(ui.available_width(), row)),
++                    );
++                    if response.clicked() {
++                        // Exactly the existing public UI command path, including
++                        // managed freeze/profile checks and ordinary refusals.
++                        app.run_or_alert(command.id, json!({}));
++                        ui.close();
++                    }
++                    response.on_hover_text(command.id);
++                }
++            });
++    });
++    if menu.inner.is_some() {
++        // Popup::show closes on Escape without consuming it. The same key must
++        // not also discard the retained editor behind this explicit menu.
++        ui.input_mut(|input| {
++            input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
++        });
++    }
++}
+--- a/crates/ui-egui/src/formula_bar.rs
++++ b/crates/ui-egui/src/formula_bar.rs
+@@ -8,40 +8,77 @@
+ use crate::icons::{self, Icon};
+ use crate::theme::{self, Tokens};
+ 
++pub(crate) fn height(app: &SheetApp) -> f32 {
++    if app.ui.formula_bar_expanded { 72.0 } else { 30.0 }
++}
++
+ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
++    show_inner(app, ui, false);
++}
++
++pub(crate) fn show_compact(app: &mut SheetApp, ui: &mut egui::Ui) {
++    show_inner(app, ui, true);
++}
++
++fn show_inner(app: &mut SheetApp, ui: &mut egui::Ui, compact: bool) {
+     let t = Tokens::get(ui.ctx());
+-    let expanded = app.ui.formula_bar_expanded;
+-    let h = if expanded { 72.0 } else { 30.0 };
++    let expanded = !compact && app.ui.formula_bar_expanded;
++    let h = if compact { 30.0 } else { height(app) };
+     egui::Panel::top("formula_bar")
+         .exact_size(h)
+         .frame(egui::Frame::NONE.fill(t.window).inner_margin(egui::Margin { left: 8, right: 8, top: 3, bottom: 3 }))
+         .show(ui, |ui| {
+             ui.horizontal(|ui| {
+                 ui.spacing_mut().item_spacing.x = 4.0;
++                if compact {
++                    crate::compact_chrome::commands(app, ui);
++                }
+                 name_box(app, ui, &t);
+                 ui.add_space(4.0);
+                 let editing = app.editor.is_some();
+                 let c = if editing { t.text } else { t.text_disabled };
+-                if crate::widgets::icon_button(ui, Icon::Close, c, "Cancel", vec2(22.0, 22.0)).clicked() && editing {
++                let cancel = crate::widgets::icon_button(ui, Icon::Close, c, "Cancel", vec2(22.0, 22.0));
++                cancel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, editing, app.ui.language.tr("Cancel")));
++                if cancel.clicked() && editing {
+                     app.cancel_edit();
+                 }
+-                if crate::widgets::icon_button(ui, Icon::Check, c, "Enter", vec2(22.0, 22.0)).clicked() && editing {
++                let enter = crate::widgets::icon_button(ui, Icon::Check, c, "Enter", vec2(22.0, 22.0));
++                enter.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, editing, app.ui.language.tr("Enter")));
++                if enter.clicked() && editing {
+                     app.commit_edit(0, 0, false, false);
+                 }
+-                if crate::widgets::icon_button(ui, Icon::Fx, t.text, "Insert Function", vec2(26.0, 22.0)).clicked() {
++                if !compact && crate::widgets::icon_button(ui, Icon::Fx, t.text, "Insert Function", vec2(26.0, 22.0)).clicked() {
+                     app.open_dialog("insertFunction", json!({}));
+                 }
+                 ui.add_space(4.0);
+                 // The formula field.
+-                let avail = ui.available_width() - 24.0;
++                let avail = (ui.available_width() - if compact { 0.0 } else { 24.0 }).max(1.0);
+                 let field = Rect::from_min_size(ui.cursor().min, vec2(avail, h - 6.0));
+-                ui.painter().rect_filled(field, 4.0, t.input_bg);
++                let cell_owner = compact && app.editor.as_ref().is_some_and(|ed| !ed.from_formula_bar);
++                ui.painter().rect_filled(field, 4.0, if cell_owner { Color32::WHITE } else { t.input_bg });
+                 ui.painter().rect_stroke(field, 4.0, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
+-                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(field.shrink2(vec2(6.0, 3.0))));
+-                let id = egui::Id::new("gridcraft.formula_bar");
++                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(field.shrink2(vec2(6.0, if compact { 0.0 } else { 3.0 }))));
++                // Keep the SAME current TextEdit ID, cursor/IME state and cell
++                // ownership when only its rendered location changes after resize.
++                let id = egui::Id::new(if cell_owner { "gridcraft.cell_editor" } else { "gridcraft.formula_bar" });
+                 let read_only = active_spill_anchor(app).is_some();
+                 if app.editor.is_some() {
+-                    let _ = editor_widget(app, &mut child, id, theme::ui_font(13.0), expanded, field.width() - 12.0);
++                    if compact {
++                        // Multiline drafts retain their actual text/cursor too:
++                        // the existing TextEdit scroll-to-caret request is handled
++                        // inside this real short field, not outside the keyboard.
++                        let visible_height = child.available_height().max(1.0);
++                        egui::ScrollArea::vertical()
++                            .id_salt(("compact_editor", id))
++                            .min_scrolled_height(0.0)
++                            .max_height(visible_height)
++                            .auto_shrink([false, false])
++                            .show(&mut child, |ui| {
++                                let _ = editor_widget(app, ui, id, theme::ui_font(13.0), expanded, field.width() - 12.0);
++                            });
++                    } else {
++                        let _ = editor_widget(app, &mut child, id, theme::ui_font(13.0), expanded, field.width() - 12.0);
++                    }
+                 } else {
+                     // Show the active cell's content; clicking starts editing in the bar.
+                     let text = active_input(app);
+@@ -68,7 +105,7 @@
+                 }
+                 ui.allocate_space(vec2(avail, h - 6.0));
+                 let chevron = if expanded { Icon::ChevronUp } else { Icon::Chevron };
+-                if crate::widgets::icon_button(ui, chevron, t.text_dim, "Expand formula bar", vec2(20.0, 22.0)).clicked() {
++                if !compact && crate::widgets::icon_button(ui, chevron, t.text_dim, "Expand formula bar", vec2(20.0, 22.0)).clicked() {
+                     app.ui.formula_bar_expanded = !app.ui.formula_bar_expanded;
+                 }
+             });
+@@ -194,6 +231,7 @@
+     multiline: bool,
+     width: f32,
+ ) -> Option<crate::text_activation::RenderedText> {
++    let compact = crate::compact_chrome::active(app, ui.ctx());
+     let mut ed = app.editor.take()?;
+     let mine = ed.from_formula_bar == (id == egui::Id::new("gridcraft.formula_bar"));
+     // Keys the editor handles itself (before the TextEdit sees them), only where it has focus.
+@@ -370,6 +408,16 @@
+     }
+     if !synced && let Some(r) = output.cursor_range {
+         ed.caret = r.primary.index.into();
++    }
++    if compact && mine && let Some(cursor) = output.state.cursor.char_range() {
++        // A keyboard/rotation resize need not change the text or selection, so
++        // TextEdit's input-driven scroll request alone cannot reveal a retained
++        // multiline caret. Ask only this existing local ScrollArea to reveal the
++        // actual rendered current cursor; do not move focus or synthesize input.
++        let rect = output.galley.pos_from_cursor(cursor.primary).translate(output.galley_pos.to_vec2());
++        if !ui.clip_rect().contains_rect(rect) {
++            ui.scroll_to_rect(rect, None);
++        }
+     }
+     if resp.changed() {
+         ed.completion = None;
+--- a/crates/ui-egui/src/grid.rs
++++ b/crates/ui-egui/src/grid.rs
+@@ -817,7 +817,7 @@
+     }
+     update_cursor(app, ui, &resp, &geo, sh);
+     crate::text_box::show(app, ui, &geo, sh);
+-    let rendered = if app.editor.as_ref().is_some_and(|e| !e.from_formula_bar) { in_cell_editor(app, ui, &geo, sh, &wb) } else { None };
++    let rendered = if !crate::compact_chrome::active(app, ui.ctx()) && app.editor.as_ref().is_some_and(|e| !e.from_formula_bar) { in_cell_editor(app, ui, &geo, sh, &wb) } else { None };
+     crate::text_activation::publish(app, ui, &resp, false, rendered);
+     filter_menu(app, ui, &geo, previous_popups.0 == app.grid.filter_menu);
+     list_picker(app, ui, &geo, previous_popups.1 == app.grid.list_picker);
+--- a/crates/ui-egui/src/i18n/pt.rs
++++ b/crates/ui-egui/src/i18n/pt.rs
+@@ -466,6 +466,7 @@
+         "Go To Special" => "Ir para Especial",
+         "Name Manager" => "Gerenciador de Nomes",
+         "Conditional Formatting Rules Manager" => "Gerenciador de Regras de Formatação Condicional",
++        "Commands" => "Comandos",
+         "Search Commands" => "Pesquisar Comandos",
+         "Agent Control" => "Controle por Agentes",
+         "About GridCraft" => "Sobre o GridCraft",
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -9,6 +9,7 @@
+ pub mod backstage;
+ mod border_preview;
+ mod cell_pictures;
++mod compact_chrome;
+ pub mod chartview;
+ pub mod control;
+ pub mod credits;
+@@ -1290,6 +1291,23 @@
+ 
+     /// Lays out the whole window.
+     pub fn ui(&mut self, ui: &mut egui::Ui) {
++        if !self.chrome.title_bar && !self.chrome.file_tab {
++            // eframe0.36 starts its root Ui at viewport_rect, even when the
++            // real host supplies safe_area_insets. Consume that contract once
++            // here; intersecting also supports an already-safe embedding parent.
++            let safe = ui.available_rect_before_wrap().intersect(ui.ctx().content_rect());
++            if safe.is_positive() {
++                ui.scope_builder(egui::UiBuilder::new().id_salt("embedded_safe_canvas").max_rect(safe), |ui| {
++                    ui.set_clip_rect(ui.clip_rect().intersect(safe));
++                    self.ui_contents(ui);
++                });
++            }
++        } else {
++            self.ui_contents(ui);
++        }
++    }
++
++    fn ui_contents(&mut self, ui: &mut egui::Ui) {
+         let ctx = ui.ctx().clone();
+         self.poll_printing(&ctx);
+         if !self.fonts_ready || self.fonts_rebind {
+@@ -1316,15 +1334,21 @@
+             // File tab: the Backstage view replaces everything below the title bar.
+             backstage::show(self, ui);
+         } else {
+-            ribbon::show(self, ui);
+-            widgets::notice_bar(self, ui);
+-            if self.session.prefs.formula_bar {
+-                formula_bar::show(self, ui);
+-            }
+-            if self.ui.status_bar {
+-                tabs::status_bar(self, ui);
+-            }
+-            tabs::sheet_tabs(self, ui);
++            if compact_chrome::active(self, ui.ctx()) {
++                // One actual retained editor, in the current safe viewport. This
++                // render choice never writes persisted ribbon/formula preferences.
++                formula_bar::show_compact(self, ui);
++            } else {
++                ribbon::show(self, ui);
++                widgets::notice_bar(self, ui);
++                if self.session.prefs.formula_bar {
++                    formula_bar::show(self, ui);
++                }
++                if self.ui.status_bar {
++                    tabs::status_bar(self, ui);
++                }
++                tabs::sheet_tabs(self, ui);
++            }
+             pivot_pane::show(self, ui);
+             panes::show(self, ui);
+             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.grid_bg)).show(ui, |ui| {
+--- a/crates/ui-egui/src/ribbon.rs
++++ b/crates/ui-egui/src/ribbon.rs
+@@ -200,10 +200,14 @@
+     }
+ }
+ 
++pub(crate) fn height(app: &SheetApp) -> f32 {
++    if app.ui.ribbon_collapsed { 34.0 } else { 34.0 + 92.0 }
++}
++
+ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
+     let collapsed = app.ui.ribbon_collapsed;
+-    let h = if collapsed { 34.0 } else { 34.0 + 92.0 };
++    let h = height(app);
+     // A contextual tab exists only while its object is selected (Excel hides Table Design once the
+     // cell leaves the table); a remembered one that is gone would draw an empty ribbon.
+     if CONTEXTUAL_TABS.contains(&app.ui.ribbon_tab.as_str()) && !contextual_tabs(app).contains(&app.ui.ribbon_tab.as_str()) {
+--- a/crates/ui-egui/src/tabs.rs
++++ b/crates/ui-egui/src/tabs.rs
+@@ -55,9 +55,11 @@
+     Some(json!({"sheet": i, "to": to}))
+ }
+ 
++pub(crate) const SHEET_TABS_HEIGHT: f32 = 32.0;
++
+ pub fn sheet_tabs(app: &mut SheetApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
+-    egui::Panel::bottom("sheet_tabs").exact_size(32.0).frame(egui::Frame::NONE.fill(t.tab_bar)).show(ui, |ui| {
++    egui::Panel::bottom("sheet_tabs").exact_size(SHEET_TABS_HEIGHT).frame(egui::Frame::NONE.fill(t.tab_bar)).show(ui, |ui| {
+         let rect = ui.max_rect();
+         ui.painter().line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, t.ribbon_border));
+         ui.horizontal_centered(|ui| {
+@@ -257,9 +259,13 @@
+     });
+ }
+ 
++pub(crate) fn status_height(app: &SheetApp) -> f32 {
++    if app.services.host_export_intent.is_some() { 44.0 } else { 26.0 }
++}
++
+ pub fn status_bar(app: &mut SheetApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
+-    let height=if app.services.host_export_intent.is_some() {44.0}else{26.0};
++    let height = status_height(app);
+     egui::Panel::bottom("status_bar").exact_size(height).frame(egui::Frame::NONE.fill(t.status_bar).inner_margin(egui::Margin::symmetric(12, 0))).show(
+         ui,
+         |ui| {

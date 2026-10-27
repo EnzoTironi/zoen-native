@@ -1,15 +1,20 @@
 //! Socket I/O, reconnect outcomes and ordered publication writes.
 
-use super::*;
+use super::{
+    mpsc, session_with_retries, tracing_like, ClientFrame, Cmd, ConnState, Ctx, Duration,
+    ErrorCode, Exit, HashMap, Identity, Message, Op, PublicationRetries, ServerFrame, Sink,
+    SinkExt, Stream, StreamExt,
+};
 
 pub(super) async fn run(ctx: Ctx, mut cmd_rx: mpsc::UnboundedReceiver<Cmd>) {
     let mut backoff = Duration::from_millis(500);
+    let mut retries = PublicationRetries::default();
     loop {
         ctx.set(|s| {
             s.state = ConnState::Connecting;
             s.synced = false;
         });
-        let exit = session(&ctx, &mut cmd_rx, &mut backoff).await;
+        let exit = session_with_retries(&ctx, &mut cmd_rx, &mut backoff, &mut retries).await;
         let blocked = match exit {
             Exit::Stop => {
                 ctx.set(|s| s.state = ConnState::Offline);
@@ -38,7 +43,7 @@ pub(super) async fn run(ctx: Ctx, mut cmd_rx: mpsc::UnboundedReceiver<Cmd>) {
         tokio::pin!(sleep);
         loop {
             tokio::select! {
-                _ = &mut sleep, if !blocked => break,
+                () = &mut sleep, if !blocked => break,
                 cmd = cmd_rx.recv() => match cmd {
                     None | Some(Cmd::Stop) => { ctx.set(|s| s.state = ConnState::Offline); return }
                     Some(Cmd::Req { reply, .. }) => { let _ = reply.send(Err("offline".into())); }
@@ -123,14 +128,40 @@ pub(super) async fn flush(
     ctx: &Ctx,
     sink: &mut Sink,
     sent: &mut HashMap<String, Option<u64>>,
+    retries: &mut PublicationRetries,
 ) -> Result<(), String> {
     if !ctx.status.borrow().synced {
         return Ok(());
     }
-    let envs = ctx
-        .engine(|engine| engine.outbox_envelopes_except(sent))
+    let (envs, pending, mut unsettled) = ctx
+        .engine(|engine| {
+            let mut unsettled = retries.waiting_spaces(&engine.net.pending);
+            unsettled.extend(
+                sent.keys()
+                    .filter_map(|id| engine.net.pending.get(id).cloned()),
+            );
+            (
+                engine.outbox_envelopes_except(sent),
+                engine.net.pending.len(),
+                unsettled,
+            )
+        })
         .ok_or_else(|| "offline".to_string())?;
+    if pending != 0 {
+        tracing_like(&format!(
+            "publication offer pending={pending} offered={} in_flight={}",
+            envs.len(),
+            sent.len()
+        ));
+    }
     for env in envs {
+        // A later envelope can be accepted after an earlier transient refusal.
+        // Keep each Space behind its unsettled signed head; unrelated Spaces
+        // still share this pass. Accepted notices alone cannot release a lane;
+        // confirmation or a terminal refusal resolves its older intent.
+        if unsettled.contains(env.space()) {
+            continue;
+        }
         if let std::collections::hash_map::Entry::Vacant(entry) =
             sent.entry(env.client_id().to_string())
         {
@@ -138,8 +169,10 @@ pub(super) async fn flush(
                 event_log::content::SealedKind::Application => ::mls::application_epoch(data),
                 _ => None,
             });
+            unsettled.insert(env.space().to_string());
             entry.insert(epoch);
             send(sink, &ClientFrame::Publish { env }).await?;
+            tracing_like(&format!("publication submitted in_flight={}", sent.len()));
         }
     }
     Ok(())

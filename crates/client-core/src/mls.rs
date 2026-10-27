@@ -44,7 +44,7 @@ use protocol::{
 };
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use types::*;
+use types::{new_ulid, Event, EventBody, IdentityId, Privacy, Role, Seen, SpaceId, SpaceKind};
 
 use crate::engine::Engine;
 use crate::i18n::t;
@@ -157,20 +157,25 @@ pub struct MlsNet {
     rejoin: HashSet<SpaceId>,
     pub(crate) recovery_retry_at: HashMap<SpaceId, Instant>,
     recovery_dirty: Mutex<HashSet<SpaceId>>,
+    /// Scheduling hints for contexts that actually lacked a recipient key.
+    /// Arrivals wake only these spaces; every attempt revalidates durable state.
+    pub(crate) recovery_key_waiters: HashSet<SpaceId>,
+    /// Transient download hints from recovery classification, never group authority.
+    pub(crate) recovery_downloads: HashMap<SpaceId, crate::mls_recovery::ContextRef>,
 }
 
 impl MlsNet {
     pub(crate) fn wake_recovery(&self, space: &str) {
         self.recovery_dirty
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(space.into());
     }
 
     pub(crate) fn wake_recovery_many(&self, spaces: impl IntoIterator<Item = SpaceId>) {
         self.recovery_dirty
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .extend(spaces);
     }
 
@@ -178,14 +183,14 @@ impl MlsNet {
         !self
             .recovery_dirty
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .is_empty()
     }
 
     pub(crate) fn take_recovery_work(&self) -> Vec<SpaceId> {
         self.recovery_dirty
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .drain()
             .collect()
     }
@@ -427,3 +432,5 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) use readiness::ReadinessRejection;

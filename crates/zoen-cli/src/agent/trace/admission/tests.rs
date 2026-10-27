@@ -73,7 +73,7 @@ fn admission_is_explicit_opt_in_and_default_off_preserves_existing_outcome_bytes
 
 #[test]
 fn all_core_variants_are_typed_without_copying_display_or_error_fields() {
-    for phase in [Phase::DeckPermit, Phase::PagePermit] {
+    for phase in [Phase::DeckPermit, Phase::PagePermit, Phase::ScenePermit] {
         for (error, variant) in errors(CANARY).into_iter().zip([
             "storage",
             "not_found",

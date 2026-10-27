@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn initial_package_outbox_reopens_exactly_and_acknowledges_only_its_digest() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     assert!(f.core.initial_key_package_publication().unwrap().is_none());
     let (first, image) = f.core.prepare_initial_key_packages().unwrap();
     assert!(!first.acknowledged());
@@ -34,7 +34,7 @@ fn initial_package_outbox_reopens_exactly_and_acknowledges_only_its_digest() {
 
 #[test]
 fn malformed_initial_outbox_refuses_instead_of_generating_replacement_keys() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     let key = "runtime.initial-key-packages/1";
     f.core
         .engine

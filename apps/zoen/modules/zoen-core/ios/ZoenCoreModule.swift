@@ -14,7 +14,13 @@ public class ZoenCoreModule: Module {
     Name("ZoenCore")
     Events("onChange", "onPageInputStatus", "onCallState", "onCallAudio")
     Constant("sitePreviewVersion") { 2 }
+    Constant("pageInputVersion") { 2 }
     zoenSitePreviewDefinition()
+    Constant("staticLocationVersion") { 1 }
+    zoenLocationMapDefinition()
+    zoenLocationSearchDefinition(sessionOwner)
+    zoenLocationCancelDefinition()
+    zoenLocationReadDefinition(sessionOwner)
 
     // Reuse the exact pinned Telegram mosaic already used by selected previews.
     // Pure, bounded geometry only: no media bytes, authority or persistent state.
@@ -94,11 +100,8 @@ public class ZoenCoreModule: Module {
     Constant("failedMediaRecoveryVersion") { 1 }
     Constant("nativePushPresentationVersion") { 1 }
     Constant("navigationContainerVersion") { 1 }
-    View(ZoenNavigationContainer.self) {
-      ViewName("NavigationContainer")
-      Prop("scrollViewTag") { (view: ZoenNavigationContainer, value: Int) in view.scrollViewTag = value }
-      OnViewDidUpdateProps { (view: ZoenNavigationContainer) in view.bind() }
-    }
+    Constant("navigationMetricsVersion") { 1 }
+    zoenNavigationContainerDefinition()
     View(ZoenComposerGlassSurface.self) {
       ViewName("ComposerGlassSurface")
       Prop("isDark") { (view: ZoenComposerGlassSurface, value: Bool) in view.isDark = value }
@@ -163,24 +166,7 @@ public class ZoenCoreModule: Module {
       AsyncFunction("dismissContexts") { (view: ZoenMessageContextStage) async in await view.dismissContexts() }
       AsyncFunction("retireContexts") { (view: ZoenMessageContextStage) async in await view.retireContexts() }
     }
-    View(ZoenMessageContextSource.self) {
-      ViewName("MessageContextSource")
-      Events("onGesture")
-      Prop("binding") { (view: ZoenMessageContextSource, value: String) in view.requestedBinding = value }
-      Prop("active") { (view: ZoenMessageContextSource, value: Bool) in view.requestedActive = value }
-      Prop("handlesTap") { (view: ZoenMessageContextSource, value: Bool) in view.requestedHandlesTap = value }
-      Prop("reducedMotion") { (view: ZoenMessageContextSource, value: Bool) in view.requestedReducedMotion = value }
-      OnViewDidUpdateProps { (view: ZoenMessageContextSource) in
-        view.bind(view.requestedBinding, active: view.requestedActive, handlesTap: view.requestedHandlesTap, reducedMotion: view.requestedReducedMotion)
-      }
-      AsyncFunction("presentContext") { (view: ZoenMessageContextSource, requestId: String, binding: String, gestureId: String, configuration: String) async throws -> String? in
-        try await view.present(requestId: requestId, expectedBinding: binding, gestureId: gestureId, configuration: configuration)
-      }
-      AsyncFunction("consumeGesture") { (view: ZoenMessageContextSource, binding: String, gestureId: String) async -> Bool in
-        await view.consumeGesture(expectedBinding: binding, gestureId: gestureId)
-      }
-      AsyncFunction("dismissContext") { (view: ZoenMessageContextSource, requestId: String) async in await view.dismiss(requestId: requestId) }
-    }
+    zoenMessageContextSourceDefinition()
     View(ZoenMessageReceiptView.self) {
       ViewName("MessageReceipt")
       Prop("ownerKey") { (view: ZoenMessageReceiptView, value: String?) in view.ownerKey = value ?? "" }
@@ -250,6 +236,7 @@ public class ZoenCoreModule: Module {
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewRecentAttachment(request, presentationId: presentationId, presenter: presenter)
     }
+    zoenContactReadDefinition(sessionOwner)
     AsyncFunction("previewLocalFile") { (uri: String) async throws in
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewLocalFile(uri, presenter: presenter)

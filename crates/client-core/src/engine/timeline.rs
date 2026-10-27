@@ -1,5 +1,10 @@
 //! Chat summaries, receipts and signed conversation actions.
-use super::*;
+use super::{
+    new_id, not_found, now_ms, reason_label, t, tr, ActionClass, CoreError, Decision, Engine,
+    Entry, EntryBody, EventBody, IdentityKind, ItemContent, ItemId, ItemKind, MemberRoleDto,
+    Persona, Privacy, PrivacyDto, ReqStatus, Role, SpaceKind, SpaceKindDto, SpaceSummary,
+    TimelineEntry, R,
+};
 
 impl Engine {
     // ───────────────────────────── API pública ─────────────────────────────
@@ -16,17 +21,24 @@ impl Engine {
     }
 
     pub fn spaces(&self) -> Vec<SpaceSummary> {
+        self.spaces_at(now_ms())
+    }
+
+    pub(crate) fn spaces_at(&self, now: i64) -> Vec<SpaceSummary> {
         let mut out: Vec<SpaceSummary> = self
             .space_order
             .iter()
-            .filter_map(|id| self.space_summary(id).ok())
-            .filter(|s| s.kind != SpaceKindDto::Community || !s.members.is_empty() || true)
+            .filter_map(|id| self.space_summary_at(id, now).ok())
             .collect();
         out.sort_by_key(|s| std::cmp::Reverse(s.last_at_ms));
         out
     }
 
     pub fn space_summary(&self, id: &str) -> R<SpaceSummary> {
+        self.space_summary_at(id, now_ms())
+    }
+
+    pub(crate) fn space_summary_at(&self, id: &str, now: i64) -> R<SpaceSummary> {
         let s = self.space_state(id)?;
         let kind = match s.kind {
             SpaceKind::Direct => SpaceKindDto::Direct,
@@ -53,7 +65,7 @@ impl Engine {
         let unread = s
             .entries
             .iter()
-            .filter(|e| e.author != me && read_seq.map(|r| e.seq > r).unwrap_or(true))
+            .filter(|e| e.author != me && read_seq.is_none_or(|r| e.seq > r))
             .filter(|e| matches!(e.body, EntryBody::Message { .. }))
             .count() as u32;
         let pending = self
@@ -63,7 +75,7 @@ impl Engine {
             .filter(|r| r.space == id && r.status == ReqStatus::Pending)
             .count() as u32;
         let prefs = self.state.chat_prefs.get(id).cloned().unwrap_or_default();
-        let muted = prefs.muted_until_ms.is_some_and(|until| until > now_ms());
+        let muted = prefs.muted_until_ms.is_some_and(|until| until > now);
         Ok(SpaceSummary {
             pinned: prefs.pinned,
             archived: prefs.archived,
@@ -72,14 +84,14 @@ impl Engine {
             id: s.id.clone(),
             title: counterpart
                 .as_ref()
-                .map(|c| c.name.clone())
-                .unwrap_or_else(|| s.title.clone()),
+                .map_or_else(|| s.title.clone(), |c| c.name.clone()),
             kind,
             privacy: match s.privacy {
                 Privacy::EndToEnd => PrivacyDto::EndToEnd,
                 Privacy::Closed => PrivacyDto::Closed,
                 Privacy::Public => PrivacyDto::Public,
             },
+            can_write: s.integrity_error.is_none() && self.state.writer(id, &me),
             members,
             counterpart,
             last_preview,
@@ -88,14 +100,14 @@ impl Engine {
             unread,
             last_delivery,
             pending_requests: pending,
-            event_count: self.logs.get(id).map(|l| l.len() as u64).unwrap_or(0),
+            event_count: self.logs.get(id).map_or(0, |l| l.len() as u64),
         })
     }
 
     pub fn member_roles(&self, space: &str) -> R<Vec<MemberRoleDto>> {
+        self.space_state(space)?;
         Ok(self
-            .space_state(space)?
-            .members
+            .receipt_members(space)?
             .iter()
             .map(|(identity, role)| MemberRoleDto {
                 identity_id: identity.clone(),
@@ -148,13 +160,7 @@ impl Engine {
     }
 
     pub fn send_message(&mut self, space: &str, text: &str) -> R<TimelineEntry> {
-        if let Some(reason) = self
-            .state
-            .spaces
-            .get(space)
-            .and_then(|s| s.integrity_error.clone())
-            .or_else(|| self.recorded_fork(space))
-        {
+        if let Some(reason) = self.checked_integrity_error(space)? {
             return Err(CoreError::Invalid { reason });
         }
         let me = self.me_id()?;
@@ -221,7 +227,7 @@ impl Engine {
                 });
             }
         }
-        if !self.is_member(space, &me) {
+        if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "só membros escrevem neste Espaço",
@@ -310,11 +316,11 @@ impl Engine {
                 return self.forward_file_message(from_space, item, to_space, &text, None, media);
             }
         }
-        self.append(
+        let appended = self.append(
             to_space,
             &me,
             EventBody::MessagePosted {
-                message: new_id("msg"),
+                message: new_id("msg")?,
                 text,
                 attaches,
                 reply: None,
@@ -323,7 +329,34 @@ impl Engine {
             },
         )?;
         let s = self.space_state(to_space)?;
-        Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
+        let entry = s
+            .entries
+            .iter()
+            .find(|entry| entry.id() == appended.client_id)
+            .ok_or_else(|| CoreError::Storage {
+                message: "The appended entry is missing from its projection.".into(),
+            })?;
+        Ok(self.entry_dto(entry))
+    }
+
+    /// The Engine lock covers owner validation, current preference merge and the
+    /// existing signed Personal-log writer. This is not distributed compare-and-set.
+    pub(crate) fn set_chat_muted(
+        &mut self,
+        space: &str,
+        muted: bool,
+        identity: &str,
+        device: &str,
+    ) -> R<()> {
+        self.chat_mute_owner(space, identity, device)?;
+        let mut prefs = self
+            .state
+            .chat_prefs
+            .get(space)
+            .cloned()
+            .unwrap_or_default();
+        prefs.muted_until_ms = muted.then_some(i64::MAX);
+        self.set_chat_prefs(space, prefs)
     }
 
     /// Pins, archives or mutes one of my chats in its signed local Personal log.
@@ -353,7 +386,7 @@ impl Engine {
         text: &str,
         attaches: Option<ItemId>,
     ) -> R<TimelineEntry> {
-        if !self.is_member(space, author) {
+        if !self.state.writer(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "só membros escrevem neste Espaço",
@@ -367,11 +400,11 @@ impl Engine {
                 reason: t("mensagem vazia", "empty message"),
             });
         }
-        self.append(
+        let appended = self.append(
             space,
             author,
             EventBody::MessagePosted {
-                message: new_id("msg"),
+                message: new_id("msg")?,
                 text: text.to_string(),
                 attaches,
                 reply: None,
@@ -380,7 +413,14 @@ impl Engine {
             },
         )?;
         let s = self.space_state(space)?;
-        Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
+        let entry = s
+            .entries
+            .iter()
+            .find(|entry| entry.id() == appended.client_id)
+            .ok_or_else(|| CoreError::Storage {
+                message: "The appended entry is missing from its projection.".into(),
+            })?;
+        Ok(self.entry_dto(entry))
     }
 
     /// O agente responde com texto (ação `Reply`, avaliada contra Concessões e orçamento).

@@ -1,4 +1,5 @@
-//! One native command on the existing PageSession and encrypted journal.
+//! One native command on the existing `PageSession` and encrypted journal.
+use super::super::doc_err;
 use super::*;
 use crate::{
     agent_page_tools::{self as tools, ReplaceBlock},
@@ -118,7 +119,7 @@ impl PageSession {
                 || journal.commit.is_some()
                 || journal.input.binding.is_some()
                 || journal.input.capture.is_some()
-                || live.content_hash() != shadow.content_hash()
+                || !live.editor_content_eq(shadow).map_err(doc_err)?
                 // A reverted/no-op human draft can have equal semantic content
                 // but still contain private Loro operations. Never publish those.
                 || live.version() != shadow.version())
@@ -135,7 +136,7 @@ impl PageSession {
             version,
             prefix_sha256: tools::prefix(&engine.state, &it.id, version)
                 .map_err(|reason| invalid(&reason))?,
-            content_sha256: shadow.content_hash(),
+            content_sha256: shadow.content_hash().map_err(doc_err)?,
             title: match &it.current().content {
                 ItemContent::Page(p) => p.title.clone(),
                 _ => return Err(stale()),
@@ -252,8 +253,13 @@ impl Engine {
                 version,
                 prefix_sha256: tools::prefix(&self.state, item, version)
                     .map_err(|reason| invalid(&reason))?,
-                content_sha256: page.content_hash(),
-                title: match &it.versions[version as usize - 1].content {
+                content_sha256: page.content_hash().map_err(doc_err)?,
+                title: match &version
+                    .checked_sub(1)
+                    .and_then(|index| it.versions.get(index as usize))
+                    .ok_or_else(stale)?
+                    .content
+                {
                     ItemContent::Page(p) => p.title.clone(),
                     _ => return Err(stale()),
                 },
@@ -275,7 +281,12 @@ impl Engine {
             session.write_author(self)?;
             let base = session.agent_shadow(self, true)?;
             if base.version != command.version
-                || base.prefix_sha256 != command.prefix_sha256
+                || !tools::prefix_matches(
+                    &self.state,
+                    &command.artifact_id,
+                    command.version,
+                    &command.prefix_sha256,
+                )
                 || base.content_sha256 != command.content_sha256
                 || base
                     .blocks
@@ -314,7 +325,7 @@ impl Engine {
             .pages
             .sessions
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(item);
         let mut session = cached.map_or_else(|| PageSession::open(self, item), Ok)?;
         let result = self.atomic_agent_action(|engine| {
@@ -325,7 +336,12 @@ impl Engine {
             }
             let base = session.agent_shadow(engine, true)?;
             if base.version != command.version
-                || base.prefix_sha256 != command.prefix_sha256
+                || !tools::prefix_matches(
+                    &engine.state,
+                    item,
+                    command.version,
+                    &command.prefix_sha256,
+                )
                 || base.content_sha256 != command.content_sha256
                 || base.blocks.iter().find(|b| b.id == command.before.id) != Some(&command.before)
             {
@@ -404,7 +420,7 @@ impl Engine {
             self.pages
                 .sessions
                 .lock()
-                .unwrap_or_else(|p| p.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .insert(item.clone(), session);
         }
         result

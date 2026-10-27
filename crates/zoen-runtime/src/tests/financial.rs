@@ -1,7 +1,8 @@
 use super::*;
 
-pub(super) async fn policies_and_historical_owner() {
-    let w = World::new().await;
+pub(super) async fn policies_and_historical_owner(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     let mut tampered = w.signed.clone();
     tampered.policy.limit_units += 1;
     assert_eq!(
@@ -34,16 +35,18 @@ pub(super) async fn policies_and_historical_owner() {
         RuntimeError::Denied
     );
     // Historical sponsorship survives; this agent's own active device gates work.
-    let step = w.step(0).await;
+    let step = w.step(0).await?;
     let (_, state) = w.runtime.complete_verified(&step).await.unwrap();
     assert_eq!(state, FinancialState::Settled { units: 6 });
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 1);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn configured_gateway_must_match_price_profile() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn configured_gateway_must_match_price_profile(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     for mismatch in 0..3 {
         let mut config = config(&w.db_url, &w.config_namespace, &w.http.base);
         match mismatch {
@@ -63,18 +66,20 @@ pub(super) async fn configured_gateway_must_match_price_profile() {
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     assert_eq!(w.balance().await.held_units, 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn owner_wide_concurrency() {
-    let w = World::new().await;
-    let a = w.binding(&w.step(0).await);
-    let b = w.binding(&w.step(1).await);
+pub(super) async fn owner_wide_concurrency() -> std::result::Result<(), Box<dyn std::error::Error>>
+{
+    let w = World::new().await?;
+    let a = w.binding(&w.step(0).await?);
+    let b = w.binding(&w.step(1).await?);
     let mut tasks = Vec::new();
     for i in 0..100 {
         let runtime = w.runtime.clone();
         let mut binding = if i % 2 == 0 { a.clone() } else { b.clone() };
-        binding.context.attempt_id = types::new_id("attempt");
-        binding.context.run_id = types::new_id("child");
+        binding.context.attempt_id = types::new_id("attempt")?;
+        binding.context.run_id = types::new_id("child")?;
         tasks.push(tokio::spawn(async move {
             runtime.finance.reserve(&binding).await
         }));
@@ -99,12 +104,14 @@ pub(super) async fn owner_wide_concurrency() {
     assert_eq!(w.count("SELECT count(*) FROM runtime_postings").await, 152);
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn bounded_reservation_contention_recovers_once() {
+pub(super) async fn bounded_reservation_contention_recovers_once(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for pool_contention in [true, false] {
-        let w = World::new().await;
-        let binding = w.binding(&w.step(0).await);
+        let w = World::new().await?;
+        let binding = w.binding(&w.step(0).await?);
         let mut connections = Vec::new();
         let mut lock = None;
         if pool_contention {
@@ -147,11 +154,13 @@ pub(super) async fn bounded_reservation_contention_recovers_once() {
         assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
         w.finish().await;
     }
+    Ok(())
 }
 
-pub(super) async fn reservation_retry_rechecks_revoked_device() {
-    let w = World::new().await;
-    let binding = w.binding(&w.step(0).await);
+pub(super) async fn reservation_retry_rechecks_revoked_device(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let binding = w.binding(&w.step(0).await?);
     let mut connections = Vec::new();
     for _ in 0..12 {
         connections.push(w.runtime.finance.pool.acquire().await.unwrap());
@@ -176,11 +185,13 @@ pub(super) async fn reservation_retry_rechecks_revoked_device() {
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn immutable_balanced_postings() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn immutable_balanced_postings(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     let binding = w.binding(&step);
     w.runtime.finance.reserve(&binding).await.unwrap();
     w.runtime.finance.reserve(&binding).await.unwrap();
@@ -204,11 +215,13 @@ pub(super) async fn immutable_balanced_postings() {
     }
     assert_eq!(w.balance().await.held_units, 13);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn changed_and_lowered_policy() {
-    let w = World::new().await;
-    let step = w.step(0).await;
+pub(super) async fn changed_and_lowered_policy(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
+    let step = w.step(0).await?;
     w.runtime.fault.store(4, Ordering::SeqCst);
     assert!(w.runtime.complete_verified(&step).await.is_err());
     let mut policy = w.signed.policy.clone();
@@ -248,9 +261,11 @@ pub(super) async fn changed_and_lowered_policy() {
     price.max_billable_input_tokens = u64::MAX;
     assert_eq!(price.digest().unwrap_err(), RuntimeError::InvalidProfile);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn overrun_and_missing_usage() {
+pub(super) async fn overrun_and_missing_usage(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (usage, expected, held) in [
         (serde_json::Value::Null, FinancialState::Claimed, 13),
         (
@@ -269,18 +284,26 @@ pub(super) async fn overrun_and_missing_usage() {
             0,
         ),
     ] {
-        let w = World::new().await;
+        let w = World::new().await?;
         w.http.body.lock().unwrap()["usage"] = usage;
-        let (_, state) = w.runtime.complete_verified(&w.step(0).await).await.unwrap();
+        let (_, state) = w
+            .runtime
+            .complete_verified(&w.step(0).await?)
+            .await
+            .unwrap();
         assert_eq!(state, expected);
         assert_eq!(w.balance().await.held_units, held);
         assert_eq!(w.http.sends.load(Ordering::SeqCst), 1);
         w.finish().await;
     }
-    let w = World::new().await;
+    let w = World::new().await?;
     w.http.body.lock().unwrap()["usage"] =
         serde_json::json!({"prompt_tokens":1001,"completion_tokens":2,"total_tokens":1003});
-    let (_, state) = w.runtime.complete_verified(&w.step(0).await).await.unwrap();
+    let (_, state) = w
+        .runtime
+        .complete_verified(&w.step(0).await?)
+        .await
+        .unwrap();
     assert_eq!(state, FinancialState::Settled { units: 1003 });
     assert_eq!(
         w.balance().await,
@@ -289,27 +312,38 @@ pub(super) async fn overrun_and_missing_usage() {
             spent_units: 1003
         }
     );
-    assert!(w.runtime.complete_verified(&w.step(1).await).await.is_err());
+    assert!(w
+        .runtime
+        .complete_verified(&w.step(1).await?)
+        .await
+        .is_err());
     assert_eq!(w.http.sends.load(Ordering::SeqCst), 1);
     w.finish().await;
+    Ok(())
 }
 
-pub(super) async fn malformed_output_still_settles() {
-    let w = World::new().await;
+pub(super) async fn malformed_output_still_settles(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let w = World::new().await?;
     {
         let mut body = w.http.body.lock().unwrap();
         body["choices"][0]["message"] = serde_json::json!({"role":"assistant","content":null,"tool_calls":[{"id":"call-fixture","type":"function","function":{"name":"not-offered","arguments":"{}"}}]});
         body["choices"][0]["finish_reason"] = serde_json::json!("tool_calls");
     }
-    let (result, state) = w.runtime.complete_verified(&w.step(0).await).await.unwrap();
+    let (result, state) = w
+        .runtime
+        .complete_verified(&w.step(0).await?)
+        .await
+        .unwrap();
     assert!(result.output.is_err());
     assert_eq!(state, FinancialState::Settled { units: 6 });
     assert_eq!(w.balance().await.spent_units, 6);
-    let step = w.step(1).await;
+    let step = w.step(1).await?;
     w.http.body.lock().unwrap()["choices"][0]["message"]["content"] =
         serde_json::json!(BODY.repeat(2000));
     let (_, state) = w.runtime.complete_verified(&step).await.unwrap();
     assert_eq!(state, FinancialState::Claimed);
     assert_eq!(w.balance().await.held_units, 13);
     w.finish().await;
+    Ok(())
 }

@@ -1,0 +1,132 @@
+[
+  {
+    "id": "TG-formatting-message-formatting",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Qualificar negrito/itálico/riscado/link e composição; renderizador Markdown não garante sublinhado nem toolbar do compositor.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-formatting-spoiler-text",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Qualificar ocultação/revelação nativa, acessibilidade e reciclagem sem revelar texto indevidamente.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-formatting-code-blocks-and-highlighting",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-code-copy.test.ts"
+    ],
+    "gap": "Qualificar destaque por linguagem e cópia exata no iPhone; adapter compilado já cobre cópia e aposentadoria.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-formatting-block-quotes",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Qualificar parágrafos citados, seleção e legibilidade em todas as superfícies/escala de texto.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-formatting-collapsible-quotes",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Recolher citações longas mantendo expansão, acessibilidade e posição de leitura.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-formatting-link-preview-controls",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Escolher link, tamanho e posição do preview; renderer atual desativa enableLinkPreview.",
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "TG-formatting-visual-rich-text-editor",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/media/article-editor.tsx",
+      "apps/zoen/src/documents/markdown-files.ts"
+    ],
+    "gap": "Fechar criação/revisão de Artigo no editor nativo; compositor comum permanece texto, sem fingir equivalência.",
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "TG-formatting-rich-bot-messages",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/components/message-markdown.tsx",
+      "apps/zoen/src/core/message-markdown.test.ts"
+    ],
+    "gap": "Preservar Markdown de agentes e retomar botões/cards estruturados com a frente Apps, sem saída arbitrária executável.",
+    "issues": [
+      172,
+      175
+    ]
+  },
+  {
+    "id": "TG-formatting-markdown-document-viewing",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/src/media/article-editor.tsx",
+      "apps/zoen/src/documents/markdown-files.ts"
+    ],
+    "gap": "Qualificar abertura de arquivo Markdown completo, tabela/RTL e mídia segura; importação/render de mensagem são provas parciais.",
+    "issues": [
+      172,
+      173,
+      186
+    ]
+  }
+]

@@ -46,6 +46,12 @@ export function sceneMutationId(): string {
     n.toString(16).padStart(2, "0"),
   ).join("");
 }
+export type SceneDocument = {
+  json: string;
+  version: number;
+  currentVersion: number;
+  sha256: string;
+};
 export type SceneAck = {
   checkpointId: string;
   version: number;
@@ -93,38 +99,50 @@ export function canonicalSceneTransport(
     }
     return { uploadId: begin.uploadId, bytes: bytes.length, sha256: digest };
   };
+  const readDocument = async (refreshId?: string): Promise<SceneDocument> => {
+    const meta = await call("app_scene_read", { id, ...(refreshId ? { refreshId } : {}) });
+    if (
+      typeof meta.transferId !== "string" ||
+      typeof meta.bytes !== "number" ||
+      !Number.isSafeInteger(meta.version) ||
+      Number(meta.version) < 1 ||
+      meta.currentVersion !== meta.version ||
+      typeof meta.sha256 !== "string" ||
+      !Number.isSafeInteger(meta.bytes) ||
+      meta.bytes <= 0 ||
+      meta.bytes > MAX_SCENE_BYTES ||
+      meta.chunkBytes !== CHUNK_BYTES ||
+      !/^[a-f0-9]{64}$/.test(meta.sha256)
+    )
+      throw new Error("Invalid drawing manifest.");
+    const bytes = new Uint8Array(meta.bytes);
+    for (let index = 0, at = 0; at < bytes.length; index++) {
+      const chunk = await call("app_scene_read_chunk", {
+        id,
+        transferId: meta.transferId,
+        index,
+      });
+      const expected = Math.min(CHUNK_BYTES, bytes.length - at);
+      const next = unbase64(chunk.data, expected);
+      if (chunk.index !== index || next.length !== expected)
+        throw new Error("Invalid drawing chunk order.");
+      bytes.set(next, at);
+      at += next.length;
+    }
+    if (sceneHash(bytes) !== meta.sha256) throw new Error("The drawing checksum does not match.");
+    const text = decoder.decode(bytes);
+    sceneBytes(text);
+    return {
+      json: text,
+      version: Number(meta.version),
+      currentVersion: Number(meta.currentVersion),
+      sha256: meta.sha256,
+    };
+  };
   return {
+    readDocument,
     async read(): Promise<string> {
-      const meta = await call("app_scene_read", { id });
-      if (
-        typeof meta.transferId !== "string" ||
-        typeof meta.bytes !== "number" ||
-        typeof meta.sha256 !== "string" ||
-        !Number.isSafeInteger(meta.bytes) ||
-        meta.bytes <= 0 ||
-        meta.bytes > MAX_SCENE_BYTES ||
-        meta.chunkBytes !== CHUNK_BYTES ||
-        !/^[a-f0-9]{64}$/.test(meta.sha256)
-      )
-        throw new Error("Invalid drawing manifest.");
-      const bytes = new Uint8Array(meta.bytes);
-      for (let index = 0, at = 0; at < bytes.length; index++) {
-        const chunk = await call("app_scene_read_chunk", {
-          id,
-          transferId: meta.transferId,
-          index,
-        });
-        const expected = Math.min(CHUNK_BYTES, bytes.length - at);
-        const next = unbase64(chunk.data, expected);
-        if (chunk.index !== index || next.length !== expected)
-          throw new Error("Invalid drawing chunk order.");
-        bytes.set(next, at);
-        at += next.length;
-      }
-      if (sceneHash(bytes) !== meta.sha256) throw new Error("The drawing checksum does not match.");
-      const text = decoder.decode(bytes);
-      sceneBytes(text);
-      return text;
+      return (await readDocument()).json;
     },
     async save(json: string, mutationId: string): Promise<SceneAck> {
       const staged = await upload(json, mutationId);

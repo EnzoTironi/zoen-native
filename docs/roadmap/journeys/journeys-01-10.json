@@ -1,0 +1,198 @@
+[
+  {
+    "id": "apple-google-single-action-signup-login-editable-profile-and-secure-new-device-recovery",
+    "title": "Entrar com Apple/Google, editar perfil e recuperar em novo dispositivo",
+    "phase": "later-ios",
+    "issues": [
+      177
+    ],
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/177"
+    ],
+    "remaining": [
+      "Qualificar provedores reais e provisionamento em uma ação",
+      "Recuperar histórico autorizado em dispositivo independente"
+    ]
+  },
+  {
+    "id": "create-account-secure-storage-cold-reopen",
+    "title": "Criar conta, guardar chaves e reabrir a frio",
+    "phase": "later-ios",
+    "issues": [
+      177
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/177"
+    ],
+    "remaining": [
+      "Qualificar armazenamento seguro e reabertura no artefato final",
+      "Cobrir falhas e continuidade das chaves"
+    ]
+  },
+  {
+    "id": "link-revoke-device-recovery-history",
+    "title": "Vincular e revogar dispositivos com histórico recuperável",
+    "phase": "later-ios",
+    "issues": [
+      177,
+      360,
+      365
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/177"
+    ],
+    "remaining": [
+      "Concluir gestão nativa e revogação vinculada ao dono",
+      "Provar recuperação independente sem liberar histórico indevido"
+    ]
+  },
+  {
+    "id": "encrypted-ios-messaging-and-canonical-peer-interoperability",
+    "title": "Mensagens criptografadas iOS entre clientes canônicos",
+    "phase": "active-ios",
+    "issues": [
+      172,
+      176
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/172",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Qualificar remetente e destinatário independentes no artefato atual",
+      "Verificar conteúdo e contexto contra backend compatível"
+    ]
+  },
+  {
+    "id": "offline-send-reconnect-cold-reopen-no-duplicate",
+    "title": "Enviar offline e retomar sem duplicação após reabrir",
+    "phase": "active-ios",
+    "issues": [
+      176,
+      622
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/176",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Resolver ordenação sob rate limit e reabertura",
+      "Provar perda de ACK, reconexão e reinício sem perda ou duplicação"
+    ]
+  },
+  {
+    "id": "message-reply-quote-jump-thread-edit-delete-reaction-forward",
+    "title": "Responder, citar, navegar, criar thread, editar, excluir, reagir e encaminhar",
+    "phase": "active-ios",
+    "issues": [
+      172
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/172",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Completar matriz de ações e gestos com conteúdo real",
+      "Verificar permissões, falhas, acessibilidade e recepção independente"
+    ]
+  },
+  {
+    "id": "timeline-long-history-reading-position-keyboard-ime",
+    "title": "Ler histórico longo preservando posição, teclado e IME",
+    "phase": "active-ios",
+    "issues": [
+      172,
+      518
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/172",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Qualificar posição e histórico longo com teclado/IME",
+      "Validar detent do carrossel após fechar teclado e callbacks de escopo"
+    ]
+  },
+  {
+    "id": "search-filters-unread-delivery-read-preferences",
+    "title": "Buscar, filtrar e controlar não lidas e recibos",
+    "phase": "active-ios",
+    "issues": [
+      172,
+      529,
+      199
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/172",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Qualificar busca com resultados e filtros",
+      "Validar perda de associação, preferências e recibos reais"
+    ]
+  },
+  {
+    "id": "conversation-hud-search-result-navigation-and-temporary-assistant",
+    "title": "Usar HUD, navegar resultados e assistente temporário",
+    "phase": "active-ios",
+    "issues": [
+      172,
+      175
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/172",
+      "https://github.com/EnzoTironi/zoen-native/pull/633"
+    ],
+    "remaining": [
+      "Completar resultados e retorno ao contexto da conversa",
+      "Qualificar agente temporário sem resultados e aposentadoria do escopo"
+    ]
+  },
+  {
+    "id": "page-richtext-crdt-draft-undo-import-export-history-restore",
+    "title": "Editar Páginas com colaboração, recuperação e histórico",
+    "phase": "paused-creation",
+    "issues": [
+      179,
+      249,
+      583
+    ],
+    "implementation": "partial",
+    "acceptance": "scoped",
+    "evidence": [
+      "apps/zoen/acceptance.json",
+      "https://github.com/EnzoTironi/zoen-native/issues/179"
+    ],
+    "remaining": [
+      "Retomar somente após conclusão do recorte ativo",
+      "Concluir blocos, CRDT, undo, importação/exportação e restauração colaborativa"
+    ]
+  }
+]

@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 3
     outputs:
       documentation_only: ${{ steps.scope.outputs.documentation_only }}
+      frontend_only: ${{ steps.scope.outputs.frontend_only }}
+      run_rust: ${{ steps.scope.outputs.run_rust }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,7 +41,8 @@ jobs:
           ZOEN_CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           ZOEN_CI_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
           ZOEN_CI_EVENT: ${{ github.event_name }}
-        run: python3 scripts/ci-documentation-scope.py --base "$ZOEN_CI_BASE" --head "$ZOEN_CI_HEAD" --event "$ZOEN_CI_EVENT"
+          ZOEN_CI_CANDIDATE: ${{ github.sha }}
+        run: python3 scripts/ci-documentation-scope.py --base "$ZOEN_CI_BASE" --head "$ZOEN_CI_HEAD" --event "$ZOEN_CI_EVENT" --candidate "$ZOEN_CI_CANDIDATE"
 
       - name: Changed authored file size limit
         env:
@@ -89,36 +92,27 @@ jobs:
       - name: Staged file size hook contracts
         run: python3 -m unittest discover -s scripts/git-hooks -p 'test_*.py' -v
 
-      - name: Documentation CI scope regression tests
-        run: python3 -m unittest discover -s scripts/tests -p 'test_ci_documentation_scope.py' -v
+      - name: Exported Grid workbook reader contracts
+        run: python3 -m unittest discover -s miniapps/gridcraft-ui/test -p test_xlsx_export.py -v
+
+      - name: CI selection and Rust shard coverage
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_ci*scope.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_ci_rust_shards.py' -v
 
       - name: Canonical acceptance composition and source writes
         run: python3 scripts/test-acceptance.py
 
-  rust:
-    needs: change-scope
-    # A skipped job means no compiler/integration test execution; prose has its own check.
-    if: ${{ !cancelled() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.documentation_only != 'true') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Toolchain
+      # These remain mandatory even when the verified frontend lane skips Rust.
+      - name: Toolchain for bounded source/entrypoint guard fixtures
         run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy
           rustup default "$RUST_TOOLCHAIN"
-          # The WASM tier's journey builds its tools as WASI p2 components (ADR 0028 T0).
-          rustup target add wasm32-wasip2
 
       - name: Shared Rust lint policy
         run: |
           python3 scripts/check-rust-lint-policy.py
           python3 -m unittest discover -s scripts/tests -p 'test_rust_lint*.py' -v
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Shared Cargo source qualification guard
         run: python3 -m unittest discover -s scripts/tests -p 'test_cargo*.py' -v
@@ -137,20 +131,59 @@ jobs:
           cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/expo-core-metadata.json"
           node --test --test-concurrency=1 scripts/tests/build-expo-core.test.mjs scripts/tests/expo-ios-orchestration.test.mjs scripts/tests/expo-android-proxy.test.mjs scripts/tests/expo-android-orchestration.test.mjs
 
+
+  rust:
+    needs: [change-scope, rust-tests]
+    # Keep one stable required check; a failed/cancelled/missing shard cannot pass.
+    if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.run_rust != 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Require every Rust shard
+        env:
+          RUST_RESULT: ${{ needs.rust-tests.result }}
+        run: test "$RUST_RESULT" = success
+
+  rust-tests:
+    needs: change-scope
+    # Only an explicit verified skip can omit Rust; missing/failed scope stays full.
+    if: ${{ !cancelled() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.run_rust != 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: workspace
+            command: cargo test --workspace --exclude zoen-cli --no-fail-fast
+          - shard: cli-a
+            command: python3 scripts/ci-rust-shards.py 0
+          - shard: cli-b
+            command: python3 scripts/ci-rust-shards.py 1
+          - shard: cli-c
+            command: python3 scripts/ci-rust-shards.py 2
+    name: rust (${{ matrix.shard }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+          # The WASM tier's journey builds its tools as WASI p2 components (ADR 0028 T0).
+          rustup target add wasm32-wasip2
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
       - name: Format
+        if: matrix.shard == 'workspace'
         run: cargo fmt --all --check
 
       - name: Postgres, FoundationDB and NATS
         run: |
-          # Registries rate-limit shared runners: try two mirrors of the same image, with backoff.
-          pg=""
-          for attempt in 1 2 3; do
-            for img in public.ecr.aws/docker/library/postgres:17-alpine mirror.gcr.io/library/postgres:17-alpine; do
-              docker pull -q "$img" && { pg="$img"; break 2; }
-            done
-            sleep $((attempt * 15))
-          done
-          test -n "$pg"
+          pg="$(scripts/ci-pull-postgres.sh)"
           docker run -d --name pg -p 5432:5432 \
             -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust \
             "$pg" -c max_connections=300
@@ -191,14 +224,29 @@ jobs:
           echo "ZOEN_REQUIRE_FIRECRACKER=1" >> "$GITHUB_ENV"
 
       - name: Clippy
+        if: matrix.shard == 'workspace'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       # Workspace feature unification includes the CLI's insertion-ordered JSON.
       # Qualify the native core separately so it cannot hide a cross-client drift.
       - name: Native and CLI tool JSON contracts
+        if: matrix.shard == 'workspace'
         run: |
           cargo test --locked -p client-core --lib agent_binary_documents::tool_approvals::tests::json_order
           cargo test --locked -p client-core --lib --features serde_json/preserve_order,serde_json/float_roundtrip,serde_json/raw_value agent_binary_documents::tool_approvals::tests::json_order
+
+      # This test owns its FDB network and uses the already provisioned real
+      # PG/FDB/NATS. The ordinary workspace run intentionally leaves it ignored.
+      - name: Final encrypted event after actual publisher queue refusal
+        if: matrix.shard == 'workspace'
+        run: |
+          evidence_root="$(mktemp -d "$RUNNER_TEMP/zoen-publisher-recovery.XXXXXX")"
+          export ZOEN_PUBLISHER_RECOVERY_EVIDENCE_DIR="$evidence_root/witness"
+          cargo test --locked -p zoen-relay --lib \
+            fanout::nats::recovery::actual_publisher_queue_refusal_recovers_final_mls_event_on_the_same_native_socket \
+            -- --ignored --exact --test-threads=1
+          # Also fail if an exact test name drifts and Cargo runs zero tests.
+          test -f "$ZOEN_PUBLISHER_RECOVERY_EVIDENCE_DIR/result.json"
 
       - name: Prepare safe synthetic Sync diagnostics
         env:
@@ -210,7 +258,8 @@ jobs:
       - name: Tests and journeys
         env:
           ZOEN_SYNC_DIAGNOSTIC_DIR: ${{ runner.temp }}/zoen-sync-diagnostics
-        run: cargo test --workspace --no-fail-fast
+        # Package partition: all workspace unit/integration/doc tests still run.
+        run: ${{ matrix.command }}
 
       # Only typed, bounded observations written by a failed synthetic World.
       # Never upload its home, vault, SQLite, raw stderr/stdout or relay log.
@@ -218,7 +267,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: rust-sync-readiness
+          name: rust-sync-readiness-${{ matrix.shard }}
           path: ${{ runner.temp }}/zoen-sync-diagnostics/*.json
           if-no-files-found: ignore
           retention-days: 3
@@ -238,7 +287,7 @@ jobs:
 
       - name: Toolchain
         run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy
           rustup default "$RUST_TOOLCHAIN"
           rustup target add wasm32-unknown-unknown
 
@@ -248,14 +297,7 @@ jobs:
 
       - name: Postgres and FoundationDB
         run: |
-          pg=""
-          for attempt in 1 2 3; do
-            for img in public.ecr.aws/docker/library/postgres:17-alpine mirror.gcr.io/library/postgres:17-alpine; do
-              docker pull -q "$img" && { pg="$img"; break 2; }
-            done
-            sleep $((attempt * 15))
-          done
-          test -n "$pg"
+          pg="$(scripts/ci-pull-postgres.sh)"
           docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust "$pg"
           scripts/fdb.sh up
           eval "$(scripts/fdb.sh env)"

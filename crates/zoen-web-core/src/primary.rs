@@ -42,9 +42,10 @@ impl Primary {
         } else {
             name
         };
-        let agreement = AgreementKey::generate();
-        let profile = ProfileKey::generate();
-        let (hpke_secret, hpke_public) = device_link::key_pair();
+        let agreement = AgreementKey::generate().map_err(|error| error.to_string())?;
+        let profile = ProfileKey::generate().map_err(|error| error.to_string())?;
+        let (hpke_secret, hpke_public) =
+            device_link::key_pair().map_err(|error| error.to_string())?;
         let account = LinkedAccount {
             identity: identity.clone(),
             device: device.into(),
@@ -109,7 +110,7 @@ impl Primary {
         if code.device == current.device {
             return Err("Este já é o aparelho atual.".into());
         }
-        let (private, public) = device_link::key_pair();
+        let (private, public) = device_link::key_pair().map_err(|error| error.to_string())?;
         let private = Zeroizing::new(private);
         let cert = root.sign(&event_log::device_cert_message(&code.device));
         let mut identity = device_link::IdentityBox {

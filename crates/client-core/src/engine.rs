@@ -10,12 +10,25 @@ use event_log::{content_hash, Author, LogError, Signer, SpaceLog};
 use grants::{evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason};
 use serde_json::{json, Value};
 use store::Store;
-use types::*;
+use types::{
+    new_id, new_secret_id, new_ulid, ActionClass, AgentRequest, AppDoc, BackgroundSpec, Capability,
+    Event, EventBody, Grant, GrantScope, Identity, IdentityId, IdentityKind, ItemContent, ItemId,
+    ItemKind, ItemProposal, PlanDoc, PlanLine, PlanSection, Privacy, RequestId, RequestResolution,
+    Role, SpaceId, SpaceKind, ToolDecision, TrustLevel, VoiceMeta,
+};
 
 use crate::apps;
 use crate::pages::{BeforeEvent, Currentness, PlanOrigin, PlanReplay, Projection};
 
-use crate::dto::*;
+use crate::dto::{
+    AgentActivityDto, AgentProfile, AgentRequestDto, AgentSpaceTrust, AppCallOutcome,
+    AppCallStatus, AppMetricDto, AppResourceDto, AppSpecDto, AppStateDto, AppToolDto, CoreStats,
+    DecideOutcome, DecisionKind, DecisionPreview, Delivery, DeviceGrantDto, EditOutcome, EntryKind,
+    ItemCard, ItemDetail, LogEventDto, LogReport, MemberRoleDto, Mention, MessageMediaDto, Persona,
+    PersonaKind, PlanDto, PlanLineDto, PlanOutcome, PlanSectionDto, PrivacyDto, ReactionDto,
+    RequestDecision, RequestStatus, SearchHit, SpaceKindDto, SpaceSummary, StandingDecisionDto,
+    TimelineEntry, ToolApprovalDto, TrustLevelDto, UndoToken, VersionDto, VoiceNoteDto,
+};
 use crate::i18n::{money, t, ts};
 use crate::tr;
 use crate::CoreError;
@@ -29,7 +42,9 @@ mod call_transport;
 mod calls;
 mod cards;
 mod inspection;
+mod item_versions;
 mod items;
+pub(crate) use item_versions::ItemVersions;
 mod labels;
 mod persistence;
 mod plans;
@@ -47,11 +62,11 @@ pub(crate) use labels::{
 pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 /// "R$ 1.348" ou "R$ 12,40".
+#[must_use]
 pub fn brl(cents: i64) -> String {
     crate::i18n::money_in(crate::i18n::Lang::Pt, cents)
 }
@@ -135,6 +150,7 @@ pub(crate) struct Entry {
 /// What later `MessageAnnotated` events did to a message.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct MessageMarks {
+    pub text_revision: Option<String>,
     pub edited: bool,
     pub deleted: bool,
     pub forwarded: bool,
@@ -223,7 +239,9 @@ pub(crate) struct ItemState {
     pub space: SpaceId,
     pub kind: ItemKind,
     pub origin: String,
-    pub versions: Vec<Version>,
+    pub versions: ItemVersions,
+    /// Derived from one accepted share; earlier plaintext remains unavailable.
+    pub shared: Option<crate::app_current_share::SharedOrigin>,
     /// Derived only while applying accepted content, including replay. A MIME or
     /// path change must not turn an earlier voice recording into recent music.
     pub has_voice_history: bool,
@@ -231,7 +249,7 @@ pub(crate) struct ItemState {
 
 impl ItemState {
     pub(crate) fn current(&self) -> &Version {
-        self.versions.last().expect("item sempre tem v1")
+        self.versions.current()
     }
 }
 
@@ -310,13 +328,7 @@ pub struct Engine {
 
 pub(crate) type R<T> = Result<T, CoreError>;
 
-impl From<store::StoreError> for CoreError {
-    fn from(e: store::StoreError) -> Self {
-        CoreError::Storage {
-            message: e.to_string(),
-        }
-    }
-}
+mod errors;
 
 fn not_found(what: &str) -> CoreError {
     CoreError::NotFound {
@@ -406,7 +418,8 @@ mod tests {
             protocol::Sequenced::decode(&hex::decode(fixture[name].as_str().unwrap()).unwrap())
                 .unwrap()
         };
-        let path = std::env::temp_dir().join(format!("zoen-v3-upgrade-{}.db", new_id("test")));
+        let path =
+            std::env::temp_dir().join(format!("zoen-v3-upgrade-{}.db", new_id("test").unwrap()));
         let pending;
         {
             let e = Engine::open(path.to_str().unwrap()).unwrap();

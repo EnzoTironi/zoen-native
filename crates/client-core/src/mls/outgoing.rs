@@ -1,5 +1,10 @@
 //! Retained outgoing ciphertext, handshakes and stale-epoch fences.
-use super::*;
+use super::{
+    event_from_content, mls_err, must_seal, new_ulid, sealed_meta, storage, t, CoreError, Engine,
+    Envelope, Event, EventBody, HashMap, HashSet, InnerEvent, Sealed, SealedKind, SpaceId, R,
+    SUITE_ID,
+};
+use crate::net::tracing_like;
 
 impl Engine {
     /// The epoch a queued event was sealed at, without reading its sealed bytes.
@@ -30,38 +35,80 @@ impl Engine {
         Some((epoch, env))
     }
 
+    pub(crate) fn unreadable_current_sealed_copy(&self, e: &Event, epoch: u64) -> bool {
+        self.sealed_epoch(e) == Some(epoch) && self.sealed_copy(e).is_none()
+    }
+
     /// Seals every queued message whose group is ready and that has no copy for the
     /// group's current epoch. `true` when something new can go out.
     pub fn mls_seal_outbox(&mut self) -> R<bool> {
+        self.mls_seal_outbox_changes().map(|(sealed, _)| sealed)
+    }
+
+    /// Failed consent uses the normal outbox receipt and change notification.
+    pub(crate) fn mls_seal_outbox_changes(&mut self) -> R<(bool, HashSet<SpaceId>)> {
+        let mut refused = HashSet::new();
         if self.net.pending.is_empty() {
-            return Ok(false);
+            return Ok((false, refused));
         }
-        // Runs after every write: look at the queue without decoding it, and read only the
-        // events that still need sealing for their group's current epoch.
+        // Validate retained originals before any cryptographic effect, including
+        // successors of a damaged head that already has a cached ciphertext.
         let heads = self.store.outbox_heads()?;
         let mut ready: HashMap<SpaceId, Option<u64>> = HashMap::new();
         let mut sealed = false;
+        let mut blocked = HashSet::new();
         for h in heads {
-            if h.failed || !self.is_e2e(&h.space) {
+            if h.failed || self.net.failed.contains_key(&h.client_id) {
+                continue;
+            }
+            let e = match self.read_outbox_head(&h) {
+                Ok(event) => event,
+                Err(failure) => {
+                    failure.trace();
+                    if let Some(space) = self.unreadable_outbox_space(&h) {
+                        blocked.insert(space.to_string());
+                        continue;
+                    }
+                    // No reliable lane: stop rather than encrypt successors
+                    // under an association reconstructed from corrupt metadata.
+                    return Err(storage("outbox head has no reliable Space association"));
+                }
+            };
+            // SQL Space metadata is not a selection authority. Resolve the
+            // signed original before deciding the lane, readiness or cache hit.
+            if blocked.contains(&e.space) {
+                continue;
+            }
+            if !self.app_share_consent_current(&e) {
+                self.refuse_stale_app_share(&e)?;
+                refused.insert(e.space);
+                continue;
+            }
+            if !self.is_e2e(&e.space) {
                 continue;
             }
             let epoch = *ready
-                .entry(h.space.clone())
-                .or_insert_with(|| self.ready_epoch(&h.space));
+                .entry(e.space.clone())
+                .or_insert_with(|| self.ready_epoch(&e.space));
             let Some(epoch) = epoch else { continue };
-            if self.sealed_epoch_of(&h.client_id) == Some(epoch) {
+            if !Self::app_share_epoch_matches(&e, epoch) {
+                self.refuse_stale_app_share(&e)?;
+                refused.insert(e.space);
                 continue;
             }
-            let Some(e) = self.store.outbox_get(&h.client_id)? else {
+            if self.sealed_epoch_of(&h.client_id) == Some(epoch) {
+                if self.unreadable_current_sealed_copy(&e, epoch) {
+                    blocked.insert(e.space.clone());
+                }
                 continue;
-            };
+            }
             if !must_seal(&e.body) {
                 continue;
             }
             self.seal_outgoing(&e, epoch)?;
             sealed = true;
         }
-        Ok(sealed)
+        Ok((sealed, refused))
     }
 
     pub(super) fn seal_outgoing(&mut self, e: &Event, epoch: u64) -> R<()> {
@@ -80,6 +127,9 @@ impl Engine {
                 reason: "Sealing requires a retained transaction.".into(),
             });
         }
+        if !self.app_share_consent_current(e) || !Self::app_share_epoch_matches(e, epoch) {
+            return Err(crate::app_current_share::refused());
+        }
         let author = self
             .net
             .author
@@ -91,10 +141,13 @@ impl Engine {
             content: e.content.clone(),
             sig: e.sig.clone(),
         };
-        let data = self
-            .device_on(self.store.conn())?
-            .seal(&e.space, &inner.encode())
-            .map_err(mls_err)?;
+        let device = self.device_on(self.store.conn())?;
+        if matches!(e.body, EventBody::AppCurrentShared { .. })
+            && device.epoch(&e.space).map_err(mls_err)? != epoch
+        {
+            return Err(crate::app_current_share::refused());
+        }
+        let data = device.seal(&e.space, &inner.encode()).map_err(mls_err)?;
         let outer = Envelope::sealed(
             &author,
             &e.space,
@@ -102,7 +155,7 @@ impl Engine {
             e.at_ms,
             e.seen.as_ref(),
             Sealed::new(SealedKind::Application, SUITE_ID, data),
-        );
+        )?;
         self.store.set_meta(
             &sealed_meta(&e.client_id),
             &format!("{epoch}:{}:{}", hex::encode(outer.content()), outer.sig),
@@ -118,17 +171,34 @@ impl Engine {
         e: &Event,
         ready: &mut HashMap<SpaceId, Option<u64>>,
     ) -> Option<Envelope> {
+        // Also fence retained cached ciphertext when no sealing pass has run.
+        if !self.app_share_consent_current(e) {
+            return None;
+        }
         if matches!(e.body, EventBody::Sealed { .. }) {
             return Envelope::new(e.content.clone(), e.sig.clone(), e.cert.clone(), None);
         }
         if !(self.is_e2e(&e.space) && must_seal(&e.body)) {
-            return Some(Envelope::plain(e));
+            return Envelope::plain(e)
+                .inspect_err(|_| tracing_like("publication waiting malformed_signed_content"))
+                .ok();
         }
-        let epoch = *ready
-            .entry(e.space.clone())
-            .or_insert_with(|| self.ready_epoch(&e.space));
+        let epoch = *ready.entry(e.space.clone()).or_insert_with(|| {
+            match self.ready_epoch_checked(&e.space, &self.state) {
+                Ok(epoch) => Some(epoch),
+                Err(reason) => {
+                    // Same gate and per-Space memoization, with a closed diagnostic.
+                    // Never infer readiness from profiles or discard an original intent.
+                    tracing_like(&format!("publication waiting ready_epoch={reason:?}"));
+                    None
+                }
+            }
+        });
         // Cheap check first: only decode the sealed copy when it is for this epoch.
-        if epoch.is_none() || self.sealed_epoch(e) != epoch {
+        if epoch.is_none()
+            || epoch.is_some_and(|epoch| !Self::app_share_epoch_matches(e, epoch))
+            || self.sealed_epoch(e) != epoch
+        {
             return None;
         }
         let (at, env) = self.sealed_copy(e)?;
@@ -145,8 +215,8 @@ impl Engine {
                 reason: t("Entre na sua conta primeiro.", "Sign in first."),
             })?;
         let at_ms = crate::engine::now_ms();
-        let client_id = new_ulid(at_ms);
-        let seen = self.logs.get(space).and_then(|l| l.head());
+        let client_id = new_ulid(at_ms)?;
+        let seen = self.logs.get(space).and_then(event_log::SpaceLog::head);
         let (content, sig) = author.sign_sealed(space, &client_id, at_ms, seen.as_ref(), sealed);
         let e = event_from_content(
             content,

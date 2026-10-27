@@ -3,7 +3,8 @@ use super::super::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[tokio::test]
-async fn media_body_limit_rejects_headers_and_incremental_overflow_then_accepts_next_response() {
+async fn media_body_limit_rejects_headers_and_incremental_overflow_then_accepts_next_response(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let expected = b"synthetic bytes!";
@@ -44,7 +45,7 @@ async fn media_body_limit_rejects_headers_and_incremental_overflow_then_accepts_
             observed
         }).await.expect("owned HTTP fixture must complete")
     });
-    let http = crate::https::client()
+    let http = crate::https::client()?
         .timeout(Duration::from_secs(2))
         .build()
         .unwrap();
@@ -64,4 +65,6 @@ async fn media_body_limit_rejects_headers_and_incremental_overflow_then_accepts_
         server.await.unwrap(),
         ["/declared-overflow", "/chunked-overflow", "/valid"]
     );
+
+    Ok(())
 }

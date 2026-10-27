@@ -116,7 +116,7 @@ mod tests {
     use super::*;
     use event_log::{Author, Signer as NativeSigner};
 
-    fn fixture() -> (Client<HostSigner>, String) {
+    fn fixture() -> std::result::Result<(Client<HostSigner>, String), Box<dyn std::error::Error>> {
         let identity = NativeSigner::from_secret(&[201; 32]);
         let device = NativeSigner::from_secret(&[202; 32]);
         let author = Author::device(&identity, device.clone());
@@ -134,7 +134,7 @@ mod tests {
                         privacy: Privacy::Closed,
                     },
                     1,
-                ),
+                )?,
                 1,
             )
             .unwrap();
@@ -153,17 +153,18 @@ mod tests {
                             forwarded: false,
                         },
                         now,
-                    ),
+                    )?,
                     now,
                 )
                 .unwrap();
         }
-        (client, space)
+        Ok((client, space))
     }
 
     #[test]
-    fn integrity_verification_and_bounded_cursor_do_not_mutate_or_expose_bodies() {
-        let (client, space) = fixture();
+    fn integrity_verification_and_bounded_cursor_do_not_mutate_or_expose_bodies(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let (client, space) = fixture()?;
         let request = |op: &str, before: Value| {
             json!({"op":op,"space_id":space,"before":before,"limit":2}).to_string()
         };
@@ -219,7 +220,7 @@ mod tests {
                         privacy: Privacy::Closed,
                     },
                     9,
-                ),
+                )?,
                 9,
             )
             .unwrap();
@@ -256,11 +257,13 @@ mod tests {
         assert!(changed
             .integrity_request(&json!({"op":"verify_log","space_id":space}).to_string())
             .is_err());
+        Ok(())
     }
 
     #[test]
-    fn corrupted_snapshot_cannot_be_reopened_as_verified_history() {
-        let (mut client, space) = fixture();
+    fn corrupted_snapshot_cannot_be_reopened_as_verified_history(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let (mut client, space) = fixture()?;
         let snapshot = client.update(Vec::new()).unwrap().snapshot;
         let mut saved: Value = serde_json::from_str(&snapshot).unwrap();
         saved["logs"][&space][1]["hash"] = json!("corrupted");
@@ -270,5 +273,6 @@ mod tests {
             &saved.to_string()
         )
         .is_err());
+        Ok(())
     }
 }

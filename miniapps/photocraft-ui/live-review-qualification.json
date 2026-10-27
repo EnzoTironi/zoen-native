@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "scope": "Photo higher-head live review and actual upstream Undo; host and browser evidence, no iPhone or certified model-turn acceptance.",
+  "source": {
+    "base": "47b621f4277097d23ef5abb2cc4bab968905467f",
+    "engineProductionCommit": "a3a812b35c92ce0d8a68047feec96b8f8abbb880",
+    "qualifiedEngineSource": "9bcf6cb083402bb0c21222b6a5fab849f46661a0",
+    "qualifiedConsumerSource": "fbad4e17010be00462065099b90d3189b4a7541b",
+    "prepared": "da096708632df13591f8e67745fe6c614735ac4e",
+    "upstream": "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+    "engineInputsUnchanged": true,
+    "bootstrapSourcesVerified": 169
+  },
+  "artifacts": "/Users/enzotironi/.codex/builds/zoen-photocraft-live-review-v601",
+  "runtime": {
+    "schema": 1,
+    "engine": "photocraft",
+    "revision": "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+    "abi": "zoen-host-v1",
+    "module": {
+      "url": "https://qualification.invalid/photocraft/9b9643764f3fb77d9f0e48d7510983ae50621e11/photocraft.js",
+      "bytes": 158764,
+      "sha256": "b2e2968f4dc9b55be26c9da07ea5c23d5a03612d658ede1058d4c38388455ac8",
+      "mime": "text/javascript"
+    },
+    "wasm": {
+      "url": "https://qualification.invalid/photocraft/9b9643764f3fb77d9f0e48d7510983ae50621e11/photocraft_bg.wasm",
+      "bytes": 32678991,
+      "sha256": "25a4ebfcef19d0527fa8ea340a89b81b6da24908eb781c3d62318e2c216a8592",
+      "mime": "application/wasm"
+    }
+  },
+  "html": {
+    "bytes": 626701,
+    "sha256": "8dc659df9681bcb94190711b28face5128b22c05f97a2138055a1410f510d8a0"
+  },
+  "contract": [
+    "Trusted format liveReview capability enables the existing observedHead/EditorAgentAccess/refresh path for Word and Photo only; Deck/Grid remain disabled.",
+    "The same paused managed Session/documentId receives one normal bounded upstream history edit; human editing, jobs, owner, draft and pending-receipt guards remain enforced.",
+    "An incoming accepted head never saves itself again; Undo emits humanCheckpoint based on that accepted head and advances by exact CAS/ACK, preserving earlier human history."
+  ],
+  "host": {
+    "bridgeTestsPassed": 15,
+    "actualPhotoAppInputAndMenuTestsPassed": 8,
+    "ignored": 0,
+    "locale": "PHOTOCRAFT_LOCALE=en",
+    "allTargetsPedanticPerfClippy": "PASS"
+  },
+  "frontend": {
+    "sdkAndAgentFocusedPassed": 44,
+    "formatRoutingAndCanonicalFocusedPassed": 47,
+    "failed": 0,
+    "skipped": 0,
+    "typecheck": "PASS",
+    "oxlintDenyWarnings": "PASS",
+    "oxfmt": "PASS",
+    "fullNpmCheck": "Delegated to next combined Root batch as requested"
+  },
+  "build": {
+    "host-green": {
+      "exit": 0,
+      "seconds": 251.953,
+      "receiptSha256": "f41ff55b4fe3a6243f0e20a5fbadc1f81142f638be9b407fdcf2d5ae328f4a15",
+      "logSha256": "6a631af70a0878064d9021921ba3f35cc77723868cd8e19fa5bead9f83edfd80"
+    },
+    "host-clippy-02": {
+      "exit": 0,
+      "seconds": 32.303,
+      "receiptSha256": "692fb94ef172a704bc2683498451bd39745f971045556cb7276d8aa4173ce360",
+      "logSha256": "cde2f5790b081cd611588f3685a549ffd93b4f6a1d96251073c2450314c56f27"
+    },
+    "host-tests-02": {
+      "exit": 0,
+      "seconds": 262.236,
+      "receiptSha256": "c9ca29d8f1460e380c991c1d28474e1447aa97d6f4e136184ab356d07aeb04f4",
+      "logSha256": "7d849034bd49da60fc966983a170155e950f302e36d28c454868e763e66994f2"
+    },
+    "worker-native": {
+      "exit": 0,
+      "seconds": 304.144,
+      "receiptSha256": "01378966fb9b829ccf28ce7e95d2c12beb3f00d273aa0662a7a2d6bc73f6c905",
+      "logSha256": "a8cac0ca7bca4ec17606cef90ee0bdf60b98c3f4f9c5f2e00e12f08c42374577"
+    },
+    "browser-clippy-02": {
+      "exit": 0,
+      "seconds": 37.074,
+      "receiptSha256": "3de1bd5c16e50a7bde290427707bc4a796d2d85a2c6042069efaf3659252f57c",
+      "logSha256": "62c9ef23a3f016a4ec776063778387cabaadbd4f8b31323d38fd00b7955ee5a6"
+    },
+    "browser-release": {
+      "exit": 0,
+      "seconds": 183.68,
+      "receiptSha256": "17f80040cba1484c3773c9ca3dbf45764fca92c23615fe98efa90b79ff2684b8",
+      "logSha256": "95cf0fa3f96ec9f0daaab12df0b7fd1f79f5405937d3517508b5c4717ccf740f"
+    }
+  },
+  "browser": [
+    {
+      "name": "browser-chromium-qualified",
+      "browser": {
+        "name": "chromium",
+        "version": "155.0.8059.85"
+      },
+      "status": "PASS",
+      "receiptSha256": "ddd412b79b5ccdc114ae0d837dd748c981f6351cd29e74f409d24d3ddb8848f4",
+      "wasmSha256": "25a4ebfcef19d0527fa8ea340a89b81b6da24908eb781c3d62318e2c216a8592",
+      "manualSaves": 2,
+      "receivedVersion": 4,
+      "undoSaves": 1,
+      "finalVersion": 5,
+      "coldReopen": {
+        "version": 5,
+        "writes": 0,
+        "sha256": "34fa6a3820d32c6fbfda2832c378977ab9f34b32718c51ca9b59274ff6d0d36c"
+      },
+      "allClockwisePixelsEqual": true,
+      "oldProjectBytesRestored": true,
+      "errors": [],
+      "cleanupErrors": []
+    },
+    {
+      "name": "browser-webkit-qualified",
+      "browser": {
+        "name": "webkit",
+        "version": "26.5"
+      },
+      "status": "PASS",
+      "receiptSha256": "ca25006de1dbef7f250b6a17ecf2bcaf5ec3f8130dd3b7d8714c2fbc207ae128",
+      "wasmSha256": "25a4ebfcef19d0527fa8ea340a89b81b6da24908eb781c3d62318e2c216a8592",
+      "manualSaves": 2,
+      "receivedVersion": 4,
+      "undoSaves": 1,
+      "finalVersion": 5,
+      "coldReopen": {
+        "version": 5,
+        "writes": 0,
+        "sha256": "34fa6a3820d32c6fbfda2832c378977ab9f34b32718c51ca9b59274ff6d0d36c"
+      },
+      "allClockwisePixelsEqual": true,
+      "oldProjectBytesRestored": true,
+      "errors": [],
+      "cleanupErrors": []
+    },
+    {
+      "name": "browser-old-webkit-qualified",
+      "browser": {
+        "name": "webkit",
+        "version": "26.5"
+      },
+      "status": "FAIL",
+      "receiptSha256": "6366d25ab46d6a07e79c686fd64026a24f489f5bcadf1394a66089636e15e487",
+      "wasmSha256": "83a01d6b8089253b6d04b439ee7bcd83be7ab8c35eb885a17b898d9a6786d218",
+      "reason": "AssertionError [ERR_ASSERTION]: real Undo must restore exact pre-agent project bytes"
+    }
+  ],
+  "causalRed": {
+    "host": "Both original tests failed: higher head changed the binding and admitted a different native documentId. Compilation succeeded.",
+    "hostReceiptSha256": "0da59c901898ed74b91a26cead6d018dba28f53c3d7e96604a8a88ae9b7d5705",
+    "browser": "Exact same current MCP consumer and native external-worker project; old WASM has no received-version Undo, new WASM restores exact prior bytes and PNG."
+  },
+  "worker": {
+    "retainedPath": "/Users/enzotironi/.codex/builds/zoen-photocraft-operation-contract-v590/component/photocraft-zoen-host.wasm",
+    "sha256": "0014ef28916f686e185ff2887a1909c75c7ef755454591e94c8d65e97e166e9c",
+    "rebuiltOrResigned": false,
+    "headlessBridgeFilesByteEqual": true,
+    "engineInputByteEqualityClaim": false,
+    "reason": "Old signed WASI remains sealed at its own historical qualified producer. Its bridge ABI/commands are unchanged; new browser engine lib.rs differs to retain refresh Undo. No requalification of that component against new browser source is claimed."
+  },
+  "integration": [
+    "Photo generated HTML/manifest and measured Rust browser pins are updated only in this owned branch.",
+    "The shared binary-formats capability changes source closure: next Root batch must run the normal bootstrap producers for Deck/Grid/Word and refresh reviewed CI contract pins together. Their engines need no rebuild for this metadata.",
+    "Do not mix this resource into current PR589/QA600; qualify the next integrated source once."
+  ],
+  "limitations": [
+    "Core/CAS ports and OS share are synthetic in browser tests; the renderer, official MCP SDK, Session, external native worker, source/export bytes and trusted input are actual.",
+    "Native iPhone, certified-agent approval/model turn and memory budget acceptance remain pending; #556 stays open.",
+    "No provider/model calls, simulator/device operations, retained services, new PR, push, signature replacement or cache reset.",
+    "Upstream tab still shows its local modified marker independently of canonical host dirty state; durability was verified by bytes/head/cold reopen, not that marker.",
+    "Initial in-memory harness setup failures (Uint8Array response and intercepted blob URL) are retained separately; only the qualified old-package run is causal RED.",
+    "Initial wasm target setup failure used an alias missing the target; existing stable Rust 1.99.1 with installed target passed. Host debug stripping warnings are preserved; compiler/tests exit 0 and all-target Clippy passed."
+  ]
+}

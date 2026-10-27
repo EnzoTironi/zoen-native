@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-26",
+  "sourceCommit": "477ac2f393b346a9dd2caab786c3f053382a4dcf",
+  "coordinationIssue": "https://github.com/EnzoTironi/zoen-native/issues/170",
+  "acceptanceSource": "apps/zoen/acceptance.json",
+  "reviewBoundary": "Revisão datada de fonte e evidências registradas. Issues governam execução; acceptance.json governa conclusão. Nenhum checkbox local altera status.",
+  "counts": {
+    "journeys": 30,
+    "creationCapabilities": 10,
+    "platforms": 6,
+    "telegramFeatures": 506,
+    "telegramAreas": 23,
+    "routeModules": 60,
+    "screenFamilies": 77
+  },
+  "files": {
+    "telegram": [
+      "telegram/ai.json",
+      "telegram/apps.json",
+      "telegram/boosts.json",
+      "telegram/bots.json",
+      "telegram/business.json",
+      "telegram/calls.json",
+      "telegram/channels.json",
+      "telegram/formatting.json",
+      "telegram/groups.json",
+      "telegram/inbox.json",
+      "telegram/messaging.json",
+      "telegram/notifications.json",
+      "telegram/photos.json",
+      "telegram/polls.json",
+      "telegram/premium.json",
+      "telegram/privacy.json",
+      "telegram/profiles.json",
+      "telegram/reactions.json",
+      "telegram/search.json",
+      "telegram/stars-economy.json",
+      "telegram/stars-gifts.json",
+      "telegram/storage.json",
+      "telegram/stories.json",
+      "telegram/voice.json"
+    ],
+    "surfaces": [
+      "surfaces/native-surfaces-01.json",
+      "surfaces/presentations-01.json",
+      "surfaces/routes-01.json",
+      "surfaces/routes-02.json",
+      "surfaces/system-ports-01.json"
+    ],
+    "journeys": [
+      "journeys/journeys-01-10.json",
+      "journeys/journeys-11-20.json",
+      "journeys/journeys-21-30.json"
+    ],
+    "creation": "journeys/creation-capabilities.json"
+  },
+  "classification": {
+    "scope": {
+      "active": "Fase atual de conversação e agentes",
+      "later": "Entrega posterior dentro da visão",
+      "paused": "Capacidade preservada, implementação e QA pausados",
+      "decision": "Referência adicional; recomendação explícita, sem seleção automática pelo catálogo"
+    },
+    "implementation": {
+      "present": "Caminho de código presente; não implica aceite completo",
+      "partial": "Parte do resultado existe",
+      "missing": "Jornada não encontrada nos consumidores inspecionados; não prova ausência de toda primitiva",
+      "different": "Modelo Zoen diferente; equivalência precisa ser adaptada",
+      "unverified": "Evidência insuficiente neste recorte"
+    },
+    "acceptance": {
+      "pending": "Resultado completo pendente",
+      "scoped": "Evidência limitada de fonte/teste/build ou runtime; ler a referência",
+      "accepted": "Jornada completa comprovada no escopo declarado"
+    }
+  },
+  "reviewCounts": {
+    "scope": {
+      "active": 227,
+      "later": 108,
+      "decision": 133,
+      "paused": 38
+    },
+    "implementation": {
+      "missing": 328,
+      "partial": 90,
+      "present": 39,
+      "unverified": 15,
+      "different": 34
+    },
+    "acceptance": {
+      "pending": 452,
+      "scoped": 54
+    }
+  },
+  "priorityDecisions": [
+    {
+      "title": "Uma conversa que continua",
+      "decision": "Fechar envio, mídia, busca, ações e recuperação entre duas pessoas.",
+      "reason": "Teclado, navegação e reconexão preservam conteúdo, destino e posição de leitura."
+    },
+    {
+      "title": "Agentes como participantes reais",
+      "decision": "Concluir pedido → execução → aprovação → resultado → retomada.",
+      "reason": "UI, agentes e backend compartilham autoridade; efeitos e custos têm recibos recuperáveis."
+    },
+    {
+      "title": "Comunidades completas",
+      "decision": "Entregar convites, papéis, moderação e saída/transferência de propriedade.",
+      "reason": "Tópicos e canais vêm depois do núcleo; cada ação administrativa precisa de efeito verificável."
+    },
+    {
+      "title": "Expressão sem duplicar o produto",
+      "decision": "Reusar temas, reações, mídia e automação comuns.",
+      "reason": "Stars, boosts pagos, colecionáveis, anúncios e stories são referências adicionais, fora da entrega comprometida atual."
+    },
+    {
+      "title": "Criação preservada",
+      "decision": "Retomar as dez capacidades e Apps externos após o recorte ativo.",
+      "reason": "Pausas continuam explícitas; nenhuma capacidade aprovada é apagada da roadmap."
+    }
+  ],
+  "visualReview": "visual-review.json"
+}

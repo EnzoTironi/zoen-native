@@ -24,15 +24,20 @@ use localization as i18n;
 use localization::{is_en, t, thousands, tr, ts};
 use serde_json::{json, Value};
 
+pub mod binary;
 mod catalog;
 mod creation;
 pub mod deckcraft;
 mod defaults;
 pub mod excalidraw;
 mod execution;
+pub mod gridcraft;
+pub mod pdfcraft;
+pub mod photocraft;
 mod projection;
 mod schedule;
 mod scoped;
+pub mod wordcraft;
 
 pub use catalog::{spec, spec_for_start_tool, spec_for_uri, specs};
 pub use creation::create;
@@ -41,7 +46,8 @@ pub use execution::apply;
 pub use projection::{headline, last_action, snapshot, view};
 pub use schedule::Actor;
 pub use scoped::{
-    apply_as, create_as, owner_note_for, pin_client, reconcile_concurrent, replayed, view_for,
+    apply_as, create_as, owner_note_for, pin_client, reconcile_concurrent, recover_tool_result,
+    replayed, view_for,
 };
 
 use catalog::tool;

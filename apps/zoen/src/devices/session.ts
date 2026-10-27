@@ -92,8 +92,8 @@ export class DeviceSession {
       accountScopeKey(this.owner) === accountScopeKey(this.port.scope()),
     );
   }
-  ticket(): DeviceTicket | null {
-    return this.current()
+  ticket(observed: DeviceState = this.state): DeviceTicket | null {
+    return observed === this.state && this.current()
       ? Object.freeze({ scope: this.state.scope, generation: this.generation })
       : null;
   }

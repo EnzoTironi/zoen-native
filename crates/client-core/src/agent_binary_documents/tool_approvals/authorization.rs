@@ -9,7 +9,13 @@ impl Engine {
         };
         let action = if matches!(
             p.canonical_tool.as_str(),
-            "read_deckcraft" | "read_page" | "read_site"
+            "read_deckcraft"
+                | "read_gridcraft"
+                | "read_wordcraft"
+                | "read_photocraft"
+                | "read_page"
+                | "read_site"
+                | "read_scene"
         ) {
             ActionClass::Reply
         } else {
@@ -77,7 +83,7 @@ impl Engine {
             return Err(denied());
         }
         let intent = command_intent(p, action.as_ref())?;
-        if mutation.is_some_and(|(id, hash)| id != format!("deckcmd_{intent}") || hash != intent) {
+        if mutation.is_some_and(|(id, hash)| id != mutation_id(p, &intent) || hash != intent) {
             return Err(denied());
         }
         // Accepted-result recovery is read-only and uses the existing durable receipt.
@@ -88,7 +94,7 @@ impl Engine {
                     &p.artifact,
                     p.version,
                     &p.sha256,
-                    &format!("deckcmd_{intent}"),
+                    &mutation_id(p, &intent),
                     &intent,
                 )?
                 .is_some()
@@ -134,10 +140,14 @@ impl Engine {
             ToolRequestDecision::RequestReview => return Err(malformed()),
         };
         if r.status != ReqStatus::Pending {
-            if r.resolution.as_ref().and_then(|r| r.tool_decision) == Some(decision) {
+            if let Some(resolution) = r
+                .resolution
+                .as_ref()
+                .filter(|resolution| resolution.tool_decision == Some(decision))
+            {
                 return Ok(DecideOutcome {
                     request: self.request_dto(&r),
-                    message: r.resolution.as_ref().unwrap().message.clone(),
+                    message: resolution.message.clone(),
                     standing_grant_id: None,
                     also_resolved: 0,
                 });

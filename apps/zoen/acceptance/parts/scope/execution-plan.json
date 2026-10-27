@@ -1,10 +1,9 @@
 {
-  "updatedOn": "2026-10-20",
+  "updatedOn": "2026-10-26",
   "status": "ACTIVE",
   "currentMilestone": "ios-conversation-and-media",
   "currentManualValidationPlatforms": ["ios"],
   "currentEnvironment": "Local production-like composition with the real Rust services; final release still requires the compatible public backend and real providers.",
-  "currentPullRequest": "https://github.com/EnzoTironi/zoen-native/pull/144",
   "milestones": [
     {
       "id": "ios-conversation-and-media",
@@ -23,12 +22,15 @@
     },
     {
       "id": "apps-and-durable-agents",
-      "status": "PENDING",
-      "exit": "Persistent isolated MCP Apps, Excalidraw and real external authorization; agents resume without clients and reconcile grants, approvals, effects and costs."
+      "status": "IN_PROGRESS",
+      "exit": "Persistent isolated MCP Apps, Excalidraw and real external authorization; agents resume without clients and reconcile grants, approvals, effects and costs.",
+      "activeScope": "Durable agents only: permissions, approvals, budgets, attributed conversational results and recovery; existing domain contracts remain authoritative.",
+      "pausedScope": "All MCP Apps development/QA, App host/SDK expansion and creation-editor integration are paused by Enzo; their original exit criteria and final-product scope remain required.",
+      "statusBoundary": "IN_PROGRESS applies only to active agents; it does not resume or accept the paused Apps portion of this retained milestone."
     },
     {
       "id": "shared-creation-workspace",
-      "status": "PENDING",
+      "status": "PAUSED_BY_USER",
       "exit": "All declared creationWorkspace capabilities across Pages, Slides, Sites, Images and Files, with collaboration, permissions, recovery and explicit publication."
     },
     {
@@ -50,7 +52,26 @@
   "iosLaunchAccepted": false,
   "iosLaunchAcceptancePolicy": "Accept only the applicable iOS journeys and declared creation capabilities on final public-backend/physical-device artifacts, plus an iOS/backend workload profile declared and frozen before measurement with security, abuse, restore/rollback and cost gates. This separate milestone does not approve the retained mixed-platform profile or six-platform global flags; monthly availability still requires 30 observed days.",
   "validationPolicy": "Implement coherent front/core/backend batches, review then validate once together. Repeat broad checks/builds only when code changes, failures or unresolved concerns justify it; preserve integrity/auth/durability assertions and record environment failures separately.",
-  "referencePolicy": "Signal is the principal reliability and messaging-interaction reference; evaluate maintained OSS/library reuse independently. Expo remains the product interface, Rust the shared authority; no complete Signal fork or duplicate durable store is introduced.",
+  "referencePolicy": "Telegram iOS is the principal UI and interaction reference; Signal is the principal reliability reference. Evaluate maintained OSS/library reuse independently. Expo remains the product interface and Rust the shared authority; no duplicate durable store is introduced.",
   "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target.",
-  "currentSimulatorCheckpoint": "iosContinuityCheckpoint"
+  "currentSimulatorCheckpoint": "currentIphoneArtifact",
+  "currentFocus": "User-confirmed priority: agents and conversation only. Complete the selected Telegram iOS interface/interactions and corresponding backend before resuming Apps or shared creation. Preserve all approved final-product scope.",
+  "publicationStatus": "PRs #635, #636 and #637 are merged, in addition to #632/#633. Issues #217/#622/#615/#440 closed their bounded read-pagination, rate-limit ordering, authenticated reconnect/approval recovery and original-v544 AutoSky scopes respectively; no provider, physical or whole-journey acceptance follows. App 732 source 9f724c1e/Core F c4b8f7ce, prepared lifecycle CLI 4ff0ca77, actual QA canonical-read CLI f0a01c1f and relay 4057a0af/schema40 are separate qualified components; QA 732 records scoped widths/stacking and Cancel with both drafts preserved, Send=0, and restored text size. currentIphoneArtifact is the maintained artifact/evidence pointer; #170 owns work status. Historical evidence retains its source. Prior scoped receipts linked in currentIphoneArtifact: F724 text/media forwards each once, exact 1268382-byte image and drafts preserved; 727 global search results/first-tap target passed. These are original-source proofs, not 732 retests. Lifecycle CLI 4ff was prepared/help-only, not confirmed executed by QA.",
+  "coordinationIssue": "https://github.com/EnzoTironi/zoen-native/issues/170",
+  "activeWorkstreams": [
+    "Telegram iOS conversation/composer/attachments/media/profile/settings",
+    "Durable agents, authority, approvals and budgets",
+    "Messaging reliability, identity/recovery, notifications and calls"
+  ],
+  "pausedWorkstreams": [
+    "MCP Apps, App host/SDK expansion and editor integration",
+    "Shared creation: Pages, Slides, Sites and Images",
+    "Anchored Page comments706 and independent App-repository extraction"
+  ],
+  "resumeAppsAfter": "Completion and native acceptance of the selected Telegram iOS agents/conversation scope; a new product direction may revise the sequence.",
+  "roadmap": {
+    "guide": "docs/roadmap/README.md",
+    "manifestSnapshot": "docs/roadmap/manifest.json",
+    "policy": "Derived snapshot/view of the canonical acceptance source and scoped evidence, not a second status authority. Issue #170 owns work status; acceptance.json and its referenced parts own acceptance criteria. Regenerate the snapshot when its source changes."
+  }
 }

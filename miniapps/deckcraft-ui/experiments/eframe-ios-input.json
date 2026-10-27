@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "name": "eframe-ios-input",
-  "status": "EXPERIMENT_NOT_NATIVE_QUALIFIED",
+  "status": "SOURCE_PREPARED_CONSUMER_QUALIFICATION_PENDING",
   "upstreamRevision": "a31b990d32f2c8562f1588562f922960c3fde48b",
   "baseManagedCargoLockSha256": "4bc9179aa45efdf20b633a624e5b61b9144160770c03b6ac4193ea7f5348274f",
   "managedCargoLockSha256": "ea1b257672f1e4e0f73644766b0163ebd166ea0358a976563d81420eaa826a00",
@@ -13,7 +13,7 @@
     "archiveSha256": "55ad41fac6e3149abb4866e93df37dbd33baa95db525c3368c944584e95a5dc2",
     "sourceRevision": "49682f8baa058bf49e011035cfbd6e825f88a5ef",
     "beforeTreeSha256": "6d5168aabcbf959b2c7670dd255baef5d79b9e89ad274b9f2a8b20f7acd3aac2",
-    "afterTreeSha256": "62656f7a492d7b907ae0dd19e712c887198d57b17c1bf67676691835b3073d8d",
+    "afterTreeSha256": "22f3feb07ada3e41d936b2a718da3499e5990942ca32488b597c4eb00cbd258d",
     "changedFiles": [
       "src/web/app_runner.rs",
       "src/web/backend.rs",
@@ -52,11 +52,11 @@
     },
     {
       "path": "patches/0017b-eframe-text-activation.patch",
-      "sha256": "e1aaf3f4afd978ff0b7e87a2912542d754f96fc249b3a749d6b90732f28d69bd"
+      "sha256": "f6b323a944c8537f3a7c1260c0ca9f9b463aa02058679147cc2bb1881c6263cd"
     },
     {
-      "path": "patches/0017c-eframe-primary-contact.patch",
-      "sha256": "52ef89a672af8316450cee77fd09ec123b836f6372ad8637a32361762e01d0bb"
+      "path": "../gridcraft-ui/mobile-input/patches/eframe-primary-contact.patch",
+      "sha256": "7b8a2bfcce4df8d458b4419fc980095c2e16f35f1a44fb1437b30002b49d69fb"
     },
     {
       "path": "patches/0017d-deckcraft-text-admission.patch",

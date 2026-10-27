@@ -91,6 +91,13 @@ impl LogStore for Roster {
     async fn preview_invite(&self, _: &str) -> Result<InviteInfo, String> {
         Err("unused".into())
     }
+    async fn preview_agent_invite_for_redeemer(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<InviteInfo, String> {
+        Err("not used".into())
+    }
     async fn redeem_agent_invite(&self, _: &str, _: &str) -> Result<InviteInfo, String> {
         Err("unused".into())
     }
@@ -130,10 +137,13 @@ pub struct Relay {
     admin: PgConnection,
 }
 impl Relay {
-    pub async fn new(roster: Vec<String>, rows: usize) -> Self {
+    pub async fn new(
+        roster: Vec<String>,
+        rows: usize,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let admin_url =
             std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG to an owned PostgreSQL");
-        let database = format!("zoen_pressure_{}", &Signer::generate().id()[..16]);
+        let database = format!("zoen_pressure_{}", &Signer::generate()?.id()[..16]);
         let mut admin = PgConnection::connect(&admin_url).await.unwrap();
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
             .execute(&mut admin)
@@ -146,6 +156,7 @@ impl Relay {
         let pool = PgPool::connect_with(options.clone()).await.unwrap();
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
         let state = Arc::new(AppState {
+            read_snapshots: zoen_relay::read_snapshots::Resources::new(&pool),
             auth: zoen_relay::auth::Service::disabled(),
             turn: zoen_relay::turn::Service::disabled(),
             analytics: analytics::Analytics::load(&pool).await.unwrap(),
@@ -178,13 +189,13 @@ impl Relay {
             .await
             .unwrap()
         });
-        Self {
+        Ok(Self {
             state,
             url: format!("ws://{address}/v1/sync"),
             server,
             database,
             admin,
-        }
+        })
     }
     pub async fn connect(&self, author: &Author, register: bool) -> Socket {
         let (mut socket, _) = tokio_tungstenite::connect_async(&self.url).await.unwrap();

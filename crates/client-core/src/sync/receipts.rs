@@ -1,6 +1,9 @@
 //! Durable peer receipt admission, projection and replay.
 
-use super::*;
+use super::{
+    CoreError, Cow, Delivery, Engine, Entry, EventBody, HashMap, IdentityId, PlanReplay, Role,
+    SpaceId, State, R,
+};
 
 impl Engine {
     pub(crate) fn delivery(&self, e: &Entry) -> Delivery {
@@ -19,7 +22,7 @@ impl Engine {
     }
 
     /// ✓, ✓✓ or read for one of my messages: the lowest watermark across everyone else in
-    /// the Space (a group shows read only when all have read, like WhatsApp).
+    /// the Space (a group shows read only when all have read, like `WhatsApp`).
     pub(super) fn receipt_for(&self, e: &Entry) -> Delivery {
         let me = self.me.as_deref().unwrap_or_default();
         let Some(space) = self.state.spaces.get(&e.space) else {
@@ -51,7 +54,7 @@ impl Engine {
         }
     }
 
-    pub(super) fn receipt_members(&self, space: &str) -> R<Cow<'_, [(IdentityId, Role)]>> {
+    pub(crate) fn receipt_members(&self, space: &str) -> R<Cow<'_, [(IdentityId, Role)]>> {
         let pending_membership = self.net.pending.values().any(|s| s == space)
             && self.store.outbox()?.iter().any(|pending| {
                 !pending.failed
@@ -108,7 +111,7 @@ impl Engine {
     /// A signed, checked canonical membership transition has removed the reader
     /// or subject. Outbox/UI optimism cannot erase this cut or resurrect a mark.
     /// This is only evaluated for unresolved/unauthorized arrivals, not hot valid
-    /// receipts. It reuses the existing checked projection and PlanReplay.
+    /// receipts. It reuses the existing checked projection and `PlanReplay`.
     pub(crate) fn receipt_confirmed_removed(&self, space: &str, from: &str) -> R<bool> {
         let Some(me) = self.me.as_deref() else {
             return Ok(false);

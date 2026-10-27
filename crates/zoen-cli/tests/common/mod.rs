@@ -3,7 +3,11 @@
 //! free port, and `zoen` homes in a temp dir. Needs `ZOEN_TEST_PG` and a running
 //! FoundationDB (`eval "$(scripts/fdb.sh env)"`).
 
+pub mod claim_proxy;
 mod diagnostics;
+mod relay_build;
+pub mod watch;
+mod watch_readiness;
 mod world_commands;
 mod world_service;
 
@@ -32,15 +36,13 @@ pub fn relay_bin() -> PathBuf {
     // overwrite the metadata still needed by later workspace doctests.
     let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("journey-relay");
     BUILT.call_once(|| {
-        let ok = Command::new(env!("CARGO"))
-            .args(["build", "--locked", "-q", "-p", "zoen-relay"])
-            .arg("--manifest-path")
-            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
-            .arg("--target-dir")
-            .arg(&target)
-            .status()
-            .expect("cargo")
-            .success();
+        let mut command = Command::new(env!("CARGO"));
+        relay_build::configure(
+            &mut command,
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+            &target,
+        );
+        let ok = command.status().expect("cargo").success();
         assert!(ok, "cargo build -p zoen-relay failed");
     });
     target
@@ -229,12 +231,18 @@ impl RawClient {
         }
     }
 
-    pub async fn connect(relay: &str, handle: &str) -> RawClient {
-        Self::connect_registering(relay, handle).await.0
+    pub async fn connect(
+        relay: &str,
+        handle: &str,
+    ) -> std::result::Result<RawClient, Box<dyn std::error::Error>> {
+        Ok(Self::connect_registering(relay, handle).await?.0)
     }
 
     /// Connects, registers `handle`, and returns the relay's answer to the registration.
-    pub async fn connect_registering(relay: &str, handle: &str) -> (RawClient, Result<(), String>) {
+    pub async fn connect_registering(
+        relay: &str,
+        handle: &str,
+    ) -> std::result::Result<(RawClient, Result<(), String>), Box<dyn std::error::Error>> {
         Self::connect_registering_with(relay, handle, &[]).await
     }
 
@@ -244,7 +252,7 @@ impl RawClient {
         relay: &str,
         handle: &str,
         headers: &[(&'static str, &str)],
-    ) -> (RawClient, Result<(), String>) {
+    ) -> std::result::Result<(RawClient, Result<(), String>), Box<dyn std::error::Error>> {
         use tokio_tungstenite::tungstenite::client::IntoClientRequest;
         let url = format!("{}/v1/sync", relay.replace("http://", "ws://"));
         let mut req = url.as_str().into_client_request().unwrap();
@@ -252,8 +260,8 @@ impl RawClient {
             req.headers_mut().insert(*k, v.parse().unwrap());
         }
         let (ws, _) = tokio_tungstenite::connect_async(req).await.unwrap();
-        let root = Signer::generate();
-        let author = Author::device(&root, Signer::generate());
+        let root = Signer::generate()?;
+        let author = Author::device(&root, Signer::generate()?);
         let mut c = RawClient { ws, author };
         c.send(&ClientFrame::Hello {
             protocol: PROTOCOL_VERSION,
@@ -293,7 +301,7 @@ impl RawClient {
                 _ => continue,
             }
         };
-        (c, answer)
+        Ok((c, answer))
     }
 
     async fn send(&mut self, f: &ClientFrame) {
@@ -341,10 +349,14 @@ impl RawClient {
     }
 
     /// Returns the relay's answer as text ("accepted …" or the rejection reason).
-    pub async fn publish_message(&mut self, space: &str, text: &str) -> String {
+    pub async fn publish_message(
+        &mut self,
+        space: &str,
+        text: &str,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         let e = self.author.sign_event(
             space,
-            &types::new_ulid(1),
+            &types::new_ulid(1)?,
             1,
             None,
             EventBody::MessagePosted {
@@ -355,14 +367,19 @@ impl RawClient {
                 media: None,
                 forwarded: false,
             },
-        );
-        self.publish(Envelope::plain(&e)).await
+        )?;
+        Ok(self.publish(Envelope::plain(&e)?).await)
     }
 
-    pub async fn publish_as(&mut self, space: &str, someone: &str, text: &str) -> String {
+    pub async fn publish_as(
+        &mut self,
+        space: &str,
+        someone: &str,
+        text: &str,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         let e = self.author.sign_event(
             space,
-            &types::new_ulid(1),
+            &types::new_ulid(1)?,
             1,
             None,
             EventBody::MessagePosted {
@@ -373,11 +390,12 @@ impl RawClient {
                 media: None,
                 forwarded: false,
             },
-        );
+        )?;
         let mut forged = SignedContent::parse(&e.content).unwrap();
         forged.author = someone.to_string();
-        self.publish(Envelope::new(forged.encode(), e.sig, e.cert, None).unwrap())
-            .await
+        Ok(self
+            .publish(Envelope::new(forged.encode(), e.sig, e.cert, None).unwrap())
+            .await)
     }
 
     pub fn identity(&self) -> String {
@@ -393,7 +411,14 @@ impl RawClient {
     ) -> Result<Sequenced, String> {
         let e = self
             .author
-            .sign_event(space, &types::new_ulid(now_ms()), now_ms(), seen, body);
+            .sign_event(
+                space,
+                &types::new_ulid(now_ms()).map_err(|error| error.to_string())?,
+                now_ms(),
+                seen,
+                body,
+            )
+            .map_err(|error| error.to_string())?;
         self.publish_signed(e.content, e.sig, e.cert).await
     }
 
@@ -415,7 +440,14 @@ impl RawClient {
         };
         let e = self
             .author
-            .sign_event(space, &types::new_ulid(now_ms()), now_ms(), None, body);
+            .sign_event(
+                space,
+                &types::new_ulid(now_ms()).map_err(|error| error.to_string())?,
+                now_ms(),
+                None,
+                body,
+            )
+            .map_err(|error| error.to_string())?;
         let mut env = Envelope::new(e.content, e.sig, e.cert, None).ok_or("not a v3 content")?;
         env.invite = Some(code.to_string());
         self.publish_env(env).await
@@ -467,13 +499,16 @@ pub fn now_ms() -> i64 {
 }
 
 /// Opens a socket and says only hello, as a client of protocol `version` would.
-pub async fn hello_only(relay: &str, version: u32) -> ServerFrame {
+pub async fn hello_only(
+    relay: &str,
+    version: u32,
+) -> std::result::Result<ServerFrame, Box<dyn std::error::Error>> {
     let url = format!("{}/v1/sync", relay.replace("http://", "ws://"));
     let (mut ws, _) = tokio_tungstenite::connect_async(url.as_str())
         .await
         .unwrap();
-    let root = Signer::generate();
-    let me = Author::device(&root, Signer::generate());
+    let root = Signer::generate()?;
+    let me = Author::device(&root, Signer::generate()?);
     let hello = ClientFrame::Hello {
         protocol: version,
         capabilities: Vec::new(),
@@ -491,7 +526,7 @@ pub async fn hello_only(relay: &str, version: u32) -> ServerFrame {
             .unwrap()
             .unwrap()
         {
-            Message::Binary(b) => return ServerFrame::decode(&b).unwrap(),
+            Message::Binary(b) => return Ok(ServerFrame::decode(&b).unwrap()),
             _ => continue,
         }
     }

@@ -163,7 +163,10 @@ async fn pages_and_files_travel_byte_for_byte() {
                 .map(|(rel, _)| src.join(rel).display().to_string()),
         );
         let a: Vec<&str> = args.iter().map(String::as_str).collect();
-        let out = w.zoen("ana", &a);
+        // Any synthetic batch can be the first stalled one. The normal World
+        // prints child diagnostics only on failure, without resetting its wait.
+        let diagnostics: &[(&str, &str)] = &[("ZOEN_NET_DEBUG", "1")];
+        let out = w.zoen_env("ana", &a, diagnostics);
         assert_eq!(out.lines().count(), batch.len(), "{out}");
         // Only full batches compare fairly: a short tail spreads command startup over few pages.
         if batch.len() == 100 {

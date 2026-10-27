@@ -58,7 +58,9 @@ function fixture() {
     snapshot: {
       me: { id: 'me' },
       account: { identity_id: 'me', device_id: 'phone', unlocked: true, setup_pending: false },
-      conversations: [{ id: 'retained-chat', members: [{ id: 'me' }, { id: 'peer' }] }],
+      conversations: [
+        { id: 'retained-chat', can_write: true, members: [{ id: 'me' }, { id: 'peer' }] },
+      ],
     } as unknown as Snapshot,
     timelines: {},
     activity: {} as ClientState['activity'],
@@ -100,8 +102,8 @@ function fixture() {
     '../theme': { useTheme: () => ({ presentation: { chat: { service: { text: '#fff' } } } }) },
     '../i18n/index.ts': {
       t: (key: string) => {
-        assert.equal(key, 'chat.noLongerAMember');
-        return chat[language].noLongerAMember;
+        assert.ok(key === 'chat.noLongerAMember' || key === 'chat.readOnlyChat');
+        return chat[language][key === 'chat.noLongerAMember' ? 'noLongerAMember' : 'readOnlyChat'];
       },
     },
   };
@@ -257,3 +259,30 @@ test('query-only search remains available over retained local history without ad
   assert.equal(f.requests.length, 0);
   assert.equal(notice(f.render(query)).props.children, 'Você não faz mais parte desta conversa.');
 });
+
+for (const threadRootId of [null, 'thread-root'])
+  test(`${threadRootId ? 'thread' : 'main'} Reader hides writing while preserving query search and the exact draft`, async () => {
+    const f = fixture(),
+      channel = f.drafts.channel('retained-chat', threadRootId)!;
+    await channel.controller.activate(channel.scope);
+    const child = { type: 'MessageComposer', props: { draft: 'Preserved draft' } };
+    const writing = (can_write: boolean) =>
+      f.update((state) => ({
+        ...state,
+        snapshot: {
+          ...state.snapshot!,
+          conversations: state.snapshot!.conversations.map((space) => ({ ...space, can_write })),
+        },
+      }));
+    writing(false);
+    assert.equal(notice(f.render(child)).props.children, 'Conversa somente leitura.');
+    assert.equal(f.render(child, true), child);
+    assert.equal(channel.controller.getSnapshot(channel.scope).text, 'Preserved draft');
+    assert.equal(f.requests.length, 1, 'read-only presentation never saves, sends or erases');
+    f.language('en');
+    assert.equal(notice(f.render(child)).props.children, 'Read-only chat.');
+    writing(true);
+    assert.equal(f.render(child), child);
+    assert.equal(channel.controller.getSnapshot(channel.scope).text, 'Preserved draft');
+    assert.equal(f.requests.length, 1);
+  });

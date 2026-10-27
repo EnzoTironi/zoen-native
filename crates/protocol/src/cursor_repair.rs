@@ -5,7 +5,7 @@ use std::time::Duration;
 /// Recheck durable cursors once per minute without turning the 50ms UI/crypto
 /// maintenance pass into a log poll. This bounds repair admission, not delivery
 /// latency when the relay or authorization is unavailable. Initial catch-up must
-/// advance verified durable cursors within 60s; after its first SyncDone, an
+/// advance verified durable cursors within 60s; after its first `SyncDone`, an
 /// unanswered periodic scan reconnects after 30s. These are provisional Zoen
 /// inactivity policies, not measured SLAs or Signal constants. Pong renews neither.
 #[derive(Clone, Copy)]
@@ -22,7 +22,7 @@ impl CursorRepairPolicy {
     };
 }
 
-/// O(1) bookkeeping for the ordered, untagged SyncDone responses on THIS socket.
+/// O(1) bookkeeping for the ordered, untagged `SyncDone` responses on THIS socket.
 /// A repair may queue behind existing gap/join work, but only one repair is ever
 /// in flight. Earlier/later partial completions cannot impersonate its completion.
 pub struct CursorRepair<T> {
@@ -44,7 +44,7 @@ impl<T: Copy + Ord + std::ops::Add<Duration, Output = T>> CursorRepair<T> {
             initial_deadline: Some(now + policy.initial_inactivity),
         }
     }
-    /// Call only after Applied/Confirmed AND a durable next_seq increase,
+    /// Call only after Applied/Confirmed AND a durable `next_seq` increase,
     /// measured under the same engine lock. The wire has no per-Space replay
     /// frontier: genuine advancement in any Space renews stream inactivity.
     /// Never revive an already-expired owner while its watchdog is also ready.

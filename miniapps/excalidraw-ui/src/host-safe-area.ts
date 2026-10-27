@@ -1,3 +1,4 @@
+import "./host-touch.css";
 import { applyHostCloseButton } from "../../../packages/zoen-miniapp-sdk/src/host-chrome";
 import { useLayoutEffect } from "react";
 import type { App } from "@modelcontextprotocol/ext-apps";

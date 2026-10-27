@@ -29,7 +29,7 @@ impl<S: Signer> Client<S> {
         let mut downloads = Vec::new();
         let mut mutated = false;
         let result = match command {
-            Command::NewMutationId {} => json!(browser_id("client_edit", now)),
+            Command::NewMutationId {} => json!(browser_id("client_edit", now)?),
             Command::PageParseMarkdown { markdown } => json!(Page::from_markdown(&markdown)
                 .map_err(error)?
                 .blocks()
@@ -40,7 +40,9 @@ impl<S: Signer> Client<S> {
                 let page = Page::new();
                 page.apply(std::slice::from_ref(&block.id), &[block.edit(None)?])
                     .map_err(error)?;
-                json!(page.canonical_markdown())
+                json!(page
+                    .canonical_markdown()
+                    .map_err(|error| error.to_string())?)
             }
             Command::Items {} => {
                 let mut items = self.document_items()?.into_values().collect::<Vec<_>>();
@@ -169,7 +171,7 @@ impl<S: Signer> Client<S> {
                         uploads: Vec::new(),
                     });
                 }
-                json!(read.live.to_markdown())
+                json!(read.live.to_markdown().map_err(|error| error.to_string())?)
             }
             Command::PlanPage { item_id } => {
                 self.plan_page_value(&self.document_item(&item_id)?, &mut downloads)?
@@ -238,7 +240,7 @@ impl<S: Signer> Client<S> {
                             .ok_or("Seção indisponível.")?
                             .lines
                             .push(types::PlanLine {
-                                id: browser_id("ln", now),
+                                id: browser_id("ln", now)?,
                                 text,
                                 cost_cents: cost,
                                 done: false,

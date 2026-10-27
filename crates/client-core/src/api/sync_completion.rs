@@ -33,6 +33,8 @@ pub(super) struct SyncCompletionObservation {
     uploads_ready: Option<bool>,
     profiles_ready: Option<bool>,
     mls_ready: Option<bool>,
+    #[serde(skip)]
+    profile_settlement: Option<crate::profile::ProfileSettlement>,
 }
 
 impl SyncCompletionObservation {
@@ -50,6 +52,7 @@ impl SyncCompletionObservation {
             uploads_ready: None,
             profiles_ready: None,
             mls_ready: None,
+            profile_settlement: None,
         };
         if !matches!(observed.state, ConnectionState::Online)
             || !observed.synced
@@ -111,9 +114,40 @@ impl SyncCompletionObservation {
         }
     }
 
+    fn write_profile_deadline(&self, timeout_ms: u64, elapsed: Duration, writer: &mut impl Write) {
+        let Some(blocked_by) = self.profile_settlement.filter(|value| !value.satisfied()) else {
+            return;
+        };
+        if self.profiles_ready != Some(false) {
+            return;
+        }
+        #[derive(Serialize)]
+        struct ProfileDeadline {
+            event: &'static str,
+            version: u8,
+            timeout_ms: u64,
+            elapsed_ms: u64,
+            blocked_by: crate::profile::ProfileSettlement,
+        }
+        let record = ProfileDeadline {
+            event: "zoen_profile_wait_deadline",
+            version: 1,
+            timeout_ms,
+            elapsed_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+            blocked_by,
+        };
+        if let Ok(bytes) = serde_json::to_vec(&record) {
+            if bytes.len() < 512 && writer.write_all(&bytes).is_ok() {
+                let _ = writer.write_all(b"\n");
+            }
+        }
+    }
+
     pub(super) fn trace_deadline(&self, timeout_ms: u64, elapsed: Duration) {
         if std::env::var_os("ZOEN_SYNC_WAIT_DIAGNOSTICS").is_some() {
-            self.write_deadline(timeout_ms, elapsed, &mut std::io::stderr().lock());
+            let mut stderr = std::io::stderr().lock();
+            self.write_deadline(timeout_ms, elapsed, &mut stderr);
+            self.write_profile_deadline(timeout_ms, elapsed, &mut stderr);
         }
     }
 }
@@ -147,15 +181,22 @@ impl Client {
         // The same Engine is locked once, only after the connection preconditions
         // pass, exactly as in the original completion predicate.
         let mut engine = None;
-        SyncCompletionObservation::evaluate(connection, |check| {
+        let mut profile_settlement = None;
+        let mut observed = SyncCompletionObservation::evaluate(connection, |check| {
             let engine = engine.get_or_insert_with(|| self.lock());
             match check {
                 Check::Unknown => engine.net.unknown.is_empty(),
                 Check::Uploads => engine.uploads_pending() == 0,
-                Check::Profiles => engine.profiles_settled(),
+                Check::Profiles => {
+                    let profile = engine.profile_settlement();
+                    profile_settlement = Some(profile);
+                    profile.satisfied()
+                }
                 Check::Mls => engine.mls_settled(),
             }
-        })
+        });
+        observed.profile_settlement = profile_settlement;
+        observed
     }
 
     #[cfg(test)]

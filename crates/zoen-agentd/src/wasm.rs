@@ -25,6 +25,9 @@ use crate::manifest::{ManifestError, Needs, SignedManifest};
 use crate::sandbox::MAX_OUTPUT;
 use ed25519_dalek::VerifyingKey;
 
+mod cache;
+pub use cache::{CompilationCache, CompilationCacheStats};
+
 /// How often the deadline clock ticks.
 const EPOCH_TICK: Duration = Duration::from_millis(10);
 
@@ -40,6 +43,8 @@ pub enum WasmError {
     Invalid(String),
     #[error("wasm runtime: {0}")]
     Runtime(String),
+    #[error("compilation cache configuration: {0}")]
+    CacheConfiguration(&'static str),
 }
 
 /// Per-run ceilings.
@@ -171,6 +176,7 @@ pub struct WasmTier {
     trusted: Vec<VerifyingKey>,
     max_memory: usize,
     stop: Arc<AtomicBool>,
+    cache: Option<CompilationCache>,
 }
 
 impl Drop for WasmTier {
@@ -186,6 +192,26 @@ impl WasmTier {
         max_concurrent: u32,
         max_memory: usize,
     ) -> Result<Self, WasmError> {
+        Self::build(trusted, max_concurrent, max_memory, None)
+    }
+
+    /// Uses only an explicitly validated operator cache. All manifest/hash gates
+    /// still precede the first compiled-artifact lookup in `load`.
+    pub fn with_compilation_cache(
+        trusted: Vec<VerifyingKey>,
+        max_concurrent: u32,
+        max_memory: usize,
+        cache: &CompilationCache,
+    ) -> Result<Self, WasmError> {
+        Self::build(trusted, max_concurrent, max_memory, Some(cache.clone()))
+    }
+
+    fn build(
+        trusted: Vec<VerifyingKey>,
+        max_concurrent: u32,
+        max_memory: usize,
+        cache: Option<CompilationCache>,
+    ) -> Result<Self, WasmError> {
         let rt = |e: wasmtime::Error| WasmError::Runtime(e.to_string());
         let mut pool = PoolingAllocationConfig::default();
         pool.total_component_instances(max_concurrent)
@@ -198,6 +224,9 @@ impl WasmTier {
             .epoch_interruption(true)
             .wasm_component_model(true)
             .allocation_strategy(InstanceAllocationStrategy::Pooling(pool));
+        if let Some(cache) = &cache {
+            cfg.cache(Some(cache.verified_official()?));
+        }
         let engine = Engine::new(&cfg).map_err(rt)?;
         let mut linker = Linker::new(&engine);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker).map_err(rt)?;
@@ -220,6 +249,7 @@ impl WasmTier {
             trusted,
             max_memory,
             stop,
+            cache,
         })
     }
 
@@ -233,6 +263,9 @@ impl WasmTier {
         let sha = hex::encode(Sha256::digest(bytes));
         if m.component_sha256.as_deref() != Some(sha.as_str()) {
             return Err(WasmError::WrongComponent);
+        }
+        if let Some(cache) = &self.cache {
+            cache.check()?;
         }
         let component =
             Component::new(&self.engine, bytes).map_err(|e| WasmError::Invalid(e.to_string()))?;

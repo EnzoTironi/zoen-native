@@ -1,5 +1,5 @@
 import type { MiniappTimelineActivity } from '../core/conversation-timeline';
-import { sameMessageDay } from '../core/message-presentation';
+import { messageHasStandaloneAppCard, sameMessageDay } from '../core/message-presentation';
 import { Text, View } from 'react-native';
 import { t, formatLocale } from '../i18n';
 import { useTheme } from '../theme';
@@ -7,12 +7,21 @@ import { MiniappTimelineActivityView } from '../miniapps/timeline-activity';
 import { ConversationMessage, type ConversationMessageProps } from './conversation-message';
 import type { MediaAlbum } from '../core/media-albums';
 import { ConversationAlbumMessage } from './conversation-album-message';
+import type { ConversationContentLayout } from '../core/conversation-reveal-content';
+import { ConversationRevealContentView } from './conversation-reveal-content-view';
 
 export function ConversationTimelineMessage({
   activity,
   album,
+  onRevealLayout,
+  revealQuery = '',
   ...message
-}: ConversationMessageProps & { activity?: MiniappTimelineActivity; album?: MediaAlbum }) {
+}: ConversationMessageProps & {
+  activity?: MiniappTimelineActivity;
+  album?: MediaAlbum;
+  onRevealLayout?: (id: string, layout: ConversationContentLayout) => void;
+  revealQuery?: string;
+}) {
   const { presentation: p, localDate: now } = useTheme();
   const first = activity?.entries[0] ?? album?.entries[0] ?? message.entry;
   const at = new Date(Number(first.at_ms));
@@ -66,7 +75,27 @@ export function ConversationTimelineMessage({
           </Text>
         </View>
       ) : null}
-      {content}
+      {onRevealLayout ? (
+        <ConversationRevealContentView
+          key={message.entry.id}
+          id={message.entry.id}
+          query={revealQuery}
+          expectsText={Boolean(
+            !activity &&
+            !album &&
+            !message.entry.deleted &&
+            !message.entry.voice &&
+            'Message' in message.entry.kind &&
+            message.entry.kind.Message.text.trim() &&
+            !messageHasStandaloneAppCard(message.entry),
+          )}
+          onLayout={onRevealLayout}
+        >
+          {content}
+        </ConversationRevealContentView>
+      ) : (
+        content
+      )}
     </View>
   );
 }

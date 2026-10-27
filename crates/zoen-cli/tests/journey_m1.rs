@@ -7,47 +7,9 @@
 //! The harness builds the relay from this checkout first.
 
 mod common;
+use common::watch::Watch;
 use common::*;
 use protocol::SealedKind;
-use std::{path::PathBuf, process::Child, time::Duration};
-
-struct Watch {
-    child: Child,
-    log: PathBuf,
-    status_log: PathBuf,
-}
-
-impl Watch {
-    async fn until(&mut self, expected: &str, observed: impl Fn(&str, &str) -> bool) -> String {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        loop {
-            let stdout = std::fs::read_to_string(&self.log).expect("watch stdout");
-            let stderr = std::fs::read_to_string(&self.status_log).expect("watch stderr");
-            let log = format!("stdout:\n{stdout}\nstderr:\n{stderr}");
-            let status = self.child.try_wait().expect("watch status");
-            assert!(
-                status.is_none(),
-                "watch exited while waiting for {expected}: {status:?}\n{log}"
-            );
-            if observed(&stdout, &stderr) {
-                return log;
-            }
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "watch never observed {expected}:\n{log}"
-            );
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    }
-}
-
-impl Drop for Watch {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
 #[tokio::test]
 async fn dm_roundtrip_survives_relaunch_and_verifies() {
     let w = World::new("dm").await;
@@ -278,7 +240,8 @@ async fn typing_reaches_the_other_person_and_is_never_stored() {
 }
 
 #[tokio::test]
-async fn relay_refuses_writes_from_non_members_and_forgeries() {
+async fn relay_refuses_writes_from_non_members_and_forgeries(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::new("authz").await;
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
@@ -291,13 +254,13 @@ async fn relay_refuses_writes_from_non_members_and_forgeries() {
         .expect("the group");
 
     // Mallory registers with her own keys, then tries to post into the group.
-    let mut m = RawClient::connect(&w.relay_url(), "mallory").await;
-    let r = m.publish_message(&space, "não sou membro").await;
+    let mut m = RawClient::connect(&w.relay_url(), "mallory").await?;
+    let r = m.publish_message(&space, "não sou membro").await?;
     assert!(r.contains("not a member"), "{r}");
 
     // And to impersonate Ana by putting Ana's id as author.
     let ana_id = w.id_of("ana").await;
-    let r = m.publish_as(&space, &ana_id, "sou a Ana").await;
+    let r = m.publish_as(&space, &ana_id, "sou a Ana").await?;
     assert!(r.contains("only publish as yourself"), "{r}");
 
     assert!(!w.zoen("bruno", &["read", "Só nós"]).contains("Mallory"));
@@ -307,6 +270,7 @@ async fn relay_refuses_writes_from_non_members_and_forgeries() {
         .await
         .iter()
         .all(|e| e.env.author() == ana || e.env.author() == bruno));
+    Ok(())
 }
 
 /// A photo background set in a shared chat reaches the other person through the relay's

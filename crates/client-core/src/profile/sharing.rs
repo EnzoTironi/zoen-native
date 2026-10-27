@@ -1,6 +1,15 @@
 //! Confirmed membership and encrypted profile-key shares.
 
-use super::*;
+#[cfg(test)]
+use super::{AgreementKey, Identity, Privacy, ProfileSettlement, Role, SpaceKind};
+
+use super::{
+    now_ms, open_share, seal_share, share_context, Engine, Event, EventBody, HashSet, IdentityId,
+    IdentityKind, ProfileKeyShare, SealedShare, SpaceId, R, SHARES_PER_EVENT,
+};
+
+#[cfg(test)]
+mod tests;
 
 impl Engine {
     // ── shares ──
@@ -44,10 +53,10 @@ impl Engine {
         }
     }
 
-    pub(super) fn already_shared(&mut self, me: &str, version: u64) -> HashSet<IdentityId> {
+    pub(super) fn already_shared(&mut self, me: &str, version: u64) -> R<HashSet<IdentityId>> {
         if let Some((v, set)) = &self.net.profiles.shared {
             if *v == version {
-                return set.clone();
+                return Ok(set.clone());
             }
         }
         let mut set = HashSet::new();
@@ -61,29 +70,39 @@ impl Engine {
         for log in self.net.synced.iter().filter_map(|s| self.logs.get(s)) {
             log.events().iter().for_each(&mut take);
         }
-        for p in self.store.outbox().unwrap_or_default() {
+        for p in self.store.outbox()? {
             if !p.failed {
                 take(&p.event);
             }
         }
         self.net.profiles.shared = Some((version, set.clone()));
-        set
+        Ok(set)
     }
 
     /// Shares my key with everyone I share a relay Space with who doesn't hold it yet.
     /// People whose agreement key isn't known are queued for a lookup (which re-runs this).
     pub fn profile_share_pass(&mut self) -> R<bool> {
-        if !self.net.profiles.supported || !std::mem::take(&mut self.net.profiles.shares_dirty) {
+        if !self.net.profiles.supported || !self.net.profiles.shares_dirty {
             return Ok(false);
         }
+        let result = self.write_profile_shares();
+        if result.is_ok() {
+            self.net.profiles.shares_dirty = false;
+        } else {
+            // Some encrypted shares may already be durable. The next pass must
+            // rebuild from those exact events instead of an incomplete cache.
+            self.net.profiles.shared = None;
+        }
+        result
+    }
+
+    fn write_profile_shares(&mut self) -> R<bool> {
         let (Some(me), Some(author)) = (self.me.clone(), self.net.author.clone()) else {
             return Ok(false);
         };
-        let Ok((key, key_version, _, _)) = self.my_fields(&me) else {
-            return Ok(false);
-        };
+        let (key, key_version, _, _) = self.my_fields(&me)?;
         let blocked: HashSet<IdentityId> = self.store.blocked()?.into_iter().collect();
-        let mut done = self.already_shared(&me, key_version);
+        let mut done = self.already_shared(&me, key_version)?;
         let mut spaces: Vec<SpaceId> = self
             .net
             .synced

@@ -1,20 +1,56 @@
 //! One authenticated ordered dispatcher with cursor repair ownership.
 
-use super::*;
+use super::{
+    auth_message, complete_reads, cursor_repair, dispatch, flush, http_base, maintenance,
+    media_worker, mpsc, recv, refused, register, send, tracing_like, watch, ws_url, AbortOnDrop,
+    Arc, AuthenticatedRelay, ClaimClockSample, ClientFrame, Cmd, ConnState, Ctx, CursorRepair,
+    CursorRepairPolicy, DeferredReceipts, Duration, Exit, HashMap, HashSet, KeyPackageClaimClock,
+    Message, ProfileTraffic, PublicationRetries, ServerFrame, SinkExt, StreamExt, Waiting,
+    CAPABILITIES, MAINTENANCE_PERIOD, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+};
 
+#[cfg(test)]
 pub(super) async fn session(
     ctx: &Ctx,
     cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
     backoff: &mut Duration,
 ) -> Exit {
-    session_with_repair_policy(ctx, cmd_rx, backoff, CursorRepairPolicy::DEFAULT).await
+    session_with_retries(ctx, cmd_rx, backoff, &mut PublicationRetries::default()).await
 }
 
+pub(super) async fn session_with_retries(
+    ctx: &Ctx,
+    cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
+    backoff: &mut Duration,
+    retries: &mut PublicationRetries,
+) -> Exit {
+    session_with_policy_and_retries(ctx, cmd_rx, backoff, CursorRepairPolicy::DEFAULT, retries)
+        .await
+}
+
+#[cfg(test)]
 pub(super) async fn session_with_repair_policy(
     ctx: &Ctx,
     cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
     backoff: &mut Duration,
     repair_policy: CursorRepairPolicy,
+) -> Exit {
+    session_with_policy_and_retries(
+        ctx,
+        cmd_rx,
+        backoff,
+        repair_policy,
+        &mut PublicationRetries::default(),
+    )
+    .await
+}
+
+async fn session_with_policy_and_retries(
+    ctx: &Ctx,
+    cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
+    backoff: &mut Duration,
+    repair_policy: CursorRepairPolicy,
+    retries: &mut PublicationRetries,
 ) -> Exit {
     macro_rules! engine {
         ($work:expr) => {
@@ -47,7 +83,10 @@ pub(super) async fn session_with_repair_policy(
     // ── login ──
     let hello = ClientFrame::Hello {
         protocol: PROTOCOL_VERSION,
-        capabilities: CAPABILITIES.iter().map(|c| c.to_string()).collect(),
+        capabilities: CAPABILITIES
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
         identity: identity.clone(),
         device: key.id(),
         cert,
@@ -55,7 +94,7 @@ pub(super) async fn session_with_repair_policy(
     if let Err(e) = send(&mut sink, &hello).await {
         return Exit::Retry(e);
     }
-    let (nonce, relay, profiles, advertised_clock) = match recv(&mut stream).await {
+    let (nonce, relay, profiles, advertised_clock, complete_reads) = match recv(&mut stream).await {
         Ok(ServerFrame::Challenge {
             nonce,
             relay,
@@ -75,6 +114,9 @@ pub(super) async fn session_with_repair_policy(
                         .map(ClaimClockSample::new)
                 })
                 .flatten(),
+            capabilities
+                .iter()
+                .any(|c| c == protocol::complete_reads::CAPABILITY),
         ),
         Ok(ServerFrame::Challenge { protocol, .. }) => {
             return Exit::Blocked(format!(
@@ -108,6 +150,7 @@ pub(super) async fn session_with_repair_policy(
     };
     // A Challenge sample belongs to this authenticated socket only. A later Pong
     // cannot enable a capability or clock that its Challenge did not advertise.
+    let read_owner = complete_reads.then(|| (identity.clone(), key.id()));
     let clock_negotiated = advertised_clock.is_some();
     let mut claim_clock = advertised_clock;
     if !relay_knows_me || !registered {
@@ -161,6 +204,7 @@ pub(super) async fn session_with_repair_policy(
     let mut sent: HashMap<String, Option<u64>> = HashMap::new();
     let mut waiting: HashMap<u64, Waiting> = HashMap::new();
     let mut next_id: u64 = 1;
+    let mut deferred_reads = complete_reads::Deferred::new();
     let mut dirty: HashSet<String> = HashSet::new();
     let mut deferred_receipts = DeferredReceipts::default();
     let tick = tokio::time::sleep(Duration::ZERO);
@@ -189,11 +233,23 @@ pub(super) async fn session_with_repair_policy(
     if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors, all: true }).await {
         return Exit::Retry(e);
     }
-    if let Err(e) = flush(ctx, &mut sink, &mut sent).await {
+    if let Err(e) = flush(ctx, &mut sink, &mut sent, retries).await {
         return Exit::Retry(e);
     }
     loop {
+        if let Err(e) = complete_reads::drain(&mut sink,&mut waiting,&mut next_id,&mut deferred_reads).await { break Exit::Retry(e); }
         tokio::select! {
+            () = async {
+                match complete_reads::deadline(&waiting) {
+                    Some(deadline) => tokio::time::sleep_until(deadline).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                // A silent missing page cannot hold this connection's read lane
+                // forever. Closing releases the server snapshot and settles every
+                // waiter without publishing or installing an incomplete set.
+                break Exit::Retry("complete_read_expired".into());
+            }
             frame = stream.next() => {
                 let frame = match frame {
                     None => break Exit::Retry("relay closed the connection".into()),
@@ -210,7 +266,7 @@ pub(super) async fn session_with_repair_policy(
                 };
                 last_rx = tokio::time::Instant::now();
                 if let Err(exit) = dispatch::dispatch_frame(frame, dispatch::FrameContext {
-                    ctx, sink: &mut sink, sent: &mut sent, backoff,
+                    ctx, sink: &mut sink, sent: &mut sent, retries, backoff,
                     cursor_repair: &mut cursor_repair, repair_deadline: &repair_deadline,
                     dirty: &mut dirty, deferred_receipts: &mut deferred_receipts,
                     waiting: &mut waiting, profiles_inflight: &mut profiles_inflight,
@@ -224,22 +280,21 @@ pub(super) async fn session_with_repair_policy(
                 None | Some(Cmd::Stop) => break Exit::Stop,
                 Some(Cmd::Flush) => {
                     // A profile edit needs a fresh login to re-register.
-                    let needs_register = engine!(|engine| engine.account().map(|a| !a.registered).unwrap_or(false));
+                    let needs_register = engine!(|engine| engine.account().is_some_and(|a| !a.registered));
                     if needs_register { break Exit::Retry("re-registering".into()) }
-                    if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
+                    if let Err(e) = flush(ctx, &mut sink, &mut sent, retries).await { break Exit::Retry(e) }
                     media_kick.notify_one();
                     ctx.notify_connection();
                 }
                 Some(Cmd::Req { op, reply }) => {
-                    let id = next_id; next_id += 1;
-                    if let Err(e) = send(&mut sink, &ClientFrame::Req { id, op }).await { let _ = reply.send(Err(e.clone())); break Exit::Retry(e) }
-                    waiting.insert(id, Waiting::External(reply));
+                    let (op, waiter) = complete_reads::start(op, Waiting::External(reply), read_owner.as_ref());
+                    if let Err(e)=complete_reads::submit(op,waiter,&mut sink,&mut waiting,&mut next_id,&mut deferred_reads).await { break Exit::Retry(e); }
                 }
                 Some(Cmd::Ephemeral { space, kind }) => {
                     if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind }).await { break Exit::Retry(e) }
                 }
             },
-            _ = &mut tick => {
+            () = &mut tick => {
                 #[cfg(test)]
                 if let Some(work) = &ctx.maintenance_work { work(); }
                 if !ctx.status.borrow().synced {
@@ -249,18 +304,33 @@ pub(super) async fn session_with_repair_policy(
                     continue;
                 }
                 if let Err(exit) = maintenance::maintain(maintenance::MaintenanceContext {
-                    ctx, sink: &mut sink, sent: &mut sent, waiting: &mut waiting,
+                    ctx, sink: &mut sink, sent: &mut sent, retries, waiting: &mut waiting,
                     next_id: &mut next_id, dirty: &mut dirty,
                     profiles_inflight: &mut profiles_inflight, traffic: &mut traffic,
                     opening: &mut opening, claim_clock: &claim_clock,
                     claim_refusal_reported: &mut claim_refusal_reported,
                     media_kick: &media_kick,
+                    read_owner: read_owner.as_ref(),
+                    deferred_reads: &mut deferred_reads,
                 }).await { break exit; }
                 // A slow pass must leave time to drive the socket, rather than build a
                 // burst of overdue scans over the same pending work.
                 tick.as_mut().reset(tokio::time::Instant::now() + MAINTENANCE_PERIOD);
             }
-            _ = async {
+            () = async {
+                match retries.deadline() {
+                    Some(next) => tokio::time::sleep_until(next).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                // Release due minima even while catch-up is incomplete; a past
+                // deadline must not spin or stop the ordered inbound dispatcher.
+                retries.release_due();
+                if let Err(e) = flush(ctx, &mut sink, &mut sent, retries).await {
+                    break Exit::Retry(e);
+                }
+            }
+            () = async {
                 match cursor_repair.admission() {
                     Some(next) => tokio::time::sleep_until(next).await,
                     None => std::future::pending().await,
@@ -287,11 +357,12 @@ pub(super) async fn session_with_repair_policy(
     let repair_abandoned =
         cursor_repair.abandon_transport(repair_expired, tokio::time::Instant::now());
     // Include unsent claims if writing a batch failed before their waiting entry existed.
-    engine!(|engine| engine.mls_claims_disconnected());
+    engine!(super::super::engine::Engine::mls_claims_disconnected);
+    for (_, w) in deferred_reads {
+        w.fail("offline");
+    }
     for (_, w) in waiting {
-        if let Waiting::External(tx) = w {
-            let _ = tx.send(Err("offline".into()));
-        }
+        w.fail("offline");
     }
     if !dirty.is_empty() {
         if let Some(l) = &ctx.listener {

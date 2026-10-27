@@ -4,7 +4,9 @@
 //! are present. Each turn is one admitted attempt under [`CheapTierAuthority`], a bounded
 //! per-owner daily cap. That is a staging guard, not the durable financial authority (U10).
 
-use super::host::{parse_reply, Brain, BrainOut, ToolCall, ToolDef, ToolStep, Turn, TurnContext};
+use super::host::{
+    parse_reply, Brain, BrainError, BrainOut, ToolCall, ToolDef, ToolStep, Turn, TurnContext,
+};
 use super::profile::Definition;
 use async_trait::async_trait;
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,6 +21,23 @@ use zoen_models::{
 pub const CHEAP_CHAT_PROFILE: &str = zoen_models::CHAT_PROFILE;
 /// The cheap default tier on Workers AI (GLM-5.3-Flash, docs/research/unit-economics.md).
 pub const CHEAP_MODEL: &str = "@cf/zai-org/glm-5.3-flash";
+
+fn gateway_failure(error: zoen_models::GatewayError) -> BrainError {
+    match error {
+        // No fresh transport was dispatched by this call, but a known/uncertain
+        // admission cannot establish the outcome of its original attempt.
+        zoen_models::GatewayError::NotFresh
+        | zoen_models::GatewayError::Admission(AdmissionError::Unavailable) => {
+            BrainError::OutcomeUnknown(error.to_string())
+        }
+        zoen_models::GatewayError::InvalidConfiguration
+        | zoen_models::GatewayError::InvalidRequest
+        | zoen_models::GatewayError::UnsupportedOperation
+        | zoen_models::GatewayError::Admission(AdmissionError::Denied) => {
+            BrainError::NotDispatched(error.to_string())
+        }
+    }
+}
 
 /// Admits each attempt id once and at most `daily_cap` attempts per owner per UTC day.
 pub struct CheapTierAuthority {
@@ -119,7 +138,7 @@ impl Brain for ModelBrain {
         cx: TurnContext<'_>,
         history: &[Turn],
         inbound: &Turn,
-    ) -> Result<BrainOut, String> {
+    ) -> Result<BrainOut, BrainError> {
         self.think_with_tools(cx, history, inbound, &[], &[]).await
     }
 
@@ -130,7 +149,7 @@ impl Brain for ModelBrain {
         inbound: &Turn,
         tools: &[ToolDef],
         steps: &[ToolStep],
-    ) -> Result<BrainOut, String> {
+    ) -> Result<BrainOut, BrainError> {
         let (owner, agent, device, def) = (cx.owner, cx.agent, cx.device, cx.definition);
         let mut messages = vec![InputMessage::System {
             text: system_prompt(def),
@@ -165,7 +184,8 @@ impl Brain for ModelBrain {
                 text: st.result.clone(),
             });
         }
-        let attempt = types::new_id("att");
+        let attempt =
+            types::new_id("att").map_err(|error| BrainError::NotDispatched(error.to_string()))?;
         let request = ModelRequest {
             context: AttemptContext {
                 attempt_id: attempt.clone(),
@@ -194,7 +214,7 @@ impl Brain for ModelBrain {
             .gateway
             .complete(request, &self.authority)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(gateway_failure)?;
         let blocks = result
             .output
             .map_err(|f| format!("model output failed: {f:?}"))?;

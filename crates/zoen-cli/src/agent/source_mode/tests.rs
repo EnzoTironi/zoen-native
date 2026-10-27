@@ -1,9 +1,17 @@
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
+mod file_import;
 mod fixture;
+mod known_result;
+mod known_tools;
+mod lifecycle;
+mod owner_controls;
+mod publication_recovery;
+mod reconnect;
 mod relay;
 mod turn_budget;
+mod uncertain_outcome;
 use fixture::{message, Fixture};
 use relay::{online, relay, Mode};
 
@@ -101,9 +109,10 @@ fn selector_requires_exact_id_and_explicit_positive_bound_without_changing_norma
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unsettled_source_admission_never_reads_state_or_seeds_a_cursor() {
+async fn unsettled_source_admission_never_reads_state_or_seeds_a_cursor(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Unsynced).await;
-    let f = Fixture::new(&server.url);
+    let f = Fixture::new(&server.url)?;
     online(&f.client, false).await;
     assert!(startup::settled_cursors(&f.client, 100).await.is_err());
     assert!(!server.calls.lock().unwrap().contains(&"agent_state"));
@@ -113,12 +122,14 @@ async fn unsettled_source_admission_never_reads_state_or_seeds_a_cursor() {
         .unwrap()
         .contains(&"forbidden_agent_operation"));
     assert!(server.cursors.lock().unwrap().is_empty());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn missing_target_refuses_before_provider_construction_and_never_seeds_or_publishes_ready() {
+async fn missing_target_refuses_before_provider_construction_and_never_seeds_or_publishes_ready(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let f = Fixture::new(&server.url);
+    let f = Fixture::new(&server.url)?;
     assert_eq!(
         Source::preflight(&f.client),
         Err("agent_host_source_account_unavailable".into())
@@ -139,10 +150,12 @@ async fn missing_target_refuses_before_provider_construction_and_never_seeds_or_
         .unwrap()
         .contains(&"forbidden_agent_operation"));
     assert!(!server.calls.lock().unwrap().contains(&"read_receipt"));
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unknown_state_and_definition_metadata_mismatch_refuse_before_providers_or_readiness() {
+async fn unknown_state_and_definition_metadata_mismatch_refuse_before_providers_or_readiness(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (mode, expected) in [
         (Mode::InvalidStatus, "agent_host_source_invalid_state"),
         (Mode::InvalidKind, "agent_host_source_invalid_state"),
@@ -156,7 +169,7 @@ async fn unknown_state_and_definition_metadata_mismatch_refuse_before_providers_
         ),
     ] {
         let server = relay(mode).await;
-        let f = Fixture::new(&server.url);
+        let f = Fixture::new(&server.url)?;
         online(&f.client, true).await;
         let lock = crate::agent_host_lock::HostLock::acquire(&f.path).unwrap();
         let ready = startup::Readiness::reset(&f.path, &lock).unwrap();
@@ -178,13 +191,15 @@ async fn unknown_state_and_definition_metadata_mismatch_refuse_before_providers_
     let bytes = definition().encode().unwrap();
     assert!(super::definition("future-status", "User", 1, &bytes).is_err());
     assert!(super::definition("active", "future-kind", 1, &bytes).is_err());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn real_signed_projection_selects_one_source_and_preserves_all_cursors_and_read_state() {
+async fn real_signed_projection_selects_one_source_and_preserves_all_cursors_and_read_state(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let mut f = Fixture::new(&server.url);
-    f.append(message("Newer source also must not execute.", None), true);
+    let mut f = Fixture::new(&server.url)?;
+    f.append(message("Newer source also must not execute.", None)?, true)?;
     online(&f.client, true).await;
     server.cursors.lock().unwrap().push((f.space.clone(), 1));
     let before = startup::settled_cursors(&f.client, 1000).await.unwrap();
@@ -211,12 +226,14 @@ async fn real_signed_projection_selects_one_source_and_preserves_all_cursors_and
         .contains(&"forbidden_agent_operation"));
     assert!(!server.calls.lock().unwrap().contains(&"read_receipt"));
     assert!(!f.path.join("agent-ready").exists());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
+async fn selected_turn_refuses_another_valid_signed_message_before_runtime(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let f = Fixture::new(&server.url);
+    let f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
     let run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let timeline = f.client.timeline(f.space.clone()).unwrap();
@@ -238,12 +255,14 @@ async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(!f.path.join("source-steps.json").exists());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unknown_outcome_is_not_automatically_retried_on_a_wake() {
+async fn unknown_outcome_is_not_automatically_retried_on_a_wake(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let f = Fixture::new(&server.url);
+    let f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
     let mut run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
@@ -259,19 +278,21 @@ async fn unknown_outcome_is_not_automatically_retried_on_a_wake() {
         .unwrap());
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert!(server.cursors.lock().unwrap().is_empty());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_existing_accepted_own_reply_completes_without_model_or_cursor_effects() {
+async fn an_existing_accepted_own_reply_completes_without_model_or_cursor_effects(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
-    let mut body = message("Existing accepted reply.", None);
+    let mut body = message("Existing accepted reply.", None)?;
     let types::EventBody::MessagePosted { reply, .. } = &mut body else {
         unreachable!()
     };
     *reply = Some(types::ReplyRef::inline(f.source.clone()));
-    let reply_id = f.append(body, false);
+    let reply_id = f.append(body, false)?;
     let reply = f
         .client
         .timeline(f.space.clone())
@@ -305,19 +326,21 @@ async fn an_existing_accepted_own_reply_completes_without_model_or_cursor_effect
         .unwrap());
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(server.cursors.lock().unwrap().is_empty());
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn deleted_empty_self_and_nonmessage_sources_are_refused() {
+async fn deleted_empty_self_and_nonmessage_sources_are_refused(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
-    let empty = f.append(message(" \n ", None), true);
+    let empty = f.append(message(" \n ", None)?, true)?;
     assert_eq!(
         Run::prepare(&f.client, source(&empty), &[]).err().unwrap(),
         "agent_host_source_not_text_message"
     );
-    let own = f.append(message("Own message cannot become a task.", None), false);
+    let own = f.append(message("Own message cannot become a task.", None)?, false)?;
     assert_eq!(
         Run::prepare(&f.client, source(&own), &[]).err().unwrap(),
         "agent_host_source_member_unavailable"
@@ -328,14 +351,14 @@ async fn deleted_empty_self_and_nonmessage_sources_are_refused() {
             note: types::Annotation::Delete,
         },
         true,
-    );
+    )?;
     assert_eq!(
         Run::prepare(&f.client, source(&f.source), &[])
             .err()
             .unwrap(),
         "agent_host_source_not_text_message"
     );
-    let system = f.append(types::EventBody::SpaceEncrypted, false);
+    let system = f.append(types::EventBody::SpaceEncrypted, false)?;
     let event = f
         .client
         .timeline(f.space.clone())
@@ -350,12 +373,14 @@ async fn deleted_empty_self_and_nonmessage_sources_are_refused() {
             .unwrap(),
         "agent_host_source_not_text_message"
     );
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn live_binding_refuses_text_edit_member_removal_and_foreign_context() {
+async fn live_binding_refuses_text_edit_member_removal_and_foreign_context(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
     let run = Run::prepare(&f.client, source(&f.source), &[]).unwrap();
     let account = f.client.account().unwrap();
@@ -368,7 +393,7 @@ async fn live_binding_refuses_text_edit_member_removal_and_foreign_context() {
             },
         },
         true,
-    );
+    )?;
     assert_eq!(
         run.check(&f.client),
         Err("agent_host_source_changed".into())
@@ -379,24 +404,26 @@ async fn live_binding_refuses_text_edit_member_removal_and_foreign_context() {
             identity: f.owner.clone(),
         },
         false,
-    );
+    )?;
     assert_eq!(
         run.check(&f.client),
         Err("agent_host_source_member_unavailable".into())
     );
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn shared_app_card_is_not_an_explicit_text_task() {
+async fn shared_app_card_is_not_an_explicit_text_task(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
     f.client.stop_sync();
     let base = deck(&f);
     let card = f.append(
-        message("Generated share caption.", Some(base.item_id)),
+        message("Generated share caption.", Some(base.item_id))?,
         true,
-    );
+    )?;
     assert!(f
         .client
         .timeline(f.space.clone())
@@ -407,6 +434,7 @@ async fn shared_app_card_is_not_an_explicit_text_task() {
         Run::prepare(&f.client, source(&card), &[]).err().unwrap(),
         "agent_host_source_not_text_message"
     );
+    Ok(())
 }
 
 fn deck(f: &Fixture) -> client_core::AppBinaryDocumentDto {
@@ -480,9 +508,10 @@ fn stage_review(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn approved_recovery_enters_only_selected_request_and_retains_executor_admission() {
+async fn approved_recovery_enters_only_selected_request_and_retains_executor_admission(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Normal).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     online(&f.client, true).await;
     f.client.stop_sync();
     let base = deck(&f);
@@ -499,7 +528,7 @@ async fn approved_recovery_enters_only_selected_request_and_retains_executor_adm
         .unwrap());
     assert_eq!(a.values().last().unwrap()["outcome"], "pending");
     let observed = a.values().len();
-    f.approve(&other).await;
+    f.approve(&other).await?;
     assert!(!run
         .tick(&f.client, &cx, &definition(), deadline())
         .await
@@ -509,7 +538,7 @@ async fn approved_recovery_enters_only_selected_request_and_retains_executor_adm
         observed,
         "other approval must not re-enter the selected source"
     );
-    f.approve(&selected).await;
+    f.approve(&selected).await?;
     assert_eq!(
         run.head(&f.client).unwrap(),
         Some((selected.id.clone(), RequestStatus::Approved, None))
@@ -543,6 +572,7 @@ async fn approved_recovery_enters_only_selected_request_and_retains_executor_adm
     );
     assert!(server.cursors.lock().unwrap().is_empty());
     assert!(!f.path.join("source-steps.json").exists());
+    Ok(())
 }
 
 mod review;

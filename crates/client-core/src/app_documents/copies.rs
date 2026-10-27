@@ -1,6 +1,11 @@
 //! Copies on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    hash, invalid, json, metadata, new_id, stale, storage, t, unavailable, valid_hash, valid_id,
+    validate_scene, AppDoc, AppDocumentDto, BTreeSet, Capability, CopyReceipt, Engine, EventBody,
+    Grant, GrantScope, HashMap, ItemContent, ItemKind, Scene, TrustLevel, Value, MAX_RECEIPTS,
+    MIME, R,
+};
 
 impl Engine {
     /// Copy is an explicit conflict recovery action, never an automatic overwrite.
@@ -10,14 +15,26 @@ impl Engine {
         scene_json: &str,
         mutation_id: &str,
     ) -> R<AppDocumentDto> {
+        self.copy_app_document(item, scene_json, mutation_id, None)
+    }
+    pub(crate) fn copy_app_document(
+        &mut self,
+        item: &str,
+        scene_json: &str,
+        mutation_id: &str,
+        resource: Option<&str>,
+    ) -> R<AppDocumentDto> {
         if !valid_id(mutation_id) {
             return Err(invalid());
         }
         let scene = validate_scene(scene_json)?;
         let (me, device, space, _, app) = self.app_document_scope(item)?;
         let sha = hash(scene_json.as_bytes());
-        let fingerprint =
+        let mut fingerprint =
             hash(&serde_json::to_vec(&(&me, &device, item, &sha)).map_err(|_| invalid())?);
+        if let Some(uri) = resource {
+            fingerprint = hash(&serde_json::to_vec(&(fingerprint, uri)).map_err(|_| invalid())?);
+        }
         let key = format!(
             "app_document_copy_receipts:{}",
             hash(&serde_json::to_vec(&(&me, &device, item)).map_err(|_| invalid())?)
@@ -48,8 +65,9 @@ impl Engine {
             let accepted = self
                 .item_state(&r.item_id)?
                 .versions
-                .first()
-                .and_then(|v| v.content.owned_file())
+                .initial()
+                .content
+                .owned_file()
                 .filter(|f| f.sha256 == sha && f.sha256 == r.sha256)
                 .ok_or_else(storage)?;
             if accepted_space != space {
@@ -62,6 +80,9 @@ impl Engine {
                 sha256: accepted.sha256.clone(),
                 scene_json: scene_json.into(),
             });
+        }
+        if app.view.is_some() {
+            self.check_app_resource_pin(item, resource.ok_or_else(stale)?)?;
         }
         // The canonical Item also fences an evicted receipt: an old intent must
         // never create a second copy merely because its local ACK was retired.
@@ -142,7 +163,7 @@ impl Engine {
         &mut self,
         space: &str,
         me: &str,
-        app: AppDoc,
+        mut app: AppDoc,
         title: &str,
         text: &str,
         scene: &Scene,
@@ -150,9 +171,20 @@ impl Engine {
         caption: &str,
         item_id: Option<String>,
     ) -> R<String> {
-        let item = item_id.unwrap_or_else(|| new_id("it"));
+        if app.view.is_some()
+            && !self
+                .identities
+                .get(me)
+                .is_some_and(|identity| identity.kind == types::IdentityKind::Person)
+        {
+            return Err(unavailable());
+        }
+        let mut item = match item_id {
+            Some(item) => item,
+            None => new_id("it")?,
+        };
         let key = self.file_key(None)?;
-        let file = self.file_doc(
+        let mut file = self.file_doc(
             space,
             &key,
             "drawing.excalidraw",
@@ -162,6 +194,21 @@ impl Engine {
             None,
             &HashMap::new(),
         )?;
+        if app.view.is_some() {
+            let device = self.account().ok_or_else(unavailable)?.device.clone();
+            let mutation = item;
+            item = crate::app_resources::item_id(me, &device, space, &mutation)?;
+            if self.state.items.contains_key(&item) {
+                return Err(stale());
+            }
+            file.app_origin = Some(types::AppItemOrigin {
+                author: me.into(),
+                device,
+                space: space.into(),
+                mutation,
+            });
+            self.copy_app_view(&mut app, space, &key)?;
+        }
         self.store
             .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
         let mut compact: Value = serde_json::from_str(&metadata(scene)).map_err(|_| invalid())?;
@@ -186,7 +233,7 @@ impl Engine {
             me,
             EventBody::GrantIssued {
                 grant: Grant {
-                    id: new_id("gr"),
+                    id: new_id("gr")?,
                     grantor: me.into(),
                     grantee: Some(format!("app:{item}")),
                     scope: GrantScope::Item(item.clone()),
@@ -199,7 +246,7 @@ impl Engine {
             space,
             me,
             EventBody::MessagePosted {
-                message: new_id("msg"),
+                message: new_id("msg")?,
                 text: caption.into(),
                 attaches: Some(item.clone()),
                 reply: None,

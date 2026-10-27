@@ -1,6 +1,10 @@
 //! Confirmed-history reload and optimistic approval overlays.
 
-use super::*;
+use super::{
+    is_message_send, CoreError, Engine, Event, EventBody, HashMap, HashSet, ItemContent, ItemKind,
+    PageContent, PendingCommitment, PlanReplay, Projection, State, EVENT_FORMAT_META,
+    EVENT_FORMAT_VALUE, R,
+};
 
 impl Engine {
     /// Logs from an older event format can't be re-verified under the current one: start over (pre-launch only; ADR 0010).
@@ -18,6 +22,9 @@ impl Engine {
 
     /// Part of `reload`: account, relay-ordered Spaces and the outbox on top.
     pub(crate) fn reload_sync(&mut self) -> R<()> {
+        if let Ok(cache) = self.net.outbox_verification.get_mut() {
+            cache.clear();
+        }
         self.net.account = match self.store.meta("account")? {
             Some(j) => serde_json::from_str(&j).ok(),
             None => None,
@@ -95,6 +102,7 @@ impl Engine {
                     | EventBody::MemberAdded { .. }
                     | EventBody::MemberRemoved { .. }
                     | EventBody::GrantIssued { .. }
+                    | EventBody::AppCurrentShared { .. }
                     | EventBody::GrantRevoked { .. }
                     | EventBody::ItemCreated { .. }
                     | EventBody::ItemVersioned { .. }
@@ -224,12 +232,9 @@ impl Engine {
                 continue;
             }
             if p.failed {
-                if is_message_send(&e.body)
-                    && projections
-                        .get(&e.space)
-                        .is_some_and(|scoped| scoped.spaces.contains_key(&e.space))
-                {
-                    let scoped = projections.get_mut(&e.space).expect("checked above");
+                if let Some(scoped) = projections.get_mut(&e.space).filter(|scoped| {
+                    is_message_send(&e.body) && scoped.spaces.contains_key(&e.space)
+                }) {
                     let retained = if let EventBody::MessagePosted {
                         attaches: Some(item),
                         ..
@@ -249,7 +254,13 @@ impl Engine {
                     };
                     // Preserve normal replay for text and canonical non-File
                     // cards. Recovery reservations still fence the checked fold.
-                    if !retained && matches!(e.body, EventBody::MessagePosted { media: None, .. }) {
+                    if !retained
+                        && matches!(
+                            e.body,
+                            EventBody::MessagePosted { media: None, .. }
+                                | EventBody::AppEditRequested { .. }
+                        )
+                    {
                         let context = plans.pending(scoped, &self.identities, e)?;
                         scoped.apply_checked(e, &self.identities, &context);
                     } else if !matches!(e.body, EventBody::MessagePosted { .. }) {

@@ -3,6 +3,7 @@
 //! ledger, a network filesystem protocol, or authority to invoke a provider.
 mod file;
 mod history;
+mod lock;
 mod publish;
 mod state;
 pub use file::{AnchorReader, AnchorWriter, GenerationGuard};
@@ -28,5 +29,7 @@ impl std::fmt::Display for AnchorError {
 }
 impl std::error::Error for AnchorError {}
 
+#[cfg(test)]
+mod faults;
 #[cfg(test)]
 mod tests;

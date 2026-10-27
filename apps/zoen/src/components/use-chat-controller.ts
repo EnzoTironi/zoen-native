@@ -1,22 +1,22 @@
 import { type FlashListRef } from '@shopify/flash-list';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../components/dialogs';
 import { useKeyboardMotion } from '../components/keyboard-motion';
 import { useMessageActions } from '../components/use-message-actions';
+import { useChatNativeMetrics } from './use-chat-native-metrics';
+import { useConversationRail } from './use-conversation-rail';
 import { ConversationReveal } from '../core/conversation-reveal';
-import { ConversationSearch } from '../core/conversation-search';
+import {
+  conversationRevealContent,
+  type ConversationContentLayout,
+} from '../core/conversation-reveal-content';
+import type { ConversationSearch } from '../core/conversation-search';
+import { conversationScope } from '../core/conversation-scope';
+import { useConversationSearch } from '../core/use-conversation-search';
 import {
   projectConversationTimeline,
   type ConversationTimelineRow,
@@ -47,7 +47,7 @@ export function useChatController() {
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
   const timelineTopInset = process.env.EXPO_OS === 'ios' ? 0 : statusBarHeight;
-  const { progress: keyboardProgress } = useKeyboardMotion();
+  const keyboard = useKeyboardMotion();
   const conversationMiniapps = cards.visible;
   const { inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
@@ -65,37 +65,14 @@ export function useChatController() {
   const [noticeHeight, setNoticeHeight] = useState(0);
   const composerText = editing ? editDraft : draft;
   const chat = snapshot?.conversations.find((conversation) => conversation.id === id);
-  const owner = [
-    store.getSnapshot().mode,
-    snapshot?.account?.identity_id ?? snapshot?.me?.id,
-    snapshot?.account?.device_id,
-  ].join(':');
+  const { owner, search, searchState } = useConversationSearch(id);
+  const rail = useConversationRail(
+    `${owner}:${store.sessionEpoch}:${id}`,
+    railHeight,
+    conversationMiniapps.length > 0,
+  );
+  const { visibleHeight: railVisibleHeight } = rail;
   useMessageAudioFocus(id, `${owner}:${store.sessionEpoch}`);
-  const search = useMemo(
-    () =>
-      new ConversationSearch({
-        current: () => {
-          const current = store.getSnapshot();
-          return (
-            current.phase === 'ready' &&
-            [
-              current.mode,
-              current.snapshot?.account?.identity_id ?? current.snapshot?.me?.id,
-              current.snapshot?.account?.device_id,
-            ].join(':') === owner &&
-            Boolean(current.snapshot?.conversations.some((conversation) => conversation.id === id))
-          );
-        },
-        search: (query, cursor) =>
-          store.driver.request({ op: 'search_messages', space_id: id, query, cursor, limit: 30 }),
-      }),
-    [id, owner, store],
-  );
-  const searchState = useSyncExternalStore(
-    search.subscribe,
-    search.getSnapshot,
-    search.getSnapshot,
-  );
   const [searchRead, setSearchRead] = useState<{
     search: ConversationSearch;
     hit: UniversalHit;
@@ -164,8 +141,44 @@ export function useChatController() {
     noticeHeight,
   });
   const searchReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
+  const metricsFocused = useIsFocused();
+  const {
+    navigationMetrics,
+    observe: observeNativeMetrics,
+    onComposerLayout,
+    onInsetRequested,
+  } = useChatNativeMetrics({
+    reveal: searchReveal,
+    focused: metricsFocused,
+    searchActive: searchState.active,
+    current: () =>
+      focused.current &&
+      owner !== null &&
+      !store.isSessionRetiring &&
+      conversationScope(store.getSnapshot(), store.sessionEpoch, id) === owner,
+    list,
+    rows: visibleEntries.length,
+    keyboard,
+    reply: Boolean(reply),
+    editing: Boolean(editing),
+  });
+  const searchContent = useRef<{
+    scope: ConversationReveal;
+    id: string;
+    layout: ConversationContentLayout;
+  } | null>(null);
+  const onSearchContentLayout = useCallback(
+    (target: string, layout: ConversationContentLayout) => {
+      const current = search.getSnapshot();
+      if (!current.active || current.hits[current.index]?.ref_id !== target) return;
+      searchContent.current = { scope: searchReveal, id: target, layout };
+      searchReveal.onItemLayout();
+    },
+    [search, searchReveal],
+  );
   useLayoutEffect(() => {
     searchReveal.connect({
+      observe: observeNativeMetrics,
       current: (target) => {
         const current = search.getSnapshot();
         return (
@@ -183,10 +196,12 @@ export function useChatController() {
         if (index < 0) return null;
         const row = native.getLayout(index);
         if (!row) return null;
+        const content = searchContent.current;
         return {
-          y: row.y,
-          height: row.height,
-          measured: row.isHeightMeasured === true && row.isWidthMeasured === true,
+          ...conversationRevealContent(
+            row,
+            content?.scope === searchReveal && content.id === target ? content.layout : null,
+          ),
           firstItemOffset: native.getFirstItemOffset(),
           childHeight: native.getChildContainerDimensions().height,
           windowHeight: native.getWindowSize().height,
@@ -194,7 +209,7 @@ export function useChatController() {
           topObstruction:
             current.headerHeight -
             current.timelineTopInset +
-            current.railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
+            railVisibleHeight.value +
             current.noticeHeight +
             8,
         };
@@ -218,7 +233,7 @@ export function useChatController() {
           }
         : undefined,
     });
-  }, [searchReveal, search, keyboardProgress]);
+  }, [searchReveal, search, railVisibleHeight, observeNativeMetrics]);
   useLayoutEffect(() => {
     revealLayout.current = {
       entries: visibleEntries,
@@ -261,13 +276,9 @@ export function useChatController() {
           !editing &&
           !scrollTarget &&
           !search.getSnapshot().active &&
-          current.phase === 'ready' &&
-          Boolean(current.snapshot?.conversations.some((conversation) => conversation.id === id)) &&
-          [
-            current.mode,
-            current.snapshot?.account?.identity_id ?? current.snapshot?.me?.id,
-            current.snapshot?.account?.device_id,
-          ].join(':') === owner
+          owner !== null &&
+          !store.isSessionRetiring &&
+          conversationScope(current, store.sessionEpoch, id) === owner
         );
       },
       frame: (work) => {
@@ -307,7 +318,6 @@ export function useChatController() {
     }, 200);
     return () => clearTimeout(timer);
   }, [search, searchState.active, searchState.query]);
-  useEffect(() => () => search.close(), [search]);
   const activityLabel = chatActivityLabel(snapshot, activity, id);
   useFocusEffect(
     useCallback(() => {
@@ -417,7 +427,7 @@ export function useChatController() {
           viewOffset: -(
             headerHeight -
             timelineTopInset +
-            railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
+            railVisibleHeight.value +
             noticeHeight +
             8
           ),
@@ -440,7 +450,7 @@ export function useChatController() {
     timelineTopInset,
     railHeight,
     noticeHeight,
-    keyboardProgress,
+    railVisibleHeight,
     conversationMiniapps.length,
     cards.loading,
   ]);
@@ -483,9 +493,9 @@ export function useChatController() {
     spaceId: id,
     entries: page?.entries ?? [],
     disabled: searchState.active,
-    onReply: (entry) => {
+    onReply: (entry, selection) => {
       cancelInitialEnd();
-      updateDraft({ type: 'reply', entry });
+      updateDraft({ type: 'reply', entry, selection });
       input.current?.focus();
     },
     onEdit: (entry) => {
@@ -509,6 +519,10 @@ export function useChatController() {
     input,
     initialEnd,
     searchReveal,
+    navigationMetrics,
+    onComposerLayout,
+    onInsetRequested,
+    onSearchContentLayout,
     normalDraft,
     editing,
     reply,
@@ -536,6 +550,7 @@ export function useChatController() {
     loadedSpace,
     rows,
     railHeight,
+    rail,
     Math,
     noticeHeight,
     items,

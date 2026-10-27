@@ -40,13 +40,30 @@ impl Cell {
             })
             .collect();
 
+        let mut targets: Vec<_> = batch
+            .iter()
+            .flat_map(|pending| match pending.env.body() {
+                Some(EventBody::MemberAdded { identity, .. }) => {
+                    vec![identity, pending.env.author().to_owned()]
+                }
+                _ => Vec::new(),
+            })
+            .collect();
+        targets.sort();
+        targets.dedup();
+        let removal_keys: Vec<_> = targets
+            .iter()
+            .map(|identity| self.space_key(space, ("gone", identity.as_str())))
+            .collect();
+
         // One round trip for every point read the batch needs. Dedupe keys are snapshot
         // reads under the head fence. Invites also change outside appends
         // (`create_invite`), so they keep their conflict ranges.
-        let (head, dedupes, invite_values) = try_join3(
+        let (head, dedupes, invite_values, removal_values) = try_join4(
             trx.get(&head_key, false),
             try_join_all(dedupe_keys.iter().map(|k| trx.get(k, true))),
             try_join_all(invite_keys.iter().flatten().map(|k| trx.get(k, false))),
+            try_join_all(removal_keys.iter().map(|key| trx.get(key, true))),
         )
         .await?;
         let head: Option<(u64, String)> = head
@@ -57,6 +74,17 @@ impl Cell {
         for (k, v) in invite_keys.iter().flatten().zip(invite_values) {
             if let Some(v) = v {
                 invites.insert(k, unpack(&v).map_err(|e| custom(e.to_string()))?);
+            }
+        }
+
+        // This is the existing durable removal boundary, not a second access
+        // ledger. The head read fences it; updates below also cover same-batch races.
+        let mut removals = HashMap::new();
+        for (identity, value) in targets.into_iter().zip(removal_values) {
+            if let Some(value) = value {
+                let seq: i64 = unpack(&value).map_err(|error| custom(error.to_string()))?;
+                let seq = u64::try_from(seq).map_err(|_| custom("invalid removal boundary"))?;
+                removals.insert(identity, seq);
             }
         }
 
@@ -177,6 +205,10 @@ impl Cell {
                 };
                 facts.kind = state.kind;
                 facts.author_role = state.members.get(env.author()).copied();
+                facts.author_removed_at = removals.get(env.author()).copied();
+                facts.target_removed_at = target
+                    .as_ref()
+                    .and_then(|target| removals.get(target).copied());
                 facts.target_role = target.and_then(|t| state.members.get(&t).copied());
                 facts.member_count = state.members.len() as u32;
                 facts.privacy = state.privacy;
@@ -225,7 +257,8 @@ impl Cell {
                     continue;
                 }
             };
-            let hash = chain_hash(space, seq, &prev, &env.wire_hash());
+            let hash = chain_hash(space, seq, &prev, &env.wire_hash())
+                .map_err(|error| custom(error.to_string()))?;
             let mut stored = env.clone();
             stored.invite = None;
             let ev = Sequenced {
@@ -270,7 +303,8 @@ impl Cell {
                         }
                     }
                     self.put_member(trx, space, &identity, role);
-                    trx.clear(&self.space_key(space, ("gone", identity.as_str())));
+                    // Keep the last removal to fence older role grants even
+                    // after a new, explicitly observed inclusion (remove/rejoin ABA).
                     state.members.insert(identity.clone(), role);
                     joined = Some(identity);
                 }
@@ -282,6 +316,7 @@ impl Cell {
                         &pack(&(seq as i64)),
                     );
                     state.members.remove(&identity);
+                    removals.insert(identity.clone(), seq);
                     removed = Some(identity);
                 }
                 Effect::Encrypt => {

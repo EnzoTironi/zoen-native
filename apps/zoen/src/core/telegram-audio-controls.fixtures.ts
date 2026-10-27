@@ -7,6 +7,9 @@ import { telegramPresentation } from '../theme/telegram.ts';
 import * as presentation from './telegram-audio-presentation.ts';
 import * as composerMotion from './telegram-composer-motion.ts';
 import * as composerPresentation from './telegram-composer-presentation.ts';
+import { composerOwnerFixture } from './composer-owner.fixtures.ts';
+import { homeOwnerFor } from '../home/access.ts';
+import { createRef } from 'react';
 
 export type Element = { type: any; props: Record<string, any> };
 export type Slot = { value?: any; deps?: unknown[]; cleanup?: () => void };
@@ -49,12 +52,16 @@ export function nodes(tree: any): Element[] {
   return [tree, ...nodes(tree.props.children)];
 }
 export function fixture(name: keyof typeof sources, dependencies: Record<string, unknown> = {}) {
+  const client = composerOwnerFixture();
   const scopes = new Map<string, Slot[]>([['root', []]]);
   let slots = scopes.get('root')!;
   let cursor = 0;
   let effects: (() => void)[] = [];
   const next = () => (slots[cursor++] ??= {});
-  const jsx = (type: any, props: Element['props']) => ({ type, props });
+  const jsx = (type: any, props: Element['props']) => {
+    if (type === 'ComposerTextField') props.bindSend?.(props.onSend);
+    return { type, props };
+  };
   const effect = (read: () => any, deps?: unknown[]) => {
     const slot = next();
     if (
@@ -92,6 +99,7 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
   };
   const ports: Record<string, any> = {
     react: {
+      createRef,
       createContext: (value: unknown) => ({ fixtureContext: true, value }),
       useContext: (context: { value: unknown }) => context.value,
       useRef(value: any) {
@@ -115,6 +123,14 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
         if (!slot.deps || deps.some((value, index) => !Object.is(value, slot.deps![index]))) {
           slot.deps = deps;
           slot.value = callback;
+        }
+        return slot.value;
+      },
+      useMemo(read: () => unknown, deps: unknown[]) {
+        const slot = next();
+        if (!slot.deps || deps.some((value, index) => !Object.is(value, slot.deps![index]))) {
+          slot.deps = deps;
+          slot.value = read();
         }
         return slot.value;
       },
@@ -184,6 +200,8 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
     '../core/telegram-audio-presentation': presentation,
     '../core/telegram-composer-presentation': composerPresentation,
     '../core/telegram-composer-motion': composerMotion,
+    '../core/provider': { useClient: () => client },
+    '../home/access': { homeOwnerFor },
     '../components/composer-control-surface': {
       ComposerControlSurface: 'ComposerControlSurface',
       ComposerGlyph: 'ComposerGlyph',

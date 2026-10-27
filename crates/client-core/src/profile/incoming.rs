@@ -1,6 +1,13 @@
 //! Authenticated profile/agreement arrivals and own lookup settlement.
 
-use super::*;
+#[cfg(test)]
+use super::{seal_profile, sign_upload, IdentityKind, PhotoChange, META_OWN_SYNC};
+
+use super::{
+    invalid, open_profile, verify_agreement, verify_upload, AgreementKeyRecord, Engine, HashSet,
+    Identity, IdentityId, Observe, ProfileFields, ProfileKey, SealedProfile, BATCH, MAX_CIPHERTEXT,
+    R,
+};
 
 impl Engine {
     pub fn take_need_agreement(&self) -> Vec<IdentityId> {
@@ -20,18 +27,35 @@ impl Engine {
         &mut self,
         records: Vec<AgreementKeyRecord>,
         asked: &[IdentityId],
-    ) {
+    ) -> bool {
         let mut found = HashSet::new();
+        let mut failed = HashSet::new();
         for r in records {
             if asked.contains(&r.identity) && verify_agreement(&r.identity, &r.public, &r.signed) {
-                let _ = self.store.put_peer_agreement_key(&r.identity, &r.public);
-                found.insert(r.identity);
+                if self
+                    .store
+                    .put_peer_agreement_key(&r.identity, &r.public)
+                    .is_ok()
+                {
+                    failed.remove(&r.identity);
+                    found.insert(r.identity);
+                } else {
+                    failed.insert(r.identity);
+                }
             }
         }
         let p = &mut self.net.profiles;
         for id in asked {
+            if failed.contains(id) {
+                // A signed reply is not a persisted key or evidence of absence.
+                p.need_agreement.insert(id.clone());
+                p.no_agreement.remove(id);
+                continue;
+            }
             p.need_agreement.remove(id);
-            if !found.contains(id) {
+            if found.contains(id) {
+                p.no_agreement.remove(id);
+            } else {
                 p.no_agreement.insert(id.clone());
             }
         }
@@ -40,12 +64,18 @@ impl Engine {
             self.net
                 .synced
                 .iter()
+                // A profile lookup is not a reason to reload every ready MLS
+                // group. Retry only recovery that actually lacked this key.
+                .filter(|space| self.net.mls.recovery_key_waiters.contains(*space))
                 .filter(|space| {
                     self.mls_roster(space)
                         .is_some_and(|roster| asked.iter().any(|id| roster.contains_key(id)))
                 })
                 .cloned(),
         );
+        !asked
+            .iter()
+            .any(|id| self.net.profiles.need_agreement.contains(id))
     }
 
     pub fn take_need_profiles(&mut self) -> Vec<IdentityId> {
@@ -81,15 +111,14 @@ impl Engine {
         }
         let mut changed = Vec::new();
         let me = self.me.clone();
-        let own_asked = me.as_ref().is_some_and(|me| asked.contains(me));
+        let own_asked = me.as_ref().filter(|me| asked.contains(me));
         let own_present = me
             .as_ref()
             .is_some_and(|me| list.iter().any(|record| &record.identity == me));
-        let own_sync = own_asked
-            .then(|| self.own_profile_journal().ok().map(|journal| journal.sync))
-            .flatten();
+        let own_sync =
+            own_asked.and_then(|_| self.own_profile_journal().ok().map(|journal| journal.sync));
         let mut own_verified = false;
-        if own_asked {
+        if own_asked.is_some() {
             self.net.profiles.own_refreshed = false;
         }
         for p in list {
@@ -100,15 +129,27 @@ impl Engine {
             {
                 continue;
             }
-            let Ok(Some(row)) = self.store.profile_key(&p.identity) else {
-                continue;
+            let row = match self.store.profile_key(&p.identity) {
+                Ok(Some(row)) => row,
+                Ok(None) => continue,
+                Err(_) => {
+                    self.net.profiles.need_profiles.insert(p.identity);
+                    continue;
+                }
             };
             if self.me.as_deref() == Some(p.identity.as_str()) {
-                own_verified |= own_sync
-                    .as_ref()
-                    .is_some_and(|sync| p.version >= sync.published);
-                if self.open_own_profile(&p).unwrap_or(false) {
-                    changed.push(p.identity);
+                match self.open_own_profile(&p) {
+                    Ok(adopted) => {
+                        own_verified |= own_sync
+                            .as_ref()
+                            .is_some_and(|sync| p.version >= sync.published);
+                        if adopted {
+                            changed.push(p.identity);
+                        }
+                    }
+                    Err(_) => {
+                        self.net.profiles.need_profiles.insert(p.identity);
+                    }
                 }
                 continue;
             }
@@ -121,26 +162,23 @@ impl Engine {
             let Some(fields) = open_profile(&key, &p.identity, p.version, &p.ciphertext) else {
                 continue;
             };
-            if self
-                .store
-                .set_profile_fields(&p.identity, p.version, &fields.to_bytes())
-                .is_ok()
-                && self.apply_fields(&p.identity).is_ok()
-            {
-                changed.push(p.identity);
+            match self.commit_foreign_profile(&p, &fields) {
+                Ok(()) => changed.push(p.identity),
+                Err(_) => {
+                    self.net.profiles.need_profiles.insert(p.identity);
+                }
             }
         }
-        if own_asked {
-            let me = me.expect("own profile was requested");
+        if let Some(me) = own_asked {
             let bootstrap_absent = !own_present
                 && own_sync.as_ref().is_some_and(|sync| {
                     sync.published == 0 && sync.pending.is_some() && !sync.key_unavailable()
                 });
-            let complete = (own_verified || bootstrap_absent)
-                && !self.net.profiles.need_profiles.contains(&me);
+            let complete =
+                (own_verified || bootstrap_absent) && !self.net.profiles.need_profiles.contains(me);
             self.net.profiles.own_refreshed = complete;
             if !complete {
-                self.net.profiles.need_profiles.insert(me);
+                self.net.profiles.need_profiles.insert(me.clone());
             }
         }
         changed
@@ -152,6 +190,34 @@ impl Engine {
         !asked
             .iter()
             .any(|id| self.net.profiles.need_profiles.contains(id))
+    }
+
+    /// Decrypted fields and their directory projection advance together. Otherwise
+    /// a projection error would make the unchanged retry look already seen.
+    fn commit_foreign_profile(&mut self, profile: &SealedProfile, fields: &ProfileFields) -> R<()> {
+        self.store
+            .raw_execute("SAVEPOINT foreign_profile_receive")?;
+        let applied = (|| -> R<Option<Identity>> {
+            self.store.set_profile_fields(
+                &profile.identity,
+                profile.version,
+                &fields.to_bytes(),
+            )?;
+            let projection = self.stage_fields_projection(&profile.identity)?;
+            self.store.raw_execute("RELEASE foreign_profile_receive")?;
+            Ok(projection)
+        })();
+        let projection = match applied {
+            Ok(projection) => projection,
+            Err(error) => {
+                self.store
+                    .raw_execute("ROLLBACK TO foreign_profile_receive")?;
+                self.store.raw_execute("RELEASE foreign_profile_receive")?;
+                return Err(error);
+            }
+        };
+        self.publish_fields_projection(&profile.identity, projection);
+        Ok(())
     }
 
     pub(super) fn open_own_profile(&mut self, profile: &SealedProfile) -> R<bool> {
@@ -189,22 +255,30 @@ impl Engine {
             journal.upload = None;
         }
         self.store.raw_execute("SAVEPOINT own_profile_receive")?;
-        let applied = (|| -> R<()> {
+        let applied = (|| -> R<Option<Identity>> {
             if let Some(fields) = &adopted {
                 self.store
                     .set_profile_fields(&me, version, &fields.to_bytes())?;
             }
             self.save_own_profile_journal(&journal)?;
-            Ok(())
-        })();
-        if let Err(error) = applied {
-            self.store.raw_execute("ROLLBACK TO own_profile_receive")?;
+            let projection = if adopted.is_some() {
+                self.stage_fields_projection(&me)?
+            } else {
+                None
+            };
             self.store.raw_execute("RELEASE own_profile_receive")?;
-            return Err(error);
-        }
-        self.store.raw_execute("RELEASE own_profile_receive")?;
+            Ok(projection)
+        })();
+        let projection = match applied {
+            Ok(projection) => projection,
+            Err(error) => {
+                self.store.raw_execute("ROLLBACK TO own_profile_receive")?;
+                self.store.raw_execute("RELEASE own_profile_receive")?;
+                return Err(error);
+            }
+        };
         if adopted.is_some() {
-            self.apply_fields(&me)?;
+            self.publish_fields_projection(&me, projection);
         }
         Ok(matches!(outcome, Observe::Adopt))
     }
@@ -221,20 +295,7 @@ impl Engine {
             }
         }
     }
-
-    /// Nothing about profiles is waiting on the relay.
-    pub fn profiles_settled(&self) -> bool {
-        let p = &self.net.profiles;
-        if !p.supported {
-            return true;
-        }
-        p.need_agreement.is_empty()
-            && p.need_profiles.is_empty()
-            && !p.shares_dirty
-            && self.agreement_to_publish().is_none()
-            && !self.upload_due()
-            && self.own_profile_journal().is_ok_and(|journal| {
-                journal.sync.pending.is_none() && !journal.sync.key_unavailable()
-            })
-    }
 }
+
+#[cfg(test)]
+mod receipt_tests;

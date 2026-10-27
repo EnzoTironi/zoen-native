@@ -1,117 +1,129 @@
+import { Collapsible, Column, Host, Text as NativeText } from '@expo/ui';
+import { useState } from 'react';
 import { t } from '../i18n/index.ts';
-import { Linking, Platform, ScrollView, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Linking, Platform, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { SettingsRows } from './settings-rows';
+import { SettingsScreen } from './settings-screen';
 import { useNotifications } from '../notifications/provider';
+import {
+  notificationSettingsPresentation,
+  performNotificationAction,
+} from '../notifications/settings-presentation';
 import { useTheme } from '../theme';
-import { Icon, NativeButton, Surface } from './primitives';
+import { Icon, NativeButton } from './primitives';
 
 export function NotificationSettings() {
   const notifications = useNotifications();
-  const { colors } = useTheme();
-  const status =
-    notifications.registration === 'acknowledged'
-      ? t('notifications.registrationConfirmedByTheServer')
-      : notifications.registration === 'registering'
-        ? t('notifications.confirmingRegistration')
-        : notifications.registration === 'waiting'
-          ? t('notifications.waitingForServerConfirmation')
-          : notifications.registration === 'refused'
-            ? t('notifications.registrationRefusedByTheServer')
-            : notifications.registration === 'unsupported'
-              ? t('notifications.remoteNotificationsAreNotYetAvailableOnThis')
-              : t('notifications.thisDeviceIsNotRegisteredYet');
+  const { presentation: p, scheme } = useTheme();
+  const [details, setDetails] = useState(false);
+  const [actionFailure, setActionFailure] = useState<string | null>(null);
+  const native = Platform.OS === 'ios' || Platform.OS === 'android';
+  const view = notificationSettingsPresentation(notifications, native);
+  const registration = {
+    acknowledged: 'registrationConfirmedByTheServer',
+    registering: 'confirmingRegistration',
+    waiting: 'waitingForServerConfirmation',
+    refused: 'registrationRefusedByTheServer',
+    unsupported: 'remoteNotificationsAreNotYetAvailableOnThis',
+    unregistered: 'thisDeviceIsNotRegisteredYet',
+  } as const;
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{
-        padding: 24,
-        gap: 24,
-        maxWidth: 720,
-        width: '100%',
-        alignSelf: 'center',
-      }}
-    >
-      <Stack.Screen options={{ title: t('notifications.notifications') }} />
-      <Surface>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+    <SettingsScreen title={t('notifications.notifications')} testID="notification-settings">
+      <View
+        style={{
+          backgroundColor: p.list.block,
+          borderRadius: 10,
+          padding: 20,
+          gap: 16,
+          alignItems: 'center',
+        }}
+      >
+        <View accessible={false} accessibilityElementsHidden>
           <Icon
-            name={{ ios: 'bell', android: 'notifications', web: 'notifications' }}
-            size={28}
-            color={colors.accent}
+            name={{ ios: 'bell.badge', android: 'notifications', web: 'notifications' }}
+            size={36}
+            color={p.list.accent}
           />
-          <Text
-            accessibilityRole="header"
-            style={{ color: colors.text, fontSize: 22, fontWeight: '600' }}
-          >
-            {t('notifications.notificationsUnderYourControl')}
-          </Text>
         </View>
-        <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 25 }}>
-          {t('notifications.theServerOnlySendsASignalToSync')}
-        </Text>
-      </Surface>
-      <Surface>
         <Text
           accessibilityRole="header"
-          style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}
+          style={{ ...p.typography.title, color: p.list.text, textAlign: 'center' }}
         >
-          {t('notifications.devicePermission')}
+          {t(`notifications.${view.title}`)}
         </Text>
-        <Text style={{ color: colors.secondary, lineHeight: 23 }}>
-          {notifications.permission === 'allowed'
-            ? t('notifications.allowed')
-            : notifications.permission === 'denied'
-              ? t('notifications.disabledInSettings')
-              : notifications.permission === 'undetermined'
-                ? t('notifications.youHaveNotChosenYet')
-                : Platform.OS === 'web'
-                  ? t('notifications.unavailableInThisBrowser')
-                  : t('notifications.checking')}
-        </Text>
-        {Platform.OS === 'ios' || Platform.OS === 'android' ? (
-          <NativeButton
-            label={
-              notifications.busy
-                ? t('notifications.settingUp')
-                : notifications.permission === 'denied'
-                  ? t('notifications.openSettings')
-                  : notifications.permission === 'allowed'
-                    ? t('notifications.checkAgain')
-                    : t('notifications.allowNotifications')
-            }
-            disabled={notifications.busy}
-            onPress={() => {
-              if (notifications.permission === 'denied') void Linking.openSettings();
-              else if (notifications.permission === 'allowed') void notifications.refresh();
-              else void notifications.requestPermission();
-            }}
-          />
-        ) : (
-          <Text style={{ color: colors.secondary, lineHeight: 23 }}>
-            {t('notifications.notificationsAreNotYetAvailableInThisBrowser')}
+        {view.detail ? (
+          <Text
+            selectable
+            style={{ color: p.list.secondary, fontSize: 15, lineHeight: 21, textAlign: 'center' }}
+          >
+            {t(`notifications.${view.detail}`)}
           </Text>
-        )}
-      </Surface>
-      <Surface>
-        <Text
-          accessibilityRole="header"
-          style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}
-        >
-          {status}
-        </Text>
-        <Text style={{ color: colors.secondary, lineHeight: 23 }}>
-          {t('notifications.registrationConfirmsThatTheServerReceivedTheRequest')}
-        </Text>
-        {notifications.failure ? (
+        ) : null}
+        {notifications.failure || actionFailure ? (
           <Text
             accessibilityRole="alert"
             selectable
-            style={{ color: colors.danger, lineHeight: 22 }}
+            style={{ color: p.destructive, fontSize: 15, lineHeight: 21, textAlign: 'center' }}
           >
-            {notifications.failure}
+            {actionFailure ?? notifications.failure}
           </Text>
         ) : null}
-      </Surface>
-    </ScrollView>
+        {view.action ? (
+          <NativeButton
+            testID="notification-primary-action"
+            label={t(`notifications.${view.label}`)}
+            disabled={view.disabled}
+            wrapLabel
+            onPress={() => {
+              setActionFailure(null);
+              void performNotificationAction(view.action, {
+                requestPermission: notifications.requestPermission,
+                refresh: notifications.refresh,
+                openSettings: () => Linking.openSettings(),
+              }).catch(() => setActionFailure(t('notifications.settingsCouldNotOpen')));
+            }}
+          />
+        ) : null}
+      </View>
+      <SettingsRows
+        testID="notification-chat-settings"
+        rows={[
+          {
+            id: 'notification-muted-chats',
+            title: t('notifications.mutedChats'),
+            icon: { ios: 'bell.slash', android: 'notifications_off', web: 'notifications_off' },
+            onPress: () => router.push('/settings/muted-chats'),
+          },
+        ]}
+      />
+      <View style={{ backgroundColor: p.list.block, borderRadius: 10, padding: 16 }}>
+        <Host
+          matchContents={{ vertical: true }}
+          style={{ width: '100%' }}
+          colorScheme={scheme}
+          seedColor={p.list.accent}
+        >
+          <Collapsible
+            label={t('notifications.diagnostics')}
+            labelStyle={{ color: p.list.text, fontSize: 17 }}
+            isOpen={details}
+            onOpenChange={setDetails}
+          >
+            <Column spacing={12}>
+              <NativeText textStyle={{ color: p.list.secondary, fontSize: 15 }}>
+                {t(`notifications.${registration[notifications.registration]}`)}
+              </NativeText>
+              <NativeText textStyle={{ color: p.list.secondary, fontSize: 13 }}>
+                {t('notifications.registrationConfirmsThatTheServerReceivedTheRequest')}
+              </NativeText>
+              <NativeText textStyle={{ color: p.list.secondary, fontSize: 13 }}>
+                {t('notifications.theServerOnlySendsASignalToSync')}
+              </NativeText>
+            </Column>
+          </Collapsible>
+        </Host>
+      </View>
+    </SettingsScreen>
   );
 }

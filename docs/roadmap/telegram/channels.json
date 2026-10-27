@@ -1,0 +1,241 @@
+[
+  {
+    "id": "TG-channels-broadcast-channels",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Criar e administrar difusão com quem publica e quem lê explicitamente autorizados.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-channel-discussion-groups",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Vincular publicação à discussão e permitir retorno à origem sem perder contexto.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-channel-comments",
+    "scope": "later",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/thread/[space]/[root].tsx"
+    ],
+    "gap": "Abrir discussão por publicação usando Threads e preservar autoria, respostas e acesso.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-unread-comment-counters",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Contar comentários não lidos por publicação a partir da mesma autoridade de leitura.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-channel-direct-messages",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Receber e responder mensagens destinadas ao canal com identidade e responsáveis explícitos.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-suggested-posts",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Receber propostas de publicação, revisar, aceitar ou recusar com autoria e resultado claros.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência: negociação e métricas de criador ampliam o produto editorial e comercial além da conversa atual."
+  },
+  {
+    "id": "TG-channels-post-negotiation-and-scheduling",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Negociar e agendar publicação com compromisso explícito, cancelamento e recuperação.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência: negociação e métricas de criador ampliam o produto editorial e comercial além da conversa atual."
+  },
+  {
+    "id": "TG-channels-channel-signatures",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Apresentar assinatura editorial preservando autoria canônica e permissão de publicação.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-author-profiles-in-channels",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Reconhecer autor e abrir seu perfil sem confundir autor com identidade do canal.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-pinned-channel-posts",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Fixar publicações para leitores com navegação até o conteúdo e desfazer autorizado.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-post-statistics",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Consultar métricas por publicação sustentadas por eventos reais e acesso autorizado.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência: negociação e métricas de criador ampliam o produto editorial e comercial além da conversa atual."
+  },
+  {
+    "id": "TG-channels-channel-statistics",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Consultar audiência e desempenho do canal com período, privacidade e acesso definidos.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência: negociação e métricas de criador ampliam o produto editorial e comercial além da conversa atual."
+  },
+  {
+    "id": "TG-channels-jump-to-next-channel",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Avançar ao próximo canal preservando leitura e posição do anterior.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-channel-content-protection",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Aplicar política de cópia e encaminhamento com limites claros ao leitor e ao administrador.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  },
+  {
+    "id": "TG-channels-default-channel-translation",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx"
+    ],
+    "gap": "Aplicar idioma de leitura por canal com acesso ao conteúdo original.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Expandir conversas depois do núcleo, reutilizando membros, autoria, Threads e leitura."
+  }
+]

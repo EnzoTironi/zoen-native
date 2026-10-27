@@ -1,5 +1,7 @@
+import { binaryEditorFormat, isBinaryEditorId } from './binary-formats';
+import { selectedDeckHead } from './deck-version-selection';
 import { t } from '../i18n/index.ts';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Stack, router, useLocalSearchParams, usePreventRemove } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
@@ -14,23 +16,55 @@ import { MiniappSurfaceControls } from '../native-surfaces/controls';
 import { useHome } from '../home/provider';
 import { HomeCardMenu } from '../home/menus';
 import { useConversationCards } from './conversation-provider';
+import { EditorAgentAccess } from './editor-agent-sheet';
 import type { MiniappDocumentController } from './document-controller';
+import { AppPackageReleaseSheet } from './package-release-sheet';
+import { parseAppRequestReview } from './app-request-review';
 
 export function MiniappScreen({ manage = false }: { manage?: boolean }) {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, version, sha256, reviewRequest, reviewHash, reviewScope } = useLocalSearchParams<{
+    id: string;
+    version?: string;
+    sha256?: string;
+    reviewRequest?: string;
+    reviewHash?: string;
+    reviewScope?: string;
+  }>();
+  const historical = version !== undefined || sha256 !== undefined;
+  const selectedHead = useMemo(() => selectedDeckHead(version, sha256), [version, sha256]);
   const { store } = useClient();
   const { colors } = useTheme();
   const home = useHome();
   const dialogs = useDialogs();
-  const read = useCoreQuery({ op: 'item', item_id: id });
+  const read = useCoreQuery(
+    historical
+      ? selectedHead
+        ? { op: 'item_at', item_id: id, version: Number(selectedHead.version) }
+        : null
+      : { op: 'item', item_id: id },
+  );
   const specs = useCoreQuery({ op: 'app_specs' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reviewTarget = useMemo(
+    () => parseAppRequestReview({ reviewRequest, reviewHash, reviewScope }),
+    [reviewRequest, reviewHash, reviewScope],
+  );
+  const reviewConsumed = useCallback(() => {
+    router.setParams({ reviewRequest: undefined, reviewHash: undefined, reviewScope: undefined });
+  }, []);
+  const reviewFailed = useCallback(() => setError(t('agents.requestUnavailable')), []);
   const [message, setMessage] = useState<string | null>(null);
   const [document, setDocument] = useState<MiniappDocumentController | null>(null);
   const [leaving, setLeaving] = useState(false);
   const navigating = useRef(false);
-  const documentNamespace = read.data?.app?.app_id === 'deckcraft' ? 'decks' : 'drawing';
+  const editor = read.data?.app?.app_id;
+  const documentNamespace = isBinaryEditorId(editor)
+    ? binaryEditorFormat(editor).messages
+    : 'drawing';
+  const unavailable = isBinaryEditorId(editor)
+    ? t(`${binaryEditorFormat(editor).messages}.unavailable`)
+    : t('miniapps.theMiniappCouldNotBeOpened');
   const registerDocument = useCallback((controller: MiniappDocumentController | null) => {
     setDocument(controller);
     if (controller) setLeaving(false);
@@ -80,6 +114,11 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const item = read.data;
   const cards = useConversationCards(item?.space_id ?? '');
   const app = item?.app;
+  if (historical && manage) return <EmptyState title={unavailable} />;
+  if (historical && !selectedHead)
+    return <EmptyState title={t('documents.thisVersionCouldNotBeLoaded')} />;
+  if (historical && item && !isBinaryEditorId(item.app?.app_id))
+    return <EmptyState title={unavailable} />;
   if (!item)
     return read.error ? (
       <EmptyState title={t('miniapps.theMiniappCouldNotBeOpened')} detail={read.error}>
@@ -96,12 +135,15 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       />
     );
   const spec = specs.data?.find((spec) => spec.id === app.app_id);
+  if (historical && !spec)
+    return specs.error ? <EmptyState title={unavailable} detail={specs.error} /> : <Loading />;
+  if (historical && !spec?.has_view) return <EmptyState title={unavailable} />;
   const tools =
     spec?.tools.filter(
       (tool) =>
         tool.visibility.includes('app') &&
         !(spec.id === 'excalidraw' && tool.name.startsWith('app_document_')) &&
-        !(spec.id === 'deckcraft' && tool.name.startsWith('app_binary_')),
+        !(isBinaryEditorId(spec.id) && tool.name.startsWith('app_binary_')),
     ) ?? [];
   function call(tool: string, args: Record<string, unknown>) {
     if (busy) return;
@@ -195,12 +237,26 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
         ) : null}
         <MiniappView
           item={item}
+          selectedHead={selectedHead ?? undefined}
           spec={spec}
           fill
           onDocumentController={registerDocument}
           onDocumentCopied={openCopy}
           onDocumentDiscard={discardDocument}
         />
+        {!historical &&
+        ((isBinaryEditorId(spec.id) && binaryEditorFormat(spec.id).liveReview) ||
+          document?.agentDocument?.kind === 'owned-scene') &&
+        document?.observedHead ? (
+          <EditorAgentAccess
+            itemId={item.id}
+            spaceId={item.space_id}
+            document={document}
+            reviewTarget={reviewTarget}
+            onReviewConsumed={reviewConsumed}
+            onReviewFailure={reviewFailed}
+          />
+        ) : null}
       </View>
     );
   }
@@ -237,6 +293,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
           {message}
         </Text>
       ) : null}
+      {manage ? <AppPackageReleaseSheet item={item} onUpdated={read.retry} /> : null}
       {!manage ? (
         spec?.has_view ? (
           <MiniappView

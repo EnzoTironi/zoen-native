@@ -19,6 +19,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use types::{Event, EventBody};
 
+mod error;
+pub use error::LinkError;
+
 const PREFIX: &str = "zoen-link:1:";
 const PSK_ID: &[u8] = b"zoen-link-v1";
 const ENC_LEN: usize = 32;
@@ -32,19 +35,30 @@ fn hpke() -> Hpke<HpkeRustCrypto> {
     )
 }
 
-pub fn random<const N: usize>() -> [u8; N] {
+/// # Errors
+/// Refuses unavailable system entropy without returning partial random material.
+pub fn random<const N: usize>() -> Result<[u8; N], LinkError> {
+    random_with(getrandom::getrandom)
+}
+
+fn random_with<const N: usize>(
+    fill: impl FnOnce(&mut [u8]) -> Result<(), getrandom::Error>,
+) -> Result<[u8; N], LinkError> {
     let mut b = [0u8; N];
-    getrandom::getrandom(&mut b).expect("system randomness");
-    b
+    fill(&mut b).map_err(LinkError::Entropy)?;
+    Ok(b)
 }
 
 /// An X25519 key pair for HPKE: (secret, public).
-pub fn key_pair() -> (Vec<u8>, Vec<u8>) {
+///
+/// # Errors
+/// Refuses unavailable entropy or a failed HPKE key derivation.
+pub fn key_pair() -> Result<(Vec<u8>, Vec<u8>), LinkError> {
     let kp = hpke()
-        .derive_key_pair(&random::<32>())
-        .expect("X25519 key pair");
+        .derive_key_pair(&random::<32>()?)
+        .map_err(LinkError::KeyDerivation)?;
     let (sk, pk) = kp.into_keys();
-    (sk.as_slice().to_vec(), pk.as_slice().to_vec())
+    Ok((sk.as_slice().to_vec(), pk.as_slice().to_vec()))
 }
 
 /// What the new device shows (as a QR code): its device key, its HPKE key, and a one-time
@@ -57,6 +71,7 @@ pub struct LinkCode {
 }
 
 impl LinkCode {
+    #[must_use]
     pub fn encode(&self) -> String {
         format!(
             "{PREFIX}{}{}{}",
@@ -66,6 +81,7 @@ impl LinkCode {
         )
     }
 
+    #[must_use]
     pub fn parse(code: &str) -> Option<LinkCode> {
         let hexed = code.trim().strip_prefix(PREFIX)?;
         if hexed.len() != 192 || !hexed.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -83,6 +99,7 @@ impl LinkCode {
     }
 
     /// Six digits both screens show, so the person can see they scanned the right code.
+    #[must_use]
     pub fn check_digits(&self) -> String {
         let h = Sha256::digest(self.encode().as_bytes());
         let n = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) % 1_000_000;
@@ -91,6 +108,7 @@ impl LinkCode {
 }
 
 /// Where the relay keeps a box for this link: a hash of the secret, never the secret.
+#[must_use]
 pub fn box_id(secret: &[u8; 32], label: &str) -> String {
     hex::encode(
         Sha256::new()
@@ -102,6 +120,7 @@ pub fn box_id(secret: &[u8; 32], label: &str) -> String {
 }
 
 /// Seals `plain` to `to` (an HPKE public key), bound to the link secret and `context`.
+#[must_use]
 pub fn seal(to: &[u8], secret: &[u8; 32], context: &str, plain: &[u8]) -> Option<Vec<u8>> {
     let pk = HpkePublicKey::new(to.to_vec());
     let info = format!("zoen-link-v1:{context}");
@@ -121,6 +140,7 @@ pub fn seal(to: &[u8], secret: &[u8; 32], context: &str, plain: &[u8]) -> Option
     Some(out)
 }
 
+#[must_use]
 pub fn open(sk: &[u8], secret: &[u8; 32], context: &str, sealed: &[u8]) -> Option<Vec<u8>> {
     if sealed.len() < ENC_LEN {
         return None;
@@ -177,7 +197,10 @@ pub struct Bundle {
 }
 
 /// One chunk of the bundle, sealed with the bundle key; the index is the nonce.
-pub fn seal_chunk(key: &[u8; 32], n: u32, plain: &[u8]) -> Vec<u8> {
+///
+/// # Errors
+/// Refuses an AEAD encryption failure without returning a partial history chunk.
+pub fn seal_chunk(key: &[u8; 32], n: u32, plain: &[u8]) -> Result<Vec<u8>, LinkError> {
     let mut nonce = [0u8; 12];
     nonce[8..].copy_from_slice(&n.to_be_bytes());
     ChaCha20Poly1305::new(key.into())
@@ -188,9 +211,10 @@ pub fn seal_chunk(key: &[u8; 32], n: u32, plain: &[u8]) -> Vec<u8> {
                 aad: b"zoen-history-v1",
             },
         )
-        .expect("chunk sealing")
+        .map_err(|_| LinkError::ChunkEncryption)
 }
 
+#[must_use]
 pub fn open_chunk(key: &[u8; 32], n: u32, sealed: &[u8]) -> Option<Vec<u8>> {
     let mut nonce = [0u8; 12];
     nonce[8..].copy_from_slice(&n.to_be_bytes());
@@ -237,16 +261,19 @@ pub struct Peer {
 }
 
 impl Peer {
+    #[must_use]
     pub fn secret(&self) -> Option<[u8; 32]> {
         hex::decode(&self.secret).ok()?.try_into().ok()
     }
 
+    #[must_use]
     pub fn seal(&self, msg: &DeviceMsg) -> Option<Vec<u8>> {
         let to = hex::decode(&self.their_hpke).ok()?;
         let plain = serde_json::to_vec(msg).ok()?;
         seal(&to, &self.secret()?, "device-message", &plain)
     }
 
+    #[must_use]
     pub fn open(&self, sealed: &[u8]) -> Option<DeviceMsg> {
         let sk = hex::decode(&self.my_hpke_secret).ok()?;
         let plain = open(&sk, &self.secret()?, "device-message", sealed)?;
@@ -268,6 +295,7 @@ pub struct Pending {
 
 /// Replace an authenticated outer record only with the same signed inner header.
 /// Chain placement always comes from the receiver's already verified relay log.
+#[must_use]
 pub fn opened_history_event(local: &Event, mut opened: Event) -> Option<Event> {
     if !matches!(&local.body, EventBody::Sealed { kind } if kind == "Application")
         || local.sealed_wire.is_some()
@@ -294,8 +322,8 @@ pub fn opened_history_event(local: &Event, mut opened: Event) -> Option<Event> {
     {
         return None;
     }
-    opened.prev = local.prev.clone();
-    opened.hash = local.hash.clone();
+    opened.prev.clone_from(&local.prev);
+    opened.hash.clone_from(&local.hash);
     Some(opened)
 }
 
@@ -307,9 +335,19 @@ mod tests {
     use types::{Privacy, Seen, SpaceKind};
 
     #[test]
-    fn hpke_links_bind_secret_recipient_and_context_without_changing_wire() {
-        let (sk, pk) = key_pair();
-        let (wrong_sk, _) = key_pair();
+    fn partially_filled_entropy_failure_returns_no_link_material() {
+        let result = random_with::<32>(|bytes| {
+            bytes.fill(7);
+            Err(getrandom::Error::UNSUPPORTED)
+        });
+        assert!(matches!(result, Err(LinkError::Entropy(_))));
+    }
+
+    #[test]
+    fn hpke_links_bind_secret_recipient_and_context_without_changing_wire() -> Result<(), LinkError>
+    {
+        let (sk, pk) = key_pair()?;
+        let (wrong_sk, _) = key_pair()?;
         let secret = [7; 32];
         let sealed = seal(&pk, &secret, "history", b"private").unwrap();
         assert_eq!(open(&sk, &secret, "history", &sealed).unwrap(), b"private");
@@ -324,20 +362,22 @@ mod tests {
         assert_eq!(LinkCode::parse(&code.encode()), Some(code.clone()));
         assert_eq!(code.check_digits().len(), 6);
         assert_ne!(box_id(&secret, "history"), box_id(&secret, "identity"));
+        Ok(())
     }
 
     #[test]
-    fn history_chunks_bind_each_index_and_refuse_tampered_ciphertext() {
+    fn history_chunks_bind_each_index_and_refuse_tampered_ciphertext() -> Result<(), LinkError> {
         let key = [9; 32];
-        let mut sealed = seal_chunk(&key, 4, b"actual bytes");
+        let mut sealed = seal_chunk(&key, 4, b"actual bytes")?;
         assert_eq!(open_chunk(&key, 4, &sealed).unwrap(), b"actual bytes");
         assert!(open_chunk(&key, 3, &sealed).is_none());
         assert!(open_chunk(&[8; 32], 4, &sealed).is_none());
         *sealed.last_mut().unwrap() ^= 1;
         assert!(open_chunk(&key, 4, &sealed).is_none());
+        Ok(())
     }
 
-    fn fixture() -> (Author, Event, Event) {
+    fn fixture() -> Result<(Author, Event, Event), Box<dyn std::error::Error>> {
         let identity = Signer::from_secret(&[11; 32]);
         let author = Author::device(&identity, Signer::from_secret(&[12; 32]));
         let mut log = SpaceLog::new("sp_history");
@@ -349,7 +389,7 @@ mod tests {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        );
+        )?;
         let opened = author.sign_event(
             log.space(),
             "msg_history",
@@ -363,7 +403,7 @@ mod tests {
                 media: None,
                 forwarded: false,
             },
-        );
+        )?;
         let (content, sig) = author.sign_sealed(
             log.space(),
             "msg_history",
@@ -378,18 +418,18 @@ mod tests {
             0,
             String::new(),
             String::new(),
-        )
-        .unwrap();
-        let local = log.sequence(outer).clone();
+        )?;
+        let local = log.sequence(outer)?.clone();
         let mut opened = opened;
         opened.seq = local.seq;
         opened.sealed_wire = Some(event_log::content_hash_of(&local));
-        (author, local, opened)
+        Ok((author, local, opened))
     }
 
     #[test]
-    fn opened_history_requires_every_signed_outer_header_and_preserves_local_chain() {
-        let (author, local, opened) = fixture();
+    fn opened_history_requires_every_signed_outer_header_and_preserves_local_chain(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (author, local, opened) = fixture()?;
         let actual = opened_history_event(&local, opened.clone()).unwrap();
         assert_eq!(actual.hash, local.hash);
         assert_eq!(actual.prev, local.prev);
@@ -401,14 +441,14 @@ mod tests {
                 3,
                 local.seen.clone(),
                 opened.body.clone(),
-            ),
+            )?,
             author.sign_event(
                 &local.space,
                 "different",
                 2,
                 local.seen.clone(),
                 opened.body.clone(),
-            ),
+            )?,
             author.sign_event(
                 &local.space,
                 &local.client_id,
@@ -418,14 +458,14 @@ mod tests {
                     hash: "00".repeat(32),
                 }),
                 opened.body.clone(),
-            ),
+            )?,
             author.sign_event(
                 &local.space,
                 &local.client_id,
                 2,
                 local.seen.clone(),
                 EventBody::SpaceEncrypted,
-            ),
+            )?,
         ] {
             let mut changed = changed;
             changed.seq = local.seq;
@@ -438,5 +478,6 @@ mod tests {
         let mut wrong_device = opened;
         wrong_device.device = None;
         assert!(opened_history_event(&local, wrong_device).is_none());
+        Ok(())
     }
 }

@@ -1,6 +1,10 @@
 //! Explicit recovery copies refused local bytes into the existing private journal.
 //! It never changes the original event, receipt, Failed state, or transport queue.
-use super::*;
+use super::{
+    intent_id, invalid, stale, storage_error, t, target_id, validate, Attachment, Content,
+    CoreError, Engine, MediaDraftAsset, MediaDraftDto, MediaDraftScope, OptionalExtension, Record,
+    Zeroizing, MAX_ASSET_BYTES, R,
+};
 use crate::engine::{Entry, EntryBody};
 use types::{
     AttachmentGrouping, AttachmentSendOptions, Event, EventBody, FileDoc, ItemContent, ItemKind,
@@ -144,7 +148,7 @@ impl Engine {
                 let bytes = engine
                     .owned_file_bytes(file, MAX_ASSET_BYTES as u64)?
                     .ok_or_else(storage_error)?;
-                let asset_id = types::new_id("recovered_asset");
+                let asset_id = types::new_id("recovered_asset")?;
                 let asset = MediaDraftAsset {
                     id: asset_id.clone(),
                     name: file.name.clone(),
@@ -157,7 +161,7 @@ impl Engine {
                 attachments.push(Attachment {
                     asset_id,
                     caption: caption.clone(),
-                    mutation_id: types::new_id("send"),
+                    mutation_id: types::new_id("send")?,
                 });
             }
             let content = if voice {
@@ -174,6 +178,7 @@ impl Engine {
                 Content::Attachments {
                     reply_to,
                     items: attachments,
+                    gallery: None,
                     options: AttachmentSendOptions {
                         presentation: media
                             .as_ref()
@@ -188,7 +193,7 @@ impl Engine {
                 }
             };
             let record = Record {
-                revision: types::new_id("media_draft"),
+                revision: types::new_id("media_draft")?,
                 content: Some(content),
                 assets,
                 attempted: false,
@@ -274,11 +279,11 @@ impl Engine {
         if file.space != scope.space_id
             || file.kind != ItemKind::File
             || file.versions.len() != 1
-            || file.versions[0].author != scope.expected_identity_id
+            || file.versions.initial().author != scope.expected_identity_id
         {
             return Err(invalid());
         }
-        let ItemContent::File(doc) = &file.versions[0].content else {
+        let ItemContent::File(doc) = &file.versions.initial().content else {
             return Err(invalid());
         };
         crate::files::validate_file(doc, MAX_ASSET_BYTES as u64)?;

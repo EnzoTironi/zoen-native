@@ -1,8 +1,12 @@
 //! Real commit/lost ACK/replay: equality is scoped to the original publisher/target.
 use super::*;
 
-async fn registered(test: &TestRelay, signer: &Signer, handle: &str) -> (Author, Socket) {
-    let author = Author::device(signer, Signer::generate());
+async fn registered(
+    test: &TestRelay,
+    signer: &Signer,
+    handle: &str,
+) -> std::result::Result<(Author, Socket), Box<dyn std::error::Error>> {
+    let author = Author::device(signer, Signer::generate()?);
     let mut socket = connect(&test.ws_url, &author).await;
     request(
         &mut socket,
@@ -13,7 +17,7 @@ async fn registered(test: &TestRelay, signer: &Signer, handle: &str) -> (Author,
     )
     .await
     .unwrap();
-    (author, socket)
+    Ok((author, socket))
 }
 fn deliver(target: &Author, id: &str, bytes: Vec<u8>) -> Op {
     Op::DeliverLink {
@@ -34,12 +38,13 @@ async fn created(test: &TestRelay, id: &str) -> String {
 }
 
 #[tokio::test]
-async fn committed_enrollment_lost_ack_can_replay_exact_original_without_refreshing_expiry() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let (sponsor, mut controller) = registered(&test, &root, "ana").await;
-    let target = Author::device(&root, Signer::generate());
-    let id = Signer::generate().id();
+async fn committed_enrollment_lost_ack_can_replay_exact_original_without_refreshing_expiry(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let (sponsor, mut controller) = registered(&test, &root, "ana").await?;
+    let target = Author::device(&root, Signer::generate()?);
+    let id = Signer::generate()?.id();
     let bytes = vec![1, 4, 9];
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
@@ -112,18 +117,18 @@ async fn committed_enrollment_lost_ack_can_replay_exact_original_without_refresh
     assert!(request(&mut retry, 2, deliver(&target, &id, vec![2, 4, 9]))
         .await
         .is_err());
-    let third = Author::device(&root, Signer::generate());
+    let third = Author::device(&root, Signer::generate()?);
     assert!(request(&mut retry, 3, deliver(&third, &id, bytes.clone()))
         .await
         .is_err());
     assert_device_absent(&test, &third).await;
-    let wrong = Author::device(&Signer::generate(), Signer::generate());
+    let wrong = Author::device(&Signer::generate()?, Signer::generate()?);
     assert!(request(&mut retry, 4, deliver(&wrong, &id, bytes.clone()))
         .await
         .is_err());
     assert_device_absent(&test, &wrong).await;
     // Even another active sponsor of the same owner cannot claim this original.
-    let other_id = Signer::generate().id();
+    let other_id = Signer::generate()?.id();
     request(&mut controller, 2, deliver(&third, &other_id, vec![5]))
         .await
         .unwrap();
@@ -133,7 +138,7 @@ async fn committed_enrollment_lost_ack_can_replay_exact_original_without_refresh
             .await
             .is_err()
     );
-    let (foreign, mut foreign_socket) = registered(&test, &Signer::generate(), "bruno").await;
+    let (foreign, mut foreign_socket) = registered(&test, &Signer::generate()?, "bruno").await?;
     assert!(
         request(&mut foreign_socket, 2, deliver(&target, &id, bytes.clone()))
             .await
@@ -172,15 +177,17 @@ async fn committed_enrollment_lost_ack_can_replay_exact_original_without_refresh
     let _ = retry.close(None).await;
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn history_or_legacy_payload_equality_cannot_be_upgraded_to_enrollment() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let (_, mut controller) = registered(&test, &root, "ana").await;
-    let target = Author::device(&root, Signer::generate());
-    let history = Signer::generate().id();
+async fn history_or_legacy_payload_equality_cannot_be_upgraded_to_enrollment(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let (_, mut controller) = registered(&test, &root, "ana").await?;
+    let target = Author::device(&root, Signer::generate()?);
+    let history = Signer::generate()?.id();
     request(
         &mut controller,
         2,
@@ -212,7 +219,7 @@ async fn history_or_legacy_payload_equality_cannot_be_upgraded_to_enrollment() {
             .is_err()
     );
     assert_device_absent(&test, &target).await;
-    let legacy = Signer::generate().id();
+    let legacy = Signer::generate()?.id();
     sqlx::query("INSERT INTO link_boxes (id,sealed) VALUES ($1,$2)")
         .bind(&legacy)
         .bind(vec![1u8])
@@ -244,15 +251,17 @@ async fn history_or_legacy_payload_equality_cannot_be_upgraded_to_enrollment() {
     );
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn expired_republication_is_new_work_under_current_admission_and_revocation() {
-    let test = TestRelay::new().await;
-    let root = Signer::generate();
-    let (sponsor, mut controller) = registered(&test, &root, "ana").await;
-    let target = Author::device(&root, Signer::generate());
-    let id = Signer::generate().id();
+async fn expired_republication_is_new_work_under_current_admission_and_revocation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let root = Signer::generate()?;
+    let (sponsor, mut controller) = registered(&test, &root, "ana").await?;
+    let target = Author::device(&root, Signer::generate()?);
+    let id = Signer::generate()?.id();
     request(&mut controller, 2, deliver(&target, &id, vec![1]))
         .await
         .unwrap();
@@ -298,7 +307,7 @@ async fn expired_republication_is_new_work_under_current_admission_and_revocatio
         .unwrap()
         .is_none());
     // A revoked sponsor also loses ordinary admission, before replay inspection.
-    let live = Signer::generate().id();
+    let live = Signer::generate()?.id();
     request(
         &mut controller,
         6,
@@ -329,4 +338,5 @@ async fn expired_republication_is_new_work_under_current_admission_and_revocatio
     let _ = refused.close(None).await;
     let _ = controller.close(None).await;
     test.close().await;
+    Ok(())
 }

@@ -1,5 +1,8 @@
 //! Conversation and agent-control application operations.
-use super::*;
+use super::{
+    account_vault, definition_target, encode, invalid, timeline_page, Arc, Client, Command,
+    CoreError, SecretVault,
+};
 
 impl Client {
     pub(super) async fn dispatch_client(
@@ -7,8 +10,32 @@ impl Client {
         command: Command,
         vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<String, CoreError> {
-        use Command::*;
+        use Command::{
+            AddAdmin, AddMember, AddMemberReviewed, AgentControlChange, AgentControlRead,
+            AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
+            AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
+            AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
+            AppCurrentShareContext, AppEditTargets, CallHistory, ConfirmForward, ControlAgent,
+            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
+            DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
+            ForwardMessage, ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace,
+            MarkRead, Message, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
+            OwnerPolicyStatus, PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy,
+            PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
+            RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
+            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
+            RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMute,
+            SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent,
+            Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy,
+            Thread, Timeline, UniversalSearch,
+        };
         match command {
+            AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
+            ShareAppCurrent {
+                context,
+                mutation_id,
+            } => self.share_app_current_bridge(context, &mutation_id),
             StartOwnerPolicyDirect {
                 expected_identity_id,
                 expected_device_id,
@@ -74,7 +101,7 @@ impl Client {
                     .provider_sign_in(relay_url, proof_token, name, account_vault(&vault)?)
                     .await?,
             ),
-            NewMutationId {} => encode(&types::new_id("client_edit")),
+            NewMutationId {} => encode(&types::new_id("client_edit")?),
             PageParseMarkdown { markdown } => {
                 encode(&crate::pages::parse_editor_markdown(&markdown)?)
             }
@@ -119,57 +146,10 @@ impl Client {
                 before,
                 limit,
             )?),
-            MessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().message_draft(&scope)?)
-            }
-            SaveMessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-                expected_revision,
-                text,
-                reply_to,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().save_message_draft(
-                    &scope,
-                    &expected_revision,
-                    text,
-                    reply_to,
-                )?)
-            }
-            SendMessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-                expected_revision,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().send_message_draft(&scope, &expected_revision)?)
-            }
+            command @ (MessageDraft { .. }
+            | SaveMessageDraft { .. }
+            | SendMessageDraft { .. }
+            | ReviewReplySelection { .. }) => self.dispatch_draft(command),
             RecoverFailedMediaDraft {
                 scope,
                 message_id,
@@ -184,6 +164,8 @@ impl Client {
                 )?;
                 encode(&draft)
             }
+            command @ RequestAppEdit { .. } => self.request_app_edit_command(command),
+            AppEditTargets { input } => encode(&self.lock().app_edit_targets(&input)?),
             SendMessage {
                 space_id,
                 text,
@@ -212,6 +194,10 @@ impl Client {
                 message_id,
                 emoji,
             } => encode(&self.react(space_id, message_id, emoji)?),
+            command @ (ForwardReview { .. }
+            | ForwardStatus { .. }
+            | ConfirmForward { .. }
+            | DismissForward { .. }) => self.dispatch_forwarding(command),
             ForwardMessage {
                 source_space,
                 message_id,
@@ -241,17 +227,9 @@ impl Client {
                 kinds,
                 limit,
             } => encode(&self.universal_search(query, kinds, limit.min(100))?),
-            SetChatPrefs {
-                space_id,
-                pinned,
-                archived,
-                muted,
-            } => encode(&self.set_chat_prefs(
-                space_id,
-                pinned,
-                archived,
-                muted.then_some(i64::MAX),
-            )?),
+            command @ (SetChatPrefs { .. } | SetChatMuted { .. } | SetChatMute { .. }) => {
+                self.dispatch_chat_preferences(command)
+            }
             StartDirect { identity_id } => encode(&self.start_direct(identity_id)?),
             CreateGroup { title, member_ids } => encode(&self.create_group(title, member_ids)?),
             CreateCommunity { title } => encode(&self.create_community(title)?),
@@ -259,20 +237,61 @@ impl Client {
             CreateInvite { space_id } => encode(&self.create_invite(space_id).await?),
             PreviewInvite { code } => encode(&self.preview_invite(code).await?),
             JoinInvite { code } => encode(&self.join_invite(code).await?),
-            AddMember {
-                space_id,
-                identity_id,
-            } => encode(&self.add_member(space_id, identity_id)?),
-            AddAdmin {
-                space_id,
-                identity_id,
-            } => encode(&self.add_admin(space_id, identity_id)?),
-            RemoveMember {
-                space_id,
-                identity_id,
-            } => encode(&self.remove_member(space_id, identity_id)?),
+            command @ (AddMember { .. }
+            | FindMemberCandidates { .. }
+            | AddMemberReviewed { .. }
+            | AddAdmin { .. }
+            | SpaceMemberContext { .. }
+            | SetMemberRoleReviewed { .. }
+            | RemoveMemberReviewed { .. }
+            | RemoveMember { .. }) => self.dispatch_member_command(command).await,
             LeaveSpace { space_id } => encode(&self.leave_space(space_id)?),
             EncryptChat { space_id } => encode(&self.encrypt_chat(space_id)?),
+            AgentControlRetry {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_revision,
+                observed_operation_id,
+                action,
+            } => encode(
+                &self
+                    .agent_control_retry(
+                        definition_target(agent_id, expected_identity_id, expected_device_id),
+                        &observed_revision,
+                        &observed_operation_id,
+                        action,
+                    )
+                    .await?,
+            ),
+            AgentControlRead {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &self
+                    .agent_control_read(definition_target(
+                        agent_id,
+                        expected_identity_id,
+                        expected_device_id,
+                    ))
+                    .await?,
+            ),
+            AgentControlChange {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_revision,
+                action,
+            } => encode(
+                &self
+                    .agent_control_change(
+                        definition_target(agent_id, expected_identity_id, expected_device_id),
+                        &observed_revision,
+                        action,
+                    )
+                    .await?,
+            ),
             AgentStatus { agent_id } => encode(&self.agent_status(agent_id).await?),
             AgentDefinitionRead {
                 agent_id,

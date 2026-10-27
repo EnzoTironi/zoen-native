@@ -12,6 +12,33 @@ de critérios é [acceptance.json](../../apps/zoen/acceptance.json).
 As evidências anteriores continuam com seu escopo e seus artefatos originais.
 Ampliar a meta não transforma provas parciais em aprovação do produto completo.
 
+## Roadmap verificável — 26 de outubro de 2026
+
+A [roadmap completa em checklist](../roadmap/README.md) organiza as 30 jornadas,
+as dez capacidades de criação, as seis plataformas e os critérios de operação.
+O [painel consultável](../roadmap/index.html) cruza esse plano com a revisão das
+506 capacidades do Telegram e o inventário das telas, sheets, menus e superfícies
+nativas do Zoen. O levantamento tem fonte e data: presença de código, evidência
+parcial e aceite integral são estados distintos.
+
+Enzo responde pela direção de produto. Codex propõe e executa as decisões técnicas
+e de sequência nos issues correspondentes, antecipando falhas e eliminando
+duplicação. Elegância significa poucas autoridades de estado, contexto preservado
+entre telas e ações claras; ambição significa jornadas completas de pessoas e
+agentes, incluindo interrupção e recuperação. Completude inclui estados vazio,
+carregando, offline, erro, permissão recusada e revogação, além do caminho feliz.
+
+O catálogo do Telegram serve para encontrar lacunas. Capacidades essenciais de
+conversa, privacidade e comunidades entram na entrega; modelos de moeda, boosts,
+colecionáveis e publicidade continuam referências adicionais. Benefícios úteis
+de aparência, expressão e automação devem usar os controles comuns do Zoen,
+sem criar versões concorrentes do mesmo recurso. As decisões e recomendações
+ficam explícitas no painel, preservando todo o escopo previamente aprovado.
+
+O issue #170 e seus issues de entrega continuam sendo o registro de execução;
+o manifesto de aceitação continua sendo o contrato de conclusão. O painel é uma
+leitura datada dessas fontes, sem um segundo estado de tarefas editável.
+
 ## Coordenação durável no GitHub
 
 Por direção do usuário em 22 de outubro de 2026, o registro de trabalho é o
@@ -29,12 +56,28 @@ das demais frentes permanece explícita no GitHub e não é anunciada como traba
 em execução. Um PR parcial referencia seu issue; não encerra os critérios ainda
 pendentes. Merge normal após fonte limpa e checks aplicáveis aprovados.
 
-## Execução atual — 20 de outubro de 2026
+## Execução atual — 26 de outubro de 2026
 
 [Ordem de entrega iOS, lotes e critérios de saída](zoen-complete-product-execution.md).
 O plano integral e as evidências preservadas mantêm seu escopo e seus limites.
 
+## Prioridade ativa — 26 de outubro de 2026
+
+Por direção confirmada de Enzo, o trabalho ativo é exclusivamente **agentes e
+conversação**, concluindo o recorte selecionado de interface/interações do
+Telegram iOS e seu backend antes de retomar Apps. Desenvolvimento e QA de Apps,
+criação compartilhada, editores e expansão de SDK/host estão pausados. Código,
+dados e evidências ficam preservados; as capacidades permanecem no produto final.
+Esta é uma mudança de sequência, sem aceite ou exclusão das jornadas pendentes.
+
 ## Plataformas e arquitetura
+
+O Zoen deve compor capacidades que pessoas, agentes e outros produtos possam
+consumir pelos mesmos contratos de domínio. UI, SDK, CLI e MCP adaptam essas
+operações; cada domínio preserva a autoridade de seu estado, permissões e
+recuperação. Comprovar as fronteiras no workspace atual e o consumo independente
+antes de extrair repositórios. Implementação nativa, bindings e contratos gerados
+compatíveis integram a mesma unidade de release.
 
 A execução atual conclui o iOS antes de ampliar a validação manual para Web e
 Android. Em seguida, as mesmas jornadas são qualificadas nessas duas plataformas;
@@ -116,6 +159,13 @@ As evidências de testes, fonte, compilação, simulador e aparelho físico perm
 distintas. O levantamento inicial é parcial e deve continuar por lotes.
 
 ## Área de criação compartilhada
+
+A direção de 25/10/2026 separa os editores ArtCraft como dependência externa MCP
+App, derivada de upstream e com release próprio. Seu desenvolvimento e QA internos
+estão parados. O Zoen continua responsável pelo host, identidade, permissões,
+persistência criptografada, versões e compartilhamento; as capacidades de criação
+continuam no produto, fornecidas pela integração com Apps externos. A migração
+não está concluída. Ver a [fronteira e o histórico](artcraft-editor-integration.md).
 
 Em 20 de outubro de 2026, o usuário definiu Notion e as Páginas do ChatGPT Space
 como referências para as Páginas vivas e ampliou essa direção para toda a área de

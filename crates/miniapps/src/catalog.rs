@@ -153,6 +153,18 @@ pub fn specs() -> Vec<AppSpec> {
     if let Some(deckcraft) = deckcraft::registration::spec() {
         specs.push(deckcraft);
     }
+    if let Some(gridcraft) = crate::binary::gridcraft_registration::spec() {
+        specs.push(gridcraft);
+    }
+    if let Some(wordcraft) = crate::binary::wordcraft_registration::spec() {
+        specs.push(wordcraft);
+    }
+    if let Some(photo) = crate::binary::photocraft_registration::spec() {
+        specs.push(photo);
+    }
+    if let Some(pdf) = crate::binary::pdfcraft_registration::spec() {
+        specs.push(pdf);
+    }
     specs
 }
 

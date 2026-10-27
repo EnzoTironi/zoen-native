@@ -1,0 +1,483 @@
+[
+  {
+    "id": "TG-privacy-phone-number-visibility",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/generated/Persona.ts",
+      "apps/zoen/src/auth/README.md"
+    ],
+    "gap": "Conta atual não publica telefone; decidir se esse dado será aceito antes de criar controles de audiência.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-phone-number-discoverability",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/new-chat.tsx",
+      "apps/zoen/src/auth/README.md"
+    ],
+    "gap": "Busca atual usa nome/@handle; descoberta por telefone não é requisito herdado do Telegram.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-last-seen-audience",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/src/core/generated/Persona.ts"
+    ],
+    "gap": "Falta controlar presença/último acesso e exceções por pessoa em uma tela de privacidade.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-one-way-presence-and-read-time-visibility",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "docs/dev/zoen-complete-product-goal.md"
+    ],
+    "gap": "Exceção Premium do Telegram exige decisão; não impor assimetria paga de presença ao Zoen.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-voice-and-video-note-privacy",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/src/core/generated/Command.ts"
+    ],
+    "gap": "Falta escolher quem pode iniciar o envio de notas de voz/vídeo ao usuário.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-private-message-eligibility",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "apps/zoen/src/app/(tabs)/you.tsx"
+    ],
+    "gap": "Bloqueio existe após conhecer a pessoa; falta controlar e revisar primeiro contato de desconhecidos.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-forward-attribution-privacy",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/generated/Command.ts",
+      "apps/zoen/src/app/(tabs)/you.tsx"
+    ],
+    "gap": "Encaminhar existe no contrato; falta escolher quando o encaminhamento pode apontar ao perfil.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-profile-photo-privacy",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/edit-profile.tsx",
+      "apps/zoen/src/profile/types.ts"
+    ],
+    "gap": "Falta configurar audiência da foto e mostrar uma alternativa para quem não tem acesso.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-group-invitation-privacy",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/src/core/generated/Command.ts"
+    ],
+    "gap": "Falta configurar quem pode adicionar o usuário e como revisar convites não solicitados.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-call-privacy",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/src/core/generated/Command.ts"
+    ],
+    "gap": "Falta escolher quem pode ligar e apresentar as opções reais de privacidade de conexão.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-block-and-report",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/person/[id].tsx",
+      "docs/product/telegram-ios-blocked-people.md"
+    ],
+    "gap": "Bloquear/desbloquear tem recuperação; falta concluir denúncia de conteúdo/pessoa com retorno verificável.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-private-chat-sharing-restriction",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/src/core/generated/Command.ts"
+    ],
+    "gap": "Falta política explícita para encaminhar/salvar; não prometer impedir toda captura feita pelo sistema.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-secret-chats",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/adr/0027-end-to-end-by-default.md",
+      "docs/architecture.md"
+    ],
+    "gap": "Zoen usa E2EE por padrão em DMs/grupos; não precisa copiar um segundo modo secreto Telegram sem necessidade.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-secret-chat-key-verification",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/integrity/[id].tsx",
+      "docs/adr/0027-end-to-end-by-default.md"
+    ],
+    "gap": "Há auditoria de integridade; falta uma jornada clara de comparação de identidade/chaves entre pessoas.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-secret-chat-expiration",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/generated/Command.ts",
+      "apps/zoen/src/app/(tabs)/you.tsx"
+    ],
+    "gap": "Falta escolher prazo de expiração e explicar efeitos sobre todos os dispositivos e anexos.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-secret-chat-screenshot-notifications",
+    "scope": "decision",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/acceptance.json"
+    ],
+    "gap": "Definir aviso suportado por plataforma; não há prova de detecção confiável de todas as capturas.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-cloud-chat-auto-delete",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/core/generated/Command.ts",
+      "apps/zoen/src/app/(tabs)/you.tsx"
+    ],
+    "gap": "Falta ajustar retenção automática por conversa sem confundir apagar local e apagar para participantes.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-global-auto-delete",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/src/core/generated/Command.ts"
+    ],
+    "gap": "Falta definir retenção padrão de novas conversas e explicar suas exceções.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-local-app-passcode",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/src/app/settings/data.tsx"
+    ],
+    "gap": "Falta ativar bloqueio local, configurar prazo e recuperar acesso sem apagar dados acidentalmente.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-biometric-app-unlock",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "docs/adr/0003-identity-and-device-keys.md"
+    ],
+    "gap": "Cofre de chaves não é uma tela de bloqueio; falta habilitar e qualificar desbloqueio biométrico local.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-two-step-verification",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/auth/README.md",
+      "apps/zoen/src/components/account-access.tsx",
+      "apps/zoen/src/app/backup.tsx"
+    ],
+    "gap": "Zoen exige ingresso certificado/recuperação; senha de backup não equivale à segunda senha de login Telegram.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-passkeys",
+    "scope": "later",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/auth/README.md",
+      "apps/zoen/src/components/account-access.tsx"
+    ],
+    "gap": "Apple/Google não comprovam passkey própria Zoen; falta escolher e concluir essa credencial e recuperação.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-qr-login",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/authorize-device.tsx",
+      "apps/zoen/src/components/account-access.tsx"
+    ],
+    "gap": "Há QR/código para autorizar dispositivo com revisão; falta aceite nativo de leitura, confirmação e retorno.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-login-alerts",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/devices/device-list.tsx",
+      "apps/zoen/src/components/notification-settings.tsx"
+    ],
+    "gap": "Dispositivos podem ser consultados; falta alertar e revisar imediatamente um novo ingresso.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-active-sessions",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/devices/session.ts",
+      "apps/zoen/src/devices/device-list.tsx"
+    ],
+    "gap": "Lista e revogação usam Core como autoridade; falta aceite integrado de revogar e confirmar perda de acesso.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-connected-websites",
+    "scope": "paused",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/settings/permissions.tsx",
+      "docs/dev/zoen-complete-product-goal.md"
+    ],
+    "gap": "Permissões de Apps Zoen existem; login web Telegram é outro contrato e a expansão de Apps está pausada.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-privacy-multiple-accounts",
+    "scope": "later",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "apps/zoen/src/components/account-access.tsx"
+    ],
+    "gap": "Demo e conta são isoladas; falta alternar entre várias contas reais sem misturar dados e credenciais.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-phone-number-changes",
+    "scope": "decision",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/auth/README.md",
+      "apps/zoen/src/core/generated/Persona.ts"
+    ],
+    "gap": "Identidade Zoen não depende de telefone; definir necessidade antes de criar migração de número.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-account-inactivity-deletion",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "docs/dev/zoen-complete-product-goal.md",
+      "apps/zoen/src/app/settings/data.tsx"
+    ],
+    "gap": "Enzo precisa definir retenção por inatividade, aviso e recuperação antes de automatizar exclusão.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-delete-account",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/components/device-data-actions.tsx",
+      "apps/zoen/src/app/settings/data.tsx"
+    ],
+    "gap": "Sair e apagar este dispositivo existe; falta excluir a conta globalmente com efeitos e confirmação claros.",
+    "issues": [
+      170,
+      181
+    ]
+  },
+  {
+    "id": "TG-privacy-account-restriction-appeal",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/(tabs)/you.tsx",
+      "docs/dev/zoen-complete-product-goal.md"
+    ],
+    "gap": "Definir restrições e recurso Zoen; não herdar política de banimento do serviço Telegram.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Preservar identidade sem telefone obrigatório, E2EE por padrão e ações explícitas de exclusão; adaptar controles úteis de privacidade."
+  },
+  {
+    "id": "TG-privacy-recovery-and-login-reminders",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/backup.tsx",
+      "apps/zoen/src/components/account-access.tsx",
+      "apps/zoen/src/auth/README.md"
+    ],
+    "gap": "Backup e restauração por chave/senha existem; faltam lembretes seguros e aceite completo da recuperação.",
+    "issues": [
+      170,
+      181
+    ]
+  }
+]

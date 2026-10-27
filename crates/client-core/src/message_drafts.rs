@@ -25,6 +25,9 @@ pub struct MessageDraftDto {
     pub revision: String,
     pub text: String,
     pub reply_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub reply_quote: Option<crate::ReplySelection>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -51,6 +54,7 @@ impl Default for Record {
                 revision: MESSAGE_DRAFT_REVISION_ZERO.into(),
                 text: String::new(),
                 reply_to: None,
+                reply_quote: None,
             },
             last_accepted: None,
         }
@@ -181,7 +185,12 @@ impl Engine {
         }
         Ok(())
     }
-    fn draft_text_budget(scope: &DraftScope, text: &str, reply: Option<&str>) -> R<()> {
+    fn draft_text_budget(
+        scope: &DraftScope,
+        text: &str,
+        reply: Option<&str>,
+        quote: Option<&crate::ReplySelection>,
+    ) -> R<()> {
         if text.len() > crate::client_api::MAX_REQUEST_BYTES {
             return Err(invalid());
         }
@@ -189,6 +198,9 @@ impl Engine {
             serde_json::json!({"op":"send_message", "space_id":scope.space_id, "text":text});
         if let Some(to) = reply.or(scope.thread_root_id.as_deref()) {
             message["reply_to"] = to.into();
+        }
+        if let Some(quote) = quote {
+            message["reply_quote"] = serde_json::to_value(quote).map_err(|_| invalid())?;
         }
         if scope.thread_root_id.is_some() {
             message["thread"] = true.into();
@@ -211,7 +223,7 @@ impl Engine {
         let encoded = encoded.ok_or_else(storage_error)?;
         let plain = Zeroizing::new(
             crate::local_sealed::open(&storage.key, &storage.aad, &encoded, MAX_PLAIN_BYTES)
-                .map_err(|_| storage_error())?,
+                .map_err(|()| storage_error())?,
         );
         let record: Record = serde_json::from_slice(&plain).map_err(|_| storage_error())?;
         if !valid_revision(&record.draft.revision)
@@ -229,8 +241,13 @@ impl Engine {
         {
             return Err(storage_error());
         }
-        Self::draft_text_budget(scope, &record.draft.text, record.draft.reply_to.as_deref())
-            .map_err(|_| storage_error())?;
+        Self::draft_text_budget(
+            scope,
+            &record.draft.text,
+            record.draft.reply_to.as_deref(),
+            record.draft.reply_quote.as_ref(),
+        )
+        .map_err(|_| storage_error())?;
         Ok(record)
     }
     fn persist_message_draft(&self, storage: &StorageScope, record: &Record) -> R<()> {
@@ -239,7 +256,7 @@ impl Engine {
             return Err(invalid());
         }
         let encoded = crate::local_sealed::seal(&storage.key, &storage.aad, &plain)
-            .map_err(|_| storage_error())?;
+            .map_err(|()| storage_error())?;
         let (count, bytes, old): (usize, usize, usize) = self.store.conn().query_row(
             "SELECT COUNT(*), COALESCE(SUM(length(CAST(value AS BLOB))),0), COALESCE(MAX(CASE WHEN key=?1 THEN length(CAST(value AS BLOB)) END),0) FROM meta WHERE key LIKE 'message.draft.%'",
             [&storage.id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|_| storage_error())?;
@@ -258,6 +275,7 @@ impl Engine {
         let storage = self.draft_storage_scope(scope)?;
         Ok(self.load_message_draft(scope, &storage)?.draft)
     }
+    #[cfg(test)]
     pub(crate) fn save_message_draft(
         &self,
         scope: &DraftScope,
@@ -265,23 +283,36 @@ impl Engine {
         text: String,
         reply_to: Option<String>,
     ) -> R<MessageDraftDto> {
+        self.save_message_draft_selected(scope, expected, text, reply_to, None)
+    }
+    pub(crate) fn save_message_draft_selected(
+        &self,
+        scope: &DraftScope,
+        expected: &str,
+        text: String,
+        reply_to: Option<String>,
+        reply_quote: Option<crate::ReplySelection>,
+    ) -> R<MessageDraftDto> {
         let storage = self.draft_storage_scope(scope)?;
         let mut record = self.load_message_draft(scope, &storage)?;
         if !valid_revision(expected) || record.draft.revision != expected {
             return Err(stale());
         }
-        Self::draft_text_budget(scope, &text, reply_to.as_deref())?;
+        Self::draft_text_budget(scope, &text, reply_to.as_deref(), reply_quote.as_ref())?;
         self.draft_target(scope, reply_to.as_deref())?;
+        self.validate_reply_selection(&scope.space_id, reply_to.as_deref(), reply_quote.as_ref())?;
         if (!text.is_empty() || reply_to.is_some())
             && record.draft.text == text
             && record.draft.reply_to == reply_to
+            && record.draft.reply_quote == reply_quote
         {
             return Ok(record.draft);
         }
         record.draft = MessageDraftDto {
-            revision: types::new_id("draft"),
+            revision: types::new_id("draft")?,
             text,
             reply_to,
+            reply_quote,
         };
         self.persist_message_draft(&storage, &record)?;
         Ok(record.draft)
@@ -320,6 +351,13 @@ impl Engine {
         if self
             .draft_target(scope, record.draft.reply_to.as_deref())
             .is_err()
+            || self
+                .validate_reply_selection(
+                    &scope.space_id,
+                    record.draft.reply_to.as_deref(),
+                    record.draft.reply_quote.as_ref(),
+                )
+                .is_err()
         {
             return Err(CoreError::DraftRejected {
                 reason: t(
@@ -351,19 +389,22 @@ impl Engine {
                 .as_deref()
                 .or(scope.thread_root_id.as_deref())
             {
-                Some(to) => engine.send_reply(
+                Some(to) => engine.reply_selected(
                     &scope.space_id,
+                    &scope.expected_identity_id,
                     &record.draft.text,
                     to,
                     scope.thread_root_id.is_some(),
+                    record.draft.reply_quote.as_ref(),
                 )?,
                 None => engine.send_message(&scope.space_id, &record.draft.text)?,
             };
             let cleared = Record {
                 draft: MessageDraftDto {
-                    revision: types::new_id("draft"),
+                    revision: types::new_id("draft")?,
                     text: String::new(),
                     reply_to: None,
+                    reply_quote: None,
                 },
                 last_accepted: Some(Receipt {
                     input_revision: expected.into(),

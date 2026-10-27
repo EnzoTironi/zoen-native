@@ -1,8 +1,10 @@
 //! Preserved context persistence scenarios; stable test entries stay in the parent.
 use super::*;
 
-pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart() {
-    let path = std::env::temp_dir().join(format!("zoen-recovery-{}.db", types::new_ulid(now_ms())));
+pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let path =
+        std::env::temp_dir().join(format!("zoen-recovery-{}.db", types::new_ulid(now_ms())?));
     let space = "recovery-transaction";
     let (root_secret, secret, agreement, commit, reference, genesis, uploaded_blob);
     {
@@ -26,7 +28,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
                     kind: SpaceKind::Group,
                     privacy: Privacy::EndToEnd,
                 },
-            ))
+            )?)?
             .clone();
         genesis = created.hash.clone();
         assert_eq!(
@@ -34,7 +36,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
                 seq: 0,
                 prev: created.prev.clone(),
                 hash: created.hash.clone(),
-                env: Envelope::plain(&created)
+                env: Envelope::plain(&created)?
             }),
             Ingest::Applied
         );
@@ -53,7 +55,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         engine.commit_now(space, &[], &Default::default()).unwrap();
         let queued = engine.store.outbox().unwrap();
         assert_eq!(queued.len(), 1);
-        commit = Envelope::plain(&queued[0].event);
+        commit = Envelope::plain(&queued[0].event)?;
         reference = RecoveryRef::parse(commit.recovery().unwrap()).unwrap();
         uploaded_blob = engine.pending_uploads(1).remove(0).1;
         assert_eq!(engine.uploads_pending(), 1);
@@ -77,7 +79,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         assert_eq!(ready.len(), 1);
         assert_eq!(ready[0].content(), commit.content());
         assert_eq!(ready[0].client_id(), commit.client_id());
-        previous = chain_hash(space, 1, &genesis, &commit.wire_hash());
+        previous = chain_hash(space, 1, &genesis, &commit.wire_hash())?;
         assert_eq!(
             engine.ingest(Sequenced {
                 seq: 1,
@@ -91,7 +93,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         assert_eq!(engine.outbox_len(), 0);
         assert_eq!(engine.recovery_context(space).unwrap().blob, reference.blob);
         engine.device().unwrap().forget(space).unwrap();
-        let replacement = event_log::Signer::generate();
+        let replacement = event_log::Signer::generate()?;
         replacement_secret = replacement.secret();
         engine
             .install_restored_account(
@@ -132,7 +134,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         assert_eq!(engine.outbox_len(), 0);
         assert_eq!(engine.uploads_pending(), 0);
         assert!(engine.mls_recovery_pass().unwrap());
-        external = Envelope::plain(&engine.store.outbox().unwrap()[0].event);
+        external = Envelope::plain(&engine.store.outbox().unwrap()[0].event)?;
         external_reference = RecoveryRef::parse(external.recovery().unwrap()).unwrap();
         assert!(engine.outbox_envelopes().is_empty());
     }
@@ -147,7 +149,7 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
         let confirmation = Sequenced {
             seq: 2,
             prev: previous.clone(),
-            hash: chain_hash(space, 2, &previous, &external.wire_hash()),
+            hash: chain_hash(space, 2, &previous, &external.wire_hash())?,
             env: external,
         };
         for table in ["mls_recovery_pending", "outbox"] {
@@ -190,4 +192,6 @@ pub(super) fn context_and_commit_roll_back_together_and_wait_for_upload_after_re
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(path.with_extension("db-wal"));
     let _ = std::fs::remove_file(path.with_extension("db-shm"));
+
+    Ok(())
 }

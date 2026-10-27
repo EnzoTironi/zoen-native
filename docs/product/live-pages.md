@@ -4,6 +4,12 @@ Updated 12 October 2026 from the user's ChatGPT Space reference, the available P
 
 A page belongs to a conversation or the person's own files. Groups and communities remain in Chats; pages do not introduce another conversation inbox.
 
+## Product references
+
+Enzo reaffirmed **Notion, ChatGPT Spaces/Live Pages and [Morrow](https://github.com/Aarav2709/Morrow)** as the references for living documents on 26 October 2026. Telegram iOS continues to lead conversation UI. Keep these references in the product direction while document and App implementation is paused behind agents and conversation.
+
+Morrow was inspected at [`0e630ccea927174a655404b7769b793f0a64e403`](https://github.com/Aarav2709/Morrow/tree/0e630ccea927174a655404b7769b793f0a64e403), an Apache-2.0 Electron/React workspace with a local Markdown vault. Its [page surface](https://github.com/Aarav2709/Morrow/blob/0e630ccea927174a655404b7769b793f0a64e403/src/app/components/PageView.tsx) and [assistant panel](https://github.com/Aarav2709/Morrow/blob/0e630ccea927174a655404b7769b793f0a64e403/src/app/assistant/AssistantPanel.tsx) are useful references for page hierarchy, properties, backlinks, responsive outlines, document-adjacent assistance, compact diffs, Apply/Decline and Undo. Evaluate those patterns through Zoen's existing document and permission contracts. Morrow's assistant approval is configurable, and its external MCP tools can write directly to the vault; neither establishes Zoen's authorization or recovery guarantees. This is source research, without runtime or integration acceptance.
+
 ## Editing and organization
 
 - Edit formatted blocks directly. Support headings, paragraphs, tasks, lists, quotes, code, dividers, images, tables and links to other pages.

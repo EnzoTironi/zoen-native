@@ -45,6 +45,32 @@ test('conversation details preferences use fresh canonical unrelated flags; shar
     params: { id: 'space' },
   });
 });
+test('native details switches keep canonical flags, coalesce events and retire on blur', async () => {
+  const f = fixture('space', {
+    'expo-router': { useLocalSearchParams: () => ({ id: 'space' }) },
+  });
+  const tree = f.render();
+  const chat = f.state.snapshot.conversations[0]!;
+  chat.muted = true;
+  chat.archived = true;
+  target(tree, 'details-preference-pinned').props.onValueChange(true);
+  target(tree, 'details-preference-archived').props.onValueChange(false);
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.requests)), [
+    {
+      op: 'set_chat_prefs',
+      space_id: 'space',
+      pinned: true,
+      preserve_mute: true,
+      muted: true,
+      archived: true,
+    },
+  ]);
+  f.blur();
+  target(tree, 'details-preference-muted').props.onValueChange(false);
+  await settle();
+  assert.equal(f.requests.length, 1);
+});
 test('shared media projection uses exact authorized space/current descriptors independently of hidden Home shortcuts', () => {
   const photo = item('photo');
   const video = item('video', 'video/mp4');

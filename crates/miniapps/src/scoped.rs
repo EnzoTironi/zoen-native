@@ -63,6 +63,37 @@ pub fn replayed(app: &str, tool_name: &str, args: &Value, state: &Value) -> Opti
         .flatten()
 }
 
+/// An exact accepted effect owned by the same agent, never a request to execute it.
+pub fn recover_tool_result(
+    app: &str,
+    tool: &str,
+    args: &Value,
+    state: &Value,
+    actor: &Actor<'_>,
+) -> Option<String> {
+    if app != "schedule" || tool != "schedule_book" || actor.owner.is_none() {
+        return None;
+    }
+    let reference = args["ref"].as_str()?;
+    let service = args["serviceId"].as_str()?;
+    if !state["bookings"].as_array()?.iter().any(|b| {
+        b["ref"].as_str() == Some(reference)
+            && b["byId"].as_str() == Some(actor.id)
+            && b["serviceId"].as_str() == Some(service)
+            && b["startMs"] == args["startMs"]
+            && args
+                .get("endMs")
+                .filter(|value| !value.is_null())
+                .is_none_or(|end| b["endMs"] == *end)
+            && b["forId"] == args["forId"]
+            && b["note"].as_str().unwrap_or_default() == args["note"].as_str().unwrap_or_default()
+            && matches!(b["status"].as_str(), Some("pending" | "confirmed"))
+    }) {
+        return None;
+    }
+    replayed(app, tool, args, state)
+}
+
 /// The owner's note for what a client just did in a mini-app (only the schedule speaks).
 pub fn owner_note_for(prev: &AppDoc, next: &AppDoc, by: &str) -> Option<Value> {
     if next.app != "schedule" {

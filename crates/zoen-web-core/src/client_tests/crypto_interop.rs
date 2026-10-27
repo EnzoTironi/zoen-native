@@ -1,7 +1,8 @@
 //! Original whole test bodies, called by their unchanged registered facade.
 use super::*;
 
-pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
+pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let identity = NativeSigner::from_secret(&[11; 32]);
     let native_key = NativeSigner::from_secret(&[12; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[13; 32]));
@@ -41,7 +42,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
             privacy: Privacy::EndToEnd,
         },
         1,
-    );
+    )?;
     client.receive(&create, 2).unwrap();
     assert!(client.queue_message(space, "not yet", 3).is_err());
     native.create_group(space).unwrap();
@@ -52,7 +53,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
         .unwrap();
     client
         .receive(
-            &sealed(&mut log, &author, SealedKind::Commit, commit.commit, 4),
+            &sealed(&mut log, &author, SealedKind::Commit, commit.commit, 4)?,
             5,
         )
         .unwrap();
@@ -64,7 +65,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
                 SealedKind::Welcome,
                 commit.welcome.unwrap(),
                 6,
-            ),
+            )?,
             7,
         )
         .unwrap();
@@ -77,7 +78,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
 
     let inner = author.sign_event(
         space,
-        &types::new_ulid(9),
+        &types::new_ulid(9)?,
         9,
         log.head(),
         EventBody::MessagePosted {
@@ -88,7 +89,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     let plaintext = InnerEvent {
         content: inner.content,
         sig: inner.sig,
@@ -107,7 +108,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
             &sequence(
                 &mut log,
                 Envelope::new(content, sig, author.cert.clone(), None).unwrap(),
-            ),
+            )?,
             10,
         )
         .unwrap();
@@ -215,6 +216,8 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
         (
             "",
             Some(types::ReplyRef {
+                quote: None,
+                artifact: None,
                 to: "root".into(),
                 thread: false,
             }),
@@ -224,6 +227,8 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
         (
             "",
             Some(types::ReplyRef {
+                quote: None,
+                artifact: None,
                 to: "root".into(),
                 thread: true,
             }),
@@ -284,6 +289,8 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
         .doc;
     voice.voice = Some(types::VoiceMeta {
         reply: Some(types::ReplyRef {
+            quote: None,
+            artifact: None,
             to: target,
             thread: false,
         }),
@@ -371,7 +378,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
     .unwrap();
     event_log::verify_author(&event).unwrap();
     assert!(matches!(event.body, EventBody::MessagePosted { text, .. } if text == "Web to native"));
-    let accepted = client.receive(&sequence(&mut log, env), 12).unwrap();
+    let accepted = client.receive(&sequence(&mut log, env)?, 12).unwrap();
     assert_eq!(accepted.conversations[0].messages.len(), 2);
     assert_eq!(accepted.conversations[0].messages[1].delivery, "confirmed");
 
@@ -431,7 +438,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
                     identity: identity.id(),
                 },
                 14,
-            ),
+            )?,
             15,
         )
         .unwrap();
@@ -440,6 +447,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
         restored.device().unwrap().group_state(space).unwrap(),
         GroupState::Missing
     );
+    Ok(())
 }
 
 pub(super) fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback(

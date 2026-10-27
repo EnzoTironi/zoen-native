@@ -27,8 +27,16 @@ const readEmpty = () => null;
 
 /** Normal text is durable; edit/search/caption/recording state remains independent. */
 export function useMessageDraft(spaceId: string, threadRootId: string | null = null) {
-  const { store, snapshot, timelines } = useClient();
-  const channel = store.messageDrafts.channel(spaceId, threadRootId);
+  const client = useClient();
+  const { store, snapshot, timelines } = client;
+  // The service survives account changes; observe the client before selecting its channel.
+  const channel = useMemo(
+    () =>
+      client.phase === 'ready' && client.snapshot
+        ? client.store.messageDrafts.channel(spaceId, threadRootId)
+        : null,
+    [client, spaceId, threadRootId],
+  );
   const normal = useSyncExternalStore(
     channel?.controller.subscribe ?? subscribeEmpty,
     channel ? () => channel.controller.getSnapshot(channel.scope) : readEmpty,
@@ -159,7 +167,7 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
         else channel.controller.setText(channel.scope, action.value);
         break;
       case 'reply':
-        if (channel.controller.setReply(channel.scope, action.entry.id)) {
+        if (channel.controller.setReply(channel.scope, action.entry.id, action.selection ?? null)) {
           const current = store.getSnapshot();
           setQuote({
             channel,
@@ -191,6 +199,7 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
     messageDraft,
     updateDraft,
     replyTo,
+    replyQuote: normal?.replyQuote ?? null,
     capture: (): MessageDraftAttempt | null => {
       if (!channel || !store.messageDrafts.isCurrent(channel)) return null;
       const transient = transientNow.current;

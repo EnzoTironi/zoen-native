@@ -8,16 +8,9 @@ impl Session {
         let me = &self.identity;
         let r = match req {
             AgentRequest::State => {
-                let member_of = self
-                    .st
-                    .log
-                    .spaces_of(me)
-                    .await
-                    .map_err(|_| "membership unavailable")?;
-                return agents::state(pool, me, &self.device, &member_of)
-                    .await
-                    .map(Reply::AgentState)
-                    .map_err(|e| e.to_string());
+                return self
+                    .complete_legacy(protocol::complete_reads::Kind::AgentState)
+                    .await;
             }
             AgentRequest::Advance { space, seq } => {
                 if !matches!(self.st.log.role(&space, me).await, Ok(Some(_))) {
@@ -41,6 +34,38 @@ impl Session {
                     .await
                     .map(Reply::AgentState)
                     .map_err(|e| e.to_string());
+            }
+            AgentRequest::ControlStatus { agent } => {
+                return agents::control_status(pool, me, &agent)
+                    .await
+                    .map(Reply::AgentControl)
+                    .map_err(|e| e.to_string());
+            }
+            AgentRequest::ControlReviewed {
+                agent,
+                action,
+                operation,
+                revision,
+            } => {
+                let result = agents::control_reviewed(
+                    pool,
+                    me,
+                    &self.device,
+                    &agent,
+                    action,
+                    &operation,
+                    revision,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                if result.status == "revoked" {
+                    self.st
+                        .log
+                        .revoke_agent_invite(&agent)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+                return Ok(Reply::AgentControl(result));
             }
             AgentRequest::Control { agent, action } => {
                 agents::control(pool, me, &agent, action)
@@ -145,11 +170,11 @@ impl Session {
                 Ok(Reply::RuntimeBinding(proof))
             }
             Op::CallTurn { space, peer } => self.call_turn(&space, &peer).await,
-            Op::Devices => Ok(Reply::Devices(
-                db::devices_of(pool, &self.identity)
+            Op::CompleteRead(request) => self.complete_read(request).await,
+            Op::Devices => {
+                self.complete_legacy(protocol::complete_reads::Kind::Devices)
                     .await
-                    .map_err(|e| e.to_string())?,
-            )),
+            }
             Op::Unlink { device } => {
                 let authorization = authorization.ok_or("unlink authorization unavailable")?;
                 if !db::revoke_device(authorization, &self.identity, &device)
@@ -219,10 +244,12 @@ impl Session {
                 let invite = if let Some(agent) = agent {
                     self.own_agent(&agent).await?;
                     // A turned-off agent never gets a new link.
-                    if matches!(
-                        crate::agents::owner_status(pool, &self.identity, &agent).await,
-                        Ok(s) if s.status == "revoked"
-                    ) {
+                    if crate::agents::owner_status(pool, &self.identity, &agent)
+                        .await
+                        .map_err(|e| e.to_string())?
+                        .status
+                        == "revoked"
+                    {
                         return Err(crate::agents::AgentCitizenError::Revoked.to_string());
                     }
                     self.st
@@ -347,6 +374,12 @@ impl Session {
             }
             Op::RedeemAgentInvite { code } => {
                 self.spend_invite_guess()?;
+                let observed = self
+                    .st
+                    .log
+                    .preview_agent_invite_for_redeemer(&code, &self.identity)
+                    .await?;
+                self.agent_invite_allowed(&observed).await?;
                 let i = self
                     .st
                     .log
@@ -400,7 +433,20 @@ impl Session {
         Ok(())
     }
 
+    async fn agent_invite_allowed(&self, i: &crate::log::InviteInfo) -> Result<(), String> {
+        if let Some(agent) = &i.agent {
+            if !crate::agents::invite_live(&self.st.pool, agent)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                return Err(crate::agents::AgentCitizenError::Revoked.to_string());
+            }
+        }
+        Ok(())
+    }
     pub(super) async fn preview(&self, i: crate::log::InviteInfo) -> Result<Reply, String> {
+        // Also recheck after redemption: revocation can race its FDB transaction.
+        self.agent_invite_allowed(&i).await?;
         let mut ids = vec![i.inviter.clone()];
         ids.extend(i.agent.clone());
         let found = db::profiles(&self.st.pool, &ids)

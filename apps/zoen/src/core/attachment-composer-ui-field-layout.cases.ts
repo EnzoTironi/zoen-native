@@ -106,7 +106,8 @@ test('the mounted iOS field uses one font for display and scoped native fitting 
     'the native viewport already applies the keyboard correction',
   );
   assert.equal(outerStyle.paddingTop, 0);
-  assert.equal(outerStyle.paddingHorizontal, 8);
+  assert.equal(outerStyle.paddingLeft, 8);
+  assert.equal(outerStyle.paddingRight, 8);
   f.render(f.file, { inputRef });
   assert.equal(
     inputRef.current,
@@ -235,11 +236,16 @@ test('compiled field preserves its actual native owner while input-mode, caption
   assert.equal(find(tree, byId('message-input')).props.ref, first.props.ref);
   assert.equal(inputRef.current, f.nativeField);
   const cases = [
-    { files: f.file, patch: {}, context: 'space::caption:1', value: '' },
+    {
+      files: f.file,
+      patch: {},
+      context: JSON.stringify(['space', null, 'caption', f.file.mutationId]),
+      value: '',
+    },
     {
       files: undefined,
       patch: { editing: true, value: 'Edited draft' },
-      context: 'space::edit',
+      context: JSON.stringify(['space', null, 'edit', null]),
       value: 'Edited draft',
     },
     {
@@ -258,10 +264,15 @@ test('compiled field preserves its actual native owner while input-mode, caption
         },
         value: 'term',
       },
-      context: 'space::search',
+      context: JSON.stringify(['space', null, 'search', null]),
       value: 'term',
     },
-    { files: undefined, patch: {}, context: 'space::normal', value: 'My unsent normal text' },
+    {
+      files: undefined,
+      patch: {},
+      context: JSON.stringify(['space', null, 'normal', null]),
+      value: 'My unsent normal text',
+    },
   ];
   for (const current of cases) {
     tree = f.render(current.files, { inputRef, ...current.patch });
@@ -277,16 +288,29 @@ test('compiled field preserves its actual native owner while input-mode, caption
     );
     assert.equal(inputRef.current, f.nativeField);
     assert.ok(
-      f.keyboardFields.some(([tag, context]) => tag === 101 && context === current.context),
+      f.keyboardFields.some(
+        ([tag, context]) =>
+          tag === 101 &&
+          typeof context === 'string' &&
+          JSON.stringify(JSON.parse(context).slice(0, 4)) === current.context,
+      ),
     );
-    if (current.context.endsWith('search'))
+    if (JSON.parse(current.context)[2] === 'search')
       assert.equal(parentOf(tree, find(tree, byId('composer-input-mode'))).props.active, false);
   }
   const providerFor = (patch: Record<string, unknown>) =>
     find(f.renderRoot(patch), (node) => node.type === 'AttachmentKeyboardProvider');
   const provider = providerFor({ search: { state: { completed: false } } });
   assert.equal(provider.type, 'AttachmentKeyboardProvider');
-  assert.equal(provider.props.scope, 'space:');
+  const [ownerScope, space, thread] = JSON.parse(provider.props.scope as string);
+  assert.equal(space, 'space');
+  assert.equal(thread, null);
+  assert.deepEqual(JSON.parse(ownerScope), [
+    { mode: 'account', identityId: 'me', deviceId: 'device' },
+    1,
+    'https://relay.example',
+    false,
+  ]);
   assert.equal(provider.props.enabled, false, 'search retires accessory input authority');
   assert.equal(providerFor({ suspended: true }).props.enabled, false);
   assert.equal(providerFor({}).props.enabled, true);

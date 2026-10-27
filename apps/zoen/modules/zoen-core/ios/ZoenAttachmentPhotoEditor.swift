@@ -7,7 +7,7 @@ import UIKit
 // TGPhotoCropAreaView.m:11–12,129–230 (GPL-2.0-or-later, GPLv3 selected).
 // Raster composition and ink are public UIKit/ImageIO/PencilKit adaptations.
 // This bounded image editor is not the entire upstream GPU/filter/paint engine.
-// Only functional crop, quarter-turn rotation, ink, undo and Save are exposed.
+// Only functional crop/reset, quarter-turn rotation, ink, undo and Save are exposed.
 
 @MainActor final class ZoenAttachmentPhotoEditor:NSObject,ZoenFilePreviewPresentation {
   private weak var presenter:UIViewController?
@@ -70,6 +70,7 @@ import UIKit
   }
 
   @MainActor private final class Editor:UIViewController,PKCanvasViewDelegate {
+    private let recipe:ZoenPhotoEditorImage
     private var bitmap:UIImage
     private let image=UIImageView()
     private let ink=PKCanvasView()
@@ -84,6 +85,7 @@ import UIKit
     private let paintButton=UIButton(type:.custom)
     private let rotateButton=UIButton(type:.custom)
     private let undo=UIButton(type:.system)
+    private let reset=UIButton(type:.system)
     private let palette=UIStackView()
     private var cropping=false
     private var painting=false
@@ -96,6 +98,7 @@ import UIKit
       guard file.isFileURL,
         let source=CGImageSourceCreateWithURL(file as CFURL,[kCGImageSourceShouldCache:false] as CFDictionary),
         let cg=CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceCreateThumbnailWithTransform:true,kCGImageSourceThumbnailMaxPixelSize:4096,kCGImageSourceShouldCacheImmediately:false] as CFDictionary) else{throw ZoenFilePreview.Failure.editedMedia}
+      recipe=ZoenPhotoEditorImage(cg)
       bitmap=UIImage(cgImage:cg)
       super.init(nibName:nil,bundle:nil)
       self.title=title;modalPresentationStyle = .fullScreen;isModalInPresentation=true
@@ -109,8 +112,8 @@ import UIKit
       ink.backgroundColor = .clear;ink.isOpaque=false;ink.drawingPolicy = .anyInput
       ink.isScrollEnabled=false;ink.delegate=self;ink.tool=PKInkingTool(.pen,color:.white,width:4)
       ink.isUserInteractionEnabled=false;crop.isHidden=true
-      crop.changed={[weak self] in self?.dirty=true}
-      for child in [image,ink,crop,toolbar,undo,palette]{view.addSubview(child)}
+      crop.changed={[weak self] in self?.dirty=true;self?.reset.isEnabled=true}
+      for child in [image,ink,crop,toolbar,undo,reset,palette]{view.addSubview(child)}
       for glass in [cancelGlass,tools,saveGlass]{toolbar.addSubview(glass)}
       cancelGlass.contentView.addSubview(cancel);saveGlass.contentView.addSubview(save)
       for button in [cropButton,paintButton,rotateButton]{tools.contentView.addSubview(button)}
@@ -121,6 +124,10 @@ import UIKit
       configure(rotateButton,glyph:.rotate,label:NSLocalizedString("Rotate",comment:"Rotate image")){[weak self] in self?.rotate()}
       undo.setTitle(NSLocalizedString("Undo",comment:"Undo ink stroke"),for:.normal);undo.tintColor = .white
       undo.addAction(UIAction{[weak self] _ in self?.ink.undoManager?.undo()},for:.touchUpInside)
+      reset.setTitle(NSLocalizedString("Reset",comment:"Reset image crop and rotation"),for:.normal);reset.tintColor = .white
+      reset.titleLabel?.font = .preferredFont(forTextStyle:.body);reset.titleLabel?.adjustsFontForContentSizeCategory=true;reset.titleLabel?.numberOfLines=2
+      reset.addAction(UIAction{[weak self] _ in self?.resetCrop()},for:.touchUpInside)
+      reset.isHidden=true
       palette.axis = .horizontal;palette.spacing=12;palette.distribution = .fillEqually
       for color in [UIColor.white,.black,.systemRed,.systemYellow,.systemGreen,.systemBlue] {
         let button=UIButton(type:.custom);button.backgroundColor=color;button.layer.cornerRadius=12;button.layer.borderWidth=1;button.layer.borderColor=UIColor.white.withAlphaComponent(0.6).cgColor
@@ -154,47 +161,58 @@ import UIKit
       for (index,button) in [cropButton,paintButton,rotateButton].enumerated(){button.frame=CGRect(x:CGFloat(index)*54,y:0,width:44,height:44)}
       palette.frame=CGRect(x:floor((size.width-204)/2),y:toolbar.frame.minY-40,width:204,height:24)
       undo.frame=CGRect(x:safe.left+16,y:safe.top+8,width:60,height:44)
+      let resetWidth=max(80,(size.width-safe.left-safe.right)/2-24)
+      let resetHeight=max(44,reset.titleLabel?.sizeThatFits(CGSize(width:resetWidth,height:.greatestFiniteMagnitude)).height ?? 44)
+      reset.frame=CGRect(x:size.width-safe.right-16-resetWidth,y:safe.top+8,width:resetWidth,height:resetHeight)
     }
     func canvasViewDrawingDidChange(_ canvasView:PKCanvasView){dirty=true;undo.isEnabled=ink.undoManager?.canUndo==true}
     private func toggleCrop(){
       guard !retired else{return}
-      if cropping {applyCrop()} else {commitInk();cropping=true}
+      if cropping {guard applyCrop() else{return}} else {guard commitInk() else{return};cropping=true}
       painting=false
       crop.isHidden = !cropping;ink.isUserInteractionEnabled=false;palette.isHidden=true;undo.isHidden=true
+      reset.isHidden = !cropping;reset.isEnabled=recipe.canReset
       cropButton.alpha=cropping ? 0.55:1;paintButton.alpha=1
     }
     private func togglePaint(){
-      guard !retired else{return};applyCrop();painting.toggle();cropping=false;crop.isHidden=true
+      guard !retired,applyCrop() else{return};painting.toggle();cropping=false;crop.isHidden=true;reset.isHidden=true
       ink.isUserInteractionEnabled=painting;palette.isHidden = !painting;undo.isHidden = !painting
       paintButton.alpha=painting ? 0.55:1;cropButton.alpha=1
     }
-    private func commitInk(){
-      guard !ink.drawing.bounds.isEmpty,ink.bounds.width>0 else{return}
-      let format=UIGraphicsImageRendererFormat();format.scale=1;format.opaque=false
-      let overlay=ink.drawing.image(from:ink.bounds,scale:bitmap.size.width/ink.bounds.width)
-      bitmap=UIGraphicsImageRenderer(size:bitmap.size,format:format).image{_ in bitmap.draw(in:CGRect(origin:.zero,size:bitmap.size));overlay.draw(in:CGRect(origin:.zero,size:bitmap.size))}
-      ink.drawing=PKDrawing();image.image=bitmap;dirty=true
+    @discardableResult private func commitInk()->Bool {
+      guard !ink.drawing.bounds.isEmpty else{return true}
+      guard ink.bounds.width>0,let overlay=ink.drawing.image(from:ink.bounds,scale:bitmap.size.width/ink.bounds.width).cgImage else{show(error:ZoenFilePreview.Failure.editedMedia);return false}
+      do {
+        bitmap=UIImage(cgImage:try recipe.commitInk(overlay))
+        ink.drawing=PKDrawing();image.image=bitmap;dirty=true
+        return true
+      }catch{show(error:error);return false}
     }
-    private func applyCrop(){
-      guard cropping else{return};commitInk()
-      let normalized=crop.normalized
-      let rect=CGRect(x:normalized.minX*bitmap.size.width,y:normalized.minY*bitmap.size.height,width:normalized.width*bitmap.size.width,height:normalized.height*bitmap.size.height).integral
-      if rect.width>0,rect.height>0,let cg=bitmap.cgImage?.cropping(to:rect){bitmap=UIImage(cgImage:cg);image.image=bitmap;dirty=true}
-      crop.reset();cropping=false;crop.isHidden=true;view.setNeedsLayout();view.layoutIfNeeded()
+    @discardableResult private func applyCrop()->Bool {
+      guard cropping else{return true};guard commitInk() else{return false}
+      do {
+        bitmap=UIImage(cgImage:try recipe.crop(to:crop.normalized));image.image=bitmap;dirty=true
+        crop.reset();cropping=false;crop.isHidden=true;reset.isHidden=true;view.setNeedsLayout();view.layoutIfNeeded()
+        return true
+      }catch{show(error:error);return false}
     }
     private func rotate(){
-      guard !retired else{return};applyCrop();commitInk()
-      let old=bitmap,newSize=CGSize(width:old.size.height,height:old.size.width)
-      let format=UIGraphicsImageRendererFormat();format.scale=1
-      bitmap=UIGraphicsImageRenderer(size:newSize,format:format).image{context in
-        context.cgContext.translateBy(x:newSize.width/2,y:newSize.height/2);context.cgContext.rotate(by:.pi/2)
-        old.draw(in:CGRect(x:-old.size.width/2,y:-old.size.height/2,width:old.size.width,height:old.size.height))
-      }
-      image.image=bitmap;dirty=true;view.setNeedsLayout();view.layoutIfNeeded()
+      guard !retired,applyCrop(),commitInk() else{return}
+      do {
+        bitmap=UIImage(cgImage:try recipe.rotate())
+        image.image=bitmap;dirty=true;view.setNeedsLayout();view.layoutIfNeeded()
+      }catch{show(error:error)}
+    }
+    private func resetCrop(){
+      guard !retired,commitInk() else{return}
+      do {
+        bitmap=UIImage(cgImage:try recipe.reset());image.image=bitmap
+        crop.reset();reset.isEnabled=false;dirty=true;view.setNeedsLayout();view.layoutIfNeeded()
+      }catch{show(error:error)}
     }
     private func savePressed(){
       guard !retired else{return}
-      applyCrop();commitInk()
+      guard applyCrop(),commitInk() else{return}
       guard let bytes=bitmap.pngData(),!bytes.isEmpty,UInt64(bytes.count)<=ZoenMediaFiles.maximumBytes else{show(error:ZoenFilePreview.Failure.editedMedia);return}
       // Existing native capture creates the one owned file and performs the
       // same validation/CAS/recovery path. The editor creates no temp URL.
@@ -215,7 +233,7 @@ import UIKit
     }
     func retire(){
       guard !retired else{return};retired=true;view.isUserInteractionEnabled=false;view.isHidden=true
-      ink.delegate=nil;ink.drawing=PKDrawing();cancelled=nil;saved=nil
+      ink.delegate=nil;ink.drawing=PKDrawing();recipe.release();image.image=nil;bitmap=UIImage();cancelled=nil;saved=nil
     }
   }
 }

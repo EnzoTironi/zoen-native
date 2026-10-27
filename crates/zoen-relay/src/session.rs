@@ -35,6 +35,7 @@ use crate::{
 };
 
 mod authentication;
+mod complete_reads;
 mod ephemeral;
 mod managed;
 mod online;
@@ -72,6 +73,8 @@ struct Session {
     started: std::time::Instant,
     first_sync_done: bool,
     claim_receipts: bool,
+    complete_reads: bool,
+    read_snapshot: Option<crate::read_snapshots::Snapshot>,
     managed_binding: Option<protocol::runtime_binding::Request>,
 }
 
@@ -157,6 +160,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         cert,
         registered,
         claim_receipts,
+        complete_reads,
     }) = handshake(&st, &tx, &mut stream, &ip).await
     else {
         return finish(writer, tx).await;
@@ -223,6 +227,8 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         started: std::time::Instant::now(),
         first_sync_done: false,
         claim_receipts,
+        complete_reads,
+        read_snapshot: None,
         managed_binding: None,
     };
     // `ready` first: the client's handshake reads it before anything else.
@@ -283,6 +289,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
                 break;
             }
             _ = refresh.tick() => {
+                if s.read_snapshot.as_ref().is_some_and(crate::read_snapshots::Snapshot::expired) { s.read_snapshot = None; }
                 if !tokio::time::timeout(Duration::from_secs(5), s.still_authorized()).await.is_ok_and(|active| active) { break; }
             }
         }

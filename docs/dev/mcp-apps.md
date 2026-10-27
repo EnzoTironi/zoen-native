@@ -63,6 +63,72 @@ calls, checkpoint ownership and saving continue through the same live official
 Excalidraw MCP connection. The generic host has no timing workaround or launch
 data replay on layout changes.
 
+## Host-owned external release bindings
+
+The remote session consumer also accepts an immutable host-owned release binding:
+provider identity, exact HTTPS endpoint, release, launch tool, UI resource URI,
+SHA-256, UTF-8 byte count, CSP origins and requested permissions. It copies and
+freezes that configuration when the session starts. A guest URL, model output or
+resource descriptor cannot register a release or expand the binding.
+
+Discovery selects the bound launch tool rather than the first advertised App.
+Resource bytes and policy must match before HTML is returned or any bound-session
+tool executes. Resource drift is retained as a refusal for the session, not
+retried with a newly discovered version. Unsupported CSP fields and browser
+permissions fail closed. Existing lifetime, visibility, response and argument
+limits still apply; a requested browser permission remains a request, not consent.
+
+The existing Excalidraw proof viewer uses this same resolver through its legacy
+registration. That registration has no immutable remote release pin and remains
+explicitly distinct from canonical Item storage. The generic consumer tests use
+the real MCP SDK with controlled HTTP responses; they do not prove a deployed
+package, native UI, canonical persistence or independent editor updates. Dynamic
+package admission and the full external-App journey remain open under #180.
+
+`RemoteAppScreen` accepts a trusted host-code `launch` configuration containing
+that binding and explicit launch arguments. This is the same screen, button,
+session, sandboxed frame and official AppBridge used by the existing
+`/connected-app/excalidraw` route. Configuration and arguments are captured at
+opening; replacement retires the previous session. Remote tools require explicit
+confirmation, including tools whose provider advertises `readOnlyHint`. The
+Excalidraw checkpoint exceptions remain specific to its legacy connection.
+
+This host-code entry point is deliberately not a URL-based installation path.
+The route still resolves only its existing Excalidraw registration. No remote
+configuration, document or credential is inferred from a link or guest metadata.
+Compiled-screen tests exercise real React, Expo focus, Store, MCP SDK and AppBridge
+with controlled HTTP/native-frame ports; they do not certify native pixels or
+provider durability.
+
+The first [owned-package admission](mcp-app-packages.md) adds a canonical path
+alongside this host-code connection: an authenticated File Item supplies an exact
+HTML release, and the App retains its own encrypted UI FileDoc next to its
+Excalidraw document. Resource reads, document reads/saves/copies and release updates
+bind to that Item and captured URI under Core authority. The static bundled
+catalog and the remote-viewer connection remain separate. This first format does
+not admit arbitrary document engines, remote credentials or suggested-edit
+approval. A frontend launch configuration cannot substitute for canonical
+admission, grant access to a chat or create a second document store. The new
+admission journey needs its own native proof; earlier evidence is not promoted.
+
+## Native viewport and embedded renderer contract
+
+The host resizes the actual native frame for the keyboard and sends current
+layout, safe insets and its close-button rectangle through the existing context.
+A geometry acknowledgement does not prove that the renderer consumed it. The
+renderer must constrain its content and clipping to that current safe rectangle
+once, including when its embedding parent already supplies a smaller rectangle.
+Do not reload the document or replace the current editor to respond to layout.
+
+In pinned egui/eframe0.36, the root `Ui` starts at `viewport_rect()`; merely setting
+`RawInput.safe_area_insets` does **not** relocate the App's panels. The Grid
+adaptation intersects the parent's available rectangle with `content_rect()`
+and uses that rectangle for the child layout and clip. Its short-viewport editing
+policy keeps the same TextEdit ID/buffer/cursor/composition, existing confirmation
+and command policy, and saved UI preferences. See the [Grid recipe and scope](../../miniapps/gridcraft-ui/README.md).
+This is a reusable contract for Deck, Word and future renderers, not evidence
+that those independent engines have received or passed the same adaptation.
+
 ## Bundled miniapp views
 
 All nine bundled AppSpecs now provide MCP Apps resources with integrity manifests.

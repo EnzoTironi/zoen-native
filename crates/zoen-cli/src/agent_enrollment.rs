@@ -35,7 +35,7 @@ pub(crate) enum Action {
 pub(crate) fn requires_home_lock(command: &str) -> bool {
     matches!(
         command,
-        "agent-host" | "agent-inspect" | REQUEST | WAIT | CANCEL
+        "agent-host" | "agent-controls" | "agent-inspect" | REQUEST | WAIT | CANCEL
     )
 }
 

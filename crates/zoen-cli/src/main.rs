@@ -15,6 +15,7 @@ mod agent_inspect;
 mod cli;
 mod commands;
 mod deckcraft;
+mod file_import;
 mod file_vault;
 mod image_protocol;
 mod terminal;
@@ -140,30 +141,6 @@ async fn ready(e: &Client, id: &str, timeout: u64) -> bool {
     }
 }
 
-fn mime_of(path: &str) -> &'static str {
-    let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-    match ext.as_str() {
-        "md" | "markdown" => "text/markdown",
-        "txt" => "text/plain",
-        "pdf" => "application/pdf",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "heic" => "image/heic",
-        "gif" => "image/gif",
-        "mp4" => "video/mp4",
-        "mov" => "video/quicktime",
-        "mp3" => "audio/mpeg",
-        "m4a" => "audio/mp4",
-        "zip" => "application/zip",
-        "csv" => "text/csv",
-        "json" => "application/json",
-        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        _ => "application/octet-stream",
-    }
-}
-
 fn read_file(path: &str) -> Vec<u8> {
     std::fs::read(path).unwrap_or_else(|err| die(format!("{path}: {err}")))
 }
@@ -207,8 +184,8 @@ fn new_block_id() -> String {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
-    let mut cli = Cli {
-        args: std::env::args().skip(1).collect(),
+    let Some(mut cli) = Cli::from_args(std::env::args().skip(1).collect()) else {
+        return;
     };
     let home = cli
         .flag("--home")
@@ -225,6 +202,9 @@ async fn main() {
         usage();
     }
     let cmd = cli.args.remove(0);
+    file_import::preflight(&cmd, &cli.args).unwrap_or_else(|error| die(error));
+    agent::controls::preflight(&cmd, &std::env::args().skip(1).collect::<Vec<_>>(), &home)
+        .unwrap_or_else(|error| die(error));
     let agent_source = if cmd == "agent-host" {
         agent::Source::parse(&std::env::args().skip(1).collect::<Vec<_>>())
             .unwrap_or_else(|error| die(error))
@@ -256,11 +236,13 @@ async fn main() {
     } else {
         None
     };
-    let agent_readiness = if cmd == "agent-host" {
+    let agent_readiness = if matches!(cmd.as_str(), "agent-host" | agent::controls::COMMAND) {
         Some(
             agent::Readiness::reset(
                 &home,
-                agent_host_lock.as_ref().expect("agent-host home lock"),
+                agent_host_lock
+                    .as_ref()
+                    .unwrap_or_else(|| die("agent_host_lock_unavailable")),
             )
             .unwrap_or_else(|error| die(error)),
         )
@@ -325,7 +307,10 @@ async fn main() {
         if relay.is_some() || e.account().is_some() {
             let _ = e.growth_sync(relay, false, 0, 0).await;
         }
-        let p = e.growth_onboarding_plan();
+        let p = match e.growth_onboarding_plan() {
+            Ok(plan) => plan,
+            Err(error) => die(error),
+        };
         println!("flow={}", p.flow);
         println!("steps={}", p.steps.join(","));
         println!("landing={}", p.landing);
@@ -531,11 +516,14 @@ async fn main() {
     }
 
     match cmd.as_str() {
-        "agent-host" => {
-            if let Err(error) = agent::host(
+        "agent-host" | agent::controls::COMMAND => {
+            if let Err(error) = agent::controls::dispatch(
+                &cmd,
                 &e,
                 &home,
-                agent_readiness.as_ref().expect("agent-host readiness"),
+                agent_readiness
+                    .as_ref()
+                    .unwrap_or_else(|| die("agent_host_readiness_unavailable")),
                 for_secs,
                 agent_source,
             )

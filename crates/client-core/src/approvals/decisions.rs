@@ -1,6 +1,11 @@
 //! Existing decisions on the same canonical Engine authority.
 
-use super::*;
+use super::{
+    new_id, standing_allow_permitted, standing_key, t, tr, ActionClass, AgentRequest,
+    ApproveOutcome, Capability, CoreError, Currentness, DecisionKind, Engine, EventBody, Grant,
+    GrantScope, IdentityKind, ItemKind, ItemProposal, PlanOutcome, ReqStatus, RequestResolution,
+    TrustLevel, R,
+};
 
 impl Engine {
     pub(crate) fn propose_item(
@@ -38,7 +43,7 @@ impl Engine {
             grants::Decision::Request(reason) => {
                 let mut request = AgentRequest {
                     tool_proposal: None,
-                    id: new_id("rq"),
+                    id: new_id("rq")?,
                     agent: agent.into(),
                     title,
                     detail: prompt.into(),
@@ -49,7 +54,12 @@ impl Engine {
                     line: None,
                     proposal: Some(Box::new(proposal)),
                 };
-                request.content_hash = request.proposal_hash(space).expect("proposal present");
+                request.content_hash =
+                    request
+                        .proposal_hash(space)
+                        .ok_or_else(|| CoreError::Invalid {
+                            reason: "The proposed item could not be bound to its review.".into(),
+                        })?;
                 self.append(space, agent, EventBody::RequestOpened { request })?;
                 Ok(PlanOutcome {
                     kind: DecisionKind::Request,
@@ -79,7 +89,7 @@ impl Engine {
                         &me,
                         EventBody::GrantIssued {
                             grant: Grant {
-                                id: new_id("gr"),
+                                id: new_id("gr")?,
                                 grantor: me.clone(),
                                 grantee: Some(format!("app:{}", proposal.item)),
                                 scope: GrantScope::Item(proposal.item.clone()),
@@ -243,13 +253,16 @@ impl Engine {
         });
         let proposal = r.req.proposal.as_ref();
         let message = if approve {
-            proposal.map(|p| p.message.clone()).unwrap_or_else(|| {
-                tr!(
-                    "Aprovado: {}. Aguardando a execução da ferramenta.",
-                    "Approved: {}. Waiting for tool execution.",
-                    r.req.title
-                )
-            })
+            proposal.map_or_else(
+                || {
+                    tr!(
+                        "Aprovado: {}. Aguardando a execução da ferramenta.",
+                        "Approved: {}. Waiting for tool execution.",
+                        r.req.title
+                    )
+                },
+                |p| p.message.clone(),
+            )
         } else {
             tr!("Ok, não vou {}.", "Ok, I won't {}.", r.req.title)
         };

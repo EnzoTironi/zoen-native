@@ -26,6 +26,9 @@ pub struct ProviderBindResponse {
 
 /// Exact domain-separated bytes signed by the device. Profile encoding is shared
 /// between native, WASM and the relay; JSON formatting supplied by a caller is ignored.
+///
+/// # Errors
+/// Returns the serialization error if the identity profile cannot be encoded.
 pub fn provider_bind_message(
     proof_token: &str,
     profile: &Identity,

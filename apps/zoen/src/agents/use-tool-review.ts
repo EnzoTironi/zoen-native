@@ -3,22 +3,26 @@ import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { toolApprovalValid } from '../core/tool-request-decision';
 import { useClient } from '../core/provider';
+import { accountScope } from '../core/account-scope';
 import {
   createReviewPort,
   ToolReviewSession,
   reviewScopeKey,
+  reviewStatusEligible,
 } from '../core/tool-review-renewal.ts';
 
-export function useToolReview(id: string) {
-  const { store } = useClient();
+export function useToolReview(id: string, onExpiry?: () => void) {
+  const client = useClient();
+  const { store } = client;
   const port = useMemo(() => createReviewPort(store), [store]);
   const session = useMemo(() => new ToolReviewSession(port, id), [port, id]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const key = reviewScopeKey(port.scope());
+  const key = reviewScopeKey(accountScope(store, client));
   useFocusEffect(
     useCallback(() => {
       let foreground = AppState.currentState === 'active';
       let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+      let notifiedExpiry = '';
       const clearExpiry = () => {
         clearTimeout(expiryTimer);
         expiryTimer = undefined;
@@ -31,20 +35,38 @@ export function useToolReview(id: string) {
           !foreground ||
           reviewScopeKey(port.scope()) !== key ||
           current.phase !== 'ready' ||
-          current.request?.status !== 'Approved' ||
+          !reviewStatusEligible(current.request?.status) ||
           !tool ||
           !toolApprovalValid(tool)
         )
           return;
         const expiry = Number(tool.expires_ms);
         const remaining = expiry - Date.now();
-        if (!Number.isSafeInteger(expiry) || remaining <= 0) return;
+        if (!Number.isSafeInteger(expiry)) return;
+        const notify = () => {
+          const observation = JSON.stringify([
+            current.request?.id,
+            tool.content_hash,
+            tool.expires_ms,
+          ]);
+          if (notifiedExpiry === observation) return;
+          notifiedExpiry = observation;
+          // Presentation only: recompute the parent's clock-derived affordance.
+          // This never supplies a DTO, permission, intent or execution result.
+          onExpiry?.();
+        };
+        if (remaining <= 0) {
+          notify();
+          return;
+        }
         expiryTimer = setTimeout(
           () => {
             expiryTimer = undefined;
             if (!foreground || reviewScopeKey(port.scope()) !== key) return;
-            if (Date.now() >= expiry) void session.refresh();
-            else scheduleExpiry();
+            if (Date.now() >= expiry) {
+              notify();
+              void session.refresh();
+            } else scheduleExpiry();
           },
           Math.min(remaining, 2_147_483_647),
         );
@@ -79,7 +101,7 @@ export function useToolReview(id: string) {
         clearExpiry();
         session.retire();
       };
-    }, [store, port, session, key]),
+    }, [store, port, session, key, onExpiry]),
   );
   return { session, state };
 }

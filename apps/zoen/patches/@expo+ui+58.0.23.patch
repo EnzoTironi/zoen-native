@@ -1,0 +1,425 @@
+diff --git a/node_modules/@expo/ui/ios/Toggle/ToggleView.swift b/node_modules/@expo/ui/ios/Toggle/ToggleView.swift
+--- a/node_modules/@expo/ui/ios/Toggle/ToggleView.swift
++++ b/node_modules/@expo/ui/ios/Toggle/ToggleView.swift
+@@ -26,4 +26,6 @@
+       set: { newValue in
++        ZoenThemeInputProbe.record(.bindingSet, testID: props.testID)
+         uncontrolled = newValue
+         if props.isOn != newValue {
++          ZoenThemeInputProbe.record(.dispatchAttempt, testID: props.testID)
+           props.onIsOnChange([
+@@ -31,2 +33,3 @@
+           ])
++          ZoenThemeInputProbe.record(.dispatchReturned, testID: props.testID)
+         }
+@@ -34,2 +37,5 @@
+     ))
++    .background {
++      if props.testID == "zoen-theme-automatic-probe" { ZoenThemeTouchProbe() }
++    }
+   }
+diff --git a/node_modules/@expo/ui/ios/Toggle/ZoenThemeInputProbe.swift b/node_modules/@expo/ui/ios/Toggle/ZoenThemeInputProbe.swift
+new file mode 100644
+--- /dev/null
++++ b/node_modules/@expo/ui/ios/Toggle/ZoenThemeInputProbe.swift
+@@ -0,0 +1,33 @@
++// Temporary #440 diagnostic; opt-in testID, no control-state changes.
++import OSLog
++
++@MainActor
++internal enum ZoenThemeInputProbe {
++  enum Stage: String {
++    case bindingSet = "native-binding-set"
++    case dispatchAttempt = "native-dispatch-attempt"
++    case dispatchReturned = "native-dispatch-returned"
++  }
++  enum TouchStage: String {
++    case armed = "native-touch-probe-armed"
++    case began = "native-touch-began"
++    case ended = "native-touch-ended"
++    case cancelled = "native-observer-touch-cancelled"
++    case valueChanged = "native-control-value-changed"
++    case controlCancelled = "native-control-touch-cancelled"
++  }
++  private static var budget = ZoenThemeProbeBudget()
++  private static let logger = Logger(subsystem: "com.zoen.theme-input", category: "Automatic")
++
++  static func claim() -> Bool { budget.claim() }
++  static func stop() { budget.stop() }
++  static func record(_ stage: Stage, testID: String?) {
++    guard testID == "zoen-theme-automatic-probe" else { return }
++    emit(stage.rawValue, detail: "")
++  }
++  static func touch(_ stage: TouchStage, detail: String) { emit(stage.rawValue, detail: detail) }
++  private static func emit(_ stage: String, detail: String) {
++    guard let count = budget.take() else { return }
++    logger.notice("[ZoenThemeInput] \(stage, privacy: .public) count=\(count, privacy: .public) \(detail, privacy: .public)")
++  }
++}
+diff --git a/node_modules/@expo/ui/ios/Toggle/ZoenThemeTouchState.swift b/node_modules/@expo/ui/ios/Toggle/ZoenThemeTouchState.swift
+new file mode 100644
+--- /dev/null
++++ b/node_modules/@expo/ui/ios/Toggle/ZoenThemeTouchState.swift
+@@ -0,0 +1,73 @@
++import Foundation
++
++/// Diagnostic state only. No UIKit state, input delivery or preference authority.
++struct ZoenThemeTouchState {
++  enum Phase { case ended, cancelled, valueChanged, controlCancelled }
++  private(set) var generation: UInt64 = 0
++  private(set) var armed = false
++  private(set) var used = false
++  private var touch: UInt64?
++  private var terminal = false
++  private var changed = false
++  private var controlCancelled = false
++  private var records = 0
++
++  mutating func arm(testID: String?) -> UInt64? {
++    guard testID == "zoen-theme-automatic-probe", !armed, !used, generation < UInt64.max else { return nil }
++    generation += 1
++    armed = true
++    return generation
++  }
++  mutating func begin(generation: UInt64, touch: UInt64) -> Bool {
++    guard current(generation), !used else { return false }
++    used = true
++    self.touch = touch
++    return record(generation)
++  }
++  mutating func phase(_ phase: Phase, generation: UInt64, touch: UInt64) -> Bool {
++    guard current(generation), self.touch == touch else { return false }
++    switch phase {
++    case .ended, .cancelled:
++      guard !terminal else { return false }
++      terminal = true
++    case .valueChanged:
++      guard !changed else { return false }
++      changed = true
++    case .controlCancelled:
++      guard !controlCancelled else { return false }
++      controlCancelled = true
++    }
++    return record(generation)
++  }
++  mutating func record(_ generation: UInt64) -> Bool {
++    guard current(generation), records < 8 else { return false }
++    records += 1
++    return true
++  }
++  func current(_ generation: UInt64) -> Bool { armed && self.generation == generation }
++  mutating func retire() {
++    armed = false
++    touch = nil
++    // A retired lifetime never rearms. A new Host creates a new probe instance.
++    used = true
++  }
++}
++
++/// Shared ceiling includes Binding and UIKit records for the one diagnostic run.
++struct ZoenThemeProbeBudget {
++  private(set) var count = 0
++  private var claimed = false
++  private var active = false
++  mutating func claim() -> Bool {
++    guard !claimed else { return false }
++    claimed = true
++    active = true
++    return true
++  }
++  mutating func stop() { active = false }
++  mutating func take() -> Int? {
++    guard active, count < 8 else { return nil }
++    count += 1
++    return count
++  }
++}
+diff --git a/node_modules/@expo/ui/ios/Toggle/ZoenThemeTouchProbe.swift b/node_modules/@expo/ui/ios/Toggle/ZoenThemeTouchProbe.swift
+new file mode 100644
+--- /dev/null
++++ b/node_modules/@expo/ui/ios/Toggle/ZoenThemeTouchProbe.swift
+@@ -0,0 +1,184 @@
++import SwiftUI
++import UIKit
++
++/// A noninteractive background view. It observes exactly one live, opt-in Switch.
++internal struct ZoenThemeTouchProbe: UIViewRepresentable {
++  func makeUIView(context: Context) -> ZoenThemeTouchProbeView { ZoenThemeTouchProbeView() }
++  func updateUIView(_ view: ZoenThemeTouchProbeView, context: Context) { view.scheduleBinding() }
++  static func dismantleUIView(_ view: ZoenThemeTouchProbeView, coordinator: ()) { view.retire() }
++}
++
++@MainActor internal final class ZoenThemeTouchProbeView: UIView {
++  private weak var control: UISwitch?
++  private weak var boundWindow: UIWindow?
++  private var recognizer: ZoenThemePassiveTouchRecognizer?
++  private var inactivity: NSObjectProtocol?
++  private var state = ZoenThemeTouchState()
++  private var bindingScheduled = false
++  private weak var capturedTouch: UITouch?
++  private var touchID: UInt64 = 0
++  private var ticket: UInt64 = 0
++
++  init() {
++    super.init(frame: .zero)
++    isUserInteractionEnabled = false
++    isAccessibilityElement = false
++    backgroundColor = .clear
++  }
++  required init?(coder: NSCoder) { return nil }
++
++  override func didMoveToWindow() {
++    super.didMoveToWindow()
++    if window == nil { retire() } else { scheduleBinding() }
++  }
++  override func willMove(toWindow next: UIWindow?) {
++    if window != nil, next !== window { retire() }
++    super.willMove(toWindow: next)
++  }
++  override func layoutSubviews() { super.layoutSubviews(); scheduleBinding() }
++
++  func scheduleBinding() {
++    guard !bindingScheduled, !state.used, !state.armed, window != nil else { return }
++    bindingScheduled = true
++    DispatchQueue.main.async { [weak self] in
++      guard let self else { return }
++      self.bindingScheduled = false
++      self.bind()
++    }
++  }
++  private func bind() {
++    guard !state.used, !state.armed, let window, UIApplication.shared.applicationState == .active else { return }
++    // Resolve only the hosting controller containing this background, never an
++    // arbitrary window's unrelated Switch or a private SwiftUI class name.
++    var responder: UIResponder? = self
++    var root: UIView?
++    while let current = responder {
++      if let host = current as? UIHostingController<AnyView> { root = host.view; break }
++      responder = current.next
++    }
++    guard let root, root.window === window else { return }
++    var matches: [UISwitch] = []
++    var pending: [(UIView, Int)] = [(root, 0)]
++    var visited = 0
++    while let (view, depth) = pending.popLast() {
++      guard visited < 256, depth < 32 else { return }
++      visited += 1
++      if let candidate = view as? UISwitch,
++         candidate.accessibilityIdentifier == "zoen-theme-automatic-probe" { matches.append(candidate) }
++      guard pending.count + view.subviews.count <= 256 else { return }
++      pending.append(contentsOf: view.subviews.map { ($0, depth + 1) })
++    }
++    guard matches.count == 1, let control = matches.first,
++          let ticket = state.arm(testID: control.accessibilityIdentifier) else { return }
++    guard ZoenThemeInputProbe.claim() else { state.retire(); return }
++    self.ticket = ticket
++    self.control = control
++    boundWindow = window
++    let observer = ZoenThemePassiveTouchRecognizer(owner: self)
++    recognizer = observer
++    window.addGestureRecognizer(observer)
++    control.addTarget(self, action: #selector(valueChanged(_:)), for: .valueChanged)
++    control.addTarget(self, action: #selector(controlCancelled(_:)), for: .touchCancel)
++    inactivity = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification,
++                                                       object: nil, queue: .main) { [weak self] _ in
++      MainActor.assumeIsolated { self?.retire() }
++    }
++    report(.armed)
++  }
++  func retire() {
++    if state.armed { ZoenThemeInputProbe.stop() }
++    state.retire() // Revoke queued callbacks before detaching either observer.
++    if let recognizer { boundWindow?.removeGestureRecognizer(recognizer) }
++    recognizer = nil
++    control?.removeTarget(self, action: #selector(valueChanged(_:)), for: .valueChanged)
++    control?.removeTarget(self, action: #selector(controlCancelled(_:)), for: .touchCancel)
++    if let inactivity { NotificationCenter.default.removeObserver(inactivity) }
++    inactivity = nil
++    capturedTouch = nil
++    control = nil
++    boundWindow = nil
++  }
++  private func current() -> UISwitch? {
++    guard state.current(ticket), let control, let boundWindow,
++          window === boundWindow, control.window === boundWindow,
++          UIApplication.shared.applicationState == .active else {
++      if state.armed { retire() }
++      return nil
++    }
++    return control
++  }
++  func receive(_ touch: UITouch) -> Bool {
++    guard let control = current(), touch.window === boundWindow,
++          control.bounds.contains(touch.location(in: control)),
++          state.begin(generation: ticket, touch: 1) else { return false }
++    capturedTouch = touch
++    touchID = 1
++    report(.began, detail: describe(touch, control: control))
++    return true
++  }
++  func terminal(_ touches: Set<UITouch>, cancelled: Bool) {
++    guard let control = current(), let touch = capturedTouch,
++          touches.contains(where: { $0 === touch }),
++          state.phase(cancelled ? .cancelled : .ended, generation: ticket, touch: touchID) else { return }
++    report(cancelled ? .cancelled : .ended, detail: describe(touch, control: control))
++    if cancelled { retire(); return }
++    let captured = ticket
++    // UIKit may emit valueChanged after recognizer touchesEnded. Finish after
++    // this event's delivery, not after a guessed timer or an additional input.
++    DispatchQueue.main.async { [weak self] in
++      guard let self, self.state.current(captured) else { return }
++      self.retire()
++    }
++  }
++  @objc private func valueChanged(_ sender: UISwitch) {
++    guard sender === current(), state.phase(.valueChanged, generation: ticket, touch: touchID) else { return }
++    report(.valueChanged, detail: "isOn=\(sender.isOn)")
++  }
++  @objc private func controlCancelled(_ sender: UISwitch) {
++    guard sender === current(), state.phase(.controlCancelled, generation: ticket, touch: touchID) else { return }
++    report(.controlCancelled)
++  }
++  private func report(_ stage: ZoenThemeInputProbe.TouchStage, detail: String = "") {
++    ZoenThemeInputProbe.touch(stage, detail: detail)
++  }
++  private func describe(_ touch: UITouch, control: UISwitch) -> String {
++    let target = touch.view
++    let branch = target.map { $0 === control || $0.isDescendant(of: control) } ?? false
++    let name = target.map { String(NSStringFromClass(type(of: $0)).prefix(96)) } ?? "nil"
++    var gestures: [String] = []
++    var ancestor = target
++    var depth = 0
++    while let view = ancestor, depth < 32, gestures.count < 6 {
++      for gesture in view.gestureRecognizers ?? [] where !(gesture is ZoenThemePassiveTouchRecognizer) {
++        guard gestures.count < 6 else { break }
++        gestures.append("\(String(NSStringFromClass(type(of: gesture)).prefix(80))):\(gesture.state.rawValue):cancel=\(gesture.cancelsTouchesInView)")
++      }
++      ancestor = view.superview; depth += 1
++    }
++    return "target=\(name) branch=\(branch) recognizers=\(gestures.joined(separator: ","))"
++  }
++}
++
++@MainActor private final class ZoenThemePassiveTouchRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
++  private weak var owner: ZoenThemeTouchProbeView?
++  init(owner: ZoenThemeTouchProbeView) {
++    self.owner = owner
++    super.init(target: nil, action: nil)
++    cancelsTouchesInView = false
++    delaysTouchesBegan = false
++    delaysTouchesEnded = false
++    delegate = self
++  }
++  override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
++  override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
++  func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool { owner?.receive(touch) ?? false }
++  func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
++  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
++    owner?.terminal(touches, cancelled: false)
++    state = .failed // Never recognize an action.
++  }
++  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
++    owner?.terminal(touches, cancelled: true)
++    state = .failed
++  }
++}
+diff --git a/node_modules/@expo/ui/ios/RNHostView.swift b/node_modules/@expo/ui/ios/RNHostView.swift
+--- a/node_modules/@expo/ui/ios/RNHostView.swift
++++ b/node_modules/@expo/ui/ios/RNHostView.swift
+@@ -50,6 +50,9 @@
+       .onAppear {
+         updateTouchHandler()
+       }
++      .onChange(of: props.layoutRoot) { _ in
++        updateTouchHandler()
++      }
+       .onChange(of: props.children?.first?.childIdentity) { _ in
+         updateTouchHandler()
+       }
+@@ -60,11 +63,7 @@
+
+   // Follows the current child, which Fabric can replace or remount while this view stays.
+   private func updateTouchHandler() {
+-    if props.layoutRoot, let view = firstChildUIView {
+-      touchHandler.attach(to: view)
+-    } else {
+-      touchHandler.detach()
+-    }
++    touchHandler.update(layoutRoot: props.layoutRoot, view: firstChildUIView)
+   }
+
+   @ViewBuilder
+@@ -145,29 +144,16 @@
+ // Tracks the `RCTSurfaceTouchHandler` attached to a hosted RN view so it can be detached when the
+ // `RNHostView` disappears, instead of leaking onto the recycled component view.
+ private final class RNHostTouchHandler: ObservableObject {
+-  private weak var touchHandler: UIGestureRecognizer?
+-  private weak var attachedView: UIView?
+-
+-  func attach(to view: UIView) {
+-    if attachedView === view, touchHandler != nil {
+-      return
+-    }
+-    detach()
+-    touchHandler = ExpoUITouchHandlerHelper.createAndAttachTouchHandler(for: view)
+-    attachedView = view
+-  }
+-
+-  func detach() {
+-    if let touchHandler, let attachedView {
+-      ExpoUITouchHandlerHelper.detachTouchHandler(touchHandler, from: attachedView)
+-    }
+-    touchHandler = nil
+-    attachedView = nil
+-  }
+-
+-  deinit {
+-    detach()
+-  }
++  private let binding = RNHostTouchBinding<UIView, UIGestureRecognizer>(
++    attach: { ExpoUITouchHandlerHelper.createAndAttachTouchHandler(for: $0) },
++    detach: { ExpoUITouchHandlerHelper.detachTouchHandler($0, from: $1) }
++  )
++
++  func update(layoutRoot: Bool, view: UIView?) {
++    binding.update(layoutRoot: layoutRoot, child: view)
++  }
++
++  func detach() { binding.retire() }
+ }
+
+ // Sets SwiftUI view size from Yoga node size on the matched axes
+diff --git a/node_modules/@expo/ui/ios/RNHostTouchBinding.swift b/node_modules/@expo/ui/ios/RNHostTouchBinding.swift
+new file mode 100644
+--- /dev/null
++++ b/node_modules/@expo/ui/ios/RNHostTouchBinding.swift
+@@ -0,0 +1,29 @@
++// Owns only touch-handler attachment, not application actions or view identity.
++internal final class RNHostTouchBinding<Child: AnyObject, Handler: AnyObject> {
++  private weak var handler: Handler?
++  private weak var child: Child?
++  private let attach: (Child) -> Handler?
++  private let detach: (Handler, Child) -> Void
++
++  init(attach: @escaping (Child) -> Handler?, detach: @escaping (Handler, Child) -> Void) {
++    self.attach = attach
++    self.detach = detach
++  }
++
++  func update(layoutRoot: Bool, child next: Child?) {
++    guard layoutRoot, let next else { retire(); return }
++    if child === next, handler != nil { return }
++    retire()
++    guard let handler = attach(next) else { return }
++    child = next
++    self.handler = handler
++  }
++
++  func retire() {
++    if let handler, let child { detach(handler, child) }
++    handler = nil
++    child = nil
++  }
++
++  deinit { retire() }
++}

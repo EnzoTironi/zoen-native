@@ -11,8 +11,11 @@ fn message_ids(fixture: &Fixture) -> Vec<String> {
         .collect()
 }
 
-fn canonical_decision_projection(decision: ToolRequestDecision, status: RequestStatus) {
-    let fixture = fixture();
+fn canonical_decision_projection(
+    decision: ToolRequestDecision,
+    status: RequestStatus,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
     let request = stage(&fixture, "read_deckcraft");
     let before = message_ids(&fixture);
     let original = proposal(&fixture, &request.id);
@@ -113,29 +116,31 @@ fn canonical_decision_projection(decision: ToolRequestDecision, status: RequestS
             Some(receipt)
         );
     }
+    Ok(())
 }
 
 #[test]
 fn approved_tool_receipt_preserves_original_continuation_without_a_new_message_task() {
-    canonical_decision_projection(ToolRequestDecision::ApproveOnce, RequestStatus::Approved);
+    canonical_decision_projection(ToolRequestDecision::ApproveOnce, RequestStatus::Approved)
+        .unwrap();
 }
 
 #[test]
 fn denied_tool_receipt_preserves_decision_without_a_new_message_task() {
-    canonical_decision_projection(ToolRequestDecision::Deny, RequestStatus::Denied);
+    canonical_decision_projection(ToolRequestDecision::Deny, RequestStatus::Denied).unwrap();
 }
 
 #[test]
 fn cancelled_tool_receipt_preserves_decision_without_a_new_message_task() {
-    canonical_decision_projection(ToolRequestDecision::Cancel, RequestStatus::Cancelled);
+    canonical_decision_projection(ToolRequestDecision::Cancel, RequestStatus::Cancelled).unwrap();
 }
 
 #[test]
 fn legacy_item_proposal_keeps_its_delivery_message_and_item_after_reprojection() {
     for approved in [true, false] {
-        let fixture = fixture();
-        signed_trust(&fixture, TrustLevel::Suggest);
-        let item = types::new_id("synthetic_legacy_plan");
+        let fixture = fixture().unwrap();
+        signed_trust(&fixture, TrustLevel::Suggest).unwrap();
+        let item = types::new_id("synthetic_legacy_plan").unwrap();
         let message = "The reviewed synthetic plan is ready.";
         let (agent, request, event) = {
             let mut engine = fixture.agent.lock();

@@ -1,5 +1,5 @@
 //! Read-only integrity boundary. Verification always rereads canonical storage.
-use super::*;
+use super::{encode, invalid, Client, CoreError, LogEventsPage};
 
 impl Client {
     fn integrity_scope(engine: &crate::engine::Engine, space: &str) -> Result<(), CoreError> {
@@ -37,13 +37,7 @@ impl Client {
         let engine = self.lock();
         Self::integrity_scope(&engine, &space)?;
         let mut report = engine.verify_log(&space);
-        if let Some(error) = engine
-            .state
-            .spaces
-            .get(&space)
-            .and_then(|state| state.integrity_error.clone())
-            .or_else(|| engine.recorded_fork(&space))
-        {
+        if let Some(error) = engine.checked_integrity_error(&space)? {
             report.valid = false;
             report.head_hash.clear();
             report.error = Some(error);
@@ -97,7 +91,8 @@ impl Client {
         let next = if entries.next().is_some() {
             events
                 .last()
-                .map(|e| serde_json::to_string(&(&space, e.seq, &e.hash)).expect("audit cursor"))
+                .map(|e| serde_json::to_string(&(&space, e.seq, &e.hash)))
+                .transpose()?
         } else {
             None
         };
@@ -115,7 +110,7 @@ mod tests {
 
     #[tokio::test]
     async fn cold_open_warns_about_unreadable_history_without_trusting_its_membership() {
-        let directory = std::env::temp_dir().join(types::new_id("integrity-cold-open"));
+        let directory = std::env::temp_dir().join(types::new_id("integrity-cold-open").unwrap());
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory
             .join("account.sqlite")
@@ -246,3 +241,7 @@ mod tests {
         assert!(core.client_log_events_page(space.into(), None, 1).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "integrity_marker_tests.rs"]
+mod integrity_marker_tests;

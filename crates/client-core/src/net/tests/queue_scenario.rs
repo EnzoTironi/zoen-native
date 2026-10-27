@@ -1,6 +1,8 @@
 use super::*;
 
-pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
+pub(super) async fn queued_messages_round_trip(
+    catch_up: CatchUp,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
@@ -23,21 +25,21 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        )),
+        )?)?,
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(genesis), Ingest::Applied);
     engine.create_mls_group(space).unwrap();
 
     // A second enrolled leaf of the same identity can read both offline messages
     // and supplies a genuine MLS commit that this session has not caught up with.
-    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+    let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate()?);
     let mut peer_store = rusqlite::Connection::open_in_memory().unwrap();
     ::mls::migrate(&mut peer_store).unwrap();
     let peer_secret = peer_author.key.secret();
     let peer = Device::new(
         &peer_store,
-        state_key(&peer_secret),
+        state_key(&peer_secret)?,
         &peer_author.identity,
         peer_secret,
         peer_author.cert.as_deref().unwrap(),
@@ -46,7 +48,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
     let packages = peer.key_packages(1, false).unwrap();
     let adding = Device::new(
         engine.store.conn(),
-        state_key(&device_secret),
+        state_key(&device_secret)?,
         &author.identity,
         device_secret,
         author.cert.as_deref().unwrap(),
@@ -62,9 +64,9 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
             2,
             head.as_ref(),
             Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
-        ),
+        )?,
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(commit), Ingest::Applied);
     let roster = [author.identity.clone()].into_iter().collect();
     let welcome = adding.welcome.unwrap();
@@ -77,9 +79,9 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
             3,
             head.as_ref(),
             Sealed::new(SealedKind::Welcome, SUITE_ID, welcome),
-        ),
+        )?,
         &mut head,
-    );
+    )?;
     assert_eq!(engine.ingest(welcome), Ingest::Applied);
     assert_eq!(engine.mls_status(space).unwrap().0, 1);
 
@@ -132,9 +134,9 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
             102,
             head.as_ref(),
             Sealed::new(SealedKind::Commit, SUITE_ID, advance.commit),
-        ),
+        )?,
         &mut head,
-    );
+    )?;
     let losing_commit = if matches!(
         catch_up,
         CatchUp::HandshakeCollision | CatchUp::StorageRefusal
@@ -159,6 +161,12 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
     let notices = Arc::new(RejectionListener::default());
     let engine = Arc::new(Mutex::new(engine));
     let (cmd, mut commands) = mpsc::unbounded_channel();
+    if matches!(catch_up, CatchUp::TransientOrder) {
+        let poke = cmd.clone();
+        lock(&engine).net.poke = Some(Box::new(move || {
+            let _ = poke.send(Cmd::Flush);
+        }));
+    }
     let (status, _) = watch::channel(NetStatus {
         state: ConnState::Connecting,
         synced: false,
@@ -263,7 +271,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
             )
             .await;
         }
-        if matches!(catch_up, CatchUp::Initial) {
+        if matches!(catch_up, CatchUp::Initial | CatchUp::TransientOrder) {
             queue_phases::initial(
                 &mut socket,
                 &engine,
@@ -276,6 +284,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
             .await;
         }
         let mut readable = HashSet::new();
+        let mut transient_copy = None;
         while readable.len() < 2 {
             match request(&mut socket).await {
                 ClientFrame::Publish { env }
@@ -308,6 +317,32 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
                         )
                         .await;
                         continue;
+                    }
+                    if matches!(catch_up, CatchUp::TransientOrder) {
+                        if env.client_id() == cached.client_id {
+                            if let Some(original) = &transient_copy {
+                                assert_eq!(
+                                    &env, original,
+                                    "retry keeps the exact ciphertext and CID"
+                                );
+                            } else {
+                                transient_copy = Some(env.clone());
+                                reply(
+                                    &mut socket,
+                                    ServerFrame::Rejected {
+                                        space: space.into(),
+                                        client_id: env.client_id().into(),
+                                        reason: "transient rate-limit refusal".into(),
+                                        permanent: false,
+                                    },
+                                )
+                                .await;
+                                continue;
+                            }
+                        } else {
+                            assert!(readable.contains(&cached.client_id),
+                                "a newer queued message overtook its transiently refused predecessor");
+                        }
                     }
                     let (_, bytes) = env.sealed_data().unwrap();
                     let epoch = ::mls::application_epoch(bytes);
@@ -354,7 +389,7 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
                     assert_eq!(inner.content, original.content);
                     assert_eq!(inner.sig, original.sig);
                     assert!(readable.insert(env.client_id().to_string()));
-                    let ev = sequence(env, &mut head);
+                    let ev = sequence(env, &mut head)?;
                     reply(&mut socket, ServerFrame::Event { ev }).await;
                 }
                 ClientFrame::Req { id, .. } => {
@@ -379,6 +414,12 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
                 ClientFrame::Publish { .. } => {}
                 other => panic!("unexpected {other:?}"),
             }
+        }
+        if matches!(catch_up, CatchUp::TransientOrder) {
+            assert!(
+                transient_copy.is_some(),
+                "the transient refusal was exercised"
+            );
         }
         assert!(held_commit.is_none(), "the old-epoch gap was not exercised");
         // A response ordered after both event echoes confirms that the client
@@ -456,10 +497,14 @@ pub(super) async fn queued_messages_round_trip(catch_up: CatchUp) {
         }
         cmd.send(Cmd::Stop).unwrap();
         stopped.await.unwrap();
+        Ok::<_, Box<dyn std::error::Error>>(())
     };
-    tokio::time::timeout(Duration::from_secs(10), async {
+    let (_, produced) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(client, relay)
     })
     .await
     .expect("catch-up ordering stalled");
+    produced?;
+
+    Ok(())
 }

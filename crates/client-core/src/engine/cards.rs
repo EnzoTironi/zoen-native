@@ -1,9 +1,13 @@
 //! Item cards and message/voice presentation projections.
-use super::*;
+use super::{
+    content_hash, kind_id, kind_label, t, ts, Delivery, Engine, Entry, EntryBody, EntryKind,
+    EventBody, ItemCard, ItemContent, ItemKind, ItemState, MessageMarks, MessageMediaDto, Persona,
+    PlanLine, ReactionDto, ReqStatus, SpaceState, TimelineEntry, VoiceMeta, VoiceNoteDto, R,
+};
 
 impl Engine {
-    pub(super) fn line_hash(line: &PlanLine) -> String {
-        content_hash(&(&line.text, line.cost_cents))
+    pub(super) fn line_hash(line: &PlanLine) -> R<String> {
+        Ok(content_hash(&(&line.text, line.cost_cents))?)
     }
 
     // ── conversões para DTO ──
@@ -152,7 +156,7 @@ impl Engine {
             return None;
         }
         let mut voice = self.voice_of(&e.space, item)?;
-        let ItemContent::File(original) = &self.state.items.get(item)?.versions.first()?.content
+        let ItemContent::File(original) = &self.state.items.get(item)?.versions.initial().content
         else {
             return None;
         };
@@ -255,6 +259,13 @@ impl Engine {
             r.mine = r.people.iter().any(|p| p.id == me);
         }
         TimelineEntry {
+            text_revision: matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted)
+                .then(|| {
+                    marks
+                        .text_revision
+                        .clone()
+                        .unwrap_or_else(|| e.id().to_string())
+                }),
             media: (!marks.deleted)
                 .then(|| marks.media.as_ref().map(MessageMediaDto::from))
                 .flatten(),

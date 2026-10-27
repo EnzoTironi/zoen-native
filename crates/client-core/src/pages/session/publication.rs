@@ -1,5 +1,6 @@
-//! Publication operations on the original PageSession state.
+//! Publication operations on the original `PageSession` state.
 
+use super::super::doc_err;
 use super::*;
 
 impl PageSession {
@@ -71,7 +72,7 @@ impl PageSession {
                     == shadow.semantic_hash().map_err(plan_error)?
             }
             (SessionDocument::BinaryPage(live), SessionDocument::BinaryPage(shadow)) => {
-                live.content_hash() == shadow.content_hash()
+                live.editor_content_eq(shadow).map_err(doc_err)?
             }
             _ => return Err(invalid("session document kinds differ")),
         };
@@ -122,7 +123,7 @@ impl PageSession {
                 live.title(),
                 None,
                 None,
-                live.content_hash(),
+                live.content_hash().map_err(doc_err)?,
             ),
             _ => return Err(invalid("session document kinds differ")),
         };
@@ -147,8 +148,8 @@ impl PageSession {
             .execute_batch("SAVEPOINT page_session_commit")
             .map_err(sql_error)?;
         let staged = (|| {
-            let path = match (&self.tag, it.versions.first().map(|v| &v.content)) {
-                (DocumentTag::BinaryPageV1, Some(ItemContent::Page(page))) => page.path.as_str(),
+            let path = match (&self.tag, &it.versions.initial().content) {
+                (DocumentTag::BinaryPageV1, ItemContent::Page(page)) => page.path.as_str(),
                 _ => "",
             };
             let mut content = engine.page_content(&it.space, title, path, bytes)?;

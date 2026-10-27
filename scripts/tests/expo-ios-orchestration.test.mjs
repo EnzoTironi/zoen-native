@@ -106,10 +106,10 @@ async function fixture(t, refuse = false) {
         fs.writeFileSync(p.join(v('--out-dir'),name),host);
     `)};
     fs.writeFileSync(artifact,body);
-    prior.push({args:a,artifact,profile,architecture,sdk:process.env.SDKROOT,deployment:process.env.IPHONEOS_DEPLOYMENT_TARGET,resource:process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON});
+    prior.push({args:a,artifact,profile,architecture,sdk:process.env.SDKROOT,deployment:process.env.IPHONEOS_DEPLOYMENT_TARGET,resource:process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON,photo:process.env.ZOEN_PHOTOCRAFT_RESOURCE_MANIFEST_JSON,pdf:process.env.ZOEN_PDFCRAFT_RESOURCE_MANIFEST_JSON});
     fs.writeFileSync(log,JSON.stringify(prior));
     fs.writeFileSync(receipt,JSON.stringify({status:'PASS',target,
-      before:{packages:{fixture:'stable'},context:{config:{fixture:'stable'}}},
+      before:{packages:{fixture:'stable'},context:{config:{fixture:'stable'},environment:Object.fromEntries(a.flatMap((v,i)=>v==='--input-env'?[[a[i+1],process.env[a[i+1]]===undefined?null:crypto.createHash('sha256').update(JSON.stringify(process.env[a[i+1]])).digest('hex')]]:[]))}},
       artifacts:[{manifest:p.join(root,${JSON.stringify(packagePaths)}[pkg]),path:artifact,
       sha256:crypto.createHash('sha256').update(body).digest('hex')}]}));
   `,
@@ -166,6 +166,7 @@ test('iOS release binds each SDK/profile, preserves output inventories and consu
   for (const command of commands) {
     assert(command.args.includes('SDKROOT'));
     assert(command.args.includes('ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON'));
+    assert(command.args.includes('ZOEN_PHOTOCRAFT_RESOURCE_MANIFEST_JSON'));
     assert(!command.args.includes('run'));
   }
   const stamp = JSON.parse(
@@ -209,3 +210,37 @@ test('initial iOS guard failure leaves the previous framework untouched and writ
     code: 'ENOENT',
   });
 });
+
+// Exercise the normal Node producer/cache/guard transport with explicit tool ports;
+// this fixture never claims Cargo, Xcode, UniFFI or native runtime qualification.
+for (const [name, field, variable] of [
+  ['Photo', 'photo', 'ZOEN_PHOTOCRAFT_RESOURCE_MANIFEST_JSON'],
+  ['PDF', 'pdf', 'ZOEN_PDFCRAFT_RESOURCE_MANIFEST_JSON'],
+]) {
+  test(`${name} resource-only changes reach every guarded build and invalidate the native stamp`, async (t) => {
+    const { root, env } = await fixture(t);
+    const build = (value) => execute(process.execPath, ['scripts/build-expo-core.mjs', 'ios', '--release', '--simulator'], {
+      cwd: root,
+      env: { ...env, [variable]: value },
+    });
+    const stamp = () => readFile(join(root, 'apps/zoen/modules/zoen-core/generated/ios.json'), 'utf8').then(JSON.parse);
+    const first = JSON.stringify({ fixture: `${field}-A` });
+    const last = JSON.stringify({ fixture: `${field}-B` });
+    await build(first);
+    const before = await stamp();
+    await build(last);
+    const after = await stamp();
+    assert.notEqual(after.sha256, before.sha256, `${name}-only deployment changes must invalidate native reuse`);
+    assert.notEqual(after.cargoQualification, before.cargoQualification);
+    const qualification = JSON.parse(await readFile(after.cargoQualification, 'utf8'));
+    assert.equal(qualification.builds.length, 3);
+    const expected = (await import('node:crypto')).createHash('sha256').update(JSON.stringify(last)).digest('hex');
+    for (const build of qualification.builds) {
+      const guard = JSON.parse(await readFile(build.receipt, 'utf8'));
+      assert.equal(guard.status, 'PASS');
+      assert.equal(guard.before.context.environment[variable], expected);
+    }
+    const commands = JSON.parse(await readFile(join(root, 'commands.json'), 'utf8'));
+    assert(commands.slice(-3).every((command) => command[field] === last));
+  });
+}

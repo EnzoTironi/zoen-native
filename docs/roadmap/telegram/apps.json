@@ -1,0 +1,437 @@
+[
+  {
+    "id": "TG-apps-app-launch-points",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/detail-screen.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Entradas por item e conversa existem; falta concluir links, perfil e menu com retorno ao mesmo App.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-directory",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/remote-binding.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Há catálogo/configuração de Apps conhecidos; descoberta pública, elegibilidade e instalação completa seguem abertas.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-fullscreen-apps",
+    "scope": "paused",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/detail-screen.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Tela fullscreen existe; falta aceitação final de entrada, saída e retomada no artefato de lançamento.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-portrait-and-landscape-apps",
+    "scope": "paused",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/app-keyboard-viewport.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Viewport acompanha dimensões; não foi comprovada jornada completa de rotação e preservação de edição.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-safe-areas",
+    "scope": "paused",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Insets são enviados ao host; falta validar teclado, rotação e controles em dispositivo final.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-theme-and-viewport-events",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Contexto expõe tema, dimensões e insets; falta comprovar mudanças dinâmicas sem perder sessão.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-back-and-close-controls",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/detail-screen.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Fechar e voltar existem; falta qualificar descarte, pendência e recuperação em todos os editores.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-primary-and-secondary-actions",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Há serviços e ações do host; falta contrato reutilizável de ações primária/secundária por App.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-haptics",
+    "scope": "paused",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Haptics nativos existem; faltam aceitação no dispositivo e respeito às preferências aplicáveis.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-home-screen-shortcuts",
+    "scope": "paused",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/detail-screen.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Não foi localizada nesta inspeção a jornada de atalho aprovado por App na tela inicial.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-switching-bar",
+    "scope": "paused",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/detail-screen.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Zoen usa itens/cartões e navegação própria; falta definir retomada entre Apps sem copiar a barra do Telegram.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-loading-identity",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/remote-binding.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Binding confiável identifica App/release; falta apresentação completa de carregamento, falha e tentativa.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-geolocation",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/native-capabilities.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Adaptador de localização condicionado ao módulo existe; faltam revogação e jornada nativa final.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-motion-sensors",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/native-capabilities.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Sensores de movimento não são anunciados pelo adaptador; definir necessidade antes de expandir permissões.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-orientation-lock",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/native-capabilities.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Não há capacidade de bloqueio de orientação anunciada; definir necessidade e liberação no encerramento.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-local-storage",
+    "scope": "paused",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/remote-policy.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Não foi comprovado contrato de armazenamento local por App com quota, descarte e isolamento.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-secure-storage",
+    "scope": "paused",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/remote-policy.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Não foi comprovada API de segredo por App com isolamento de conta e revogação.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-cloud-key-value-storage",
+    "scope": "paused",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Host expõe estado do item; não equivale a KV de nuvem por App com quota e sincronização próprias.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-biometric-authorization",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/native-capabilities.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Biometria não é capacidade anunciada; definir operação autorizada e cancelamento antes de implementar.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-sharing-to-chats",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Compartilha texto mediante confirmação na conversa vinculada; falta seletor de destino e anexos preparados.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-sharing-to-stories",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Não há compartilhamento para compositor de Stories no host inspecionado.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-document-downloads",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/deckcraft-export.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Exportação por versão/hash e arquivo privado existe; falta jornada geral de salvar, cancelar e reabrir.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-subscriptions",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/remote-binding.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Assinatura paga por App depende de decisão de produto e reconciliação de cobrança; pausa preservada.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-gifts-and-emoji-status",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Host não oferece presentes/status de conta; decisão de produto precede qualquer nova autoridade.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-hardware-hints",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Host informa plataforma e toque/hover; falta definir limites de desempenho sem expor identificação desnecessária.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-qr-scanner-and-clipboard",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/remote-policy.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Política reconhece clipboardWrite; leitura e scanner QR não têm jornada completa comprovada.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-contact-and-write-access",
+    "scope": "paused",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/native-capabilities.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Seleção de contato e envio confirmado são distintos; falta qualificar consentimento, revogação e ausência de envio automático.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-chat-picker",
+    "scope": "paused",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/view-host-ready.tsx",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Envio está preso à conversa do item; seletor autorizado de outra conversa não está implementado nesse host.",
+    "issues": [
+      170,
+      180
+    ]
+  },
+  {
+    "id": "TG-apps-app-initialization-verification",
+    "scope": "paused",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/miniapps/remote-binding.ts",
+      "apps/zoen/acceptance/parts/scope/execution-plan.json"
+    ],
+    "gap": "Zoen valida binding/release/hash e autoridade própria; falta aceitação integral desse contrato, sem copiar initData do Telegram.",
+    "issues": [
+      170,
+      180
+    ]
+  }
+]

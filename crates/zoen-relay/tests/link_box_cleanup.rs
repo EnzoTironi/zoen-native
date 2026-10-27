@@ -3,9 +3,10 @@ use sqlx::{Connection, PgConnection, PgPool};
 use zoen_relay::db;
 
 #[tokio::test]
-async fn publication_bounds_cleanup_and_reuses_expired_id_beyond_batch() {
+async fn publication_bounds_cleanup_and_reuses_expired_id_beyond_batch(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let admin = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG for link-box tests");
-    let name = format!("zoen_link_{}", &event_log::Signer::generate().id()[..16]);
+    let name = format!("zoen_link_{}", &event_log::Signer::generate()?.id()[..16]);
     let mut c = PgConnection::connect(&admin).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
         .execute(&mut c)
@@ -85,4 +86,5 @@ async fn publication_bounds_cleanup_and_reuses_expired_id_beyond_batch() {
     .execute(&mut c)
     .await
     .unwrap();
+    Ok(())
 }

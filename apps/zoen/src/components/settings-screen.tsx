@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { Stack } from 'expo-router';
-import { ScrollView, type ScrollViewProps } from 'react-native';
+import type { ScrollViewProps } from 'react-native';
 import { useTheme } from '../theme';
+import { NavigationScrollView } from './navigation-scroll-view';
 
 export function SettingsScreen({
   title,
@@ -9,15 +9,21 @@ export function SettingsScreen({
   children,
   keyboardShouldPersistTaps = 'handled',
   automaticallyAdjustKeyboardInsets = false,
+  onTouchStart,
 }: {
   title: string;
   testID: string;
   children: ReactNode;
-} & Pick<ScrollViewProps, 'keyboardShouldPersistTaps' | 'automaticallyAdjustKeyboardInsets'>) {
+} & Pick<
+  ScrollViewProps,
+  'keyboardShouldPersistTaps' | 'automaticallyAdjustKeyboardInsets' | 'onTouchStart'
+>) {
   const { presentation: p } = useTheme();
   return (
-    <ScrollView
+    <NavigationScrollView
+      title={title}
       testID={testID}
+      onTouchStart={onTouchStart}
       style={{ flex: 1, backgroundColor: p.list.background }}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
@@ -32,14 +38,7 @@ export function SettingsScreen({
         backgroundColor: 'transparent',
       }}
     >
-      <Stack.Screen
-        options={{
-          title,
-          headerTintColor: p.navigation.control,
-          headerTitleStyle: { ...p.typography.title, color: p.navigation.text },
-        }}
-      />
       {children}
-    </ScrollView>
+    </NavigationScrollView>
   );
 }

@@ -6,7 +6,8 @@ import {
   type PhotoPickerState,
   type Request,
 } from './attachment-photo-types.ts';
-import { reconcilePhotoSelection } from './photo-permission-reconciliation.ts';
+import { prepareGalleryPreview } from './attachment-gallery-preview.ts';
+import { reloadPhotos } from './attachment-photo-reload.ts';
 import {
   canApprovePhotoSelection,
   reorderPhotoSelection,
@@ -19,12 +20,11 @@ export type {
   PhotoPickerSubmission,
 } from './attachment-photo-types.ts';
 
-/** Ephemeral library selection only. The existing channel remains the sole durable draft authority. */
+/** Live Photos projection; the existing journal owns accepted private selection and captions. */
 export class AttachmentPhotoSession {
   private state = empty;
   private request: Request | null = null;
   private sequence = 0;
-  private previewOrigin: 'grid' | 'selected' = 'grid';
   private listeners = new Set<() => void>();
   private readonly port: PhotoPickerPort;
   constructor(port: PhotoPickerPort) {
@@ -47,13 +47,15 @@ export class AttachmentPhotoSession {
   isPresented = (token: number) => this.isCurrent(token) && this.state.visible;
   isInteractive = (token: number) => this.isPresented(token) && !this.state.busy;
   remaining = () => (this.request && this.current(this.request) ? this.request.remaining : 0);
-  open(remaining: number, current: () => boolean) {
+  open(remaining: number, current: () => boolean, journal?: Request['journal']) {
     if (this.request || !current() || remaining < 1) return Promise.resolve([]);
-    return new Promise<AttachmentAsset[]>((resolve) => {
+    return new Promise<AttachmentAsset[]>((resolve, reject) => {
       const request: Request = {
         current,
+        journal,
         remaining,
         resolve,
+        reject,
         retired: false,
         working: false,
         epoch: 0,
@@ -65,8 +67,14 @@ export class AttachmentPhotoSession {
       };
       this.request = request;
       this.state = empty;
-      this.previewOrigin = 'grid';
-      this.publish({ token: ++this.sequence, visible: true });
+      const restored = journal?.restore();
+      this.publish({
+        token: ++this.sequence,
+        visible: true,
+        ...(restored ? { selected: restored.selected, captions: restored.captions } : {}),
+      });
+      if (restored?.selected.length) request.needsReconciliation = true;
+      this.journalSelection(false);
       void this.reload(true);
     });
   }
@@ -79,102 +87,83 @@ export class AttachmentPhotoSession {
     this.publish({ ...empty });
     request.resolve(files);
   }
-  cancel = () => {
+  /** Lifecycle retirement preserves accepted private selections; explicit Cancel discards only this gallery's additions. */
+  retire = () => this.close(false);
+  cancel = () => this.close(true);
+  private close(discard: boolean) {
     const request = this.request;
-    if (!request) return;
+    if (!request || request.retired) return;
     request.retired = true;
     request.epoch++;
     this.publish({ visible: false });
-    if (!request.working) {
+    if (discard && request.journal) {
+      request.discarding = true;
+      const cleanup = request.journal.cancel();
+      request.working = true;
+      void cleanup.then(
+        () => {
+          request.discarding = false;
+          this.finish(request, []);
+        },
+        (error) => {
+          request.discarding = false;
+          if (this.request === request) {
+            this.request = null;
+            this.publish({ ...empty });
+            request.reject(error);
+          }
+        },
+      );
+    } else if (!request.working) {
       request.result?.forEach((file) => this.port.discard(file.uri));
       this.finish(request, []);
     }
-  };
-  async reload(requestPermission = false) {
+  }
+  private journalSelection(save = true) {
+    const request = this.request;
+    if (!request) return;
+    prepareGalleryPreview(
+      {
+        request,
+        state: this.getSnapshot,
+        current: () => this.current(request),
+        publish: (patch) => this.publish(patch),
+        port: this.port,
+      },
+      save,
+    );
+  }
+  setCaptions(captions: PhotoPickerState['captions']) {
+    if (!this.isInteractive(this.state.token)) return;
+    this.publish({ captions });
+    this.journalSelection();
+  }
+
+  reload(requestPermission = false): Promise<void> {
+    return reloadPhotos(
+      {
+        request: this.request,
+        state: this.getSnapshot,
+        current: (request) => this.current(request),
+        publish: (patch) => this.publish(patch),
+        reload: (permission) => this.reload(permission),
+        port: this.port,
+      },
+      requestPermission,
+    );
+  }
+
+  async retry() {
     const request = this.request;
     if (!request || !this.current(request)) return;
-    const epoch = ++request.epoch;
-    this.publish({ loading: true, error: null });
     try {
-      let permission = await this.port.permission();
-      if (!this.current(request) || epoch !== request.epoch) return;
-      if (requestPermission && permission.status === 'undetermined')
-        permission = await this.port.requestPermission();
-      if (!this.current(request) || epoch !== request.epoch) return;
-      if (
-        this.state.permission &&
-        (this.state.permission.status !== permission.status ||
-          this.state.permission.accessPrivileges !== permission.accessPrivileges)
-      )
-        request.needsReconciliation = true;
-      this.publish({ permission });
-      if (!permission.granted) {
-        this.publish({
-          items: [],
-          selected: [],
-          albums: [],
-          hasMore: false,
-          screen: 'grid',
-          previewId: null,
-        });
-        return;
-      }
-      const reconciling = request.needsReconciliation;
-      const retained = new Map(this.state.selected.map((item) => [item.id, item]));
-      const preview = this.state.items.find((item) => item.id === this.state.previewId);
-      if (preview) retained.set(preview.id, preview);
-      const [items, albums, refreshed] = await Promise.all([
-        this.port.load(this.state.albumId, 0),
-        this.port.albums(),
-        reconciling ? this.port.refresh([...retained.values()]) : Promise.resolve([]),
-      ]);
-      if (!this.current(request) || epoch !== request.epoch) return;
-      if (reconciling) {
-        // Permission can change during a metadata read. Never publish a result
-        // under the privileges from a different authorization snapshot.
-        const checked = await this.port.permission();
-        if (!this.current(request) || epoch !== request.epoch) return;
-        if (!checked.granted) {
-          this.publish({
-            permission: checked,
-            items: [],
-            selected: [],
-            albums: [],
-            hasMore: false,
-            screen: 'grid',
-            previewId: null,
-          });
-          return;
-        }
-        if (
-          checked.status !== permission.status ||
-          checked.accessPrivileges !== permission.accessPrivileges
-        ) {
-          void this.reload();
-          return;
-        }
-        const projection = reconcilePhotoSelection(this.state, retained, refreshed, items);
-        if (!projection) {
-          void this.reload();
-          return;
-        }
-        request.needsReconciliation = false;
-        request.pageOffset = items.length;
-        this.publish({
-          items: projection.items,
-          albums,
-          selected: projection.selected,
-          hasMore: projection.hasMore,
-          ...projection.preview,
-        });
-      } else {
-        request.pageOffset = items.length;
-        this.publish({ items, albums, hasMore: items.length === 60 });
+      await request.journal?.retry();
+      if (this.current(request)) {
+        this.journalSelection(false);
+        await this.reload();
       }
     } catch (error) {
-      if (this.current(request) && epoch === request.epoch) this.publish({ error });
-    } finally {
-      if (this.current(request) && epoch === request.epoch) this.publish({ loading: false });
+      if (this.current(request)) this.publish({ error });
     }
   }
   invalidate = () => {
@@ -232,13 +221,7 @@ export class AttachmentPhotoSession {
   }
   back() {
     if (!this.isInteractive(this.state.token)) return;
-    if (
-      this.state.screen === 'preview' &&
-      this.previewOrigin === 'selected' &&
-      this.state.selected.length
-    )
-      this.showSelected();
-    else this.showGrid();
+    this.showGrid();
   }
   async albumDetails(id: string) {
     const request = this.request;
@@ -280,8 +263,6 @@ export class AttachmentPhotoSession {
       this.isInteractive(this.state.token) &&
       [...this.state.items, ...this.state.selected].some((item) => item.id === id)
     ) {
-      if (this.state.screen !== 'preview')
-        this.previewOrigin = this.state.screen === 'selected' ? 'selected' : 'grid';
       this.publish({ screen: 'preview', previewId: id });
     }
   }
@@ -295,7 +276,10 @@ export class AttachmentPhotoSession {
   reorder(ids: readonly string[]) {
     if (!this.isInteractive(this.state.token)) return;
     const selected = reorderPhotoSelection(this.state.selected, ids);
-    if (selected) this.publish({ selected });
+    if (selected) {
+      this.publish({ selected });
+      this.journalSelection();
+    }
   }
   select(item: PhotoLibraryItem) {
     const request = this.request;
@@ -305,7 +289,10 @@ export class AttachmentPhotoSession {
     if (!request || !this.current(request) || !this.state.visible || this.state.busy || !knownItem)
       return;
     const update = togglePhotoSelection(this.state, knownItem, request.remaining);
-    if (update) this.publish(update);
+    if (update) {
+      this.publish(update);
+      this.journalSelection();
+    }
   }
   async manage() {
     const request = this.request;
@@ -350,7 +337,9 @@ export class AttachmentPhotoSession {
     this.publish({ busy: true, error: null });
     let preparedFiles: AttachmentAsset[] | null = null;
     try {
-      const result = await this.port.materialize(this.state.selected, () => this.current(request));
+      const result = await (request.journal
+        ? request.journal.materialize(this.state.selected)
+        : this.port.materialize(this.state.selected, () => this.current(request)));
       if (!this.current(request)) {
         result.forEach((file) => this.port.discard(file.uri));
         return;
@@ -373,7 +362,7 @@ export class AttachmentPhotoSession {
       if (this.current(request)) this.publish({ error });
     } finally {
       request.working = false;
-      if (request.retired) this.finish(request, []);
+      if (request.retired && !request.discarding) this.finish(request, []);
       else this.publish({ busy: false });
     }
   }
@@ -406,7 +395,7 @@ export class AttachmentPhotoSession {
       if (this.current(request)) this.publish({ error });
     } finally {
       request.working = false;
-      if (request.retired) this.finish(request, []);
+      if (request.retired && !request.discarding) this.finish(request, []);
       else this.publish({ busy: false });
     }
   }
@@ -498,7 +487,7 @@ export class AttachmentPhotoSession {
         if (this.current(request)) this.publish({ error });
       } finally {
         request.working = false;
-        if (request.retired) this.finish(request, []);
+        if (request.retired && !request.discarding) this.finish(request, []);
         else if (this.current(request)) this.publish({ busy: false, visible: true });
       }
       return;
@@ -533,9 +522,9 @@ export class AttachmentPhotoSession {
         this.publish({ visible: true });
         return;
       }
-      const selected = await this.port.materialize(this.state.selected, () =>
-        this.current(request),
-      );
+      const selected = await (request.journal && this.state.selected.length
+        ? request.journal.materialize(this.state.selected)
+        : this.port.materialize(this.state.selected, () => this.current(request)));
       if (!this.current(request)) {
         selected.forEach((file) => this.port.discard(file.uri));
         return;
@@ -548,7 +537,7 @@ export class AttachmentPhotoSession {
     } finally {
       captures.forEach((file) => this.port.discard(file.uri));
       request.working = false;
-      if (request.retired) this.finish(request, []);
+      if (request.retired && !request.discarding) this.finish(request, []);
       else if (this.request === request) this.publish({ busy: false });
     }
   }

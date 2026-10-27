@@ -1,5 +1,8 @@
 //! Content, device and recovery application operations.
-use super::*;
+use super::{
+    account_vault, cents, encode, encode_site, invalid, transfer_timeout, Arc, Client, Command,
+    CoreError, SecretVault,
+};
 
 impl Client {
     pub(super) async fn dispatch_content(
@@ -7,7 +10,28 @@ impl Client {
         command: Command,
         vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<String, CoreError> {
-        use Command::*;
+        use Command::{
+            AddPlanLine, AgentActivity, AgentProfile, Agents, AppBinaryCreate, AppBinaryCreateFor,
+            AppBinaryRead, AppBinaryResult, AppBinarySave, AppCallTool, AppDeviceAllowed,
+            AppDeviceGrants, AppDocumentCopy, AppDocumentRead, AppDocumentSave, AppResource,
+            AppSpecs, AttachmentReferenceValidate, BackupCreateRecoveryKey,
+            BackupEnableRecoveryKey, BackupNow, BackupPassword, BackupStatus, BackupTurnOff,
+            BlockPerson, BlockedPeople, DecideRequest, DecideToolRequest, Devices, EditPlanLine,
+            GrantAppDevice, HistoryStatus, InstallApp, Item, ItemAt, ItemDiscussion, Items,
+            LinkCodeCheck, LinkDevice, LinkProgress, LinkRequest, LinkWait, LoadOlder, LogEvents,
+            LogEventsPage, Mentions, NativeSurfaceItems, Page, PageApply, PageAt, PageCommit,
+            PageCreate, PageExportVersion, PageImportMarkdown, PageMarkdown, PlanPage,
+            PreviewDecisions, Profile, RaiseBudget, ReceiveHistory, RecentAttachments,
+            RegisterPush, RemovePlanLine, Requests, RestoreBackupPassword,
+            RestoreBackupRecoveryKey, RestorePlanVersion, RestoreVersion, RevokeAppDevice,
+            RevokeStanding, Search, SearchMessages, SendHistory, SetTrust, SiteCreate, SitePrepare,
+            SitePublish, SiteRead, SiteReview, SiteSave, SiteStatus, SiteToolReview,
+            StageImageGeneration, StandingDecisions, TogglePlanLine, UnblockPerson, Undo,
+            UnlinkDevice, UpdateHandle, UpdateProfile, VerifyLog,
+        };
+        if let Some(result) = self.dispatch_app_resources(&command) {
+            return result;
+        }
         match command {
             SiteToolReview {
                 expected_identity_id,
@@ -213,6 +237,19 @@ impl Client {
                 data_base64,
                 mutation_id,
             } => encode(&self.app_binary_create(space_id, title, data_base64, mutation_id)?),
+            AppBinaryCreateFor {
+                app_id,
+                space_id,
+                title,
+                data_base64,
+                mutation_id,
+            } => encode(&self.app_binary_create_for(
+                app_id,
+                space_id,
+                title,
+                data_base64,
+                mutation_id,
+            )?),
             AppBinarySave {
                 item_id,
                 expected_version,
@@ -340,7 +377,7 @@ impl Client {
             ),
             BackupCreateRecoveryKey {} => {
                 let _ = account_vault(&vault)?;
-                encode(&self.backup_create_recovery_key())
+                encode(&self.backup_create_recovery_key()?)
             }
             BackupEnableRecoveryKey { recovery_key } => encode(
                 &self

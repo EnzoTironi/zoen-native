@@ -2,9 +2,10 @@
 use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_then_stages_once() {
+async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_then_stages_once(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Unsynced).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     let item = f
         .client
         .page_import_markdown(
@@ -14,7 +15,7 @@ async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_th
         )
         .unwrap()
         .id;
-    f.confirm_publications();
+    f.confirm_publications()?;
     let journal = f.path.join("renewal-steps.json");
     let starts = Arc::new(AtomicUsize::new(0));
     {
@@ -30,7 +31,7 @@ async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_th
         .tool_approval_requests(&f.space, &f.source)
         .pop()
         .unwrap();
-    let (expired, intent, history) = f.expired_review(&original);
+    let (expired, intent, history) = f.expired_review(&original)?;
     JournalState::register_hold(&journal, &expired.id, &expired.content_hash, &f.source).unwrap();
     // ACKs extend the exact synthetic signed prefix, never a fresh fake log.
     server
@@ -133,12 +134,14 @@ async fn signed_renewal_waits_for_actual_sync_without_reply_attempt_or_effect_th
         .contains(&"forbidden_agent_operation"));
     assert!(!server.calls.lock().unwrap().contains(&"read_receipt"));
     drop(cx);
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn normal_signed_renewal_reports_scheduling_deferred_without_consuming_a_turn_attempt() {
+async fn normal_signed_renewal_reports_scheduling_deferred_without_consuming_a_turn_attempt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let server = relay(Mode::Unsynced).await;
-    let mut f = Fixture::new(&server.url);
+    let mut f = Fixture::new(&server.url)?;
     let item = f
         .client
         .page_import_markdown(
@@ -148,7 +151,7 @@ async fn normal_signed_renewal_reports_scheduling_deferred_without_consuming_a_t
         )
         .unwrap()
         .id;
-    f.confirm_publications();
+    f.confirm_publications()?;
     let journal = f.path.join("normal-renewal-steps.json");
     let starts = Arc::new(AtomicUsize::new(0));
     {
@@ -164,7 +167,7 @@ async fn normal_signed_renewal_reports_scheduling_deferred_without_consuming_a_t
         .tool_approval_requests(&f.space, &f.source)
         .pop()
         .unwrap();
-    let (expired, _, history) = f.expired_review(&original);
+    let (expired, _, history) = f.expired_review(&original)?;
     JournalState::register_hold(&journal, &expired.id, &expired.content_hash, &f.source).unwrap();
     server
         .histories
@@ -262,4 +265,5 @@ async fn normal_signed_renewal_reports_scheduling_deferred_without_consuming_a_t
         .contains(&"forbidden_agent_operation"));
     assert!(!server.calls.lock().unwrap().contains(&"read_receipt"));
     drop(cx);
+    Ok(())
 }

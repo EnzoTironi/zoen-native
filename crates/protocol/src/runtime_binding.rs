@@ -16,11 +16,12 @@ pub struct ManagedCheckpoint {
 }
 
 impl ManagedCheckpoint {
+    #[must_use]
     pub fn valid(&self) -> bool {
         self.generation > 0
-            && self.generation <= i64::MAX as u64
+            && i64::try_from(self.generation).is_ok()
             && (self.sequence > 0 || self.generation == 1)
-            && self.sequence <= i64::MAX as u64
+            && i64::try_from(self.sequence).is_ok()
             && hex32(&self.digest)
     }
 }
@@ -41,6 +42,7 @@ pub struct Proof {
     pub tag: Vec<u8>,
 }
 
+#[must_use]
 pub fn valid_namespace(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
@@ -66,6 +68,7 @@ pub struct Expectation {
 }
 
 impl Expectation {
+    #[must_use]
     pub fn new(
         witness: &str,
         request: Request,
@@ -111,10 +114,12 @@ impl Expectation {
         })
     }
 
+    #[must_use]
     pub fn request(&self) -> &Request {
         &self.request
     }
 
+    #[must_use]
     pub fn proof(&self) -> Proof {
         Proof {
             cell: self.cell.clone(),
@@ -122,6 +127,7 @@ impl Expectation {
         }
     }
 
+    #[must_use]
     pub fn verify(&self, proof: &Proof) -> bool {
         proof.cell == self.cell && self.mac.clone().verify_slice(&proof.tag).is_ok()
     }
@@ -145,6 +151,7 @@ pub struct BlobBinding {
 }
 
 impl BlobBinding {
+    #[must_use]
     pub fn message(&self, sha: &str, at_ms: i64, relay: &str) -> Option<Vec<u8>> {
         if !self.request.valid()
             || !valid_namespace(&self.proof.cell)

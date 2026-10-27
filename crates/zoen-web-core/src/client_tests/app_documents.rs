@@ -1,8 +1,9 @@
 //! Original whole test bodies, called by their unchanged registered facade.
 use super::*;
 
-pub(super) fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo() {
-    let (mut client, author, mut log) = document_fixture();
+pub(super) fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     let plan = types::PlanDoc {
         title: "Plano exato".into(),
         summary: "Centavos sem float".into(),
@@ -27,7 +28,7 @@ pub(super) fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_und
             origin: "Criado no nativo".into(),
         },
         10,
-    );
+    )?;
     client.receive(&made, 11).unwrap();
     let read = doc(
         &mut client,
@@ -72,10 +73,12 @@ pub(super) fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_und
             17
         )
         .is_err());
+    Ok(())
 }
 
-pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_history() {
-    let (mut client, author, mut log) = document_fixture();
+pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     let historical = clear(
         &mut log,
         &author,
@@ -88,7 +91,7 @@ pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_histo
             forwarded: false,
         },
         4,
-    );
+    )?;
     let original = log.events().last().unwrap().clone();
     let original_bytes = serde_json::to_vec(&original).unwrap();
     client.receive(&historical, 5).unwrap();
@@ -124,7 +127,7 @@ pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_histo
         assert!(matches!(&published[2].body,
             EventBody::MessagePosted { text, attaches: Some(attached), .. }
                 if text == expected && attached == &item));
-        confirm_documents(&mut client, &mut log, update, now + 1);
+        confirm_documents(&mut client, &mut log, update, now + 1)?;
         let snapshot = client.update(Vec::new()).unwrap().snapshot;
         client = Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
         client.bootstrap().unwrap();
@@ -151,10 +154,12 @@ pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_histo
             .iter()
             .any(|message| message.text == "Mini-app added to this Space."));
     }
+    Ok(())
 }
 
-pub(super) fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations() {
-    let (mut client, _, mut log) = document_fixture();
+pub(super) fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, mut log) = document_fixture()?;
     let made=client.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"pet","args_json":"{\"name\":\"Jumento\"}"}).to_string(),10,"pt-BR").unwrap();
     let item = made.result["id"].as_str().unwrap().to_owned();
     assert_eq!(made.result["app"]["trust"], "Act");
@@ -179,7 +184,7 @@ pub(super) fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmat
         .unwrap();
     assert_eq!(card["item_id"], item);
     assert_eq!(card["app"]["app_id"], "pet");
-    confirm_documents(&mut client, &mut log, update, 11);
+    confirm_documents(&mut client, &mut log, update, 11)?;
     let read=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_get_state","args_json":"{}","confirmed":false}).to_string(),12,"pt-BR").unwrap();
     assert_eq!(read.result["status"], "Done");
     assert!(read.update.is_none());
@@ -212,17 +217,19 @@ pub(super) fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmat
         specs.result.as_array().unwrap().len(),
         miniapps::specs().len()
     );
+    Ok(())
 }
 
-pub(super) fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore() {
-    let (mut client, _, mut log) = document_fixture();
+pub(super) fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, _, mut log) = document_fixture()?;
     let made = doc(
         &mut client,
         serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"checkbox.md","markdown":"# Checkbox\n\nOriginal café\n\n- [ ] Revisar documento\n"}),
         10,
     );
     let id = made.result["id"].as_str().unwrap().to_owned();
-    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11)?;
     let read = doc(
         &mut client,
         serde_json::json!({"op":"page","item_id":id}),
@@ -377,10 +384,12 @@ pub(super) fn browser_task_checkbox_draft_survives_reread_and_cold_journal_resto
         .result,
         published_markdown
     );
+    Ok(())
 }
 
-pub(super) fn received_app_owned_documents_keep_manifest_history_without_becoming_file_cards() {
-    let (mut client, author, mut log) = document_fixture();
+pub(super) fn received_app_owned_documents_keep_manifest_history_without_becoming_file_cards(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut client, author, mut log) = document_fixture()?;
     let bytes = br#"{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}"#;
     let sealed = crate::media::seal_file(
         "drawing.excalidraw",
@@ -390,6 +399,7 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
     )
     .unwrap();
     let document = types::AppDoc {
+        view: None,
         app: "excalidraw".into(),
         resource_uri: "ui://zoen/excalidraw.html".into(),
         title: "Drawing".into(),
@@ -406,7 +416,7 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
             origin: "Created".into(),
         },
         10,
-    );
+    )?;
     client.receive(&created, 11).unwrap();
     let posted = clear(
         &mut log,
@@ -420,7 +430,7 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
             forwarded: false,
         },
         12,
-    );
+    )?;
     client.receive(&posted, 13).unwrap();
     let response = doc(
         &mut client,
@@ -452,4 +462,5 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
     let before = restored.saved.outbox.len();
     assert!(restored.app_request(&serde_json::json!({"op":"app_call_tool","item_id":"it_drawing","tool":"app_document_read","args_json":"{}","confirmed":false}).to_string(),17,"en").is_err());
     assert_eq!(restored.saved.outbox.len(), before);
+    Ok(())
 }

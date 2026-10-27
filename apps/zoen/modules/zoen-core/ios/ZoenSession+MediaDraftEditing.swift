@@ -128,10 +128,10 @@ extension ZoenSession {
       // The exact input revision remains admissible only for this operation's lost-ACK retry.
       if binding.attempt == nil {
         guard latest.revision == binding.revision, !latest.attempted,
-              var content = try ZoenMediaDraftBridge.content(latest.contentJson),
+              let content = try ZoenMediaDraftBridge.content(latest.contentJson),
               content["kind"] as? String == "attachments",
-              var entries = content["items"] as? [[String: Any]],
-              let index = entries.firstIndex(where: { $0["asset_id"] as? String == binding.assetId
+              let entries = content["items"] as? [[String: Any]],
+              entries.contains(where: { $0["asset_id"] as? String == binding.assetId
                 && $0["mutation_id"] as? String == binding.mutationId }),
               let old = latest.assets.first(where: { $0.id == binding.assetId && $0.sha256 == binding.sha256 }) else {
           throw ZoenFilePreview.Failure.changed
@@ -142,10 +142,10 @@ extension ZoenSession {
         let mutationId = UUID().uuidString
         let stem = (old.name as NSString).deletingPathExtension
         let name = String(stem.prefix(50)) + "." + metadata.fileExtension
-        entries[index]["asset_id"] = assetId
-        entries[index]["mutation_id"] = mutationId
-        content["items"] = entries
-        let json = try ZoenMediaFiles.json(content)
+        let replaced = try ZoenMediaDraftEditedContent.replacingAsset(in: content,
+          assetId: binding.assetId, mutationId: binding.mutationId,
+          replacementAssetId: assetId, replacementMutationId: mutationId)
+        let json = try ZoenMediaFiles.json(replaced)
         binding.attempt = DraftMediaEditAttempt(file: file.url, revision: binding.revision, content: json,
           asset: MediaDraftAssetInput(id: assetId, name: name, mime: metadata.mime, bytes: data))
         // Retain the exact fingerprint inputs BEFORE native CAS. Retry never changes IDs or bytes.

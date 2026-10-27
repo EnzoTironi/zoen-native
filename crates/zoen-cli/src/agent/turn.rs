@@ -1,6 +1,7 @@
 //! One authenticated source turn and its existing continuation/receipt decisions.
 
 use super::*;
+use client_core::RequestStatus;
 
 /// A deferred turn has performed no admission, journal reservation or effect.
 /// It is scheduling, not an unknown provider/executor result or a retry attempt.
@@ -9,6 +10,51 @@ pub(super) enum Outcome {
     Handled,
     Retry,
     Deferred,
+}
+
+/// One fresh canonical read admits one finite turn, not the wake-loop backlog.
+/// A later Pause does not cancel remaining rounds/tools of that admitted turn.
+/// Inactive/error observations defer the next source or continuation before its
+/// model reservation, approved-tool resume or retained-result delivery.
+pub(super) async fn admitted(
+    e: &Arc<Client>,
+    cx: &Ctx,
+    def: &Definition,
+    space: &str,
+    before: &[TimelineEntry],
+    t: &TimelineEntry,
+) -> Outcome {
+    if !current(e, cx, def).await {
+        return Outcome::Deferred;
+    }
+    turn(e, cx, def, space, before, t).await
+}
+
+/// Same canonical admission for bounded backlog trimming, before cursor mutation.
+pub(super) async fn current(e: &Client, cx: &Ctx, def: &Definition) -> bool {
+    let current_actor = || {
+        e.account().is_some_and(|account| {
+            account.identity_id == cx.me
+                && account.device_id == cx.device
+                && e.agent_owner().as_deref() == Some(cx.owner.as_str())
+        })
+    };
+    if !current_actor() {
+        return false;
+    }
+    let Ok(state) = e.agent_state().await else {
+        return false;
+    };
+    if !current_actor() || state.status != "active" {
+        return false;
+    }
+    let current = source_mode::definition(
+        &state.status,
+        &state.kind,
+        state.definition_version,
+        &state.definition,
+    );
+    current.as_ref().is_ok_and(|current| current == def)
 }
 
 pub(super) async fn turn(
@@ -115,9 +161,16 @@ async fn checked(
             None => true,
         };
     }
+    let scoped = match e.agent_artifact_request(space, &t.id, &t.author.id) {
+        Ok(scope) => scope.is_some(),
+        Err(_) => return false,
+    };
     let history: Vec<Turn> = before
         .iter()
         .rev()
+        // A scoped App request reads through its bounded native tool. Unrelated
+        // conversation history must not become an implicit artifact read.
+        .filter(|_| !scoped)
         .filter_map(|m| {
             text_of(m).map(|x| Turn {
                 space: space.into(),
@@ -162,9 +215,15 @@ async fn checked(
                 e.tool_review_pending_intent(&dto.id),
             )));
         }
-        if let Some(category) = trace::Stop::request_status(dto.status) {
-            stop(category);
-            return true;
+        // Only an authenticated owner intent may move a pending/expired call
+        // into preparation. It still cannot reach continuation or execution.
+        let prepare_pending = matches!(dto.status, RequestStatus::Pending | RequestStatus::Stale)
+            && e.tool_review_pending_intent(&dto.id).is_some();
+        if !prepare_pending {
+            if let Some(category) = trace::Stop::request_status(dto.status) {
+                stop(category);
+                return true;
+            }
         }
         let Some(proposal) = &request.tool_proposal else {
             stop(trace::Stop::InvalidContinuation);
@@ -208,6 +267,12 @@ async fn checked(
                     selection,
                 );
             }
+        }
+        // Preparation is not approval, including when a receipt was reconciled
+        // or the intent changed during the read-only synchronization preflight.
+        if let Some(category) = trace::Stop::request_status(dto.status) {
+            stop(category);
+            return true;
         }
         let checkpoint = match tools.recovery_checkpoint(&request.id, &request.content_hash) {
             Ok(checkpoint) => checkpoint,
@@ -320,22 +385,75 @@ async fn checked(
                 .resume_tool_ask(tc, &history, &inbound, &tools, ask, &admission)
                 .await
         }
+    } else if let Ok(Some(outcome)) =
+        JournalState::known_turn(cx.journal.as_path(), cx, space, t, def)
+    {
+        Ok(outcome)
     } else {
-        match JournalState::begin_turn(cx.journal.as_path(), cx, space, t) {
-            Ok(true) => {}
-            Ok(false) => {
-                trace::stop(space, &t.id, trace::Stop::SourceAttemptLimit, None);
-                return true;
+        let source_host = source_recovery::SourceTools::new(&tools, cx, def, t);
+        let recovered = match source_host.recover() {
+            Ok(recovered) => recovered,
+            Err(error) => {
+                turn_note(
+                    selection,
+                    "agent_host_source_checkpoint_refused",
+                    format_args!("source recovery refused: {error}"),
+                );
+                return false;
             }
-            Err(_) => {
-                trace::stop(space, &t.id, trace::Stop::SourceReservationRefused, None);
+        };
+        let result = if let Some((original, progress)) = recovered {
+            cx.runtime
+                .resume_tool_progress(tc, &history, &inbound, &source_host, original, progress)
+                .await
+        } else {
+            match JournalState::begin_turn(cx.journal.as_path(), cx, space, t) {
+                Ok(true) => {}
+                Ok(false) => {
+                    trace::stop(space, &t.id, trace::Stop::SourceAttemptLimit, None);
+                    return true;
+                }
+                Err(_) => {
+                    trace::stop(space, &t.id, trace::Stop::SourceReservationRefused, None);
+                    return false;
+                }
+            }
+            trace::normal(space, &t.id, &done);
+            cx.runtime
+                .turn_with_tools(tc, &history, &inbound, &source_host, done)
+                .await
+        };
+        if matches!(&result, Err(zoen_agentd::HostError::BrainNotDispatched(_))) {
+            if tools.check_selection().is_err() {
+                return false;
+            }
+            if let Err(error) =
+                JournalState::model_not_dispatched(cx.journal.as_path(), cx, space, t)
+            {
+                turn_note(
+                    selection,
+                    "agent_host_source_reservation_refused",
+                    format_args!("model witness refused: {error}"),
+                );
                 return false;
             }
         }
-        trace::normal(space, &t.id, &done);
-        cx.runtime
-            .turn_with_tools(tc, &history, &inbound, &tools, done)
-            .await
+        if tools.check_selection().is_err() {
+            return false;
+        }
+        if let Ok(outcome) = &result {
+            if let Err(error) =
+                JournalState::model_known(cx.journal.as_path(), cx, space, t, outcome, def)
+            {
+                turn_note(
+                    selection,
+                    "agent_host_source_checkpoint_refused",
+                    format_args!("model result checkpoint refused: {error}"),
+                );
+                return false;
+            }
+        }
+        result
     };
     if tools.check_selection().is_err() {
         return false;
@@ -362,6 +480,9 @@ async fn checked(
             );
             true
         }
+        TurnOutcome::Say { text } if scoped => e
+            .agent_artifact_reply(space, &t.id, &t.author.id, &text)
+            .is_ok(),
         TurnOutcome::Say { text } => selected_reply(e, space, &text, &t.id, selection),
         TurnOutcome::ToolAsk { ask } if ask.call.name == image_tools::TOOL => {
             tools.image_stage(&ask.call).is_ok()
@@ -381,6 +502,10 @@ async fn checked(
                 true
             }
         },
+        // A scoped draft stays at the signed source, not another conversation.
+        TurnOutcome::AskOwner { draft, .. } if scoped => e
+            .agent_artifact_reply(space, &t.id, &t.author.id, &draft)
+            .is_ok(),
         TurnOutcome::AskOwner { draft, rule } => selected_owner_note(
             e,
             cx,
@@ -390,6 +515,7 @@ async fn checked(
             &t.id,
             selection,
         ),
+        TurnOutcome::ProposeAgent { .. } if scoped => false,
         TurnOutcome::ProposeAgent { spec, confirmation } => {
             selected_proposal(e, cx, space, t, &spec, confirmation.as_deref(), selection)
         }

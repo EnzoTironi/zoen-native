@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { OwnerPolicySession, type PolicyPort, type PolicyScope } from '../owner-policy/session.ts';
 import type { AgentRequestDto } from './generated/AgentRequestDto.ts';
 import * as presentation from '../agents/owner-policy-presentation.ts';
 import * as amounts from '../agents/owner-policy-amounts.ts';
+import * as values from '../owner-policy/values.ts';
 import { imageToolReviewValid } from './image-tool-review.ts';
 
 type Context = NonNullable<ReturnType<OwnerPolicySession['getSnapshot']>['context']>;
@@ -194,28 +197,56 @@ const sourcePaths = [
   '../agents/owner-policy-screen.tsx',
   '../app/owner-budget/[id].tsx',
 ];
+const nativeRequire = createRequire(import.meta.url);
+const { transformSync } = nativeRequire('@babel/core');
 const bundles = await Promise.all(
-  sourcePaths.map((path) =>
-    build({
-      stdin: { contents: readFileSync(new URL(path, import.meta.url), 'utf8'), loader: 'tsx' },
+  sourcePaths.map((path) => {
+    const filename = fileURLToPath(new URL(path, import.meta.url));
+    const { code } = transformSync(readFileSync(filename, 'utf8'), {
+      filename,
+      configFile: false,
+      babelrc: false,
+      presets: [nativeRequire.resolve('babel-preset-expo')],
+      caller: {
+        name: 'metro',
+        platform: 'ios',
+        engine: 'hermes',
+        isDev: false,
+        supportsReactCompiler: true,
+      },
+    });
+    assert.match(code, /react\/compiler-runtime/, 'Exercise installed iOS React compiler');
+    return build({
+      stdin: { contents: code, loader: 'js' },
       bundle: true,
       platform: 'node',
       format: 'cjs',
       jsx: 'automatic',
       write: false,
       external: ['*'],
-    }),
-  ),
+    });
+  }),
 );
 export function screen(f: Fixture, mode: 'image' | 'account' = 'image') {
   const slots = new Map<string, any[]>();
+  const caches = new Map<string, unknown[][]>();
   let activeSlots: any[] = [],
-    cursor = 0;
+    activeCaches: unknown[][] = [],
+    cursor = 0,
+    compilerCursor = 0;
   const components: Record<string, any> = {};
   let routeRows: AgentRequestDto[] = [request];
   let routeSpaces: { id: string; kind: string }[] = [];
   const accountTarget = { purpose: 'account', spaceId: scope.spaceId, agentId: scope.agentId };
   const require = (name: string) => {
+    if (name === 'react/compiler-runtime')
+      return {
+        c: (size: number) =>
+          (activeCaches[compilerCursor++] ??= Array(size).fill(
+            Symbol.for('react.memo_cache_sentinel'),
+          )),
+      };
+    if (name.startsWith('@babel/runtime/helpers/')) return nativeRequire(name);
     if (name === 'react/jsx-runtime')
       return {
         jsx: (type: unknown, props: unknown, key?: string) => ({ type, props, key }),
@@ -281,13 +312,18 @@ export function screen(f: Fixture, mode: 'image' | 'account' = 'image') {
       };
     if (name === './owner-policy-presentation') return presentation;
     if (name === './owner-policy-amounts') return amounts;
+    if (name === '../owner-policy/values') return values;
     if (name === './owner-policy-form') return components.form;
     if (name === './owner-policy-review') return components.review;
     throw Error(`Unexpected composed screen dependency ${name}`);
   };
   for (let i = 0; i < bundles.length; i++) {
     const module = { exports: {} as any };
-    runInNewContext(bundles[i]!.outputFiles[0]!.text, { module, require });
+    runInNewContext(bundles[i]!.outputFiles[0]!.text, {
+      module,
+      exports: module.exports,
+      require,
+    });
     components[['form', 'review', 'screen', 'route'][i]!] = module.exports;
   }
   function expand(value: any, path: string): VNode[] {
@@ -298,7 +334,10 @@ export function screen(f: Fixture, mode: 'image' | 'account' = 'image') {
       const id = `${path}/${value.type.name}/${value.key ?? ''}`;
       activeSlots = slots.get(id) ?? [];
       slots.set(id, activeSlots);
+      activeCaches = caches.get(id) ?? [];
+      caches.set(id, activeCaches);
       cursor = 0;
+      compilerCursor = 0;
       return expand(value.type(value.props), id);
     }
     return [value, ...expand(value.props.children, path)];

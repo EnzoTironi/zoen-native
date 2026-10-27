@@ -50,7 +50,12 @@ struct BatchBrain {
 
 #[async_trait]
 impl Brain for BatchBrain {
-    async fn think(&self, _: TurnContext<'_>, _: &[Turn], _: &Turn) -> Result<BrainOut, String> {
+    async fn think(
+        &self,
+        _: TurnContext<'_>,
+        _: &[Turn],
+        _: &Turn,
+    ) -> Result<BrainOut, BrainError> {
         Err("tool continuation must use completed steps".into())
     }
     async fn think_with_tools(
@@ -60,7 +65,7 @@ impl Brain for BatchBrain {
         _: &Turn,
         _: &[ToolDef],
         steps: &[ToolStep],
-    ) -> Result<BrainOut, String> {
+    ) -> Result<BrainOut, BrainError> {
         let mut seen = self.seen.lock().unwrap();
         seen.push(steps.to_vec());
         if seen.len() == 1 {
@@ -451,7 +456,12 @@ async fn prepared_batch_is_persisted_before_effect_and_persistence_failure_stops
 struct FinalRoundBrain(Arc<Mutex<Vec<Vec<ToolStep>>>>);
 #[async_trait]
 impl Brain for FinalRoundBrain {
-    async fn think(&self, _: TurnContext<'_>, _: &[Turn], _: &Turn) -> Result<BrainOut, String> {
+    async fn think(
+        &self,
+        _: TurnContext<'_>,
+        _: &[Turn],
+        _: &Turn,
+    ) -> Result<BrainOut, BrainError> {
         Err("must retain verified completed steps".into())
     }
     async fn think_with_tools(
@@ -461,7 +471,7 @@ impl Brain for FinalRoundBrain {
         _: &Turn,
         tools: &[ToolDef],
         steps: &[ToolStep],
-    ) -> Result<BrainOut, String> {
+    ) -> Result<BrainOut, BrainError> {
         assert!(
             tools.is_empty(),
             "the fourth round must not regain tools after recovery"

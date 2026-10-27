@@ -1,9 +1,15 @@
 //! Complete captured-text conversion using the original input validators and Page parser.
 
-use super::*;
+use super::{
+    empty_block, invalid, rich, text, Binding, Capture, PageBlockDto, PageInputMode,
+    PageInputTarget, RichBlock, TaggedBlock, TextSpanDto, R,
+};
 
 /// Maps the native semantic ranges directly. No before/after text inference occurs.
 pub(in crate::pages) fn page_edits(binding: &Binding, capture: &Capture) -> R<Vec<PageBlockDto>> {
+    if binding.target == PageInputTarget::WholeDocument {
+        return super::whole_document::edits(binding, capture);
+    }
     if binding.mode == PageInputMode::Markdown {
         return super::super::parse_editor_markdown(&text(&binding.mode, &capture.payload)?.text);
     }
@@ -39,10 +45,10 @@ pub(in crate::pages) fn page_edits(binding: &Binding, capture: &Capture) -> R<Ve
         let id = if out.is_empty() {
             match &binding.target {
                 PageInputTarget::Block { block_id } => block_id.clone(),
-                _ => types::new_id("block"),
+                _ => types::new_id("block")?,
             }
         } else {
-            types::new_id("block")
+            types::new_id("block")?
         };
         let mut b = empty_block(id);
         // Page's text codec uses U+2028 for an in-paragraph line break. Its

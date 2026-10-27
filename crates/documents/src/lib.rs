@@ -8,7 +8,12 @@
 //!   `src`, `tail`, `lead` and `fp` (what the block was when imported, to write it back
 //!   byte-identical while nobody touched it).
 
+mod block_storage;
 mod markdown;
+pub mod message_quote;
+
+use block_storage::{apply_edit, char_marks, get_str, read_block, u16_to_char, write_block};
+pub use block_storage::{block_markdown, spans_of};
 pub mod plan;
 
 #[cfg(test)]
@@ -18,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 
 use loro::{
     Container, ExpandType, ExportMode, LoroDoc, LoroMap, LoroMovableList, LoroText, LoroValue,
-    StyleConfig, StyleConfigMap, TextDelta, ValueOrContainer,
+    StyleConfig, StyleConfigMap, ValueOrContainer,
 };
 pub use loro::{Frontiers, VersionVector};
 use serde::{Deserialize, Serialize};
@@ -120,80 +125,7 @@ pub struct Block {
     pub fp: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Fp {
-    k: Kind,
-    h: String,
-}
-
-impl Block {
-    pub fn new(kind: Kind, runs: Vec<Run>) -> Block {
-        Block {
-            id: new_id(),
-            kind,
-            runs,
-            src: String::new(),
-            tail: String::new(),
-            lead: String::new(),
-            fp: String::new(),
-        }
-    }
-
-    /// The kind plus a hash of the canonical inline Markdown: equal fingerprints mean the
-    /// block reads the same.
-    pub fn fingerprint(&self) -> String {
-        let md = markdown::inline_md(&self.runs);
-        serde_json::to_string(&Fp {
-            k: self.kind.clone(),
-            h: hex::encode(&Sha256::digest(md.as_bytes())[..12]),
-        })
-        .unwrap_or_default()
-    }
-
-    pub(crate) fn kind_from_fp(fp: &str) -> Option<Kind> {
-        serde_json::from_str::<Fp>(fp).ok().map(|f| f.k)
-    }
-
-    pub fn plain_text(&self) -> String {
-        self.runs.iter().map(|r| r.text.as_str()).collect()
-    }
-
-    /// SHA-256 of the visible kind, exact text and normalized marks. Source spelling,
-    /// run segmentation and the block's identity are not content.
-    pub fn content_hash(&self) -> String {
-        #[derive(Serialize)]
-        struct Content {
-            kind: Kind,
-            text: String,
-            spans: Vec<Span>,
-        }
-        let kind = match &self.kind {
-            Kind::Heading { level, .. } => Kind::Heading {
-                level: *level,
-                setext: false,
-            },
-            kind => kind.clone(),
-        };
-        let bytes = serde_json::to_vec(&Content {
-            kind,
-            text: self.plain_text(),
-            spans: canonical_spans(&self.runs),
-        })
-        .expect("page content serializes");
-        hex::encode(
-            Sha256::new()
-                .chain_update(b"zoen-page-block-content-v1\0")
-                .chain_update(bytes)
-                .finalize(),
-        )
-    }
-}
-
-fn new_id() -> String {
-    let mut b = [0u8; 8];
-    getrandom::getrandom(&mut b).expect("randomness");
-    hex::encode(b)
-}
+mod block;
 
 // ───────────────────────────── the Loro page ─────────────────────────────
 
@@ -271,7 +203,7 @@ impl Page {
     /// A page from Markdown: one block per Markdown block.
     pub fn from_markdown(md: &str) -> Result<Page, DocError> {
         let p = Page::new();
-        let imported = markdown::import(md);
+        let imported = markdown::import(md)?;
         p.doc
             .get_map("page")
             .insert("lead", imported.lead.as_str())
@@ -349,26 +281,38 @@ impl Page {
 
     /// SHA-256 of ordered block identities and semantic content, independent of CRDT
     /// history and original Markdown spelling.
-    pub fn content_hash(&self) -> String {
-        let blocks: Vec<_> = self
+    pub fn content_hash(&self) -> Result<String, DocError> {
+        let blocks = self
             .blocks()
             .into_iter()
-            .map(|b| (b.id.clone(), b.content_hash()))
-            .collect();
-        let bytes = serde_json::to_vec(&blocks).expect("page content serializes");
-        hex::encode(
+            .map(|b| Ok((b.id.clone(), b.content_hash()?)))
+            .collect::<Result<Vec<_>, DocError>>()?;
+        let bytes = serde_json::to_vec(&blocks).map_err(err)?;
+        Ok(hex::encode(
             Sha256::new()
                 .chain_update(b"zoen-page-content-v1\0")
                 .chain_update(bytes)
                 .finalize(),
-        )
+        ))
     }
 
-    pub fn block_hash(&self, id: &str) -> Option<String> {
+    /// Editor equality also preserves stored syntax metadata that the public semantic
+    /// hash intentionally normalizes (currently Heading.setext). No hash/version change.
+    pub fn editor_content_eq(&self, other: &Self) -> Result<bool, DocError> {
+        Ok(self.content_hash()? == other.content_hash()?
+            && self
+                .blocks()
+                .iter()
+                .map(|b| &b.kind)
+                .eq(other.blocks().iter().map(|b| &b.kind)))
+    }
+
+    pub fn block_hash(&self, id: &str) -> Result<Option<String>, DocError> {
         self.blocks()
             .into_iter()
             .find(|b| b.id == id)
             .map(|b| b.content_hash())
+            .transpose()
     }
 
     pub fn title(&self) -> String {
@@ -386,7 +330,7 @@ impl Page {
             .unwrap_or_default()
     }
 
-    pub fn to_markdown(&self) -> String {
+    pub fn to_markdown(&self) -> Result<String, DocError> {
         let lead = match self.doc.get_map("page").get("lead") {
             Some(ValueOrContainer::Value(LoroValue::String(s))) => s.to_string(),
             _ => String::new(),
@@ -395,7 +339,7 @@ impl Page {
     }
 
     /// Every block written in house style, ignoring how the source spelled it.
-    pub fn canonical_markdown(&self) -> String {
+    pub fn canonical_markdown(&self) -> Result<String, DocError> {
         markdown::export("", &self.blocks(), true)
     }
 
@@ -404,14 +348,30 @@ impl Page {
     /// Validate and stage first, so a refused edit cannot change the original page.
     /// For a stale editor, call this on `at(observed_frontiers)` and merge its updates.
     pub fn apply(&self, order: &[String], changed: &[BlockEdit]) -> Result<(), DocError> {
+        self.apply_checked(order, changed, false)
+    }
+
+    /// A complete editor projection may explicitly change syntax metadata. Legacy
+    /// `apply` keeps its semantic no-op/source-spelling preservation contract.
+    pub fn apply_editor(&self, order: &[String], changed: &[BlockEdit]) -> Result<(), DocError> {
+        self.apply_checked(order, changed, true)
+    }
+
+    fn apply_checked(
+        &self,
+        order: &[String],
+        changed: &[BlockEdit],
+        exact_kind: bool,
+    ) -> Result<(), DocError> {
         validate_apply(&block_ids(&self.blocks_list()), order, changed)?;
         let staged = Page {
             doc: self.doc.fork(),
         };
-        let before = staged.content_hash();
         let from = staged.version();
         staged.apply_validated(order, changed)?;
-        if staged.content_hash() == before {
+        if staged.content_hash()? == self.content_hash()?
+            && (!exact_kind || staged.editor_content_eq(self)?)
+        {
             return Ok(());
         }
         let delta = staged.doc.export(ExportMode::updates(&from)).map_err(err)?;
@@ -583,241 +543,5 @@ fn canonical_spans(runs: &[Run]) -> Vec<Span> {
     merged
 }
 
-fn get_str(m: &LoroMap, key: &str) -> String {
-    match m.get(key) {
-        Some(ValueOrContainer::Value(LoroValue::String(s))) => s.to_string(),
-        _ => String::new(),
-    }
-}
-
-fn text_of(m: &LoroMap) -> Option<LoroText> {
-    match m.get("text") {
-        Some(ValueOrContainer::Container(Container::Text(t))) => Some(t),
-        _ => None,
-    }
-}
-
-fn write_block(m: &LoroMap, b: &Block, imported: bool) -> Result<(), DocError> {
-    m.insert("id", b.id.as_str()).map_err(err)?;
-    m.insert("kind", serde_json::to_string(&b.kind).unwrap_or_default())
-        .map_err(err)?;
-    if imported {
-        m.insert("src", b.src.as_str()).map_err(err)?;
-        m.insert("tail", b.tail.as_str()).map_err(err)?;
-        m.insert("lead", b.lead.as_str()).map_err(err)?;
-        m.insert("fp", b.fp.as_str()).map_err(err)?;
-    }
-    let t = m.insert_container("text", LoroText::new()).map_err(err)?;
-    // All text first, then marks: inserting after a marked range would extend the mark.
-    let all: String = b.runs.iter().map(|r| r.text.as_str()).collect();
-    if !all.is_empty() {
-        t.insert(0, &all).map_err(err)?;
-    }
-    let mut pos = 0usize;
-    for r in &b.runs {
-        let n = r.text.chars().count();
-        for (k, v) in attr_marks(&r.attrs) {
-            if n > 0 {
-                t.mark(pos..pos + n, k, v).map_err(err)?;
-            }
-        }
-        pos += n;
-    }
-    Ok(())
-}
-
-fn attr_marks(a: &Attrs) -> Vec<(&'static str, LoroValue)> {
-    let mut v = Vec::new();
-    if a.bold {
-        v.push(("b", LoroValue::Bool(true)));
-    }
-    if a.italic {
-        v.push(("i", LoroValue::Bool(true)));
-    }
-    if a.strike {
-        v.push(("s", LoroValue::Bool(true)));
-    }
-    if a.code {
-        v.push(("c", LoroValue::Bool(true)));
-    }
-    if let Some(u) = &a.link {
-        v.push(("a", LoroValue::from(u.as_str())));
-    }
-    if a.hard_break {
-        v.push(("hb", LoroValue::Bool(true)));
-    }
-    v
-}
-
-fn read_block(m: &LoroMap) -> Block {
-    let kind = serde_json::from_str(&get_str(m, "kind")).unwrap_or(Kind::Paragraph);
-    let mut runs = Vec::new();
-    if let Some(t) = text_of(m) {
-        for d in t.to_delta() {
-            if let TextDelta::Insert { insert, attributes } = d {
-                let mut a = Attrs::default();
-                if let Some(attrs) = attributes {
-                    for (k, v) in attrs {
-                        let on = !matches!(v, LoroValue::Null | LoroValue::Bool(false));
-                        match k.as_str() {
-                            "b" => a.bold = on,
-                            "i" => a.italic = on,
-                            "s" => a.strike = on,
-                            "c" => a.code = on,
-                            "hb" => a.hard_break = on,
-                            "a" => {
-                                if let LoroValue::String(u) = v {
-                                    a.link = Some(u.to_string());
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                runs.push(Run {
-                    text: insert,
-                    attrs: a,
-                });
-            }
-        }
-    }
-    Block {
-        id: get_str(m, "id"),
-        kind,
-        runs,
-        src: get_str(m, "src"),
-        tail: get_str(m, "tail"),
-        lead: get_str(m, "lead"),
-        fp: get_str(m, "fp"),
-    }
-}
-
-/// UTF-16 offset → Unicode scalar offset in `s`.
-fn u16_to_char(s: &str, u16: usize) -> usize {
-    let mut n16 = 0;
-    for (i, c) in s.chars().enumerate() {
-        if n16 >= u16 {
-            return i;
-        }
-        n16 += c.len_utf16();
-    }
-    s.chars().count()
-}
-
-/// Per-character marks of a block, from runs (`Some(value)` when set).
-fn char_marks(runs: &[Run]) -> HashMap<&'static str, Vec<Option<String>>> {
-    let total: usize = runs.iter().map(|r| r.text.chars().count()).sum();
-    let mut out: HashMap<&'static str, Vec<Option<String>>> = HashMap::new();
-    for (k, _) in MARKS {
-        out.insert(k, vec![None; total]);
-    }
-    let mut pos = 0;
-    for r in runs {
-        let n = r.text.chars().count();
-        for (k, v) in attr_marks(&r.attrs) {
-            let val = match v {
-                LoroValue::String(s) => s.to_string(),
-                _ => "1".into(),
-            };
-            if let Some(slot) = out.get_mut(k) {
-                for x in &mut slot[pos..pos + n] {
-                    *x = Some(val.clone());
-                }
-            }
-        }
-        pos += n;
-    }
-    out
-}
-
-fn apply_edit(m: &LoroMap, e: &BlockEdit) -> Result<(), DocError> {
-    let kind_json = serde_json::to_string(&e.kind).unwrap_or_default();
-    if get_str(m, "kind") != kind_json {
-        m.insert("kind", kind_json).map_err(err)?;
-    }
-    let t = match text_of(m) {
-        Some(t) => t,
-        None => m.insert_container("text", LoroText::new()).map_err(err)?,
-    };
-    if t.to_string() != e.text {
-        t.update(&e.text, Default::default())
-            .map_err(|_| DocError("text update timed out".into()))?;
-    }
-    // Marks: compare per character and fix only the differences.
-    let current = read_block(m);
-    let have = char_marks(&current.runs);
-    let n = e.text.chars().count();
-    let mut want: HashMap<&'static str, Vec<Option<String>>> = HashMap::new();
-    for (k, _) in MARKS {
-        want.insert(k, vec![None; n]);
-    }
-    for s in &e.spans {
-        let a = u16_to_char(&e.text, s.start as usize).min(n);
-        let z = u16_to_char(&e.text, s.end as usize).min(n);
-        if let Some((k, _)) = MARKS.iter().find(|(k, _)| *k == s.key) {
-            let v = if *k == "a" {
-                s.value.clone()
-            } else {
-                "1".into()
-            };
-            for x in &mut want.get_mut(k).unwrap()[a..z] {
-                *x = Some(v.clone());
-            }
-        }
-    }
-    for (k, _) in MARKS {
-        let h = &have[k];
-        let w = &want[k];
-        let mut i = 0;
-        while i < n {
-            if h.get(i) == w.get(i) {
-                i += 1;
-                continue;
-            }
-            let start = i;
-            let target = w[i].clone();
-            while i < n && h.get(i) != w.get(i) && w[i] == target {
-                i += 1;
-            }
-            match &target {
-                None => t.unmark(start..i, k).map_err(err)?,
-                Some(v) => {
-                    let val = if k == "a" {
-                        LoroValue::from(v.as_str())
-                    } else {
-                        LoroValue::Bool(true)
-                    };
-                    t.mark(start..i, k, val).map_err(err)?
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-/// UTF-16 spans of a block's runs, for editors.
-pub fn spans_of(runs: &[Run]) -> Vec<Span> {
-    let mut out = Vec::new();
-    let mut pos = 0u32;
-    for r in runs {
-        let n: u32 = r.text.chars().map(|c| c.len_utf16() as u32).sum();
-        for (k, v) in attr_marks(&r.attrs) {
-            out.push(Span {
-                start: pos,
-                end: pos + n,
-                key: k.to_string(),
-                value: match v {
-                    LoroValue::String(s) => s.to_string(),
-                    _ => String::new(),
-                },
-            });
-        }
-        pos += n;
-    }
-    out
-}
-
-/// Markdown for one block's text in house style (used for "Editar como texto").
-pub fn block_markdown(b: &Block) -> String {
-    markdown::inline_md(&b.runs)
-}
+#[cfg(test)]
+mod hash_compatibility_tests;

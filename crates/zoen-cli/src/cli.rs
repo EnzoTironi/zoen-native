@@ -1,20 +1,23 @@
 //! Original argument parser/help; flags retain their existing behavior.
-pub(crate) fn usage() -> ! {
-    eprintln!(
-        "usage: zoen [--home DIR] <command>\n\n\
+mod help;
+
+const USAGE: &str = "usage: zoen [--home DIR] <command>\n\n\
          init --name NAME --handle HANDLE [--relay URL]\n\
          whoami | status | chats | verify\n\
          people QUERY\n\
          dm @HANDLE [TEXT]                end-to-end (MLS): the relay holds ciphertext\n\
          group TITLE @HANDLE... [--readable]   end-to-end unless --readable\n\
          encrypt CHAT                     make a relay-readable chat end-to-end, for good\n\
-         add CHAT @HANDLE [--admin]       bring someone in (an admin can add and remove too)\n\
+         add CHAT PERSON [--role member|reader|admin] [--json]   add directly with the reviewed role\n\
          remove CHAT @HANDLE              take someone out (end-to-end: they read nothing after)\n\
-         keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
+         keys CHAT [--json]               public MLS epoch/digest/member/device IDs\n\
+         members CHAT [--json]            current public identity IDs and roles\n\
+         member-role CHAT PERSON [member|reader|admin] [--json]   inspect or assign a reviewed role\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
-         read CHAT [--older]              --older: ask your other device for an older page\n\
+         read CHAT [--json] [--peek] [--older]   --peek omits the read watermark; no --older\n\
          agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
          agent-host [--for SECS] [--source ID]   source requires --for; no cursor advancement\n\
+         agent-controls [--for SECS]     host authenticated owner controls only; no model or content work\n\
          agent-inspect [--timeout MS]     read this agent's projected cursors/requests (no execution)\n\
          agent-enroll-request --owner ID --relay URL --name N --handle H --definition FILE\n\
          agent-enroll-wait [--timeout MS]  recover or wait for owner consent, then register\n\
@@ -47,13 +50,15 @@ pub(crate) fn usage() -> ! {
          page export ITEM --out FILE | page export-all CHAT --dir DIR\n\
          page show ITEM | page check ITEM N | page add ITEM TEXT | page set ITEM N TEXT\n\
          page new CHAT TITLE | pages CHAT\n\
-         file add CHAT FILE [--thumb PNG] [--path DIR] | files CHAT\n\
+         file add CHAT FILE [--mime MIME] [--thumb PNG] [--path DIR] | files CHAT\n\
          file get ITEM --out FILE [--version N] [--thumb-out PNG]\n\
          file version ITEM FILE [--thumb PNG]\n\
          versions ITEM | restore ITEM N      ITEM = id (prefix ok), path or title\n\
          backup on (--password P | --recovery-key) | backup now | backup off | backup status\n\
-         recover @HANDLE (--password P | --recovery-key KEY) [--relay URL]   a new device from a backup"
-    );
+         recover @HANDLE (--password P | --recovery-key KEY) [--relay URL]   a new device from a backup";
+
+pub(crate) fn usage() -> ! {
+    eprintln!("{USAGE}");
     std::process::exit(2)
 }
 
@@ -62,6 +67,16 @@ pub(crate) struct Cli {
 }
 
 impl Cli {
+    /// Handle explicit help before resolving or opening any account home.
+    pub(crate) fn from_args(args: Vec<String>) -> Option<Self> {
+        if help::requested(&args) {
+            println!("{USAGE}");
+            None
+        } else {
+            Some(Self { args })
+        }
+    }
+
     pub(crate) fn flag(&mut self, name: &str) -> Option<String> {
         let i = self.args.iter().position(|a| a == name)?;
         let v = self.args.get(i + 1).cloned();
@@ -76,5 +91,24 @@ impl Cli {
             }
             None => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{usage, Cli};
+
+    #[test]
+    fn ordinary_operands_reach_the_existing_parser_unchanged() {
+        let args: Vec<String> = ["--home", "temporary", "--offline", "send", "chat", "--help"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let mut cli = Cli::from_args(args.clone()).expect("opaque message is not help");
+        assert_eq!(cli.args, args);
+        assert_eq!(cli.flag("--home").as_deref(), Some("temporary"));
+        assert!(cli.switch("--offline"));
+        assert_eq!(cli.args, ["send", "chat", "--help"]);
+        let _original_usage: fn() -> ! = usage;
     }
 }

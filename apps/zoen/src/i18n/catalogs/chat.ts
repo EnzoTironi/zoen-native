@@ -2,6 +2,11 @@ import { defineFeature } from '../catalog.ts';
 
 export const chat = defineFeature(
   {
+    selectText: 'Select text',
+    quoteSelection: 'Quote',
+    quoteTextReplyOnly: 'Remove the quote to attach media.',
+    quoteSelectionUnavailable:
+      'This passage cannot be quoted. Try a smaller selection or reopen the message.',
     all: 'All',
     unread: 'Unread',
     today: 'Today',
@@ -21,6 +26,10 @@ export const chat = defineFeature(
       'Talk to someone, bring a group together or create something with your agent.',
     thisMessageIsNoLongerInThisDevice: "This message is no longer in this device's history.",
     messageUnavailable: 'Message unavailable',
+    linkUnavailable: 'Could not open link',
+    copyCodeFailed: 'Could not copy code',
+    copyLink: 'Copy address',
+    copyLinkFailed: 'Could not copy address',
     tryAgain: 'Try again.',
     theMessageCouldNotBeOpened: 'The message could not be opened',
     chatUnavailable: 'Chat unavailable',
@@ -50,6 +59,7 @@ export const chat = defineFeature(
     cancel: 'Cancel',
     message: 'Message',
     noLongerAMember: 'You’re no longer a member of this chat.',
+    readOnlyChat: 'Read-only chat.',
     draftLoadFailed: 'Could not open your draft. Try again to continue safely.',
     draftSaveFailed: 'Your latest changes are still on this screen. Try saving again.',
     draftSendRejected:
@@ -72,6 +82,10 @@ export const chat = defineFeature(
     noChatsFound: 'No chats found',
     startAnotherChatToForwardThisMessage: 'Start another chat to forward this message.',
     theMessageCouldNotBeForwarded: 'The message could not be forwarded.',
+    reviewForwardAgain: 'The message changed. Choose a chat to review it again.',
+    alreadyForwarded: 'Already forwarded',
+    forwardAgain: 'Forward again',
+    forwardRequiresAccount: 'Use your account to forward messages',
     peopleCouldNotBeFoundOnTheServer: 'People could not be found on the server.',
     person: 'Person',
     group: 'Group',
@@ -207,6 +221,11 @@ export const chat = defineFeature(
     agentLabel: 'Agent',
   },
   {
+    selectText: 'Selecionar texto',
+    quoteSelection: 'Citar',
+    quoteTextReplyOnly: 'Remova a citação para anexar mídia.',
+    quoteSelectionUnavailable:
+      'Não foi possível citar este trecho. Selecione um trecho menor ou reabra a mensagem.',
     all: 'Todas',
     unread: 'Não lidas',
     today: 'Hoje',
@@ -226,6 +245,10 @@ export const chat = defineFeature(
       'Converse com alguém, reúna um grupo ou crie algo com seu agente.',
     thisMessageIsNoLongerInThisDevice: 'Esta mensagem não está mais no histórico deste aparelho.',
     messageUnavailable: 'Mensagem indisponível',
+    linkUnavailable: 'Não foi possível abrir o link',
+    copyCodeFailed: 'Não foi possível copiar o código',
+    copyLink: 'Copiar endereço',
+    copyLinkFailed: 'Não foi possível copiar o endereço',
     tryAgain: 'Tente novamente.',
     theMessageCouldNotBeOpened: 'Não foi possível abrir a mensagem',
     chatUnavailable: 'Conversa indisponível',
@@ -255,6 +278,7 @@ export const chat = defineFeature(
     cancel: 'Cancelar',
     message: 'Mensagem',
     noLongerAMember: 'Você não faz mais parte desta conversa.',
+    readOnlyChat: 'Conversa somente leitura.',
     draftLoadFailed: 'Não foi possível abrir o rascunho. Tente novamente para continuar.',
     draftSaveFailed: 'As últimas alterações ainda estão nesta tela. Tente salvar novamente.',
     draftSendRejected:
@@ -278,6 +302,10 @@ export const chat = defineFeature(
     noChatsFound: 'Nenhuma conversa encontrada',
     startAnotherChatToForwardThisMessage: 'Comece outra conversa para encaminhar esta mensagem.',
     theMessageCouldNotBeForwarded: 'Não foi possível encaminhar.',
+    reviewForwardAgain: 'A mensagem mudou. Escolha uma conversa para revisá-la novamente.',
+    alreadyForwarded: 'Já encaminhada',
+    forwardAgain: 'Encaminhar novamente',
+    forwardRequiresAccount: 'Use sua conta para encaminhar mensagens',
     peopleCouldNotBeFoundOnTheServer: 'Não foi possível buscar pessoas no servidor.',
     person: 'Pessoa',
     group: 'Grupo',

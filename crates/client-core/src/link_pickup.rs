@@ -260,8 +260,7 @@ impl PickupControl {
             waiter_live: true,
         });
         let worker = Worker {
-            factory: Some(factory),
-            future: None,
+            work: Work::Deferred(factory),
             send: Some(send),
             completion: Some(WorkerCompletion {
                 control: self.clone(),
@@ -283,36 +282,38 @@ impl PickupControl {
         {
             let mut state = self.lock();
             let retired = state.retired;
-            let active = state
-                .active
-                .as_mut()
-                .filter(|active| active.id == id)
-                .expect("live waiter preserves its active pickup");
-            let cancelled = retired || active.material.is_none();
-            active.task = Some(join);
+            let Some(active) = state.active.as_mut().filter(|active| active.id == id) else {
+                // Losing an actual lease is terminal, never a free admission slot.
+                state.retired = true;
+                join.abort();
+                return Err(CoreError::Storage {
+                    message: "The link pickup lost its active lease.".into(),
+                });
+            };
             // Revocation may have happened before there was a handle to abort.
             // Its key gate was already closed; retain and abort the real task.
-            if cancelled {
-                active.task.as_ref().unwrap().abort();
+            if retired || active.material.is_none() {
+                join.abort();
             }
+            active.task = Some(join);
         }
         Ok(waiter)
     }
 
-    fn active(state: &State, id: u64) -> Result<&Active, CoreError> {
+    fn active_material(state: &State, id: u64) -> Result<&Material, CoreError> {
         let active = state.active.as_ref().filter(|a| a.id == id);
         let active = active.ok_or_else(cancelled)?;
-        if state.retired || active.material.is_none() {
+        if state.retired {
             return Err(cancelled());
         }
         if Instant::now() >= active.deadline {
             return Err(invalid("Link pickup deadline expired."));
         }
-        Ok(active)
+        active.material.as_ref().ok_or_else(cancelled)
     }
 
     fn check(&self, id: u64) -> Result<(), CoreError> {
-        Self::active(&self.lock(), id).map(|_| ())
+        Self::active_material(&self.lock(), id).map(|_| ())
     }
 
     fn revoke(state: &mut State) {
@@ -326,7 +327,7 @@ impl PickupControl {
     }
 
     /// Retryable cancellation. The occupied slot remains until both real owners
-    /// retire; it is never released merely because abort() was called.
+    /// retire; it is never released merely because `abort()` was called.
     pub(crate) fn cancel(&self) {
         Self::revoke(&mut self.lock());
         self.notify();
@@ -414,22 +415,16 @@ impl PickupSigning for PickupKey {
 
     fn id(&self) -> Result<String, String> {
         let state = self.control.lock();
-        Ok(PickupControl::active(&state, self.id)
+        Ok(PickupControl::active_material(&state, self.id)
             .map_err(|e| e.to_string())?
-            .material
-            .as_ref()
-            .unwrap()
             .signer
             .id())
     }
 
     fn sign(&self, message: &[u8]) -> Result<String, String> {
         let state = self.control.lock();
-        Ok(PickupControl::active(&state, self.id)
+        Ok(PickupControl::active_material(&state, self.id)
             .map_err(|e| e.to_string())?
-            .material
-            .as_ref()
-            .unwrap()
             .signer
             .sign(message))
     }
@@ -487,8 +482,7 @@ impl PickupWaiter {
         install: impl FnOnce(&Pending, &Signer) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
         let state = self.control.lock();
-        let active = PickupControl::active(&state, self.id)?;
-        let material = active.material.as_ref().unwrap();
+        let material = PickupControl::active_material(&state, self.id)?;
         install(&material.pending, &material.signer)
     }
 }
@@ -511,9 +505,14 @@ impl Drop for WorkerCompletion {
 }
 
 /// Fixed-size wrapper: no concrete TLS/pickup future exists until first poll.
+enum Work {
+    Deferred(PickupFactory),
+    Running(PickupFuture),
+    Complete,
+}
+
 struct Worker {
-    factory: Option<PickupFactory>,
-    future: Option<PickupFuture>,
+    work: Work,
     send: Option<oneshot::Sender<Result<Vec<u8>, String>>>,
     completion: Option<WorkerCompletion>,
 }
@@ -522,14 +521,19 @@ impl Future for Worker {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        if self.future.is_none() {
-            self.future = Some(self.factory.take().expect("worker first poll")());
-        }
-        match self.future.as_mut().unwrap().as_mut().poll(cx) {
-            Poll::Pending => Poll::Pending,
+        let mut future = match std::mem::replace(&mut self.work, Work::Complete) {
+            Work::Deferred(factory) => factory(),
+            Work::Running(future) => future,
+            Work::Complete => return Poll::Ready(()),
+        };
+        match future.as_mut().poll(cx) {
+            Poll::Pending => {
+                self.work = Work::Running(future);
+                Poll::Pending
+            }
             Poll::Ready(result) => {
                 // No result may become visible while its socket future lives.
-                drop(self.future.take());
+                drop(future);
                 if let Some(send) = self.send.take() {
                     let _ = send.send(result);
                 }
@@ -543,8 +547,7 @@ impl Drop for Worker {
     fn drop(&mut self) {
         // Explicit ordering also holds on abort, panic and runtime shutdown.
         // Never release the completion lease before real future destruction.
-        drop(self.future.take());
-        drop(self.factory.take());
+        drop(std::mem::replace(&mut self.work, Work::Complete));
         drop(self.send.take());
         drop(self.completion.take());
     }

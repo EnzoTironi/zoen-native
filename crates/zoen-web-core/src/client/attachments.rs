@@ -16,12 +16,12 @@ pub(super) struct Producer {
     pending: BTreeMap<u64, Option<Receipt>>,
 }
 impl Producer {
-    pub(super) fn new() -> Self {
-        Self {
-            id: types::new_secret_id("attachment"),
+    pub(super) fn new() -> Result<Self, String> {
+        Ok(Self {
+            id: types::new_secret_id("attachment").map_err(|error| error.to_string())?,
             next: 1,
             pending: BTreeMap::new(),
-        }
+        })
     }
     fn sequence(&self, mutation: &str) -> Result<u64, String> {
         let (producer, value) = mutation
@@ -226,13 +226,15 @@ impl<S: Signer> Client<S> {
                     .resolve_post(&request.space_id, &reference)
                     .ok_or("That message is no longer available.")?;
                 Some(types::ReplyRef {
+                    quote: None,
+                    artifact: None,
                     to: event.hash.clone(),
                     thread: request.thread,
                 })
             }
             None => None,
         };
-        let item = types::new_secret_id("it");
+        let item = types::new_secret_id("it").map_err(|error| error.to_string())?;
         let uploads = chunks.keys().cloned().collect::<Vec<_>>();
         let identities = self.queue_domain_batch_uploads(
             &request.space_id,
@@ -370,6 +372,8 @@ impl<S: Signer> Client<S> {
                     .resolve_post(&request.space_id, &reference)
                     .ok_or("That message is no longer available.")?;
                 Some(types::ReplyRef {
+                    quote: None,
+                    artifact: None,
                     to: event.hash.clone(),
                     thread: request.thread,
                 })
@@ -391,7 +395,7 @@ impl<S: Signer> Client<S> {
                 }
                 chunks.insert(blob, bytes);
             }
-            let item = types::new_secret_id("it");
+            let item = types::new_secret_id("it").map_err(|error| error.to_string())?;
             bodies.push(EventBody::ItemCreated {
                 item: item.clone(),
                 kind: types::ItemKind::File,

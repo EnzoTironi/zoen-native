@@ -167,6 +167,18 @@ class CurrentCoreContractTest(unittest.TestCase):
         fake = '\nconst EXAMPLE: &str = "#[uniffi::export] impl Fake { pub fn absent(&self) {} }";'
         self.assertEqual(self.contract, core.source_contract({"src/lib.rs": SOURCE + fake}))
 
+    def test_constructor_keeps_its_kind_with_other_rust_attributes(self):
+        for attributes in (
+            '#[must_use]\n    #[uniffi::constructor]',
+            '#[uniffi::constructor]\n    #[must_use]',
+            '#[uniffi::constructor]\n    #[doc = "first launch"]\n    #[must_use]',
+        ):
+            with self.subTest(attributes=attributes):
+                source = SOURCE.replace('#[uniffi::constructor]', attributes)
+                contract = core.source_contract({'src/lib.rs': source})
+                self.assertEqual(self.contract, contract)
+                self.assertNotIn(core.CHECKSUM_PREFIX + 'method_client_open', contract['checksums'])
+
     def test_kotlin_checksum_namespace_must_match_the_current_library(self):
         self.kotlin.write_text(self.kotlin.read_text().replace(core.CHECKSUM_PREFIX, "uniffi_other_core_checksum_"))
         with self.assertRaisesRegex(ValueError, "Missing generated Kotlin ABI checksum inventory"):

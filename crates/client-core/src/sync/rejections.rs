@@ -1,6 +1,9 @@
 //! Publication refusals and exact dependent media intents.
 
-use super::*;
+use super::{
+    same_media_group, ConfirmedMediaDependencies, CoreError, Engine, Event, EventBody, HashSet,
+    ItemContent, ItemKind, RejectionOutcome, R,
+};
 
 impl Engine {
     /// The relay refused one of ours. `sent_epoch` describes the application envelope
@@ -66,6 +69,9 @@ impl Engine {
     /// refused File fails its exact referencing media messages; a refused group
     /// member also fails its matching group, so newer Space heads can progress.
     pub(super) fn refuse_outbox_media_dependents(&self, rejected: &Event, reason: &str) -> R<()> {
+        if matches!(rejected.body, EventBody::AppCurrentShared { .. }) {
+            return self.refuse_app_share_dependents(rejected, reason);
+        }
         let candidate = matches!(
             &rejected.body,
             EventBody::MessagePosted { media: Some(_), .. }
@@ -112,7 +118,7 @@ impl Engine {
                                     && event_log::verify_author(event).is_ok()
                                     && matches!(&event.body, EventBody::MessagePosted {
                                 attaches: Some(attaches), media, ..
-                            } if attaches == item && media.as_ref().is_none_or(|media| media.is_valid()))
+                            } if attaches == item && media.as_ref().is_none_or(types::MessageMedia::is_valid))
                             }),
                     );
                 }

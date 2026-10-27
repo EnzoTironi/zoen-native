@@ -2,14 +2,27 @@
 
 use super::*;
 
-pub(crate) fn fixture_at(path: std::path::PathBuf, root: [u8; 32]) -> Fixture {
+pub(crate) fn fixture_at(
+    path: std::path::PathBuf,
+    root: [u8; 32],
+) -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     fixture_with_privacy_at(path, root, types::Privacy::Closed)
 }
 pub(crate) fn fixture_with_privacy_at(
     path: std::path::PathBuf,
     root: [u8; 32],
     privacy: types::Privacy,
-) -> Fixture {
+) -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_for_format_at(path, root, privacy, "deckcraft", ORIGINAL)
+}
+
+pub(super) fn fixture_for_format_at(
+    path: std::path::PathBuf,
+    root: [u8; 32],
+    privacy: types::Privacy,
+    app: &str,
+    original: &[u8],
+) -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     let owner_path = path.join("owner.sqlite");
     let owner_vault = Arc::new(Vault::default());
     let human = Client::open(owner_path.to_str().unwrap().into(), "en".into()).unwrap();
@@ -58,7 +71,7 @@ pub(crate) fn fixture_with_privacy_at(
         .unwrap();
     let db_store = store::Store::open(db.to_str().unwrap()).unwrap();
     db_store.put_identity(&profile, Some(&key)).unwrap();
-    let space = types::new_id("worker_space");
+    let space = types::new_id("worker_space")?;
     let mut log = event_log::SpaceLog::new(&space);
     let agent_signer = event_log::Signer::from_secret(&root);
     let human_signer = event_log::Signer::from_secret(&key);
@@ -80,7 +93,7 @@ pub(crate) fn fixture_with_privacy_at(
         ),
     ] {
         db_store
-            .append_event(log.append(&agent_signer, time, body))
+            .append_event(log.append(&agent_signer, time, body)?)
             .unwrap();
     }
     let source_event = log
@@ -88,14 +101,14 @@ pub(crate) fn fixture_with_privacy_at(
             &human_signer,
             1_792_510_809_002,
             types::EventBody::MessagePosted {
-                message: types::new_id("source"),
+                message: types::new_id("source")?,
                 text: "Update this presentation with the reviewed edits".into(),
                 attaches: None,
                 reply: None,
                 media: None,
                 forwarded: false,
             },
-        )
+        )?
         .clone();
     db_store.append_event(&source_event).unwrap();
     let source = source_event.client_id;
@@ -103,14 +116,15 @@ pub(crate) fn fixture_with_privacy_at(
     let client = Client::open(db.to_str().unwrap().into(), "en".into()).unwrap();
     assert!(client.unlock(vault.clone()).unwrap());
     let base = client
-        .app_binary_create(
+        .app_binary_create_for(
+            app.into(),
             space.clone(),
             "Agent deck".into(),
-            STANDARD.encode(ORIGINAL),
+            STANDARD.encode(original),
             "worker_create".into(),
         )
         .unwrap();
-    Fixture {
+    Ok(Fixture {
         path,
         client,
         vault,
@@ -118,5 +132,5 @@ pub(crate) fn fixture_with_privacy_at(
         owner,
         source,
         base,
-    }
+    })
 }

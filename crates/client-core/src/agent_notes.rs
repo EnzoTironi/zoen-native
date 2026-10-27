@@ -82,13 +82,13 @@ mod tests {
     use event_log::{agent_owner::authorize, Author, Signer};
 
     /// An agent profile carrying a real ownership proof from `owner`'s certified device.
-    fn owned_agent(owner: &Signer) -> Identity {
-        let agent = Signer::generate().id();
-        let proof = authorize(&Author::device(owner, Signer::generate()), &agent).unwrap();
-        Identity {
+    fn owned_agent(owner: &Signer) -> std::result::Result<Identity, Box<dyn std::error::Error>> {
+        let agent = Signer::generate()?.id();
+        let proof = authorize(&Author::device(owner, Signer::generate()?), &agent).unwrap();
+        Ok(Identity {
             owner_proof: Some(Box::new(proof)),
             ..id(&agent, IdentityKind::Agent, Some(&owner.id()))
-        }
+        })
     }
 
     fn id(id: &str, kind: IdentityKind, owner: Option<&str>) -> Identity {
@@ -109,9 +109,9 @@ mod tests {
 
     #[test]
     fn pending_notes_are_the_asks_since_the_owner_last_wrote() {
-        let bruno = Signer::generate();
+        let bruno = Signer::generate().unwrap();
         let me = bruno.id();
-        let bot = owned_agent(&bruno);
+        let bot = owned_agent(&bruno).unwrap();
         let ask = "```json\n{\"ask_owner\":{\"question\":\"Posso?\"}}\n```";
         let booking = "```json\n{\"booking\":{\"kind\":\"new\"}}\n```";
         let a = bot.id.as_str();
@@ -133,22 +133,22 @@ mod tests {
         let answered = chat(&[("bot", Some(ask)), ("me", Some("pode"))]);
         assert_eq!(pending_owner_notes(&me, &bot, answered.into_iter()), 0);
         // Someone else's agent never asks you for anything.
-        let theirs = owned_agent(&Signer::generate());
+        let theirs = owned_agent(&Signer::generate().unwrap()).unwrap();
         let rows = vec![(theirs.id.as_str(), Some(NOTE))];
         assert_eq!(pending_owner_notes(&me, &theirs, rows.into_iter()), 0);
     }
 
     #[test]
     fn only_the_owners_own_agent_gets_a_card() {
-        let bruno = Signer::generate();
+        let bruno = Signer::generate().unwrap();
         let me = bruno.id();
-        let mine = owned_agent(&bruno);
+        let mine = owned_agent(&bruno).unwrap();
         assert!(owner_agent_note(&me, Some(&mine), NOTE).is_some());
         let ask = "```json\n{\"ask_owner\":{\"draft\":\"x\"}}\n```";
         assert!(owner_agent_note(&me, Some(&mine), ask).is_some());
 
         // Someone else's agent, a person, an unknown author: plain text.
-        let theirs = owned_agent(&Signer::generate());
+        let theirs = owned_agent(&Signer::generate().unwrap()).unwrap();
         assert!(owner_agent_note(&me, Some(&theirs), NOTE).is_none());
         let carla = id("carla", IdentityKind::Person, None);
         assert!(owner_agent_note(&me, Some(&carla), NOTE).is_none());
@@ -162,15 +162,19 @@ mod tests {
 
     #[test]
     fn a_claimed_owner_without_a_valid_proof_gets_no_card() {
-        let bruno = Signer::generate();
+        let bruno = Signer::generate().unwrap();
         let me = bruno.id();
         // Claims Bruno as owner but carries no proof.
-        let bare = id(&Signer::generate().id(), IdentityKind::Agent, Some(&me));
+        let bare = id(
+            &Signer::generate().unwrap().id(),
+            IdentityKind::Agent,
+            Some(&me),
+        );
         assert!(owner_agent_note(&me, Some(&bare), NOTE).is_none());
         // Carries a proof, but it was signed by someone else's device.
         let forged = Identity {
             owner: Some(me.clone()),
-            ..owned_agent(&Signer::generate())
+            ..owned_agent(&Signer::generate().unwrap()).unwrap()
         };
         assert!(owner_agent_note(&me, Some(&forged), NOTE).is_none());
     }
@@ -179,6 +183,7 @@ mod tests {
         let st = serde_json::json!({"timezone": "America/Sao_Paulo", "ownerId": "bruno",
             "agentId": "bot", "resolvers": ["dani"], "bookings": bookings, "events": events});
         types::AppDoc {
+            view: None,
             document: None,
             app: "schedule".into(),
             resource_uri: String::new(),
@@ -212,8 +217,10 @@ mod tests {
             assert_eq!(note["booking"]["kind"], "new");
             assert_eq!(note["booking"]["client"], "Carla");
             let s = format!("```json\n{note}\n```");
-            let bruno = Signer::generate();
-            assert!(owner_agent_note(&bruno.id(), Some(&owned_agent(&bruno)), &s).is_some());
+            let bruno = Signer::generate().unwrap();
+            assert!(
+                owner_agent_note(&bruno.id(), Some(&owned_agent(&bruno).unwrap()), &s).is_some()
+            );
 
             let withdrawn = sched(b("cancelled"), req("withdrawn"));
             assert_eq!(

@@ -9,9 +9,11 @@ pub const REVISION: &str = "zoen.native-page.blocks.v1";
 pub const ARGUMENT_LIMIT: usize = 32 * 1024;
 pub const SNAPSHOT_LIMIT: usize = 64 * 1024;
 
+#[must_use]
 pub fn digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
+#[must_use]
 pub fn valid_digest(value: &str) -> bool {
     value.len() == 64
         && value
@@ -20,6 +22,7 @@ pub fn valid_digest(value: &str) -> bool {
 }
 
 /// A binding to this native tool contract, not a worker binary or guest-supplied ABI.
+#[must_use]
 pub fn executor_binding() -> String {
     digest(b"zoen.native-page.blocks.v1\0read_page\0replace_page_block\0exact-before-after-v1")
 }
@@ -41,6 +44,7 @@ pub enum Command {
     Replace(Box<ReplaceBlock>),
 }
 impl Command {
+    #[must_use]
     pub fn artifact(&self) -> &str {
         match self {
             Self::Read { artifact } => artifact,
@@ -49,9 +53,11 @@ impl Command {
     }
 }
 
+#[must_use]
 pub fn recognizes(name: &str) -> bool {
     matches!(name, "read_page" | "replace_page_block")
 }
+#[must_use]
 pub fn model_name(tool: &str, item: &str) -> Option<String> {
     recognizes(tool).then(|| format!("{tool}_{}", &digest(item.as_bytes())[..16]))
 }
@@ -59,19 +65,43 @@ pub fn model_name(tool: &str, item: &str) -> Option<String> {
 /// Native projection can verify this prefix without opening a local editor or blob.
 /// The materialized canonical shadow is independently checked before returning bytes.
 pub(crate) fn prefix(state: &State, item: &str, version: u32) -> Result<String, String> {
+    // Schema2/v1 historically serialized the English synthetic creation label.
+    // Preserve that exact wire contract, regardless of the reader's UI locale.
+    prefix_with_creation_note(state, item, version, "Created")
+}
+
+/// Only the two labels actually synthesized by pre-fix clients are compatible.
+/// Every signed later note and every content/author/time/scope field remains exact.
+pub(crate) fn prefix_matches(state: &State, item: &str, version: u32, expected: &str) -> bool {
+    prefix(state, item, version).is_ok_and(|actual| actual == expected)
+        || prefix_with_creation_note(state, item, version, "Criado")
+            .is_ok_and(|actual| actual == expected)
+}
+
+fn prefix_with_creation_note(
+    state: &State,
+    item: &str,
+    version: u32,
+    creation_note: &str,
+) -> Result<String, String> {
     let it = state.items.get(item).ok_or("Page not found")?;
     if it.kind != ItemKind::Page || version == 0 || version as usize > it.versions.len() {
         return Err("Invalid Page prefix".into());
     }
     let mut rows = Vec::new();
-    for v in &it.versions[..version as usize] {
+    for v in it.versions.iter().take(version as usize) {
         let ItemContent::Page(page) = &v.content else {
             return Err("The Page prefix changed kind".into());
         };
         if page.manifest.is_some() {
             return Err("A Plan is not an ordinary Page".into());
         }
-        rows.push((v.number, &v.author, v.at_ms, &v.note, v.is_undo, page));
+        let note = if v.number == 1 {
+            creation_note
+        } else {
+            v.note.as_str()
+        };
+        rows.push((v.number, &v.author, v.at_ms, note, v.is_undo, page));
     }
     let bytes = serde_json::to_vec(&(REVISION, &it.space, &it.id, rows))
         .map_err(|_| "Invalid Page prefix")?;
@@ -129,6 +159,7 @@ pub fn parse(tool: &str, args: &Value) -> Result<Command, String> {
     Ok(Command::Replace(Box::new(command)))
 }
 
+#[must_use]
 pub fn tools() -> Vec<Value> {
     let block = json!({"type":"object","additionalProperties":false,"required":["id","kind","level","indent","number","checked","lang","url","alt","text","spans"],"properties":{
         "id":{"type":"string"},"kind":{"type":"string"},"level":{"type":"integer"},"indent":{"type":"integer"},"number":{"type":"integer"},"checked":{"type":"boolean"},"lang":{"type":"string"},"url":{"type":"string"},"alt":{"type":"string"},"text":{"type":"string"},"spans":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["start","end","key","value"],"properties":{"start":{"type":"integer"},"end":{"type":"integer"},"key":{"type":"string"},"value":{"type":"string"}}}}

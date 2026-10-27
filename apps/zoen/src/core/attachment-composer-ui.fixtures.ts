@@ -9,6 +9,10 @@ import { telegramPresentation } from '../theme/telegram.ts';
 import { composerVerticalInsets } from './telegram-audio-presentation.ts';
 import * as composerMotion from './telegram-composer-motion.ts';
 import * as composerPresentation from './telegram-composer-presentation.ts';
+import type { AttachmentKeyboardSession } from '../media/attachment-keyboard-session.ts';
+import { keyboardFieldHook } from './attachment-keyboard-field.fixtures.ts';
+import { homeOwnerFor } from '../home/access.ts';
+import { composerOwnerFixture } from './composer-owner.fixtures.ts';
 
 export type Element = { type: unknown; props: Record<string, unknown> };
 export type Handler = (...args: unknown[]) => unknown;
@@ -58,6 +62,7 @@ export async function compileField(platform: Platform) {
     'react/compiler-runtime',
     'react/jsx-runtime',
     'react-native',
+    'react-native-reanimated',
     '../../modules/zoen-core/src/ZoenCoreModule',
     '../media/attachment-keyboard-context',
   ]);
@@ -89,7 +94,12 @@ export const fieldOutputs = new Map(
     ),
   ),
 );
-export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass = false) {
+export function fixture(
+  platform: Platform = 'ios',
+  fontScale = 1,
+  liquidGlass = false,
+  keyboardSession?: AttachmentKeyboardSession,
+) {
   type Slot = {
     value?: unknown;
     deps?: readonly unknown[];
@@ -123,6 +133,7 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
     },
   };
   const pendingFits: { request: Record<string, any>; resolve: (value: any) => void }[] = [];
+  const nativeEvents: (() => void)[] = [];
   let deferFits = false;
   const nativeField = { focus() {}, blur() {} };
   const slot = () => (slots[cursor++] ??= {});
@@ -150,6 +161,7 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
       current.cleanup = read() ?? undefined;
     });
   };
+  const bindKeyboardField = keyboardSession ? keyboardFieldHook(keyboardSession, effect) : null;
   const fieldModule = {
     exports: {} as { ComposerTextField: (props: Record<string, unknown>) => Element },
   };
@@ -165,8 +177,9 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
       result = fieldModule.exports.ComposerTextField(props);
       assert.equal(result.type, 'TextInput');
       (result.props.ref as (node: unknown) => void)(nativeField);
-      (result.props.onLayout as Handler)({ nativeEvent: { layout: { width: 264, height: 52 } } });
       for (const commit of effects) commit();
+      // RN delivers layout after the committed ref and layout effects.
+      (result.props.onLayout as Handler)({ nativeEvent: { layout: { width: 264, height: 52 } } });
     } while (dirty);
     fieldElement = result;
     return result;
@@ -185,7 +198,9 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
     thread: false,
   };
   const calls: string[] = [];
+  const client = composerOwnerFixture();
   const file = {
+    mutationId: 'selected-asset',
     scope,
     targetFrozen: false,
     value: '',
@@ -200,6 +215,7 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
   };
   const ports: Record<string, unknown> = {
     react: {
+      createRef: () => ({ current: null }),
       useRef: (value: unknown) => {
         const current = slot();
         current.value ??= { current: value };
@@ -273,11 +289,23 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
         },
       },
     },
-    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }) },
+    'react-native-safe-area-context': {
+      useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }),
+    },
     'react-native-reanimated': {
       __esModule: true,
-      default: { View: 'AnimatedView' },
+      default: { View: 'AnimatedView', createAnimatedComponent: (component: unknown) => component },
       useAnimatedStyle: (read: () => unknown) => read(),
+      makeMutable: (initial: unknown) => {
+        let value = initial;
+        return {
+          get: () => value,
+          set: (next: unknown) => {
+            value = next;
+          },
+        };
+      },
+      useEvent: (handler: Handler) => handler,
     },
     'expo-glass-effect': {
       GlassView: 'GlassView',
@@ -287,10 +315,15 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
     '../media/attachment-keyboard-context': {
       AttachmentKeyboardProvider: 'AttachmentKeyboardProvider',
       useAttachmentKeyboard: () => keyboard,
-      useAttachmentKeyboardField: (...args: unknown[]) => keyboardFields.push(args),
+      useAttachmentKeyboardField: (...args: Parameters<NonNullable<typeof bindKeyboardField>>) => {
+        keyboardFields.push(args);
+        bindKeyboardField?.(...args);
+      },
     },
     './composer-control-surface': { ComposerGlyph: 'ComposerGlyph' },
     '../core/telegram-composer-presentation': composerPresentation,
+    '../core/provider': { useClient: () => client },
+    '../home/access': { homeOwnerFor },
     './keyboard-motion': { useKeyboardMotion: () => ({ progress: { value: 0 } }) },
     '../theme': { useTheme: () => theme },
     '../i18n/index.ts': { t: (key: string) => key },
@@ -320,6 +353,7 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
     exports: fieldModule.exports,
     module: fieldModule,
     process: { env: { EXPO_OS: platform } },
+    global: { Error },
     requestAnimationFrame: () => 1,
     cancelAnimationFrame: () => {},
     require: (path: string) => {
@@ -359,6 +393,7 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
   }
   return {
     file,
+    client,
     calls,
     measurements,
     theme,
@@ -369,6 +404,17 @@ export function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass =
       deferFits = true;
     },
     nativeField,
+    nativeChange: (node: Element, text: string, eventCount: number) => {
+      const event = { nativeEvent: { text, eventCount } };
+      (node.props.onNativeChange as Handler | undefined)?.(event.nativeEvent);
+      nativeEvents.push(() => {
+        (node.props.onChange as Handler)(event);
+        (node.props.onChangeText as Handler | undefined)?.(text);
+      });
+    },
+    drainNativeEvents: () => {
+      for (const deliver of nativeEvents.splice(0)) deliver();
+    },
     nativeHandleReads: () => nativeHandleReads,
     unmount: () => {
       assert.ok(fieldElement);

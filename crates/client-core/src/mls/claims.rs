@@ -1,5 +1,11 @@
 //! Durable key-package claims and membership commits.
-use super::*;
+use super::{
+    claim_meta, claim_operation, identity_set, join_set, leaf_name, mls_err, reconciliation,
+    rewelcome_meta, split_leaf, storage, tracing_like, welcome_meta, BTreeSet, ClaimOperation,
+    CoreError, Duration, Engine, EventBody, IdentityId, Instant, KeyPackageClaimClock,
+    KeyPackageRecord, Leaf, Owed, Role, SealedKind, SpaceId, ADMIN_STAGGER, CLAIM_RETRY,
+    KEY_PACKAGE_CLAIM_EXPIRED, R,
+};
 
 impl Engine {
     /// The next group that owes a commit adding someone: claim their key packages. Groups
@@ -37,6 +43,7 @@ impl Engine {
         let dirty: Vec<SpaceId> = self.net.mls.dirty.iter().cloned().collect();
         let mut unsupported = false;
         for space in dirty {
+            self.mls_siblings_in(&space)?;
             self.settle_rewelcome(&space);
             self.settle_joins(&space);
             let owed = match self.owed(&space) {
@@ -47,8 +54,15 @@ impl Engine {
                     continue;
                 }
                 Err(error) => {
-                    self.net.mls.waited.remove(&space);
                     self.net.mls.dirty.remove(&space);
+                    // A failed read is not an empty reconciliation plan. Retain
+                    // the completed admin turn and coalesce work through the
+                    // existing retry schedule, without spinning on storage.
+                    self.net
+                        .mls
+                        .retry_at
+                        .entry(space.clone())
+                        .or_insert(now + CLAIM_RETRY);
                     tracing_like(&format!("group check in {space}: {error}"));
                     continue;
                 }

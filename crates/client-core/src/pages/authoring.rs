@@ -22,11 +22,7 @@ impl Engine {
     }
 
     pub(super) fn page_writer(&self, space: &str, actor: &str) -> bool {
-        self.state.spaces.get(space).is_some_and(|s| {
-            s.members
-                .iter()
-                .any(|(id, role)| id == actor && *role != Role::Reader)
-        })
+        self.state.writer(space, actor)
     }
 
     pub(super) fn page_content(
@@ -79,7 +75,7 @@ impl Engine {
             title = t("Sem título", "Untitled");
         }
         let content = self.page_content(space, title, path, page.snapshot())?;
-        let item = new_id("it");
+        let item = new_id("it")?;
         self.append(
             space,
             &me,
@@ -121,7 +117,7 @@ impl Engine {
             });
         }
         let mut order = order;
-        let extra = format!("{:016x}", rand_u64());
+        let extra = format!("{:016x}", rand_u64()?);
         order.push(extra.clone());
         edits.push(BlockEdit {
             id: extra,

@@ -1,4 +1,4 @@
-import type { ClientStore } from '../core/store';
+import type { ClientState, ClientStore } from '../core/store';
 import type { OwnerPolicyScope } from '../core/generated/OwnerPolicyScope';
 import { accountScope, accountScopeKey } from '../core/account-scope.ts';
 import { policyScopeKey, type PolicyPort, type PolicyScope, type PolicyTarget } from './session.ts';
@@ -11,9 +11,10 @@ export type PolicyUnavailable =
 export function policyAvailability(
   store: ClientStore,
   target: PolicyTarget,
+  state: ClientState = store.getSnapshot(),
 ): { scope: PolicyScope | null; reason: PolicyUnavailable } {
-  const owner = accountScope(store),
-    snapshot = store.getSnapshot().snapshot;
+  const owner = accountScope(store, state),
+    snapshot = state.snapshot;
   if (!owner || !snapshot) return { scope: null, reason: 'account-required' };
   const space = snapshot.conversations.find((value) => value.id === target.spaceId);
   if (

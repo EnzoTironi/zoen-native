@@ -1,7 +1,8 @@
 //! Existing MLS assertions grouped by behavior; stable entrypoints live in tests.rs.
 use super::*;
 
-pub(super) fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block() {
+pub(super) fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = Engine::open(":memory:").unwrap();
     engine
         .create_account("Ana", "ana", "http://relay.test")
@@ -20,14 +21,14 @@ pub(super) fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block()
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        ))
+        )?)?
         .clone();
     assert_eq!(
         engine.ingest(Sequenced {
             seq: genesis.seq,
             prev: genesis.prev.clone(),
             hash: genesis.hash.clone(),
-            env: Envelope::plain(&genesis),
+            env: Envelope::plain(&genesis)?,
         }),
         Ingest::Applied
     );
@@ -44,12 +45,12 @@ pub(super) fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block()
         2,
         log.head().as_ref(),
         Sealed::new(SealedKind::Commit, SUITE_ID, commit.commit),
-    );
+    )?;
     assert_eq!(
         engine.ingest(Sequenced {
             seq: 1,
             prev: genesis.hash.clone(),
-            hash: chain_hash(space, 1, &genesis.hash, &env.wire_hash()),
+            hash: chain_hash(space, 1, &genesis.hash, &env.wire_hash())?,
             env,
         }),
         Ingest::Applied
@@ -97,9 +98,11 @@ pub(super) fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block()
         Some(message)
     );
     engine.logs[space].verify().unwrap();
+    Ok(())
 }
 
-pub(super) fn rejected_outer_signature_keeps_the_own_event_pending() {
+pub(super) fn rejected_outer_signature_keeps_the_own_event_pending(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = Engine::open(":memory:").unwrap();
     engine
         .create_account("Ana", "ana", "http://relay.test")
@@ -118,14 +121,14 @@ pub(super) fn rejected_outer_signature_keeps_the_own_event_pending() {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        ))
+        )?)?
         .clone();
     assert_eq!(
         engine.ingest(Sequenced {
             seq: genesis.seq,
             prev: genesis.prev.clone(),
             hash: genesis.hash.clone(),
-            env: Envelope::plain(&genesis),
+            env: Envelope::plain(&genesis)?,
         }),
         Ingest::Applied
     );
@@ -143,7 +146,7 @@ pub(super) fn rejected_outer_signature_keeps_the_own_event_pending() {
             media: None,
             forwarded: false,
         },
-    );
+    )?;
     engine.store.outbox_put(&own).unwrap();
     engine
         .net
@@ -156,8 +159,8 @@ pub(super) fn rejected_outer_signature_keeps_the_own_event_pending() {
         own.at_ms,
         own.seen.as_ref(),
         Sealed::new(SealedKind::Application, SUITE_ID, vec![1, 2, 3]),
-    );
-    let hash = chain_hash(space, 1, &genesis.hash, &env.wire_hash());
+    )?;
+    let hash = chain_hash(space, 1, &genesis.hash, &env.wire_hash())?;
     env.sig = "00".repeat(64);
     let group_before = engine.mls_status(space).unwrap();
     let count_before = engine.store.event_count().unwrap();
@@ -178,9 +181,11 @@ pub(super) fn rejected_outer_signature_keeps_the_own_event_pending() {
     assert_eq!(engine.logs[space].next_seq(), 1);
     assert_eq!(engine.store.event_count().unwrap(), count_before);
     assert_eq!(engine.mls_status(space), Some(group_before));
+    Ok(())
 }
 
-pub(super) fn rejected_pruned_history_preserves_the_mls_group() {
+pub(super) fn rejected_pruned_history_preserves_the_mls_group(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut engine = Engine::open(":memory:").unwrap();
     engine
         .create_account("Ana", "ana", "http://relay.test")
@@ -199,14 +204,14 @@ pub(super) fn rejected_pruned_history_preserves_the_mls_group() {
                 kind: SpaceKind::Group,
                 privacy: Privacy::EndToEnd,
             },
-        ))
+        )?)?
         .clone();
     assert_eq!(
         engine.ingest(Sequenced {
             seq: genesis.seq,
             prev: genesis.prev.clone(),
             hash: genesis.hash.clone(),
-            env: Envelope::plain(&genesis),
+            env: Envelope::plain(&genesis)?,
         }),
         Ingest::Applied,
     );
@@ -219,11 +224,11 @@ pub(super) fn rejected_pruned_history_preserves_the_mls_group() {
         2,
         log.head().as_ref(),
         Sealed::new(SealedKind::Application, SUITE_ID, vec![1, 2, 3]),
-    );
+    )?;
     let valid = Sequenced {
         seq: 1,
         prev: genesis.hash.clone(),
-        hash: chain_hash(space, 1, &genesis.hash, &full.wire_hash()),
+        hash: chain_hash(space, 1, &genesis.hash, &full.wire_hash())?,
         env: full.pruned().unwrap(),
     };
     let mut bad_signature = valid.clone();
@@ -243,4 +248,5 @@ pub(super) fn rejected_pruned_history_preserves_the_mls_group() {
     assert!(engine.net.mls.rejoin.contains(space));
     assert_eq!(engine.store.event_count().unwrap(), stored_before + 1);
     engine.logs[space].verify().unwrap();
+    Ok(())
 }

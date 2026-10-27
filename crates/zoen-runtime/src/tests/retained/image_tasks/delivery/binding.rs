@@ -64,7 +64,11 @@ async fn bound_put(
     status
 }
 
-pub(super) async fn run(f: &Fixture, run: &str, relay: &relay::Relay) {
+pub(super) async fn run(
+    f: &Fixture,
+    run: &str,
+    relay: &relay::Relay,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let url = format!("http://{}", relay.address);
     let (envelope, _) = proof::transport_original(&f.world.runtime, run).await;
     let checkpoint = proof::output_checkpoint(&f.world.runtime, run)
@@ -169,12 +173,12 @@ pub(super) async fn run(f: &Fixture, run: &str, relay: &relay::Relay) {
     let other_log = Arc::new(
         FdbLog::open(
             std::env::var("FDB_CLUSTER_FILE").ok().as_deref(),
-            &new_id("binding-other-cell"),
+            &new_id("binding-other-cell")?,
         )
         .unwrap(),
     );
     let pool = sqlx::PgPool::connect(&f.world.db_url).await.unwrap();
-    let other_cell = relay::Relay::start_with(f, pool, other_log).await;
+    let other_cell = relay::Relay::start_with(f, pool, other_log).await?;
     assert!(matches!(
         RelayOutputTransport::connect_bound(
             &format!("http://{}", other_cell.address),
@@ -214,9 +218,9 @@ pub(super) async fn run(f: &Fixture, run: &str, relay: &relay::Relay) {
 
     // A split HTTP route into another actual SQL directory also refuses, even
     // while the correct websocket already passed the same-cell challenge.
-    let other = Box::pin(World::new()).await;
+    let other = Box::pin(World::new()).await?;
     let pool = sqlx::PgPool::connect(&other.db_url).await.unwrap();
-    let other_sql = relay::Relay::start_with(f, pool, f.log.clone()).await;
+    let other_sql = relay::Relay::start_with(f, pool, f.log.clone()).await?;
     assert_eq!(
         bound_put(
             &other_sql,
@@ -240,7 +244,7 @@ pub(super) async fn run(f: &Fixture, run: &str, relay: &relay::Relay) {
     other_sql.stop().await;
     other.finish().await;
     // A previously valid socket/proof cannot keep a revoked device uploading.
-    let retired = Author::device(&f.world.agent_roots[0], Signer::generate());
+    let retired = Author::device(&f.world.agent_roots[0], Signer::generate()?);
     let mut tx = zoen_relay::db::authorize_device(
         &f.world.runtime.finance.pool,
         &actor(f).identity,
@@ -289,4 +293,5 @@ pub(super) async fn run(f: &Fixture, run: &str, relay: &relay::Relay) {
         Err(object_store::Error::NotFound { .. })
     ));
     println!("runtime transport binding: real SQL/FDB/WS proof, signed bound PUT, wrong cell/SQL, challenge replay and header downgrade refusal PASS");
+    Ok(())
 }

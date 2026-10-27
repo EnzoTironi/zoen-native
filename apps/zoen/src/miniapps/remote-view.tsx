@@ -1,11 +1,10 @@
 import { locale, t } from '../i18n/index.ts';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Stack, useFocusEffect, usePreventRemove } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Linking, Text, View } from 'react-native';
 import { fetch as expoFetch } from 'expo/fetch';
-import type { CallToolResult } from '@modelcontextprotocol/client';
 import { useClient } from '../core/provider';
 import { EmptyState, Loading, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
@@ -14,17 +13,34 @@ import { MiniappFrame } from './frame';
 import type { MiniappFrameHandle } from './frame-types';
 import { frameAuthority } from './lifetime';
 import { MiniappSession } from './protocol';
-import { remoteAppHtml } from './remote-sandbox';
 import { excalidrawActionDecision } from './remote-grants';
-import { excalidrawPresentation } from './excalidraw-presentation';
+import { createRemoteMcpSession } from './remote-session';
 import {
-  createRemoteMcpSession,
-  type RemoteAppResource,
-  type RemoteMcpDescriptor,
-} from './remote-session';
+  captureRemoteOpening,
+  openRemoteApp,
+  type RemoteAppScreenProps,
+  type RemoteOpening,
+  type OpenedRemoteApp,
+} from './remote-opening';
 
 /** An external app never receives a Zoen account, chat, member list or decryption key. */
-export function RemoteAppScreen({ id }: { id: string }) {
+export function RemoteAppScreen(props: RemoteAppScreenProps) {
+  const selection = useMemo(() => {
+    try {
+      return { opening: captureRemoteOpening(props), error: null };
+    } catch (reason) {
+      return {
+        opening: null,
+        error: reason instanceof Error ? reason.message : t('connectedApps.appUnavailable'),
+      };
+    }
+  }, [props]);
+  if (!selection.opening)
+    return <EmptyState title={t('connectedApps.unsupportedApp')} detail={selection.error ?? ''} />;
+  return <RemoteHostScreen key={selection.opening.key} opening={selection.opening} />;
+}
+
+function RemoteHostScreen({ opening }: { opening: RemoteOpening }) {
   const [focus, setFocus] = useState({ active: false, epoch: 0 });
   const end = useRef<(() => void) | null>(null);
   const registerClose = useCallback((close: (() => void) | null) => {
@@ -39,23 +55,16 @@ export function RemoteAppScreen({ id }: { id: string }) {
       };
     }, []),
   );
-  if (id !== 'excalidraw')
-    return <EmptyState title={t('connectedApps.unsupportedApp')} detail="" />;
-  return focus.active ? <DrawingSession key={focus.epoch} registerClose={registerClose} /> : null;
+  return focus.active ? (
+    <RemoteSession key={focus.epoch} opening={opening} registerClose={registerClose} />
+  ) : null;
 }
 
-type Drawing = {
-  descriptor: RemoteMcpDescriptor;
-  resource: RemoteAppResource;
-  result: CallToolResult;
-  arguments: Record<string, unknown>;
-  html: string;
-  checkpoint: string;
-};
-
-function DrawingSession({
+function RemoteSession({
+  opening,
   registerClose,
 }: {
+  opening: RemoteOpening;
   registerClose: (close: (() => void) | null) => void;
 }) {
   const { store, snapshot, mode } = useClient();
@@ -67,7 +76,7 @@ function DrawingSession({
   const protocol = useRef<MiniappSession | null>(null);
   const remote = useRef<ReturnType<typeof createRemoteMcpSession> | null>(null);
   const authority = useRef<ReturnType<typeof frameAuthority> | null>(null);
-  const [drawing, setDrawing] = useState<Drawing | null>(null);
+  const [drawing, setDrawing] = useState<OpenedRemoteApp | null>(null);
   const [busy, setBusy] = useState(false);
   const starting = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +133,9 @@ function DrawingSession({
         title: t('connectedApps.endSession'),
         message: t('connectedApps.endSessionDetails'),
         confirmLabel: t('connectedApps.end'),
-        cancelLabel: t('connectedApps.keepDrawing'),
+        cancelLabel: t(
+          opening.legacyDrawing ? 'connectedApps.keepDrawing' : 'connectedApps.keepAppOpen',
+        ),
       })
       .then((accepted) => {
         if (accepted) {
@@ -176,46 +187,13 @@ function DrawingSession({
     let connection: ReturnType<typeof createRemoteMcpSession> | null = null;
     void (async () => {
       check();
-      connection = createRemoteMcpSession('excalidraw', check, {
+      connection = createRemoteMcpSession(opening.selection, check, {
         fetch: expoFetch as typeof fetch,
       });
       remote.current = connection;
-      const descriptor = await connection.connect();
+      const opened = await openRemoteApp(connection, opening, check);
       check();
-      const upstreamResource = await connection.readApp();
-      check();
-      const resource = excalidrawPresentation(descriptor, upstreamResource);
-      // Excalidraw's official editor needs an initial element. This is ordinary
-      // tool input; the provider's resource and its editor are never rewritten.
-      const args = {
-        elements: JSON.stringify([
-          {
-            id: 'idea',
-            type: 'rectangle',
-            x: 0,
-            y: 0,
-            width: 240,
-            height: 120,
-            backgroundColor: '#e3f3e8',
-            strokeColor: '#1e1e1e',
-            label: { text: t('connectedApps.idea') },
-          },
-        ]),
-      };
-      if (descriptor.mainToolName !== 'create_view')
-        throw new Error(t('connectedApps.unavailable'));
-      const result = await connection.call(descriptor.mainToolName, args, { origin: 'host' });
-      check();
-      if (result.isError) throw new Error(t('connectedApps.unavailable'));
-      const structured = result.structuredContent;
-      const checkpoint =
-        structured && typeof structured === 'object' && 'checkpointId' in structured
-          ? structured.checkpointId
-          : undefined;
-      if (typeof checkpoint !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(checkpoint))
-        throw new Error(t('connectedApps.unavailable'));
-      const html = remoteAppHtml(resource.html, resource.csp);
-      setDrawing({ descriptor, resource, result, arguments: args, html, checkpoint });
+      setDrawing(opened);
     })()
       .catch((reason: unknown) => {
         try {
@@ -287,7 +265,9 @@ function DrawingSession({
         check();
         const tool = drawing.descriptor.appTools.find((candidate) => candidate.name === name);
         if (!tool) throw new Error(t('connectedApps.unavailableAction'));
-        const decision = excalidrawActionDecision(tool, args, drawing.checkpoint);
+        const decision = opening.legacyDrawing
+          ? excalidrawActionDecision(tool, args, drawing.checkpoint ?? '')
+          : 'confirm';
         const publication = decision === 'publish';
         if (
           decision !== 'session' &&
@@ -303,7 +283,7 @@ function DrawingSession({
         )
           throw new Error(t('miniapps.youCanceledThisAction'));
         check();
-        if (name === 'save_checkpoint') {
+        if (opening.legacyDrawing && name === 'save_checkpoint') {
           const revision = ++latestSave;
           setSaveStatus('saving');
           const save = saveTail.then(async () => {
@@ -331,7 +311,7 @@ function DrawingSession({
             throw reason;
           }
         }
-        if (name === 'read_checkpoint') {
+        if (opening.legacyDrawing && name === 'read_checkpoint') {
           await saveTail;
           check();
         }
@@ -382,7 +362,7 @@ function DrawingSession({
       current.dispose();
       if (protocol.current === current) protocol.current = null;
     };
-  }, [context, dialogs, drawing, ended]);
+  }, [context, dialogs, drawing, ended, opening.legacyDrawing]);
   useLayoutEffect(() => {
     protocol.current?.syncContext();
   }, [scheme, dimensions]);
@@ -401,29 +381,31 @@ function DrawingSession({
         paddingRight: insets.right,
       }}
     >
-      <Stack.Screen options={{ title: 'Excalidraw' }} />
+      <Stack.Screen options={{ title: opening.title }} />
       {ended ? (
         <EmptyState title={t('connectedApps.sessionEnded')} detail="" />
       ) : drawing ? (
         <>
-          <Text
-            testID="connected-app-save-status"
-            accessibilityLiveRegion="polite"
-            style={{
-              color: colors.secondary,
-              fontSize: 12,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-            }}
-          >
-            {saveStatus === 'saved'
-              ? t('connectedApps.saved')
-              : saveStatus === 'saving'
-                ? t('connectedApps.saving')
-                : saveStatus === 'error'
-                  ? t('connectedApps.saveFailed')
-                  : t('connectedApps.sessionDrawing')}
-          </Text>
+          {opening.legacyDrawing ? (
+            <Text
+              testID="connected-app-save-status"
+              accessibilityLiveRegion="polite"
+              style={{
+                color: colors.secondary,
+                fontSize: 12,
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+              }}
+            >
+              {saveStatus === 'saved'
+                ? t('connectedApps.saved')
+                : saveStatus === 'saving'
+                  ? t('connectedApps.saving')
+                  : saveStatus === 'error'
+                    ? t('connectedApps.saveFailed')
+                    : t('connectedApps.sessionDrawing')}
+            </Text>
+          ) : null}
           {error ? (
             <Text
               accessibilityRole="alert"
@@ -448,7 +430,7 @@ function DrawingSession({
             <MiniappFrame
               ref={frame}
               html={drawing.html}
-              title="Excalidraw"
+              title={opening.title}
               height={dimensions.height}
               fill
               blocked={false}
@@ -464,22 +446,42 @@ function DrawingSession({
               accessibilityRole="header"
               style={{ color: colors.text, fontSize: 28, fontWeight: '600' }}
             >
-              Excalidraw
+              {opening.title}
             </Text>
-            <Text style={{ color: colors.secondary, fontSize: 17, lineHeight: 25 }}>
-              {t('connectedApps.excalidrawDescription')}
-            </Text>
+            {opening.legacyDrawing ? (
+              <Text style={{ color: colors.secondary, fontSize: 17, lineHeight: 25 }}>
+                {t('connectedApps.excalidrawDescription')}
+              </Text>
+            ) : null}
             <Text style={{ color: colors.secondary, fontSize: 14, lineHeight: 21 }}>
-              {t('connectedApps.externalDrawingDetails')}
+              {t(
+                opening.legacyDrawing
+                  ? 'connectedApps.externalDrawingDetails'
+                  : 'connectedApps.externalSessionDetails',
+              )}
             </Text>
             <NativeButton
-              testID="start-excalidraw-drawing"
+              testID={opening.legacyDrawing ? 'start-excalidraw-drawing' : 'start-connected-app'}
               disabled={busy || !snapshot?.account?.unlocked}
-              label={error ? t('connectedApps.retry') : t('connectedApps.startDrawing')}
+              label={
+                error
+                  ? t('connectedApps.retry')
+                  : t(
+                      opening.legacyDrawing
+                        ? 'connectedApps.startDrawing'
+                        : 'connectedApps.openApp',
+                    )
+              }
               onPress={start}
             />
           </Surface>
-          {busy ? <Loading label={t('connectedApps.connecting')} /> : null}
+          {busy ? (
+            <Loading
+              label={t(
+                opening.legacyDrawing ? 'connectedApps.connecting' : 'connectedApps.openingApp',
+              )}
+            />
+          ) : null}
           {error ? (
             <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
               {error}

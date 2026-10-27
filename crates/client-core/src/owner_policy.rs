@@ -1,17 +1,29 @@
 //! Explicit owner-wide spending policy, sent through the existing encrypted DM.
 //! A queued submission never proves installation in the Runtime authority.
+mod context_rejection;
 mod control;
 mod image_context;
+mod observation;
 mod options;
 mod publication;
+mod welcome;
 use crate::{
     engine::{Engine, R},
     Client, CoreError,
 };
+use context_rejection::ContextAdmissionFailure;
+pub use context_rejection::OwnerPolicyContextRejection;
 pub use control::OwnerPolicySubmission;
-pub use options::{OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyOptionsStatus};
+pub use observation::{
+    WorkerConnectionState, WorkerDirectoryState, WorkerGroupObservation, WorkerGroupState,
+};
+pub use options::{
+    OwnerPolicyContext, OwnerPolicyInquiryControl, OwnerPolicyInquiryCounts,
+    OwnerPolicyInquiryScan, OwnerPolicyOptionsStatus,
+};
 use serde::{Deserialize, Serialize};
 use types::{owner_budget::OwnerPeriodPolicy, EventBody, IdentityKind, Privacy, SpaceKind};
+pub use welcome::OwnerPolicyWelcomeAttempt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -147,7 +159,7 @@ impl Engine {
         }
         let pending = self.store.outbox()?;
         let original = pending.iter().map(|entry| &entry.event)
-            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(|log| log.events()))
+            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(event_log::SpaceLog::events))
             .find(|event| event.space == scope.space_id && event.author == scope.expected_identity_id
                 && matches!(&event.body, EventBody::OwnerPolicySubmitted { agent, signed }
                     if agent == &scope.agent_id && signed.policy.owner == scope.expected_identity_id
@@ -173,7 +185,7 @@ impl Engine {
         // Pending outbox entries and confirmed log entries share one original ID.
         let pending = self.store.outbox()?;
         if let Some(event) = pending.iter().map(|entry| &entry.event)
-            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(|log| log.events()))
+            .chain(self.logs.get(&scope.space_id).into_iter().flat_map(event_log::SpaceLog::events))
             .find(|event| {
                 event.space == scope.space_id && matches!(&event.body, EventBody::OwnerPolicySubmitted { agent, signed }
                     if agent == &scope.agent_id && event.author == scope.expected_identity_id

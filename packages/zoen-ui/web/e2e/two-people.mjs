@@ -38,7 +38,9 @@ async function linkWeb(p) {
 await linkWeb(ana); await linkWeb(bruno);
 const watch = (p) => { p.watcher = spawn(ZOEN, ['--home', p.home, 'watch', '--for', '900'], { stdio: 'ignore' }); watchers.push(p.watcher); };
 const offline = async (p, fn) => { p.watcher?.kill(); await new Promise((r) => setTimeout(r, 1500)); try { fn(); } finally { watch(p); } };
-run(ana.home, 'dm', `@${bruno.handle}`, 'Oi Bruno! Tudo certo pra sexta?');
+// Linking an account does not yet add its browser to this new MLS group.
+// Create the conversation first; a later Welcome cannot decrypt an earlier epoch.
+run(ana.home, 'dm', `@${bruno.handle}`);
 people.forEach(watch);
 const ready = async (page) => { await page.locator('.zm-chat-open').first().click({ timeout: 90000 }); await page.waitForSelector('.zm-composer textarea:not([disabled])', { timeout: 90000 }); };
 await Promise.all([ready(ana.page), ready(bruno.page)]);
@@ -51,7 +53,10 @@ if (!directSpace || directSpace !== await bruno.page.locator('.zm-chat.zm-active
 const directChat = (page) => page.locator(`.zm-chat[data-space-id=${JSON.stringify(directSpace)}]`);
 
 const send = async (page, text) => { await page.locator('.zm-composer textarea').first().fill(text); await page.keyboard.press('Enter'); };
-await bruno.page.locator('.zm-main .zm-text', { hasText: 'Oi Bruno! Tudo certo pra sexta?' }).waitFor();
+// Both enabled composers prove that each browser has actually joined the group.
+// Keep the first message on the CLI phone, without concurrent writers to its home.
+await offline(ana, () => run(ana.home, 'send', directSpace, 'Oi Bruno! Tudo certo pra sexta?'));
+await Promise.all(people.map(({ page }) => page.locator('.zm-main .zm-text', { hasText: 'Oi Bruno! Tudo certo pra sexta?' }).waitFor()));
 await send(bruno.page, 'Tudo! Levo o bolo 🎂');
 await ana.page.locator('.zm-main .zm-text', { hasText: 'Levo o bolo' }).waitFor({ timeout: 30000 });
 await send(ana.page, 'Perfeito. Que horas você chega?');

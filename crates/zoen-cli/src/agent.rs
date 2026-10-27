@@ -34,13 +34,16 @@ use zoen_agentd::{
 
 mod providers;
 use providers::{brain, gate};
+mod source_recovery;
 mod turn;
+#[cfg(test)]
 use turn::turn;
 mod messages;
 use messages::{
     owner_note, selected_owner_note, selected_proposal, selected_reply, tell_owner, text_of,
     turn_note,
 };
+pub(crate) mod controls;
 mod image_ipc;
 mod image_tools;
 mod journal;
@@ -48,6 +51,9 @@ mod owner_policy;
 #[cfg(test)]
 mod page_tool_tests;
 mod page_tools;
+#[cfg(test)]
+mod scene_tool_tests;
+mod scene_tools;
 #[path = "agent/site_tools.rs"]
 mod site_tools;
 mod space_tools;
@@ -56,7 +62,9 @@ mod test_support;
 mod tool_execution;
 #[cfg(test)]
 pub(crate) use test_support::{exercise_deckcraft_dispatch, exercise_deckcraft_operation};
+use tool_execution::CanonicalToolAdmission;
 
+mod connection;
 mod source_mode;
 mod startup;
 pub(crate) use source_mode::Source;
@@ -233,14 +241,12 @@ pub async fn host(
             .map_err(|_| "agent_host_source_readiness_unavailable")?;
     }
     let _image_worker = (!scoped).then(|| image_tools::start(e, &cx));
-    let _owner_controls = (!scoped).then(|| owner_policy::start(e, &cx));
+    let _owner_controls = (!scoped).then(|| owner_policy::start(e, &cx.me, &cx.device));
     let mut known: BTreeSet<String> = cursors.keys().cloned().collect();
     say(format_args!("agent @{} hosting", acct.handle));
 
     let deadline = for_secs.map(|s| Instant::now() + Duration::from_secs(s));
-    let mut backoff = Duration::from_secs(1);
-    let mut offline_since: Option<Instant> = None;
-    let mut last_activity = Instant::now();
+    let mut connection = connection::HostConnection::new(Instant::now());
     let mut failures = 0u32;
     loop {
         if deadline.is_some_and(|d| Instant::now() >= d) {
@@ -250,51 +256,28 @@ pub async fn host(
             }
             break;
         }
-        // Reconnect with backoff when the connection is down; a long-quiet session also
-        // resubscribes once in a while so a Space opened mid-subscribe isn't missed.
-        let online = *waker.online.lock().unwrap_or_else(|p| p.into_inner());
-        if online == Some(false) {
-            let since = *offline_since.get_or_insert_with(Instant::now);
-            if since.elapsed() >= backoff {
-                e.stop_sync();
-                let _ = e.start_sync(Some(waker.clone() as Arc<dyn CoreListener>));
-                offline_since = Some(Instant::now());
-                backoff = (backoff * 2).min(Duration::from_secs(60));
-            }
-        } else {
-            offline_since = None;
-            backoff = Duration::from_secs(1);
-            if last_activity.elapsed() > Duration::from_secs(10) {
-                e.stop_sync();
-                let _ = e.start_sync(Some(waker.clone() as Arc<dyn CoreListener>));
-                last_activity = Instant::now();
-            }
-        }
+        connection.maintain(e, &waker, Instant::now());
 
         if let Some(selected) = &selected {
             selected.check(e)?;
         }
-        let state = if scoped {
-            tokio::time::timeout(
-                deadline
-                    .expect("bounded source mode")
-                    .saturating_duration_since(Instant::now()),
-                e.agent_state(),
-            )
-            .await
-            .map_err(|_| "agent_host_source_state_unavailable")?
-        } else {
-            e.agent_state().await
-        };
+        let state =
+            if scoped {
+                Ok(connection::source_state(
+                    e,
+                    deadline.expect("bounded source mode"),
+                    e.agent_state(),
+                )
+                .await?)
+            } else {
+                e.agent_state().await
+            };
         let status = match state {
             Ok(s) => {
                 failures = 0;
                 s
             }
             Err(err) => {
-                if scoped {
-                    return Err("agent_host_source_state_unavailable".into());
-                }
                 // The relay refuses a revoked runtime device; the engine retries the rest.
                 failures += 1;
                 if failures >= MAX_STATE_FAILURES {
@@ -350,10 +333,13 @@ pub async fn host(
         // This branch precedes BOTH continuation discovery and the normal backlog
         // loop. Source mode never seeds/advances a cursor or emits a read watermark.
         if let Some(selected) = &mut selected {
-            if selected
+            let completed = selected
                 .tick(e, &cx, &def, deadline.expect("bounded source mode"))
-                .await?
-            {
+                .await?;
+            if let Some(at) = selected.take_activity() {
+                connection.activity(at);
+            }
+            if completed {
                 e.wait_until_settled(8000)
                     .await
                     .map_err(|_| "agent_host_source_reply_unsettled")?;
@@ -378,7 +364,7 @@ pub async fn host(
             let continuations = e.approved_tool_sources(&s.id);
             for source in continuations {
                 if let Some(index) = tl.iter().position(|entry| entry.id == source) {
-                    if turn(e, &cx, &def, &s.id, &tl[..index], &tl[index]).await
+                    if turn::admitted(e, &cx, &def, &s.id, &tl[..index], &tl[index]).await
                         == turn::Outcome::Deferred
                     {
                         continue 'spaces;
@@ -397,6 +383,9 @@ pub async fn host(
                 .map(|t| t.seq)
                 .collect();
             if pending.len() > BACKLOG_CAP {
+                if !turn::current(e, &cx, &def).await {
+                    continue 'spaces;
+                }
                 let skip_to = pending[pending.len() - BACKLOG_CAP - 1];
                 say(format_args!(
                     "skipping {} old messages",
@@ -413,8 +402,8 @@ pub async fn host(
                 if t.seq <= from || skip(t) {
                     continue;
                 }
-                last_activity = Instant::now();
-                let handled = turn(e, &cx, &def, &s.id, &tl[..i], t).await;
+                connection.activity(Instant::now());
+                let handled = turn::admitted(e, &cx, &def, &s.id, &tl[..i], t).await;
                 if handled == turn::Outcome::Deferred {
                     caught_up = false;
                     break; // no attempt, advance or read watermark before admission
@@ -476,6 +465,8 @@ struct ResumeAttempts {
     registered: bool,
     /// Persisted before executor IO; absence of a result never clears this fence.
     outcome_unknown: bool,
+    /// Source-turn scheduling evidence, never a provider receipt or a grant.
+    model_outcome: Option<journal::turn_budget::ModelOutcome>,
 }
 
 /// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.
@@ -491,11 +482,7 @@ struct SpaceTools<'a> {
     deckcraft_items: Vec<String>,
     selection: Option<&'a source_mode::Bound>,
     page_items: Vec<String>,
-}
-
-struct CanonicalToolAdmission<'a, 'b> {
-    tools: &'a SpaceTools<'b>,
-    permit: page_tools::CanonicalPermit,
+    scene_items: Vec<String>,
 }
 
 #[cfg(test)]
@@ -510,6 +497,9 @@ pub(crate) use codex_brain_tests::exercise_codex_deckcraft;
 #[cfg(test)]
 #[path = "agent/canonical_tool_approval_tests.rs"]
 mod canonical_tool_approval_tests;
+#[cfg(test)]
+#[path = "agent/pdfcraft_tests.rs"]
+mod pdfcraft_tests;
 
 #[cfg(test)]
 #[path = "agent/app_creation_tests.rs"]
@@ -529,3 +519,18 @@ mod canonical_read_recovery_tests;
 #[cfg(test)]
 #[path = "agent/canonical_provider_acceptance_tests.rs"]
 mod canonical_provider_acceptance_tests;
+
+#[cfg(test)]
+#[path = "agent/gridcraft_tests.rs"]
+mod gridcraft_tests;
+
+#[cfg(test)]
+#[path = "agent/wordcraft_creation_tests.rs"]
+mod wordcraft_creation_tests;
+#[cfg(test)]
+#[path = "agent/wordcraft_worker_tests.rs"]
+mod wordcraft_worker_tests;
+
+#[cfg(test)]
+#[path = "agent/artifact_scope_tests.rs"]
+mod artifact_scope_tests;

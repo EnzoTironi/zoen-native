@@ -144,6 +144,12 @@
       "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMessageImageViewOverlayView.m",
       "bytes": 55813,
       "sha256": "61745a13863b27122d9b8897b7fe91769122f0bb7000e80870ea1325beb2bb32"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerModernGalleryMixin.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerModernGalleryMixin.m",
+      "bytes": 21445,
+      "sha256": "5a5dbff63bc31cba27495d9cfd6070d4ea61a55d07420bec3a7f7198a4dfbd60"
     }
   ],
   "scope": "Pinned public source references. The implementation entries below now adapt selected source components; this document is not a claim of complete Telegram UI or runtime parity.",
@@ -153,23 +159,24 @@
     "apps/zoen/modules/zoen-core/ios/ZoenAttachmentMosaicLayout.swift",
     "apps/zoen/modules/zoen-core/ios/ZoenAttachmentGalleryMotion.swift",
     "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
-    "apps/zoen/src/media/attachment-approval.ios.tsx"
+    "apps/zoen/src/media/attachment-approval.ios.tsx",
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentGalleryVideo.swift"
   ],
   "selectedLicense": "GPL-3.0 under upstream GPL-2.0-or-later option, combined with Zoen under AGPLv3 section13",
   "adaptations": [
     "The exact upstream MosaicLayout algorithm is namespaced and receives the actual view trait display scale instead of deprecated UIScreen.main.",
-    "Legacy gallery and photo-toolbar geometry, selection rail and selected bubble grouping are translated to UIKit under existing Zoen callback owners.",
+    "Legacy gallery and photo-toolbar geometry and the ordered selection rail are translated to UIKit under existing Zoen callback owners.",
     "The invoked legacy gallery uses distance128/velocity700 and original JNW sampled spring parameters; this replaces the unrelated modern gallery viewport/4 policy.",
     "GalleryContent is shared between Photos and durable private cache previews; it owns no selection, durable bytes, captions, backend state or delivery.",
     "Explicit full Photos preview allows requested iCloud representation download with cancel/revision guards; thumbnail and neighbor requests remain offline.",
     "A zero-size Expo adapter presents a window sibling, with native retirement, nonterminal child-presentation display leases and scoped callback identity.",
     "The image-editor subset uses original toolbar/crop glyphs, 44-point crop hit regions and actual UIKit/ImageIO/PencilKit rendering; only crop, quarter-turn rotation, ink, ink undo and explicit Save are enabled. PNG bytes enter the existing canonical media capture/CAS path without a new temp file owner.",
     "Photo and durable review use the same native gallery; final native caption text is journaled before Send or Edit, with selection/account/context revalidation after the CAS write.",
-    "Paging and reorder have separate interaction revisions. Stale paging snaps to the authoritative item; Send/Edit require the displayed page to match the authorized preview."
+    "Paging and reorder have separate interaction revisions. Stale paging snaps to the authoritative item; Send/Edit require the displayed page to match the authorized preview.",
+    "Selected review retains the entire Photos fetch order in the fullscreen pager, with an independently ordered selected strip; video preview reuses the pinned native player without editing or export."
   ],
   "remaining": [
     "Whole upstream GPU/filter, sticker, text, advanced paint and image-edit undo engines are not ported.",
-    "Movie scrubber/trim/editor UI is not ported; existing video editing remains Quick Look.",
     "Integrated Release Simulator proof covers whole-image preview, nonterminal selection, caption focus/back, image rotation/save and category handoff. Software-keyboard timing, image interruption, real iCloud, memory, accessibility, rotation and canonical recovery are not fully qualified.",
     "The source transition host/container snapshot and decoded-image crossfade are UIKit adaptations and require pixel/animation comparison; no pixel-perfect parity is claimed."
   ]

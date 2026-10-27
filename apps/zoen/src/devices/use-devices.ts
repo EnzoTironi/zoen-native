@@ -2,15 +2,16 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useClient } from '../core/provider';
-import { accountScopeKey } from '../core/account-scope';
+import { accountScope, accountScopeKey } from '../core/account-scope';
 import { createDevicePort, DeviceSession, emptyDevices } from './session';
 
 export function useDevices() {
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const port = useMemo(() => createDevicePort(store), [store]);
   const session = useMemo(() => new DeviceSession(port), [port]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const key = accountScopeKey(port.scope());
+  const key = accountScopeKey(accountScope(store, client));
   useFocusEffect(
     useCallback(() => {
       let foreground = AppState.currentState === 'active';

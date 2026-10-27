@@ -1,11 +1,16 @@
-use super::*;
+use super::{
+    bad, pb_ephemeral, AgentAction, AgentRequest, AgreementKeyRecord, DecodeError, DeviceSigned,
+    Envelope, EphemeralKind, Identity, IdentityKind, Message, PbAgentOwnerProof, PbAgentReq,
+    PbAgreementKey, PbDeviceSigned, PbEmpty, PbEnvelope, PbEphemeral, PbIdentityKind, PbProfile,
+    PbRole, PbSealedProfile, PbSequenced, Role, SealedProfile, Sequenced,
+};
 
-pub(super) fn signed_to(s: &DeviceSigned) -> Option<PbDeviceSigned> {
-    Some(PbDeviceSigned {
+pub(super) fn signed_to(s: &DeviceSigned) -> PbDeviceSigned {
+    PbDeviceSigned {
         device: s.device.clone(),
         sig: s.sig.clone(),
         cert: s.cert.clone(),
-    })
+    }
 }
 
 pub(super) fn signed_from(s: Option<PbDeviceSigned>) -> Result<DeviceSigned, DecodeError> {
@@ -21,7 +26,7 @@ pub(super) fn agreement_to(k: &AgreementKeyRecord) -> PbAgreementKey {
     PbAgreementKey {
         identity: k.identity.clone(),
         public: k.public.clone(),
-        signed: signed_to(&k.signed),
+        signed: Some(signed_to(&k.signed)),
     }
 }
 
@@ -38,7 +43,7 @@ pub(super) fn sealed_profile_to(p: &SealedProfile) -> PbSealedProfile {
         identity: p.identity.clone(),
         version: p.version,
         ciphertext: p.ciphertext.clone(),
-        signed: signed_to(&p.signed),
+        signed: Some(signed_to(&p.signed)),
     }
 }
 
@@ -157,6 +162,7 @@ pub(super) fn ephemeral_kind(k: Option<pb_ephemeral::Kind>) -> Result<EphemeralK
 
 impl Sequenced {
     /// The stored form of a log entry: the same bytes the wire carries.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         PbSequenced {
             seq: self.seq,
@@ -167,6 +173,8 @@ impl Sequenced {
         .encode_to_vec()
     }
 
+    /// # Errors
+    /// Rejects malformed protobuf, a missing envelope or invalid envelope content.
     pub fn decode(bytes: &[u8]) -> Result<Self, DecodeError> {
         let s = PbSequenced::decode(bytes).map_err(|e| DecodeError(e.to_string()))?;
         Ok(Sequenced {
@@ -184,7 +192,7 @@ pub(super) fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
         AgentRequest::State => pb.op = "state".into(),
         AgentRequest::Advance { space, seq } => {
             pb.op = "advance".into();
-            pb.space = space.clone();
+            pb.space.clone_from(space);
             pb.seq = *seq;
         }
         AgentRequest::Define {
@@ -194,18 +202,33 @@ pub(super) fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
             definition,
         } => {
             pb.op = "define".into();
-            pb.agent = agent.clone();
+            pb.agent.clone_from(agent);
             pb.version = *version;
-            pb.kind = kind.clone();
-            pb.definition = definition.clone();
+            pb.kind.clone_from(kind);
+            pb.definition.clone_from(definition);
         }
         AgentRequest::Status { agent } => {
             pb.op = "status".into();
-            pb.agent = agent.clone();
+            pb.agent.clone_from(agent);
+        }
+        AgentRequest::ControlStatus { agent } => {
+            pb.op = "control_status".into();
+            pb.agent.clone_from(agent);
+        }
+        AgentRequest::ControlReviewed {
+            agent,
+            action,
+            operation,
+            revision,
+        } => {
+            pb.op = format!("control_{}", action.id());
+            pb.agent.clone_from(agent);
+            pb.operation.clone_from(operation);
+            pb.revision = *revision;
         }
         AgentRequest::Control { agent, action } => {
             pb.op = action.id().into();
-            pb.agent = agent.clone();
+            pb.agent.clone_from(agent);
         }
     }
     pb
@@ -225,6 +248,13 @@ pub(super) fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError
             definition: pb.definition,
         },
         "status" => AgentRequest::Status { agent: pb.agent },
+        "control_status" => AgentRequest::ControlStatus { agent: pb.agent },
+        other if other.starts_with("control_") => AgentRequest::ControlReviewed {
+            agent: pb.agent,
+            action: AgentAction::parse(&other[8..]).ok_or_else(|| bad("agent control"))?,
+            operation: pb.operation,
+            revision: pb.revision,
+        },
         other => AgentRequest::Control {
             agent: pb.agent,
             action: AgentAction::parse(other).ok_or_else(|| bad("agent op"))?,

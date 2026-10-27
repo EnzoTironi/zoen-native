@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
+import { canDuplicateBlock } from './page-duplicate.ts';
 
 const source = await build({
   stdin: {
@@ -23,6 +24,7 @@ runInNewContext(source.outputFiles[0]!.text, {
   require(name: string) {
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === 'react-native') return { Text: 'Text', View: 'View', Pressable: 'Pressable' };
+    if (name === './page-duplicate') return { canDuplicateBlock };
     if (name === './page-image-block') return { PageImageBlock: 'PageImageBlock' };
     if (name === './page-image-items')
       return {

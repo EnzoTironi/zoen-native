@@ -1,0 +1,58 @@
+//! Owner-bound disposable views of the existing signed membership projection.
+use super::Persona;
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct MemberRoleOption {
+    pub role: String,
+    /// Binds the current actor/device/member cut and this exact desired role.
+    pub revision: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub enum MemberActionState {
+    Active,
+    Updating,
+    Removing,
+    Removed,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct SpaceMemberContext {
+    pub identity_id: String,
+    pub device_id: String,
+    pub space_id: String,
+    pub space_title: String,
+    pub member_id: String,
+    pub member: Option<Persona>,
+    pub role: Option<String>,
+    pub state: MemberActionState,
+    pub can_remove: bool,
+    pub can_manage_members: bool,
+    pub can_add: bool,
+    /// Verified Agent owner proof for this observed local actor, not is_mine UI.
+    #[uniffi(default = false)]
+    #[serde(default)]
+    pub owned_agent: bool,
+    /// Current member and actual MLS reader when encrypted; never online status.
+    #[uniffi(default = false)]
+    #[serde(default)]
+    pub delivery_ready: bool,
+    /// Known profile for an absent participant; never a membership receipt.
+    pub candidate: Option<Persona>,
+    pub addition_failed: bool,
+    /// Permanent failure of an exact local intent on the current membership cut.
+    pub removal_failed: bool,
+    /// Available reviewed transitions; an empty list grants no assignment.
+    #[serde(default)]
+    pub role_options: Vec<MemberRoleOption>,
+    /// Exact local role intent, separate from the still-confirmed role above.
+    #[serde(default)]
+    pub pending_role: Option<String>,
+    #[serde(default)]
+    pub role_change_failed: bool,
+    /// A derived review fingerprint, not a stored grant or a mutation receipt.
+    pub revision: String,
+}

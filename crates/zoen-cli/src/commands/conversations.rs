@@ -1,5 +1,7 @@
 //! Conversations commands use the same already-open Client.
 use super::*;
+mod member_role;
+mod read;
 
 pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
     let Context {
@@ -7,9 +9,15 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
         timeout,
         offline,
         for_secs,
+        sync_budget,
         ..
     } = context;
     match cmd.as_str() {
+        "member-role" | "add" => {
+            member_role::run(&e, cli, offline, sync_budget.deadline(), cmd == "add")
+                .await
+                .unwrap_or_else(|error| die(error));
+        }
         "whoami" | "status" => {
             let a = e.account().unwrap_or_else(|| die("no account"));
             let c = e.connection();
@@ -106,57 +114,42 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
             );
         }
         "read" => {
-            let space = chat(
-                &e,
-                cli.args
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or_else(|| usage()),
-            );
-            if cli.switch("--older") {
-                let wait: u64 = std::env::var("ZOEN_PAGE_TIMEOUT_MS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(8000);
-                let older = e
-                    .load_older(space.clone(), wait)
+            let options = read::Options::parse(cli).unwrap_or_else(|error| die(error));
+            let space = chat(&e, &cli.args[0]);
+            println!(
+                "{}",
+                read::read(&e, &space, options)
                     .await
-                    .unwrap_or_else(|err| die(err));
-                match older.message {
-                    Some(m) => println!("({m})"),
-                    None => println!(
-                        "(older: {} more{})",
-                        older.loaded,
-                        if older.more { ", still more" } else { "" }
-                    ),
+                    .unwrap_or_else(|error| die(error))
+            );
+        }
+        "members" => {
+            let json = cli.switch("--json");
+            if cli.args.len() != 1 {
+                usage();
+            }
+            let space = chat(&e, &cli.args[0]);
+            if json {
+                println!(
+                    "{}",
+                    read::members_json(&e, &space).unwrap_or_else(|error| die(error))
+                );
+            } else {
+                for role in read::members(&e, &space).unwrap_or_else(|error| die(error)) {
+                    println!("{}\t{}", role.identity_id, role.role);
                 }
             }
-            for t in e.timeline(space.clone()).unwrap_or_else(|err| die(err)) {
-                println!("{}", line(&t));
-            }
-            let _ = e.mark_read(space);
         }
-        "add" | "remove" => {
-            let admin = cli.switch("--admin");
+        "remove" => {
             if cli.args.len() != 2 {
                 usage();
             }
             let space = chat(&e, &cli.args[0]);
-            let h = cli.args[1].trim_start_matches('@').to_string();
-            let who = e
-                .find_people(h.clone())
-                .await
-                .unwrap_or_else(|err| die(err))
-                .into_iter()
-                .find(|p| p.handle == h)
-                .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")));
-            match (cmd.as_str(), admin) {
-                ("add", true) => e.add_admin(space, who.id),
-                ("add", false) => e.add_member(space, who.id),
-                _ => e.remove_member(space, who.id),
+            let who = person(&e, &cli.args[1]).await;
+            e.remove_member(space, who).unwrap_or_else(|err| die(err));
+            if !offline {
+                e.wait_until_idle(timeout).await;
             }
-            .unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
         }
         "encrypt" => {
             let space = chat(
@@ -170,6 +163,10 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
             e.wait_until_idle(timeout).await;
         }
         "keys" => {
+            let json = cli.switch("--json");
+            if cli.args.len() != 1 {
+                usage();
+            }
             let space = chat(
                 &e,
                 cli.args
@@ -177,6 +174,13 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
                     .map(String::as_str)
                     .unwrap_or_else(|| usage()),
             );
+            if json {
+                println!(
+                    "{}",
+                    read::keys_json(&e, &space).unwrap_or_else(|error| die(error))
+                );
+                return;
+            }
             match e.group_keys(space.clone()) {
                 Some(k) => println!(
                     "epoch={}\tdigest={}\tmembers={}\tdevices={}",

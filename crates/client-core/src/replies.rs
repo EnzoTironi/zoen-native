@@ -20,6 +20,12 @@ use crate::{Client, CoreError};
 /// How much of the quoted message an inline reply carries to the UI.
 const QUOTE_CHARS: usize = 140;
 
+struct ReplyTarget<'a> {
+    to: &'a str,
+    thread: bool,
+    selection: Option<&'a crate::ReplySelection>,
+}
+
 /// A read of the existing artifact thread, never another comments store.
 #[derive(serde::Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -72,7 +78,8 @@ impl Engine {
                     })
                     .count() as u32;
                 root
-            });
+            })
+            .or_else(|| self.shared_app_root(space, item));
         Ok(ItemDiscussionDto {
             item_id: item.to_owned(),
             space_id: space.to_owned(),
@@ -84,8 +91,21 @@ impl Engine {
         let EntryBody::Message { reply: Some(r), .. } = &e.body else {
             return (None, None);
         };
+        let thread = r.thread.then(|| r.to.clone());
+        if let Some(selection) = &r.quote {
+            let quote = self.space_state(&e.space).ok().and_then(|s| {
+                let source = s.entries.iter().find(|x| x.id() == selection.source_id)?;
+                Some(ReplyQuote {
+                    id: selection.source_id.clone(),
+                    author: self.persona(&source.author),
+                    text: selection.text.clone(),
+                    selection: Some(selection.as_ref().into()),
+                })
+            });
+            return (quote, thread);
+        }
         if r.thread {
-            return (None, Some(r.to.clone()));
+            return (None, thread);
         }
         let quote = self.space_state(&e.space).ok().and_then(|s| {
             let target = s.entries.iter().find(|x| x.id() == r.to)?;
@@ -93,6 +113,7 @@ impl Engine {
                 id: r.to.clone(),
                 author: self.persona(&target.author),
                 text: self.quote_text(target),
+                selection: None,
             })
         });
         (quote, None)
@@ -152,7 +173,56 @@ impl Engine {
         to: &str,
         thread: bool,
     ) -> R<TimelineEntry> {
-        if !self.is_member(space, author) {
+        self.reply_target(
+            space,
+            author,
+            text,
+            attaches,
+            ReplyTarget {
+                to,
+                thread,
+                selection: None,
+            },
+        )
+    }
+
+    pub(crate) fn reply_selected(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        to: &str,
+        thread: bool,
+        selection: Option<&crate::ReplySelection>,
+    ) -> R<TimelineEntry> {
+        self.reply_target(
+            space,
+            author,
+            text,
+            None,
+            ReplyTarget {
+                to,
+                thread,
+                selection,
+            },
+        )
+    }
+
+    fn reply_target(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        attaches: Option<String>,
+        target: ReplyTarget<'_>,
+    ) -> R<TimelineEntry> {
+        let ReplyTarget {
+            to,
+            thread,
+            selection,
+        } = target;
+        self.validate_reply_selection(space, Some(to), selection)?;
+        if !self.state.writer(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "só membros escrevem neste Espaço",
@@ -166,12 +236,13 @@ impl Engine {
                 reason: t("mensagem vazia", "empty message"),
             });
         }
-        let reply = self.reply_ref(space, to, thread)?;
-        self.append(
+        let mut reply = self.reply_ref(space, to, thread)?;
+        reply.quote = selection.map(|q| Box::new(q.signed()));
+        let appended = self.append(
             space,
             author,
             EventBody::MessagePosted {
-                message: types::new_id("msg"),
+                message: types::new_id("msg")?,
                 text: text.to_string(),
                 attaches,
                 reply: Some(reply),
@@ -180,13 +251,27 @@ impl Engine {
             },
         )?;
         let s = self.space_state(space)?;
-        Ok(self.entry_dto(s.entries.last().expect("just appended")))
+        let entry = s
+            .entries
+            .iter()
+            .find(|entry| entry.id() == appended.client_id)
+            .ok_or_else(|| CoreError::Storage {
+                message: "The appended message is missing from its projection.".into(),
+            })?;
+        Ok(self.entry_dto(entry))
     }
 
     /// Validate before storing a voice file, so a bad target cannot post it to the main chat.
     pub(crate) fn reply_ref(&self, space: &str, to: &str, thread: bool) -> R<ReplyRef> {
         let s = self.space_state(space)?;
         let Some(target) = s.entries.iter().find(|e| e.id() == to) else {
+            if self.shared_app_root_by_anchor(space, to).is_some() {
+                return Ok(if thread {
+                    ReplyRef::thread(to)
+                } else {
+                    ReplyRef::inline(to)
+                });
+            }
             return Err(CoreError::NotFound {
                 what: t("mensagem", "message"),
             });
@@ -218,12 +303,16 @@ impl Engine {
     /// The thread under `root`: the root message, then its replies oldest first.
     pub fn thread(&self, space: &str, root: &str) -> R<Vec<TimelineEntry>> {
         let s = self.space_state(space)?;
-        let Some(r) = s.entries.iter().find(|e| e.id() == root) else {
-            return Err(CoreError::NotFound {
+        let r = s
+            .entries
+            .iter()
+            .find(|e| e.id() == root)
+            .map(|r| self.entry_dto(r))
+            .or_else(|| self.shared_app_root_by_anchor(space, root))
+            .ok_or_else(|| CoreError::NotFound {
                 what: t("mensagem", "message"),
-            });
-        };
-        let mut out = vec![self.entry_dto(r)];
+            })?;
+        let mut out = vec![r];
         out.extend(
             s.entries
                 .iter()

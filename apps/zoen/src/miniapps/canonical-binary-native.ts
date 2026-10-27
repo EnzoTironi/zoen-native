@@ -1,9 +1,11 @@
 import type { CoreDriver } from '../core/types';
 import { CanonicalBinaryHost } from './canonical-binary.ts';
+import type { BinaryEditorId } from './binary-formats.ts';
 
 /** Compose the standard MCP tool adapter with the existing native Rust command
  * boundary. The view supplies its captured frame/account/access lifetime check. */
 export function createNativeCanonicalBinaryHost(options: {
+  editor?: BinaryEditorId;
   itemId: string;
   driver: Pick<CoreDriver, 'request'>;
   mutate: CoreDriver['request'];
@@ -11,6 +13,7 @@ export function createNativeCanonicalBinaryHost(options: {
   id: () => string;
 }) {
   return new CanonicalBinaryHost({
+    editor: options.editor,
     itemId: options.itemId,
     id: options.id,
     check: options.check,

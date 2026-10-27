@@ -220,6 +220,7 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
                 Reply::AgentState(a) => {
                     serde_json::json!({"kind":"agent_state","status":a.status,"definition_version":a.definition_version})
                 }
+                Reply::CompletePage(_) => serde_json::json!({"kind":"complete_page"}),
                 Reply::Devices(devices) => {
                     serde_json::json!({"kind":"devices","devices":devices.iter().map(|d| serde_json::json!({"device":d.device,"revoked":d.revoked})).collect::<Vec<_>>()})
                 }
@@ -300,13 +301,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn browser_unlink_uses_the_existing_authenticated_device_operation() {
-        let device = event_log::Signer::generate().id();
+    fn browser_unlink_uses_the_existing_authenticated_device_operation(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let device = event_log::Signer::generate()?.id();
         let frame = ClientFrame::decode(&request(42, "unlink", &device).unwrap()).unwrap();
         assert!(
             matches!(frame, ClientFrame::Req { id: 42, op: Op::Unlink { device: target } } if target == device)
         );
         assert!(request(43, "unlink", "not-a-device").is_err());
+        Ok(())
     }
 }
 
@@ -314,8 +317,9 @@ mod tests {
 mod relay_tests {
     use super::*;
     #[test]
-    fn owner_controls_and_invites_use_existing_authenticated_protocol_and_exact_times() {
-        let agent = event_log::Signer::generate().id();
+    fn owner_controls_and_invites_use_existing_authenticated_protocol_and_exact_times(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let agent = event_log::Signer::generate()?.id();
         let request_value = serde_json::json!({"agent":agent,"action":"pause"}).to_string();
         assert!(matches!(
             ClientFrame::decode(&request(45, "control_agent", &request_value).unwrap()).unwrap(),
@@ -356,5 +360,6 @@ mod relay_tests {
         };
         let json = serde_json::to_value(decode_server(&read.encode()).unwrap()).unwrap();
         assert_eq!(json["detail"], u64::MAX.to_string());
+        Ok(())
     }
 }

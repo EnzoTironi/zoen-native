@@ -1,5 +1,8 @@
 //! Currency, period and version come from the actual authenticated Runtime reply.
-use super::*;
+use super::{
+    denied, invalid, options_digest, Client, Engine, OwnerPeriodPolicy, OwnerPolicyReview,
+    OwnerPolicyScope, R,
+};
 use chrono::{TimeZone, Utc};
 fn units(value: &str) -> R<i64> {
     let parsed: i64 = value.parse().map_err(|_| invalid())?;
@@ -34,7 +37,18 @@ impl Engine {
         let current = options.current_policy.as_ref().map(|signed| &signed.policy);
         let mut allowed_profiles =
             current.map_or_else(Vec::new, |policy| policy.allowed_profiles.clone());
-        allowed_profiles.push(options.image_profile_digest.clone());
+        // Disabling an existing policy preserves its services and never requires
+        // an unused seventeenth profile slot for a newly configured service.
+        if enabled {
+            allowed_profiles.push(options.image_profile_digest.clone());
+        } else if current.is_none() {
+            if limit_units != 0 || max_attempt_units != 0 {
+                return Err(invalid());
+            }
+            // The first explicit disable names only the authenticated service;
+            // enabled=false and zero limits confer no spending authority.
+            allowed_profiles.push(options.image_profile_digest.clone());
+        }
         allowed_profiles.sort();
         allowed_profiles.dedup();
         let (year, month) = if options.month == 12 {

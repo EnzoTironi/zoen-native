@@ -92,6 +92,77 @@ test('renewal dispatches only the exact predecessor and observed hash from one e
   assert.equal(f.writes.length, 1);
 });
 
+for (const status of ['Pending', 'Stale'] as const)
+  test(`expired drawing ${status} requests one new review with the original signed request/hash`, async () => {
+    const f = fixture(),
+      old = request();
+    old.status = status;
+    old.tool_approval!.canonical_tool = 'read_scene';
+    old.tool_approval!.artifact_title = 'Drawing';
+    f.rows([old]);
+    await f.session.refresh();
+    assert.ok(
+      f.session.ticket(),
+      'an unapproved expired request still has an explicit recovery path',
+    );
+    assert.equal(await f.session.renew(f.session.ticket()), true);
+    assert.deepEqual(f.writes, [['old-request', 'ab'.repeat(32)]]);
+    assert.equal(f.session.ticket(), null);
+    const successor = structuredClone(old);
+    successor.tool_approval!.review!.state = 'Superseded';
+    successor.tool_approval!.review!.successor_request_id = 'new-request';
+    f.rows([successor]);
+    await f.session.refresh();
+    assert.equal(f.session.successor(), 'new-request');
+    assert.equal(f.writes.length, 1, 'successor navigation does not renew or approve anything');
+  });
+
+test('denied or cancelled drawing requests never gain renewal or successor controls', async () => {
+  for (const status of ['Denied', 'Cancelled'] as const) {
+    const f = fixture(),
+      old = request();
+    old.status = status;
+    old.tool_approval!.canonical_tool = 'read_scene';
+    f.rows([old]);
+    await f.session.refresh();
+    assert.equal(f.session.ticket(), null);
+    assert.equal(await f.session.renew(f.session.ticket()), false);
+    old.tool_approval!.review!.state = 'Superseded';
+    old.tool_approval!.review!.successor_request_id = 'new-request';
+    f.rows([old]);
+    await f.session.refresh();
+    assert.equal(f.session.successor(), null);
+    assert.deepEqual(f.writes, []);
+  }
+});
+
+test('an unknown expired Pending drawing renewal only reconciles and cannot publish a second intent', async () => {
+  const f = fixture(),
+    old = request();
+  old.status = 'Pending';
+  old.tool_approval!.canonical_tool = 'read_scene';
+  f.rows([old]);
+  f.effect(async () => {
+    throw Error('lost owner-intent response');
+  });
+  await f.session.refresh();
+  const original = f.session.ticket();
+  assert.ok(original);
+  assert.equal(await f.session.renew(original), false);
+  assert.equal(f.session.getSnapshot().unknown, true);
+  await f.session.refresh();
+  assert.equal(await f.session.renew(original), false);
+  assert.equal(f.session.ticket(), null);
+  assert.equal(f.writes.length, 1);
+  old.status = 'Stale';
+  old.tool_approval!.review!.state = 'Requested';
+  f.rows([old]);
+  await f.session.refresh();
+  assert.equal(f.session.getSnapshot().unknown, false);
+  assert.equal(f.session.ticket(), null);
+  assert.equal(f.writes.length, 1);
+});
+
 test('preflight reads retire on owner/device/relay/epoch/focus or canonical revision changes', async () => {
   for (const retire of [
     (f: ReturnType<typeof fixture>) =>

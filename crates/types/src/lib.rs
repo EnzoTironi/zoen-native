@@ -25,11 +25,14 @@ pub mod owner_budget;
 pub mod owner_policy_context;
 pub use annotation::Annotation;
 pub mod reply;
-pub use reply::ReplyRef;
+pub use reply::{ArtifactRequest, QuoteSpan, ReplyRef, SelectedQuote};
+mod app_share;
+pub use app_share::{AppCurrentShare, AppItemOrigin, AppShareRef};
 
 mod ids;
 pub use ids::{
-    id_time_ms, new_id, new_secret_id, new_ulid, GrantId, IdentityId, ItemId, RequestId, SpaceId,
+    id_time_ms, new_id, new_secret_id, new_ulid, GrantId, IdError, IdentityId, ItemId, RequestId,
+    SpaceId,
 };
 mod identity;
 pub use identity::{AgentOwnerProof, Identity, IdentityKind, Privacy, Role, SpaceKind};

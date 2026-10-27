@@ -1,11 +1,15 @@
 //! Correlated responses settle only the current request on this socket.
 
-use super::*;
+use super::{
+    complete_reads, flush, settle, tracing_like, Ctx, Exit, HashMap, HashSet, ProfileTraffic,
+    PublicationRetries, Reply, Sink, Waiting,
+};
 
 pub(super) struct ReplyContext<'a> {
     pub(super) ctx: &'a Ctx,
     pub(super) sink: &'a mut Sink,
     pub(super) sent: &'a mut HashMap<String, Option<u64>>,
+    pub(super) retries: &'a mut PublicationRetries,
     pub(super) waiting: &'a mut HashMap<u64, Waiting>,
     pub(super) profiles_inflight: &'a mut Option<tokio::time::Instant>,
     pub(super) traffic: &'a mut ProfileTraffic,
@@ -23,6 +27,7 @@ pub(super) async fn dispatch_reply(
         ctx,
         sink,
         sent,
+        retries,
         waiting,
         profiles_inflight,
         traffic,
@@ -38,15 +43,29 @@ pub(super) async fn dispatch_reply(
             }
         };
     }
-    match waiting.remove(&id) {
+    let (waiter, result) = match waiting.remove(&id) {
+        Some(Waiting::Paged {
+            assembly,
+            done,
+            deadline,
+        }) => {
+            match complete_reads::page(id, result, assembly, done, deadline, sink, waiting).await? {
+                Some((waiter, result)) => (Some(waiter), result),
+                None => return Ok(()),
+            }
+        }
+        waiter => (waiter, result),
+    };
+    match waiter {
         Some(Waiting::External(tx)) => {
             let _ = tx.send(result);
         }
         Some(Waiting::Devices) => {
             if let Ok(Reply::Devices(list)) = result {
-                engine!(|engine| engine.devices_arrived(list));
+                engine!(|engine| engine.devices_arrived(list))
+                    .map_err(|e| Exit::Retry(e.to_string()))?;
             }
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
         }
@@ -83,8 +102,7 @@ pub(super) async fn dispatch_reply(
         }
         Some(Waiting::AgreementKeys(asked)) => {
             let ok = if let Ok(Reply::AgreementKeys(list)) = result {
-                engine!(|engine| engine.agreement_keys_arrived(list, &asked));
-                true
+                engine!(|engine| engine.agreement_keys_arrived(list, &asked))
             } else {
                 false
             };
@@ -92,12 +110,19 @@ pub(super) async fn dispatch_reply(
         }
         Some(Waiting::SealedProfiles(asked)) => {
             *opening = None;
+            let request_error = result.is_err();
             let ok = if let Ok(Reply::SealedProfiles(list)) = result {
-                let (changed, complete) = engine!(|engine| {
+                let received = list.len();
+                let (changed, complete, remaining, own_pending) = engine!(|engine| {
                     let changed = engine.sealed_profiles_arrived(list, &asked);
                     let complete = engine.profiles_answer_complete(&asked);
-                    (changed, complete)
+                    let pending = &engine.net.profiles.need_profiles;
+                    let own_pending = engine.me.as_ref().is_some_and(|me| pending.contains(me));
+                    (changed, complete, pending.len(), own_pending)
                 });
+                tracing_like(&format!(
+                    "sealed profiles response asked={} received={received} complete={complete} remaining={remaining} own_pending={own_pending}", asked.len()
+                ));
                 if !changed.is_empty() {
                     dirty.insert(String::new());
                     media_kick.notify_one();
@@ -109,6 +134,10 @@ pub(super) async fn dispatch_reply(
                 }
                 complete
             } else {
+                tracing_like(&format!(
+                    "sealed profiles unusable reply asked={} request_error={request_error}",
+                    asked.len()
+                ));
                 false
             };
             settle(&mut traffic.profiles, ok);
@@ -125,10 +154,11 @@ pub(super) async fn dispatch_reply(
                 Err(e) => Err(e),
             };
             engine!(|engine| engine.mls_claimed(&space, &operation, packages));
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
         }
+        Some(Waiting::Paged { .. }) => return Err(Exit::Retry("nested complete read".into())),
         None => {}
     }
     Ok(())

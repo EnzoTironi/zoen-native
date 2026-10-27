@@ -147,6 +147,10 @@ impl LogStore for FdbLog {
             .run(|trx, _| {
                 let key = key.clone();
                 async move {
+                    // The retained causal cut is not a current removal receipt.
+                    if self.cell.role_in(&trx, space, who).await?.is_some() {
+                        return Ok(None);
+                    }
                     Ok(trx
                         .get(&key, true)
                         .await?
@@ -213,6 +217,18 @@ impl LogStore for FdbLog {
             .map_err(store_err)
     }
 
+    async fn membership_read_version(&self) -> Result<i64, StoreError> {
+        self.membership_read_version_impl().await
+    }
+    async fn membership_page(
+        &self,
+        who: &str,
+        version: i64,
+        after: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool), StoreError> {
+        self.membership_page_impl(who, version, after, limit).await
+    }
     async fn spaces_of(&self, who: &str) -> Result<Vec<String>, StoreError> {
         let range = self.cell.root.subspace(&("i", who));
         self.cell
@@ -356,6 +372,14 @@ impl LogStore for FdbLog {
             code,
             expires_at_ms,
         })
+    }
+
+    async fn preview_agent_invite_for_redeemer(
+        &self,
+        code: &str,
+        who: &str,
+    ) -> Result<InviteInfo, String> {
+        self.agent_invite_redemption_preview(code, who).await
     }
 
     async fn redeem_agent_invite(&self, code: &str, who: &str) -> Result<InviteInfo, String> {

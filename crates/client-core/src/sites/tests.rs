@@ -41,8 +41,11 @@ pub(super) fn fixture() -> (std::sync::Arc<Client>, SiteScope, SiteSource) {
     drop(e);
     (client, scope, source)
 }
-pub(super) fn review(scope: &SiteScope, source: &SiteSource) -> SiteReview {
-    SiteReview {
+pub(super) fn review(
+    scope: &SiteScope,
+    source: &SiteSource,
+) -> std::result::Result<SiteReview, Box<dyn std::error::Error>> {
+    Ok(SiteReview {
         scope: scope.clone(),
         source: source.source.clone(),
         relay_url: "https://relay.example.test".into(),
@@ -63,13 +66,13 @@ pub(super) fn review(scope: &SiteScope, source: &SiteSource) -> SiteReview {
                 "https://sites.example.test",
             )
             .unwrap(),
-            request_id: types::new_secret_id("pub"),
+            request_id: types::new_secret_id("pub")?,
             expected_head: None,
             change: Change::Publish {
                 source: source.source.clone(),
             },
         },
-    }
+    })
 }
 
 #[test]
@@ -109,9 +112,9 @@ fn create_retry_reuses_file_and_message_then_checked_save_preserves_selected_old
     // Preparing the chosen saved version cannot read a transient editor draft.
     let signed = e
         .site_prepare(
-            &review(&scope, &first),
+            &review(&scope, &first).unwrap(),
             "https://relay.example.test",
-            &review(&scope, &first).configuration,
+            &review(&scope, &first).unwrap().configuration,
         )
         .unwrap();
     assert_eq!(signed.html, first.html);
@@ -122,7 +125,7 @@ fn create_retry_reuses_file_and_message_then_checked_save_preserves_selected_old
 fn preparation_signs_exact_shared_numeric_contract_and_refuses_changed_content_or_destination() {
     let (c, scope, first) = fixture();
     let e = c.lock();
-    let r = review(&scope, &first);
+    let r = review(&scope, &first).unwrap();
     let prepared = e.site_prepare(&r, &r.relay_url, &r.configuration).unwrap();
     assert!(event_log::verify_sig(
         &scope.device_id,
@@ -203,7 +206,7 @@ fn stale_device_wrong_space_reader_and_revoked_membership_do_not_read_edit_or_si
         .unwrap();
     assert!(!reader.publish_allowed && !reader.editable);
     assert!(e.site_save(&scope, &first.source, "<p>Bad</p>").is_err());
-    let r = review(&scope, &first);
+    let r = review(&scope, &first).unwrap();
     assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
     e.append(
         &scope.space_id,
@@ -256,7 +259,7 @@ fn device_revocation_invalid_html_and_hash_mismatch_fail_before_signing_or_writi
             &first.source.sha256
         )
         .is_err());
-    let r = review(&scope, &first);
+    let r = review(&scope, &first).unwrap();
     assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
 }
 
@@ -287,7 +290,7 @@ fn unavailable_corrupt_non_utf8_and_non_html_sources_cannot_become_publication_b
         .unwrap()
         .html
         .is_none());
-    let r = review(&scope, &first);
+    let r = review(&scope, &first).unwrap();
     assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
     e.store
         .put_media(
@@ -321,7 +324,7 @@ fn unavailable_corrupt_non_utf8_and_non_html_sources_cannot_become_publication_b
 fn unpublish_requires_an_observed_head_and_signs_no_html_payload() {
     let (c, scope, first) = fixture();
     let e = c.lock();
-    let mut r = review(&scope, &first);
+    let mut r = review(&scope, &first).unwrap();
     r.mutation.change = Change::Unpublish;
     assert!(e.site_prepare(&r, &r.relay_url, &r.configuration).is_err());
     r.mutation.expected_head = Some("a".repeat(64));
@@ -352,7 +355,10 @@ async fn offline_client_does_not_trust_cached_relay_name_or_emit_a_signed_prepar
         .site_review(scope.clone(), first.source.clone(), false)
         .await
         .is_err());
-    assert!(c.site_prepare(review(&scope, &first)).await.is_err());
+    assert!(c
+        .site_prepare(review(&scope, &first).unwrap())
+        .await
+        .is_err());
 }
 
 #[tokio::test]

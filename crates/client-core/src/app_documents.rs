@@ -12,7 +12,7 @@ use types::{
 
 pub(crate) use miniapps::excalidraw::MAX_SCENE_BYTES;
 use miniapps::excalidraw::{Scene, EMPTY, MIME, RESOURCE};
-const MAX_RECEIPTS: usize = 64;
+pub(crate) const MAX_RECEIPTS: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -27,11 +27,13 @@ pub struct AppDocumentDto {
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Receipt {
-    id: String,
-    fingerprint: String,
-    version: u32,
-    sha256: String,
+pub(crate) struct Receipt {
+    pub(crate) id: String,
+    pub(crate) fingerprint: String,
+    pub(crate) version: u32,
+    pub(crate) sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) source: Option<crate::agent_scenes::Source>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -136,3 +138,37 @@ mod tests;
 mod admission;
 mod copies;
 mod saving;
+
+impl Engine {
+    pub(crate) fn document_receipts(
+        &self,
+        me: &str,
+        device: &str,
+        item: &str,
+    ) -> R<(String, Vec<Receipt>)> {
+        let key = format!(
+            "app_document_receipts:{}",
+            hash(&serde_json::to_vec(&(me, device, item)).map_err(|_| invalid())?)
+        );
+        let receipts: Vec<Receipt> = self
+            .store
+            .meta(&key)?
+            .map(|s| serde_json::from_str(&s).map_err(|_| storage()))
+            .transpose()?
+            .unwrap_or_default();
+        let mut ids = BTreeSet::new();
+        if receipts.len() > MAX_RECEIPTS
+            || receipts.iter().any(|r| {
+                !ids.insert(&r.id)
+                    || !valid_id(&r.id)
+                    || !valid_hash(&r.fingerprint)
+                    || !valid_hash(&r.sha256)
+                    || r.version == 0
+                    || r.source.as_ref().is_some_and(|source| !source.valid())
+            })
+        {
+            return Err(storage());
+        }
+        Ok((key, receipts))
+    }
+}

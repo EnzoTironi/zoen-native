@@ -1,0 +1,170 @@
+[
+  {
+    "id": "TG-business-business-location",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Exibir localização comercial atualizada com consentimento e abertura em mapas.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência: vitrine e presença física comercial não integram o núcleo de pessoas e agentes."
+  },
+  {
+    "id": "TG-business-business-opening-hours",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Exibir disponibilidade comercial correta por fuso e exceções de agenda.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência: vitrine e presença física comercial não integram o núcleo de pessoas e agentes."
+  },
+  {
+    "id": "TG-business-business-start-page",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Apresentar contexto inicial comercial antes da primeira mensagem sem enviar conteúdo automaticamente.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência: vitrine e presença física comercial não integram o núcleo de pessoas e agentes."
+  },
+  {
+    "id": "TG-business-quick-reply-shortcuts",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Preparar resposta reutilizável editável com envio explícito e contexto da conversa preservado.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar ao runtime compartilhado de agentes, com a mesma autoridade, permissões e recuperação; não criar domínio Business paralelo."
+  },
+  {
+    "id": "TG-business-greeting-automation",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Enviar saudação uma única vez à audiência autorizada e permitir revisão e pausa.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar ao runtime compartilhado de agentes, com a mesma autoridade, permissões e recuperação; não criar domínio Business paralelo."
+  },
+  {
+    "id": "TG-business-away-automation",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Responder ausência conforme agenda e fuso, suspendendo a automação na retomada humana.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar ao runtime compartilhado de agentes, com a mesma autoridade, permissões e recuperação; não criar domínio Business paralelo."
+  },
+  {
+    "id": "TG-business-automation-exclusions",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Excluir pessoas e conversas das respostas automáticas e aplicar a mudança antes do próximo envio.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar ao runtime compartilhado de agentes, com a mesma autoridade, permissões e recuperação; não criar domínio Business paralelo."
+  },
+  {
+    "id": "TG-business-business-chat-links",
+    "scope": "later",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/edit-profile.tsx"
+    ],
+    "gap": "Abrir conversa com contexto inicial revisável sem enviar mensagem só por abrir o link.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Adaptar ao runtime compartilhado de agentes, com a mesma autoridade, permissões e recuperação; não criar domínio Business paralelo."
+  },
+  {
+    "id": "TG-business-connected-profile-bots",
+    "scope": "later",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/agent/[id].tsx",
+      "apps/zoen/src/app/connect-agent.tsx"
+    ],
+    "gap": "Vincular agente autorizado ao atendimento sem conceder acesso implícito a outras conversas.",
+    "issues": [
+      175
+    ],
+    "recommendation": "Adaptar ao runtime compartilhado de agentes, com a mesma autoridade, permissões e recuperação; não criar domínio Business paralelo."
+  },
+  {
+    "id": "TG-business-pause-or-revoke-automation",
+    "scope": "later",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/agent/[id].tsx",
+      "apps/zoen/src/app/connect-agent.tsx"
+    ],
+    "gap": "Pausar ou revogar delegação e impedir novos efeitos após confirmação da mudança.",
+    "issues": [
+      175
+    ],
+    "recommendation": "Adaptar ao runtime compartilhado de agentes, com a mesma autoridade, permissões e recuperação; não criar domínio Business paralelo."
+  },
+  {
+    "id": "TG-business-scoped-business-bot-actions",
+    "scope": "later",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "apps/zoen/src/app/agent/[id].tsx",
+      "apps/zoen/src/app/connect-agent.tsx"
+    ],
+    "gap": "Executar somente ações delegadas no espaço correto com revisão, histórico e recuperação.",
+    "issues": [
+      175
+    ],
+    "recommendation": "Adaptar ao runtime compartilhado de agentes, com a mesma autoridade, permissões e recuperação; não criar domínio Business paralelo."
+  }
+]

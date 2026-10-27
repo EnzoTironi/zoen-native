@@ -1,5 +1,6 @@
-//! Reading operations on the original PageSession state.
+//! Reading operations on the original `PageSession` state.
 
+use super::super::doc_err;
 use super::*;
 
 impl PageSession {
@@ -95,8 +96,8 @@ impl PageSession {
                     DocumentView::BinaryPage {
                         blocks: doc.blocks(),
                     },
-                    doc.content_hash(),
-                    doc.content_hash() != shadow.content_hash()
+                    doc.content_hash().map_err(doc_err)?,
+                    !doc.editor_content_eq(shadow).map_err(doc_err)?
                         || matches!(self.blocked, Some(SessionBlock::DraftLocked(_)))
                         || (journal.has_draft && save_error.is_some()),
                 )

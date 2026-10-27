@@ -1,9 +1,11 @@
-//! Tipos expostos ao Swift (UniFFI). São "visões" da projeção, nunca a fonte da verdade.
+//! Tipos expostos ao Swift (`UniFFI`). São "visões" da projeção, nunca a fonte da verdade.
 
 mod agents;
 mod apps;
+mod community;
 pub use agents::*;
 pub use apps::*;
+pub use community::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -95,6 +97,10 @@ pub struct SpaceSummary {
     pub title: String,
     pub kind: SpaceKindDto,
     pub privacy: PrivacyDto,
+    /// Current projected write permission, shared with the original Core writer.
+    #[serde(default)]
+    #[uniffi(default = false)]
+    pub can_write: bool,
     pub members: Vec<Persona>,
     /// Para DMs: a outra ponta (pessoa ou agente).
     pub counterpart: Option<Persona>,
@@ -171,6 +177,11 @@ pub enum EntryKind {
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct TimelineEntry {
+    /// Stable logical event identity of the currently visible source text.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub text_revision: Option<String>,
     pub id: String,
     pub seq: u64,
     pub author: Persona,
@@ -238,6 +249,10 @@ pub struct ReactionDto {
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ReplyQuote {
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub selection: Option<crate::ReplySelection>,
     pub id: String,
     pub author: Persona,
     pub text: String,
@@ -408,7 +423,7 @@ pub struct AgentActivityDto {
     pub space_id: String,
     pub space_title: String,
     pub at_ms: i64,
-    /// Custo de IA registrado logo depois desta ação (UsageRecorded), se houver.
+    /// Custo de IA registrado logo depois desta ação (`UsageRecorded`), se houver.
     pub cost_cents: Option<i64>,
 }
 

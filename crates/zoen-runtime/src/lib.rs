@@ -13,6 +13,8 @@ mod managed_images;
 pub use image_host::{
     ImageHostConfig, ImageHostProgress, ImageRuntimeHost, OwnerPolicyInstallation,
 };
+mod owner_policy_context;
+pub use owner_policy_context::{OwnerPolicyContextFailure, OwnerPolicyContextStage};
 mod native;
 pub use native::{
     ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection, ImageReviewIntent,

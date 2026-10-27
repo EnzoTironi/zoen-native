@@ -18,6 +18,21 @@ fn root(r: &RequestState) -> &str {
         .map_or(r.req.id.as_str(), |lineage| lineage.root.as_str())
 }
 
+/// Preparation does not carry an execution decision. An unresolved Pending
+/// request can ask for another review; a prior approval must still be exactly
+/// ApproveOnce. Denied/cancelled requests never restart through this path.
+fn review_predecessor(r: &RequestState) -> bool {
+    match r.status {
+        ReqStatus::Pending => {
+            r.resolution.is_none() && r.resolved_ms.is_none() && r.resolved_content_hash.is_none()
+        }
+        ReqStatus::Approved => {
+            r.resolution.as_ref().and_then(|r| r.tool_decision) == Some(ToolDecision::ApproveOnce)
+        }
+        ReqStatus::Denied => false,
+    }
+}
+
 impl State {
     /// Same canonical order used by normal host continuation discovery. No wall
     /// clock, request ID or caller-supplied generation can create a newer leaf.
@@ -88,9 +103,7 @@ impl State {
         };
         r.space == event.space
             && r.req.content_hash == observed
-            && r.status == ReqStatus::Approved
-            && r.resolution.as_ref().and_then(|r| r.tool_decision)
-                == Some(ToolDecision::ApproveOnce)
+            && review_predecessor(r)
             && r.review.is_none()
             && self.tool_review_active_leaf(r)
             && p.expires_at_ms <= event.at_ms
@@ -140,7 +153,7 @@ impl State {
             return false;
         };
         if !self.tool_review_active_leaf(prior)
-            || prior.status != ReqStatus::Approved
+            || !review_predecessor(prior)
             || intent.successor.is_some()
             || intent.id != lineage.intent
             || intent.at_ms > at
@@ -153,7 +166,9 @@ impl State {
         let mut expected = prior.req.clone();
         expected.id = request.id.clone();
         expected.content_hash = request.content_hash.clone();
-        let expected_proposal = expected.tool_proposal.as_mut().unwrap();
+        let Some(expected_proposal) = expected.tool_proposal.as_mut() else {
+            return false;
+        };
         expected_proposal.expires_at_ms = p.expires_at_ms;
         expected_proposal.review = Some(lineage.clone());
         expected == *request
@@ -242,7 +257,7 @@ impl Engine {
         // Use the exact replay guard before append; it is checked again by projection.
         if self.approval_replay_needed
             || !self.state.tool_review_active_leaf(&r)
-            || r.status != ReqStatus::Approved
+            || !review_predecessor(&r)
             || p.expires_at_ms > at
             || !self.state.tool_request_matches(&r.req, &r.space)
             || !self.state.tool_app_act(p, at)
@@ -276,12 +291,7 @@ impl Engine {
         })
     }
 
-    pub(crate) fn tool_review_dto(&self, r: &RequestState) -> ToolReviewDto {
-        let p = r
-            .req
-            .tool_proposal
-            .as_ref()
-            .expect("tool review DTO requires a proposal");
+    pub(crate) fn tool_review_dto(&self, r: &RequestState, p: &ToolProposal) -> ToolReviewDto {
         let state = if let Some(intent) = &r.review {
             if intent.successor.is_some() {
                 ToolReviewState::Superseded
@@ -293,7 +303,7 @@ impl Engine {
                 ToolReviewState::Requested
             }
         } else if self.me_id().as_deref().is_ok_and(|me| me == p.owner)
-            && r.status == ReqStatus::Approved
+            && review_predecessor(r)
             && self.state.tool_review_active_leaf(r)
             && p.expires_at_ms <= crate::engine::now_ms()
             && !self.approval_replay_needed

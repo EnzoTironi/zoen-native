@@ -58,7 +58,10 @@ pub(super) fn account(identity: &NativeSigner, device: &NativeSigner) -> LinkedA
     }
 }
 
-pub(super) fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
+pub(super) fn sequence(
+    log: &mut SpaceLog,
+    env: Envelope,
+) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let outer = event_log::event_from_content(
         env.content().to_vec(),
         env.sig.clone(),
@@ -68,8 +71,8 @@ pub(super) fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
         String::new(),
     )
     .unwrap();
-    let event = log.sequence(outer);
-    ServerFrame::Event {
+    let event = log.sequence(outer)?;
+    Ok(ServerFrame::Event {
         ev: Sequenced {
             seq: event.seq,
             prev: event.prev.clone(),
@@ -77,12 +80,17 @@ pub(super) fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
             env,
         },
     }
-    .encode()
+    .encode())
 }
 
-pub(super) fn clear(log: &mut SpaceLog, author: &Author, body: EventBody, now: i64) -> Vec<u8> {
-    let event = author.sign_event(log.space(), &types::new_ulid(now), now, log.head(), body);
-    sequence(log, Envelope::plain(&event))
+pub(super) fn clear(
+    log: &mut SpaceLog,
+    author: &Author,
+    body: EventBody,
+    now: i64,
+) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let event = author.sign_event(log.space(), &types::new_ulid(now)?, now, log.head(), body)?;
+    sequence(log, Envelope::plain(&event)?)
 }
 
 fn sealed(
@@ -91,10 +99,10 @@ fn sealed(
     kind: SealedKind,
     data: Vec<u8>,
     now: i64,
-) -> Vec<u8> {
+) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let (content, sig) = author.sign_sealed(
         log.space(),
-        &types::new_ulid(now),
+        &types::new_ulid(now)?,
         now,
         log.head().as_ref(),
         Sealed::new(kind, SUITE_ID, data),
@@ -106,8 +114,10 @@ fn sealed(
 }
 
 #[test]
-fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
-    crypto_interop::native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls();
+fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    crypto_interop::native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls()?;
+    Ok(())
 }
 
 #[test]
@@ -116,16 +126,22 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
 }
 
 #[test]
-fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
-    voice::native_voice_replies_versions_and_reverts_stay_on_the_original_post();
+fn native_voice_replies_versions_and_reverts_stay_on_the_original_post(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    voice::native_voice_replies_versions_and_reverts_stay_on_the_original_post()?;
+    Ok(())
 }
 
 #[test]
-fn native_forwarded_voice_is_one_destination_only_message_after_receive_and_saved_reload() {
-    voice::native_forwarded_voice_is_one_destination_only_message_after_receive_and_saved_reload();
+fn native_forwarded_voice_is_one_destination_only_message_after_receive_and_saved_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    voice::native_forwarded_voice_is_one_destination_only_message_after_receive_and_saved_reload()?;
+    Ok(())
 }
 
-fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
+type WebFixture = (Client<HostSigner>, Author, Author, SpaceLog, String);
+
+fn web_fixture() -> std::result::Result<WebFixture, Box<dyn std::error::Error>> {
     let identity = NativeSigner::from_secret(&[41; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
     let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));
@@ -144,7 +160,7 @@ fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
             privacy: Privacy::EndToEnd,
         },
         1,
-    );
+    )?;
     clear(
         &mut log,
         &author,
@@ -157,12 +173,17 @@ fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
             forwarded: false,
         },
         2,
-    );
+    )?;
     let target = log.events().last().unwrap().hash.clone();
-    (client, author, other, log, target)
+    Ok((client, author, other, log, target))
 }
 
-fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: types::Annotation) {
+fn annotate(
+    log: &mut SpaceLog,
+    author: &Author,
+    target: &str,
+    note: types::Annotation,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let now = log.next_seq() as i64 + 10;
     clear(
         log,
@@ -172,23 +193,30 @@ fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: types::Anno
             note,
         },
         now,
-    );
+    )?;
+    Ok(())
 }
 
 #[test]
-fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_preferences() {
+fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_preferences(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     projection::conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_preferences(
-    );
+    )?;
+    Ok(())
 }
 
 #[test]
-fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
-    projection::web_reaction_participants_replace_remove_and_ignore_invalid_reactions();
+fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    projection::web_reaction_participants_replace_remove_and_ignore_invalid_reactions()?;
+    Ok(())
 }
 
 #[test]
-fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() {
-    projection::web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption();
+fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    projection::web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption()?;
+    Ok(())
 }
 
 fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
@@ -209,11 +237,14 @@ fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
 }
 
 #[test]
-fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
-    receipts::web_receipts_replay_after_saved_unsent_frames_and_each_reconnect();
+fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    receipts::web_receipts_replay_after_saved_unsent_frames_and_each_reconnect()?;
+    Ok(())
 }
 
-fn document_fixture() -> (Client<HostSigner>, Author, SpaceLog) {
+fn document_fixture(
+) -> std::result::Result<(Client<HostSigner>, Author, SpaceLog), Box<dyn std::error::Error>> {
     let identity = NativeSigner::from_secret(&[71; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
     let author = Author::device(&identity, host.0.clone());
@@ -228,10 +259,10 @@ fn document_fixture() -> (Client<HostSigner>, Author, SpaceLog) {
             privacy: Privacy::Closed,
         },
         1,
-    );
+    )?;
     client.receive(&created, 2).unwrap();
     client.receive(&ServerFrame::SyncDone.encode(), 3).unwrap();
-    (client, author, log)
+    Ok((client, author, log))
 }
 
 fn doc(client: &mut Client<HostSigner>, command: serde_json::Value, now: i64) -> DocumentResponse {
@@ -243,93 +274,128 @@ fn confirm_documents(
     log: &mut SpaceLog,
     update: Update,
     now: i64,
-) {
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for frame in update.frames {
         if let ClientFrame::Publish { env } = ClientFrame::decode(&frame).unwrap() {
-            let frame = sequence(log, env);
+            let frame = sequence(log, env)?;
             client.receive(&frame, now).unwrap();
         }
     }
+    Ok(())
 }
 
 #[test]
-fn browser_new_document_notes_follow_language_without_rewriting_received_history() {
-    page_documents::browser_new_document_notes_follow_language_without_rewriting_received_history();
+fn browser_new_document_notes_follow_language_without_rewriting_received_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    page_documents::browser_new_document_notes_follow_language_without_rewriting_received_history(
+    )?;
+    Ok(())
 }
 
 #[test]
-fn browser_pages_share_native_codec_persist_drafts_and_replay_receipts() {
-    page_documents::browser_pages_share_native_codec_persist_drafts_and_replay_receipts();
+fn browser_pages_share_native_codec_persist_drafts_and_replay_receipts(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    page_documents::browser_pages_share_native_codec_persist_drafts_and_replay_receipts()?;
+    Ok(())
 }
 
 #[test]
-fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change() {
-    page_documents::browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change();
+fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    page_documents::browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change()?;
+    Ok(())
 }
 
 #[test]
-fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits() {
-    page_documents::browser_large_page_upload_barrier_survives_reload_and_missing_download_waits();
+fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    page_documents::browser_large_page_upload_barrier_survives_reload_and_missing_download_waits()?;
+    Ok(())
 }
 
 #[test]
-fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo() {
-    app_documents::browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo();
+fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    app_documents::browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo()?;
+    Ok(())
 }
 
 #[test]
-fn browser_app_install_uses_request_locale_and_preserves_signed_history() {
-    app_documents::browser_app_install_uses_request_locale_and_preserves_signed_history();
+fn browser_app_install_uses_request_locale_and_preserves_signed_history(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    app_documents::browser_app_install_uses_request_locale_and_preserves_signed_history()?;
+    Ok(())
 }
 
 #[test]
-fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations() {
-    app_documents::browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations();
+fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    app_documents::browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations()?;
+    Ok(())
 }
 
 #[test]
-fn browser_closed_chat_posts_queue_offline_and_never_publish_plaintext_after_encryption() {
+fn browser_closed_chat_posts_queue_offline_and_never_publish_plaintext_after_encryption(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     receipts::browser_closed_chat_posts_queue_offline_and_never_publish_plaintext_after_encryption(
-    );
+    )?;
+    Ok(())
 }
 
 #[test]
-fn browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies() {
-    receipts::browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies();
+fn browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    receipts::browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies()?;
+    Ok(())
 }
 
 #[test]
-fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owner() {
-    projection::browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owner();
+fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owner(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    projection::browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owner()?;
+    Ok(())
 }
 
 #[test]
-fn browser_typing_is_connection_local_and_requires_a_current_writing_member() {
-    projection::browser_typing_is_connection_local_and_requires_a_current_writing_member();
+fn browser_typing_is_connection_local_and_requires_a_current_writing_member(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    projection::browser_typing_is_connection_local_and_requires_a_current_writing_member()?;
+    Ok(())
 }
 
 #[test]
-fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore() {
-    app_documents::browser_task_checkbox_draft_survives_reread_and_cold_journal_restore();
+fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    app_documents::browser_task_checkbox_draft_survives_reread_and_cold_journal_restore()?;
+    Ok(())
 }
 
 #[test]
-fn received_app_owned_documents_keep_manifest_history_without_becoming_file_cards() {
-    app_documents::received_app_owned_documents_keep_manifest_history_without_becoming_file_cards();
+fn received_app_owned_documents_keep_manifest_history_without_becoming_file_cards(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    app_documents::received_app_owned_documents_keep_manifest_history_without_becoming_file_cards(
+    )?;
+    Ok(())
 }
 
 #[test]
-fn actual_public_receive_emits_delivery_and_mark_read_replays_after_serialized_snapshot_reload() {
-    receipts::actual_public_receive_emits_delivery_and_mark_read_replays_after_serialized_snapshot_reload();
+fn actual_public_receive_emits_delivery_and_mark_read_replays_after_serialized_snapshot_reload(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    receipts::actual_public_receive_emits_delivery_and_mark_read_replays_after_serialized_snapshot_reload()?;
+    Ok(())
 }
 
 #[test]
-fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_authorize_the_discarded_arrival() {
-    receipts::actual_signed_removal_discards_new_receipts_and_rejoin_cannot_authorize_the_discarded_arrival();
+fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_authorize_the_discarded_arrival(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    receipts::actual_signed_removal_discards_new_receipts_and_rejoin_cannot_authorize_the_discarded_arrival()?;
+    Ok(())
 }
 #[test]
-fn actual_early_receipt_waits_for_confirmed_signed_membership_and_connection_buffer_is_bounded() {
-    receipts::actual_early_receipt_waits_for_confirmed_signed_membership_and_connection_buffer_is_bounded();
+fn actual_early_receipt_waits_for_confirmed_signed_membership_and_connection_buffer_is_bounded(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    receipts::actual_early_receipt_waits_for_confirmed_signed_membership_and_connection_buffer_is_bounded()?;
+    Ok(())
 }
 
 fn attachment_frame(sealed: &crate::media::Sealed) -> Vec<u8> {
@@ -357,31 +423,43 @@ fn issued_attachment(client: &mut Client<HostSigner>, space: &str) -> serde_json
 }
 
 #[test]
-fn attachment_intent_persists_both_signed_events_and_real_ciphertext_before_any_publish() {
-    attachments::attachment_intent_persists_both_signed_events_and_real_ciphertext_before_any_publish();
+fn attachment_intent_persists_both_signed_events_and_real_ciphertext_before_any_publish(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    attachments::attachment_intent_persists_both_signed_events_and_real_ciphertext_before_any_publish()?;
+    Ok(())
 }
 
 #[test]
-fn attachment_intent_lost_response_reencrypt_retry_and_ui_ack_have_one_canonical_effect() {
-    attachments::attachment_intent_lost_response_reencrypt_retry_and_ui_ack_have_one_canonical_effect();
+fn attachment_intent_lost_response_reencrypt_retry_and_ui_ack_have_one_canonical_effect(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    attachments::attachment_intent_lost_response_reencrypt_retry_and_ui_ack_have_one_canonical_effect()?;
+    Ok(())
 }
 
 #[test]
-fn attachment_intent_gaps_drop_unissued_and_retired_leases_fail_closed_without_lifetime_cap() {
-    attachments::attachment_intent_gaps_drop_unissued_and_retired_leases_fail_closed_without_lifetime_cap();
+fn attachment_intent_gaps_drop_unissued_and_retired_leases_fail_closed_without_lifetime_cap(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    attachments::attachment_intent_gaps_drop_unissued_and_retired_leases_fail_closed_without_lifetime_cap()?;
+    Ok(())
 }
 
 #[test]
-fn attachment_intent_faults_preserve_existing_outbox_and_do_not_consume_issued_sequence() {
-    attachments::attachment_intent_faults_preserve_existing_outbox_and_do_not_consume_issued_sequence();
+fn attachment_intent_faults_preserve_existing_outbox_and_do_not_consume_issued_sequence(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    attachments::attachment_intent_faults_preserve_existing_outbox_and_do_not_consume_issued_sequence()?;
+    Ok(())
 }
 
 #[test]
-fn attachment_intent_authentic_chunk_length_lies_preserve_snapshot_and_issued_sequence() {
-    attachments::attachment_intent_authentic_chunk_length_lies_preserve_snapshot_and_issued_sequence();
+fn attachment_intent_authentic_chunk_length_lies_preserve_snapshot_and_issued_sequence(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    attachments::attachment_intent_authentic_chunk_length_lies_preserve_snapshot_and_issued_sequence()?;
+    Ok(())
 }
 
 #[test]
-fn attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issued_sequence() {
-    attachments::attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issued_sequence();
+fn attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issued_sequence(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    attachments::attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issued_sequence()?;
+    Ok(())
 }

@@ -8,7 +8,7 @@
 //! ("s", space, "log", seq)             -> Sequenced (the wire bytes)
 //! ("s", space, "dedupe", author, cid)  -> seq
 //! ("s", space, "m", identity)          -> role
-//! ("s", space, "gone", identity)       -> seq of their removal (until they're added back)
+//! ("s", space, "gone", identity)       -> seq of their last removal (also retained after re-entry)
 //! ("s", space, "mls")                  -> (next commit epoch, device of the last commit)
 //! ("s", space, "ck", identity, device) -> (seq a member device holds up to, when it said so
 //!                                         in ms) (end-to-end only; device "*" = added, no
@@ -46,7 +46,7 @@ use foundationdb::{
     tuple::{pack, unpack, Subspace},
     Database, FdbBindingError, RangeOption, Transaction,
 };
-use futures_util::future::{try_join3, try_join_all};
+use futures_util::future::{try_join4, try_join_all};
 use protocol::{Envelope, InviteCreated, Sequenced};
 use relay_admission::mls_projection::{self, PRUNE_BATCH};
 use types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
@@ -90,6 +90,7 @@ mod invite_routing;
 mod managed;
 mod managed_publish;
 mod managed_registry;
+mod membership_reads;
 mod routing;
 mod runtime;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
@@ -433,6 +434,7 @@ impl FdbLog {
     }
 }
 
+mod agent_invites;
 mod apply;
 mod cell;
 mod fallible;

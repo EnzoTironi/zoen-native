@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use event_log::{content_hash, content_hash_of, SpaceLog};
 use store::Store;
-use types::*;
+use types::{
+    AgentRequest, Event, EventBody, GrantScope, Identity, IdentityId, ItemContent, ItemId,
+    ItemKind, PageContent, PageManifest, PlanDoc, RequestId, SpaceId,
+};
 
 use crate::engine::{State, R};
 use crate::CoreError;
@@ -47,15 +50,18 @@ enum Mode {
 /// Only this module can construct the event-bound read. Its document is derived
 /// from a verified log prefix and locally authenticated, bounded payload bytes.
 pub(crate) struct BeforeEvent {
+    selected_quote_valid: bool,
     event: String,
     ordered_address: Option<(u64, String, String)>,
     scope_valid: bool,
+    app_share_refs_valid: bool,
+    share_head: Option<crate::app_current_share::SharedVersionInfo>,
     mode: Mode,
     plan: PlanRead,
 }
 
-fn binding(event: &Event) -> String {
-    content_hash(&(
+fn binding(event: &Event) -> R<String> {
+    Ok(content_hash(&(
         content_hash_of(event),
         &event.space,
         &event.author,
@@ -66,41 +72,10 @@ fn binding(event: &Event) -> String {
         &event.device,
         &event.cert,
         &event.sig,
-    ))
+    ))?)
 }
 
-impl BeforeEvent {
-    pub(crate) fn scope_valid(&self) -> bool {
-        self.scope_valid
-    }
-
-    pub(crate) fn matches(&self, event: &Event) -> bool {
-        self.event == binding(event)
-            && self
-                .ordered_address
-                .as_ref()
-                .is_none_or(|(seq, prev, hash)| {
-                    *seq == event.seq && prev == &event.prev && hash == &event.hash
-                })
-    }
-
-    pub(crate) fn plan(&self) -> &PlanRead {
-        &self.plan
-    }
-
-    pub(crate) fn ordered(&self) -> bool {
-        !matches!(self.mode, Mode::Pending)
-    }
-
-    pub(crate) fn creation_origin(&self, event: &Event, item: &str) -> PlanOrigin {
-        match self.mode {
-            Mode::Confirmed | Mode::Local => {
-                PlanOrigin::Explicit(source(&event.space, item, event, true).event_id)
-            }
-            Mode::Pending => PlanOrigin::Pending,
-        }
-    }
-}
+mod before;
 
 /// One replay owns its payload snapshot. Repeated decisions reuse a fold until
 /// that Item's ordered history changes; no page-session or network reader enters it.
@@ -140,6 +115,8 @@ impl<'a> PlanReplay<'a> {
         let mut positions: HashMap<(SpaceId, ItemId), Vec<usize>> = HashMap::new();
         for (space, log) in self.logs {
             for (index, event) in log.events().iter().enumerate() {
+                // A snapshot is not an origin merely because it was retained.
+                // Its namespace proof is checked by the sharing projector.
                 if let EventBody::ItemCreated { item, .. } = &event.body {
                     origins
                         .entry(item.clone())
@@ -184,6 +161,7 @@ impl<'a> PlanReplay<'a> {
             EventBody::ItemCreated { item, .. }
             | EventBody::ItemVersioned { item, .. }
             | EventBody::ItemReverted { item, .. } => Some(item.as_str()),
+            EventBody::AppCurrentShared { share } => Some(share.item.as_str()),
             EventBody::MessagePosted { attaches, .. } => attaches.as_deref(),
             EventBody::GrantIssued { grant } => match &grant.scope {
                 GrantScope::Item(item) => Some(item.as_str()),
@@ -303,7 +281,11 @@ impl<'a> PlanReplay<'a> {
         end: usize,
         mode: Mode,
     ) -> R<BeforeEvent> {
-        let scope_valid = matches!(mode, Mode::Confirmed) || self.current_scope_valid(state, event);
+        // Sharing bootstraps an Item absent from this scoped fold. Its embedded
+        // grant must not escape an already known foreign Item origin on replay.
+        let scope_valid = (matches!(mode, Mode::Confirmed)
+            && !matches!(event.body, EventBody::AppCurrentShared { .. }))
+            || self.current_scope_valid(state, event);
         let plan = if !scope_valid
             || state.waiting_spaces.contains(&event.space)
             || !state.approval_event_guards(event, identities)
@@ -335,7 +317,33 @@ impl<'a> PlanReplay<'a> {
             PlanRead::Changed
         };
         Ok(BeforeEvent {
-            event: binding(event),
+            selected_quote_valid: crate::selected_quotes::received_valid(
+                state,
+                event,
+                self.logs
+                    .get(&event.space)
+                    .map_or(&[], |log| &log.events()[..end]),
+            ),
+            share_head: crate::app_current_share::readable_head(
+                self.logs
+                    .get(&event.space)
+                    .map_or(&[], |log| &log.events()[..end]),
+                event,
+            ),
+            app_share_refs_valid: (!matches!(mode, Mode::Confirmed)
+                || match &event.body {
+                    EventBody::AppCurrentShared { share } => share.epoch.is_none_or(|epoch| {
+                        crate::mls_opening::application_epoch(self.store, event) == Some(epoch)
+                    }),
+                    _ => true,
+                })
+                && crate::app_current_share::references_valid(
+                    self.logs
+                        .get(&event.space)
+                        .map_or(&[], |log| &log.events()[..end]),
+                    event,
+                ),
+            event: binding(event)?,
             ordered_address: matches!(mode, Mode::Confirmed)
                 .then(|| (event.seq, event.prev.clone(), event.hash.clone())),
             scope_valid,
@@ -468,7 +476,7 @@ impl<'a> PlanReplay<'a> {
             read.clone()
         } else {
             let folded = prefix.fold(item, |page| {
-                let key = content_hash(page);
+                let key = content_hash(page)?;
                 if let Some(payload) = self.payloads.get(&key) {
                     return Ok(payload.clone());
                 }

@@ -80,7 +80,13 @@ class Repository:
         return self.commit("Rust change")
 
     def classify(self, head=None, event="pull_request", cargo=CARGO):
-        return SCOPE.classify(self.base, head or self.git("rev-parse", "HEAD"), event, cargo)
+        head = head or self.git("rev-parse", "HEAD")
+        candidate = head
+        if event == "pull_request":
+            tree = self.git("merge-tree", "--write-tree", self.base, head)
+            candidate = self.git("commit-tree", tree, "-p", self.base, "-p", head, "-m", "PR candidate")
+        self.git("checkout", "--detach", "-q", candidate)
+        return SCOPE.classify(self.base, head, event, cargo, candidate)
 
     def broken_cargo(self, mode):
         program = self.root.parent / ("cargo-" + mode)
@@ -243,15 +249,27 @@ class ScopeTests(unittest.TestCase):
         self.full(self.repo.classify())
 
     def test_contract_drift_in_either_endpoint_or_worktree_cannot_suppress_jobs(self):
-        workflow = ".github/workflows/expo.yml"
-        self.repo.write(workflow, (self.repo.root / workflow).read_text() + "\n# changed commands\n")
-        self.repo.base = self.repo.commit("drift baseline")
-        self.repo.write(workflow, (ROOT / workflow).read_text())
-        head = self.repo.change()
-        self.full(self.repo.classify(head))
-        self.repo.git("reset", "--hard", self.repo.base)
-        self.repo.change()
-        self.full(self.repo.classify())
+        for path in [".github/workflows/expo.yml", "scripts/build-expo-core.mjs",
+                     "scripts/install-android-sdk.py", "scripts/test-install-android-sdk.py"]:
+            with self.subTest(path=path):
+                original = (ROOT / path).read_text()
+                comment = "#" if path.endswith(".yml") else "//"
+                self.repo.write(path, original + "\n" + comment + " changed build contract\n")
+                self.repo.write(PACKAGES["zoen-relay"] + "/src/lib.rs", "pub fn original() {}\n")
+                self.repo.base = self.repo.commit("drift baseline")
+                self.repo.change()
+                result = self.repo.classify()
+                self.full(result)
+                self.assertIn("Build contract drift: " + path, result["reason"])
+                # A restored local file cannot hide drift in the committed endpoints.
+                self.repo.write(path, original)
+                result = self.repo.classify()
+                self.full(result)
+                self.assertIn("Build contract drift: " + path, result["reason"])
+                # Restoring only the head still requires all jobs for the build diff.
+                restored_head = self.repo.commit("restore reviewed contract")
+                self.full(self.repo.classify(restored_head))
+                self.repo.base = restored_head
 
     def test_missing_unknown_and_failed_metadata_parsers_never_select_a_partial_lane(self):
         self.repo.change()
@@ -279,10 +297,13 @@ class ScopeTests(unittest.TestCase):
 
     def test_cli_outputs_are_honest_and_failure_conditions_keep_full_jobs_selected(self):
         head = self.repo.change()
+        self.repo.classify(head)
+        candidate = self.repo.git("rev-parse", "HEAD")
         output = self.repo.root.parent / "outputs"
         summary = self.repo.root.parent / "summary"
         result = subprocess.run([sys.executable, str(SCRIPT), "--base", self.repo.base,
-                                 "--head", head, "--event", "pull_request", "--cargo", CARGO],
+                                 "--head", head, "--event", "pull_request", "--cargo", CARGO,
+                                 "--candidate", candidate],
                                 cwd=self.repo.root, capture_output=True, text=True, check=True,
                                 env={**os.environ, "GITHUB_OUTPUT": str(output), "GITHUB_STEP_SUMMARY": str(summary)})
         self.assertFalse(json.loads(result.stdout)["run_android"])
@@ -291,8 +312,9 @@ class ScopeTests(unittest.TestCase):
         self.assertIn("SKIPPED", summary.read_text())
         self.assertNotIn("PASS", summary.read_text())
         workflow = (ROOT / ".github/workflows/expo.yml").read_text()
-        for job in SCOPE.JOBS:
+        for job in ("client", "release_web"):
             self.assertIn("!cancelled() && (needs.artifact-scope.result != 'success' || needs.artifact-scope.outputs.run_" + job + " != 'false')", workflow)
+        self.assertIn("needs.artifact-scope.outputs.run_android_js == 'true'", workflow)
         self.assertIn("cargo build --locked -p zoen-relay -p zoen-cli", workflow)
 
 

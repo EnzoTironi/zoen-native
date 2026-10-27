@@ -1,5 +1,12 @@
 //! Pending-prefix admission, durable fork marking and settlement.
-use super::*;
+#[cfg(test)]
+use super::crash_after_fork_meta;
+
+use super::{
+    digest_meta, fold_roster, fork_meta, fork_reason, pending_prefix_meta, pending_refusal_meta,
+    seen_against, signing_device, storage, tracing_like, BTreeMap, Engine, Event, Ingest,
+    PendingPrefix, Seen, SeenAgainst, PENDING_PREFIX_CEILING, R,
+};
 
 impl Engine {
     /// One decision for a failed `accept` on the next sequence, whether the
@@ -12,7 +19,9 @@ impl Engine {
         event: &Event,
     ) -> Ingest {
         let (seen, empty) = {
-            let log = self.logs.get(space).expect("accept ran on this log");
+            let Some(log) = self.logs.get(space) else {
+                return Ingest::Invalid(format!("Local admission log is missing: {err}"));
+            };
             (seen_against(log, event), log.is_empty())
         };
         if empty {
@@ -222,18 +231,34 @@ impl Engine {
         };
     }
 
-    pub(crate) fn recorded_fork(&self, space: &str) -> Option<String> {
-        self.store.meta(&fork_meta(space)).ok().flatten()
+    pub(crate) fn recorded_fork(&self, space: &str) -> R<Option<String>> {
+        Ok(self.store.meta(&fork_meta(space))?)
     }
 
-    pub(crate) fn fork_recorded(&self, space: &str) -> bool {
-        self.recorded_fork(space).is_some()
+    pub(crate) fn fork_recorded(&self, space: &str) -> R<bool> {
+        self.recorded_fork(space).map(|reason| reason.is_some())
+    }
+
+    /// A known warning remains evidence; an unreadable marker is a storage
+    /// error, never a healthy state or a newly detected cryptographic fork.
+    pub(crate) fn checked_integrity_error(&self, space: &str) -> R<Option<String>> {
+        match self
+            .state
+            .spaces
+            .get(space)
+            .and_then(|s| s.integrity_error.clone())
+        {
+            Some(reason) => Ok(Some(reason)),
+            None => self.recorded_fork(space),
+        }
     }
 
     pub(crate) fn restore_recorded_forks(&mut self) {
         let spaces = self.space_order.clone();
         for space in spaces {
-            if let Some(reason) = self.recorded_fork(&space) {
+            // Restoring a display warning is best-effort. Publication, new
+            // messages and verification independently require the checked read.
+            if let Ok(Some(reason)) = self.recorded_fork(&space) {
                 self.show_fork(&space, reason);
             }
         }

@@ -2,6 +2,13 @@
 //! cloud permission: the runtime must authenticate custody, enrollment, source
 //! head, leases, financial policy and continuity before using this facade.
 
+#[cfg(test)]
+use types::{
+    new_id, AgentRequest, BackgroundSpec, ChunkRef, Grant, PageContent, PageManifest, PlanDoc,
+    PlanLine, PlanManifestV1, PlanSection, RequestResolution, Role, ToolDecision, TrustLevel,
+    GENESIS_PREV,
+};
+
 use std::fmt;
 
 use ::mls::Leaf;
@@ -10,7 +17,10 @@ use grants::{evaluate_permission, Policy};
 use protocol::Sequenced;
 use serde::{Deserialize, Serialize};
 use store::{Store, MAX_MEMORY_IMAGE_BYTES};
-use types::*;
+use types::{
+    ActionClass, Capability, Event, EventBody, FileDoc, GrantId, GrantScope, Identity, IdentityId,
+    IdentityKind, ItemContent, ItemKind, Privacy, Seen, SpaceId, SpaceKind, ToolProposal,
+};
 use zeroize::Zeroizing;
 
 use crate::engine::{Engine, GrantState, State};
@@ -69,6 +79,7 @@ impl NativeImage {
         Ok(Self(bytes))
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -140,14 +151,17 @@ pub struct ReplyIntent {
 }
 
 impl ReplyIntent {
+    #[must_use]
     pub fn trigger(&self) -> &str {
         &self.trigger
     }
 
+    #[must_use]
     pub fn space(&self) -> &str {
         &self.space
     }
 
+    #[must_use]
     pub fn agent(&self) -> &str {
         &self.agent
     }
@@ -161,14 +175,17 @@ pub struct NativeFrontier {
 }
 
 impl NativeFrontier {
+    #[must_use]
     pub fn seq(&self) -> u64 {
         self.seq
     }
 
+    #[must_use]
     pub fn hash(&self) -> &str {
         &self.hash
     }
 
+    #[must_use]
     pub fn epoch(&self) -> u64 {
         self.epoch
     }
@@ -202,18 +219,22 @@ impl fmt::Debug for ReplyFacts {
 }
 
 impl ReplyFacts {
+    #[must_use]
     pub fn intent(&self) -> &ReplyIntent {
         &self.intent
     }
 
+    #[must_use]
     pub fn frontier(&self) -> &NativeFrontier {
         &self.frontier
     }
 
+    #[must_use]
     pub fn expires_at_ms(&self) -> Option<i64> {
         self.expires_at_ms
     }
 
+    #[must_use]
     pub fn text(&self) -> &str {
         &self.text
     }
@@ -275,6 +296,8 @@ fn provider_migrations(store: &Store) -> Result<Vec<(i64, String, String)>> {
         .map_err(|_| NativeError::Image)
 }
 
+mod image_schema;
+
 fn validate_image(store: &Store) -> Result<()> {
     let trusted = Engine::open(":memory:").map_err(|_| NativeError::Storage)?;
     let version: i64 = store
@@ -282,7 +305,7 @@ fn validate_image(store: &Store) -> Result<()> {
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(|_| NativeError::Image)?;
     if version != 2
-        || schema(store)? != schema(&trusted.store)?
+        || !image_schema::supported(store, &trusted.store)?
         || provider_migrations(store)? != provider_migrations(&trusted.store)?
         || store
             .meta(EVENT_FORMAT_META)
@@ -331,6 +354,15 @@ fn validate_image(store: &Store) -> Result<()> {
             .iter()
             .any(|(profile, _)| !agent_owner::profile_authorized(profile))
     {
+        return Err(NativeError::Image);
+    }
+    // Only the exact previous schema reaches this narrow, inert upgrade. The
+    // authenticated custody image and all event/provider/credential checks above
+    // remain required before installing any Engine state.
+    store
+        .upgrade_outbox_order()
+        .map_err(|_| NativeError::Image)?;
+    if schema(store)? != schema(&trusted.store)? {
         return Err(NativeError::Image);
     }
     limit_pages(store)

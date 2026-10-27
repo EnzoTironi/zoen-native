@@ -1,6 +1,9 @@
 //! Admission on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    invalid, json, metadata, t, unavailable, validate_scene, AppDoc, AppDocumentDto, CoreError,
+    Engine, HashMap, ItemContent, Value, EMPTY, MAX_SCENE_BYTES, MIME, R, RESOURCE,
+};
 
 impl Engine {
     pub(crate) fn attach_app_document(
@@ -9,22 +12,22 @@ impl Engine {
         item: &str,
         mut app: AppDoc,
     ) -> R<AppDoc> {
-        if app.app == miniapps::deckcraft::APP {
-            let seed = miniapps::deckcraft::registration::EMPTY;
-            if !miniapps::deckcraft::registration::available()
-                || app.resource_uri != miniapps::deckcraft::RESOURCE
+        if let Some(format) = miniapps::binary::Format::for_id(&app.app) {
+            let seed = format.seed();
+            if !format.available()
+                || app.resource_uri != format.resource()
                 || app.document.is_some()
             {
                 return Err(invalid());
             }
-            let document = miniapps::deckcraft::Document::parse(seed).map_err(|_| invalid())?;
+            let metadata = format.metadata(seed, &app.title).map_err(|_| invalid())?;
             let key = self.file_key(None)?;
             let file = self.file_doc(
                 space,
                 &key,
-                "presentation.deckcraft",
+                format.filename(),
                 "",
-                miniapps::deckcraft::MIME,
+                format.mime(),
                 seed,
                 None,
                 &HashMap::new(),
@@ -32,7 +35,7 @@ impl Engine {
             self.store
                 .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
             app.document = Some(file);
-            app.state_json = document.metadata(&app.title);
+            app.state_json = metadata;
             return Ok(app);
         }
         if app.app != "excalidraw" {
@@ -77,7 +80,7 @@ impl Engine {
         Ok((me, device))
     }
 
-    pub(super) fn app_document_scope(
+    pub(crate) fn app_document_scope(
         &self,
         item: &str,
     ) -> R<(String, String, String, u32, AppDoc)> {
@@ -86,10 +89,13 @@ impl Engine {
         let ItemContent::App(app) = &state.current().content else {
             return Err(invalid());
         };
-        if app.app != "excalidraw" || app.resource_uri != RESOURCE || app.document.is_none() {
+        if app.app != "excalidraw"
+            || (app.resource_uri != RESOURCE && app.view.is_none())
+            || !crate::app_resources::valid(app)
+        {
             return Err(invalid());
         }
-        let file = app.document.as_ref().expect("checked");
+        let file = app.document.as_ref().ok_or_else(invalid)?;
         if file.mime != MIME || file.voice.is_some() {
             return Err(invalid());
         }
@@ -105,7 +111,7 @@ impl Engine {
 
     pub(crate) fn app_document_read(&self, item: &str) -> R<AppDocumentDto> {
         let (_, _, _, version, app) = self.app_document_scope(item)?;
-        let file = app.document.as_ref().expect("checked");
+        let file = app.document.as_ref().ok_or_else(invalid)?;
         let bytes = self
             .owned_file_bytes(file, MAX_SCENE_BYTES as u64)?
             .ok_or_else(|| CoreError::Invalid {

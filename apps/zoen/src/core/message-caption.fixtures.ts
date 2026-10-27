@@ -134,12 +134,14 @@ export function render(
     next,
     previous,
     albumPart,
+    revealAnchor,
   }: {
     phase?: SkyPhase;
     disabled?: boolean;
     next?: TimelineEntry;
     previous?: TimelineEntry;
     albumPart?: ConversationMessageProps['albumPart'];
+    revealAnchor?: { id: string; onLayout: Function; onTextLayout: Function };
   } = {},
 ) {
   const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'));
@@ -174,7 +176,11 @@ export function render(
       useLayoutEffect: (effect: () => unknown) => effect(),
       createContext: (value: unknown) => ({ value }),
       use: (context: { value: unknown }) =>
-        context.value === undefined ? { get: () => didPan } : context.value,
+        context.value === undefined
+          ? { get: () => didPan }
+          : context.value === null
+            ? (revealAnchor ?? null)
+            : context.value,
     },
     'react/compiler-runtime': {
       c: (size: number) =>

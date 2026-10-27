@@ -1,6 +1,9 @@
 //! Readable profile/photo projection and bounded download demand.
 
-use super::*;
+use super::{
+    CoreError, Digest, Engine, Identity, IdentityKind, ProfileDto, ProfileFields,
+    ProfilePhotoBytes, Sha256, Wanted, MAX_PHOTO_BYTES, R,
+};
 
 impl Engine {
     // ── reading ──
@@ -14,19 +17,16 @@ impl Engine {
             });
         }
         let is_me = self.me.as_deref() == Some(id);
-        let agent = ident.is_some_and(|i| i.kind == IdentityKind::Agent);
+        let agent = ident.filter(|identity| identity.kind == IdentityKind::Agent);
         let (name, bio, version, photo) = match (&held, agent) {
-            (Some((v, f)), false) => (
+            (Some((v, f)), None) => (
                 Some(f.name.clone()),
                 Some(f.bio.clone()),
                 *v,
                 f.photo.clone(),
             ),
-            (_, true) => {
-                let i = ident.expect("agent is known");
-                (Some(i.name.clone()), Some(i.bio.clone()), 0, None)
-            }
-            (None, false) => (None, None, 0, None),
+            (_, Some(i)) => (Some(i.name.clone()), Some(i.bio.clone()), 0, None),
+            (None, None) => (None, None, 0, None),
         };
         let photo_ready = photo
             .as_ref()
@@ -92,16 +92,23 @@ impl Engine {
         }
     }
 
-    pub(super) fn apply_fields(&mut self, id: &str) -> R<()> {
+    /// Stage only SQL. The receiver publishes memory after its savepoint commits.
+    pub(super) fn stage_fields_projection(&self, id: &str) -> R<Option<Identity>> {
         let Some(mut ident) = self.identities.get(id).cloned() else {
-            self.net.unknown.insert(id.to_string());
-            return Ok(());
+            return Ok(None);
         };
         self.overlay_profile(&mut ident);
         self.store.put_identity(&ident, None)?;
-        self.identities.insert(id.to_string(), ident);
-        self.index_dirty = true;
-        Ok(())
+        Ok(Some(ident))
+    }
+
+    pub(super) fn publish_fields_projection(&mut self, id: &str, projection: Option<Identity>) {
+        if let Some(ident) = projection {
+            self.identities.insert(id.to_string(), ident);
+            self.index_dirty = true;
+        } else {
+            self.net.unknown.insert(id.to_string());
+        }
     }
 
     /// Profile photos this device holds a key for but not the bytes.

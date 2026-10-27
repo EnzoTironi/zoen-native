@@ -1,6 +1,6 @@
 //! Immutable originals for the three non-model agent control receipts.
 //! This is an echo association, never installation or financial authority.
-use super::*;
+use super::{control, denied, invalid, options, Deserialize, Engine, EventBody, Serialize, R};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use event_log::{content::SealedKind, content_hash_of, verify_author, Author};
 use protocol::{ClientFrame, Envelope};
@@ -188,7 +188,7 @@ impl Engine {
             .logs
             .get(space)
             .into_iter()
-            .flat_map(|log| log.events())
+            .flat_map(event_log::SpaceLog::events)
             .filter(|event| event.client_id == client_id);
         let event = matching.next();
         if reference.is_none() {

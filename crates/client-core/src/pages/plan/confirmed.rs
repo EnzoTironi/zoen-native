@@ -205,8 +205,9 @@ impl<'a> Prefix<'a> {
                                         if fold.document.is_none() {
                                             fold.document = Some(tape.document()?);
                                         }
-                                        let document =
-                                            fold.document.as_mut().expect("initialized above");
+                                        let document = fold.document.as_mut().ok_or_else(|| {
+                                            invalid("Plan document was not initialized")
+                                        })?;
                                         match document.import(&update) {
                                             Err(error) => Acceptance::Refused(error.to_string()),
                                             Ok(()) => {

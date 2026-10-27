@@ -1,0 +1,124 @@
+{
+  "predecessor_commit": "601c94a73d6c0277066cbfb54be79065f8d009c4",
+  "fixture_sha256": "d1401c8d0c5ecb0d0002e01e0c4346e616342b3eeaa5a29932a2636835081e3c",
+  "probe_sha256": "7bfa587cf414450ac00678752c7cba65c1e3735e3c9f68eb9fcc164bde19db18",
+  "source_inputs": [
+    {
+      "path": "crates/types/src/annotation.rs",
+      "sha256": "181e0efa2140f8b9fce5882f11f9b9867434840f6a03c02a99be3587ab56216c"
+    },
+    {
+      "path": "crates/types/src/app_share.rs",
+      "sha256": "adfc4fb9a293e6301974aab9add7249ddc966f8f05c5aa2c97a1f2db55c86848"
+    },
+    {
+      "path": "crates/types/src/authority.rs",
+      "sha256": "d991147bee29f13a9dad07a09f1d98931a6694577b9e092857e01a998b06a6bd"
+    },
+    {
+      "path": "crates/types/src/call_transport.rs",
+      "sha256": "b2c404a8b554fe9ae73e74a2a69d705cf45975d422b581cd0aa04d4b42165720"
+    },
+    {
+      "path": "crates/types/src/calls.rs",
+      "sha256": "1b656b0eae938ee953309e61538b8950b90fbaf6ae6e72a6b3078b0bd6f3233d"
+    },
+    {
+      "path": "crates/types/src/events.rs",
+      "sha256": "91ac687f97844cfacebab90f77ed694af025500d9c7b170a71ff8ec7e44627bc"
+    },
+    {
+      "path": "crates/types/src/identity.rs",
+      "sha256": "0ab3a8259a3a7967277724a8b0e7bdc2757a1d5e58023c7d9c0fd7e2d1e3e13b"
+    },
+    {
+      "path": "crates/types/src/ids/tests.rs",
+      "sha256": "2c6e142e217303a91a46d5c343c05f894ba78cc01a46401d7aefb811e9f64100"
+    },
+    {
+      "path": "crates/types/src/ids.rs",
+      "sha256": "943e96fc7784aa36d5788c755852b5fb3a5151a0ec18f8aee710d38cec949184"
+    },
+    {
+      "path": "crates/types/src/items.rs",
+      "sha256": "8dcc5c0fc33b55cb66b421e358a00214cdb85520e973dfac573b705ef600e088"
+    },
+    {
+      "path": "crates/types/src/lib.rs",
+      "sha256": "7947e776ca3c39e392912d3ed61a4d1386bad15d43c3f74e20be455a9c23c4bc"
+    },
+    {
+      "path": "crates/types/src/media.rs",
+      "sha256": "361445cf43cea0dc1c11e1af0c473c53f80325f1b26c475542762164a942a7b4"
+    },
+    {
+      "path": "crates/types/src/owner_budget.rs",
+      "sha256": "6f0052432c3c58a90cc9942bb686db7e268f6355c4b1c47aafdfdb499cbc76c4"
+    },
+    {
+      "path": "crates/types/src/owner_policy_context.rs",
+      "sha256": "21e3fabd72fac879375f980f6b6b83fbdb2e1a42ff24f197be81670ac4f5f6ac"
+    },
+    {
+      "path": "crates/types/src/reply.rs",
+      "sha256": "dccb11c27cc33f67c61a6f69e62967438baf8546f763ba224370a03076a7549c"
+    },
+    {
+      "path": "crates/types/src/tests.rs",
+      "sha256": "2d917d879fd39e6d51dc70850677412e083c99cdf4708bf2e26a9fa0e9f8a4f5"
+    },
+    {
+      "path": "crates/event-log/src/agent_owner.rs",
+      "sha256": "2529836838ccadbf0159dba37f3710c29570741af50c26fe42aa0625647f8a13"
+    },
+    {
+      "path": "crates/event-log/src/content.rs",
+      "sha256": "9ce817ef59267da2d08ac6eb9a01f2a607b1ce7444de5cc09abfa5204c675588"
+    },
+    {
+      "path": "crates/event-log/src/crypto.rs",
+      "sha256": "2aaae258068876bda569b73750138476c5189f210ebda57f84084399b4cf086c"
+    },
+    {
+      "path": "crates/event-log/src/error.rs",
+      "sha256": "03dfb5f257f3e51de85de26f4bd038547290cd360dfb5d00bda41fd39f78bc14"
+    },
+    {
+      "path": "crates/event-log/src/lib.rs",
+      "sha256": "6463f86ff408c90c8ee236be48fb2251a0854eaa3a2751384ad58d72b22228fe"
+    },
+    {
+      "path": "crates/event-log/src/media.rs",
+      "sha256": "befeb2e4103ec241a8dbcdff0f2a7c4ee0ae337181a8ff6f186a6e3dcfdbe093"
+    },
+    {
+      "path": "crates/event-log/src/owner_budget.rs",
+      "sha256": "3330adfb1a075b7f8ecb2122b9bc3b4e0e3a0be39bdfcdb61729126717cd3fa7"
+    },
+    {
+      "path": "crates/event-log/src/owner_policy_inquiry.rs",
+      "sha256": "815225230944abff7f3b408da76ecb88d77da105b1d0d1bee243cf8c86082859"
+    },
+    {
+      "path": "crates/event-log/src/profile.rs",
+      "sha256": "aad555bc8e7911e565b0bc0ea4139dc27135cb149944548f6f078e7096904377"
+    },
+    {
+      "path": "crates/event-log/src/profile_sync.rs",
+      "sha256": "a5f632fdc267c029eb5707f1b815683c248dd54602d4889b078cbb3b189092a1"
+    },
+    {
+      "path": "crates/event-log/src/recovery.rs",
+      "sha256": "68261d73edbe2adcfdbf3a5c6cd840815d988507615539be218bc83ba10ef8dc"
+    },
+    {
+      "path": "crates/event-log/src/serialization_tests.rs",
+      "sha256": "422de21fc8a16646eaecead95a170e8a0891ce9d71c905f4561e48ef36a77913"
+    },
+    {
+      "path": "crates/event-log/src/tests.rs",
+      "sha256": "329cae013cc8c4ba4359cbe418b953e19afacbc7fb45a67c2e4fb18798b47e74"
+    }
+  ],
+  "execution": "cargo run --offline -p event-log --example target_cohort_probe; unchanged archived libraries, workspace restricted to types/event-log, isolated target; genuine old decode+persist+cold+ordinary-message assertions passed"
+}

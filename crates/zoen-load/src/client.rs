@@ -22,8 +22,8 @@ type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// Latencies in microseconds up to a minute, to 1% (two significant figures): small enough
 /// that every simulated person can keep their own.
-pub fn histogram() -> Histogram<u32> {
-    Histogram::new_with_bounds(1, 60_000_000, 2).expect("histogram bounds")
+pub fn histogram() -> anyhow::Result<Histogram<u32>> {
+    Histogram::new_with_bounds(1, 60_000_000, 2).context("load latency histogram")
 }
 
 pub struct Conn {
@@ -47,15 +47,23 @@ impl Conn {
         )
         .await
         .context("websocket")?;
-        let root = Signer::generate();
-        let author = Author::device(&root, Signer::generate());
+        let root = Signer::generate()?;
+        let author = Author::device(&root, Signer::generate()?);
         let mut c = Conn { ws, author };
         c.send(&ClientFrame::Hello {
             protocol: PROTOCOL_VERSION,
             capabilities: Vec::new(),
             identity: root.id(),
-            device: c.author.device.clone().expect("device"),
-            cert: c.author.cert.clone().expect("cert"),
+            device: c
+                .author
+                .device
+                .clone()
+                .context("load device identity missing")?,
+            cert: c
+                .author
+                .cert
+                .clone()
+                .context("load device certificate missing")?,
         })
         .await?;
         let (nonce, relay_name) = match c.recv().await? {
@@ -124,11 +132,11 @@ impl Conn {
         seen: Option<Seen>,
         body: EventBody,
     ) -> anyhow::Result<Sequenced> {
-        let now = now_ms();
+        let now = now_ms()?;
         let e = self
             .author
-            .sign_event(space, &types::new_ulid(now), now, seen, body);
-        let env = Envelope::plain(&e);
+            .sign_event(space, &types::new_ulid(now)?, now, seen, body)?;
+        let env = Envelope::plain(&e)?;
         let client_id = env.client_id().to_string();
         // Like the app: a temporary refusal (a rate limit) means send the same envelope again
         // after a pause; the relay deduplicates by client id.
@@ -161,7 +169,7 @@ impl Conn {
 
     /// Creates a group Space with `members` in it; returns its id.
     pub async fn create_group(&mut self, members: &[String]) -> anyhow::Result<String> {
-        let space = types::new_id("sp");
+        let space = types::new_id("sp")?;
         let mut head = self
             .publish(
                 &space,
@@ -214,10 +222,12 @@ fn seen(ev: &Sequenced) -> Seen {
     }
 }
 
-pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64)
+/// Unix milliseconds for a signed load event, without a fabricated epoch fallback.
+///
+/// # Errors
+/// Refuses pre-epoch clocks and timestamps outside the signed event integer range.
+pub fn now_ms() -> anyhow::Result<i64> {
+    crate::clock::unix_ms(std::time::SystemTime::now())
 }
 
 /// A message to publish, stamped with the time it was scheduled to go out (µs after the
@@ -237,15 +247,15 @@ pub struct Tally {
 }
 
 impl Tally {
-    pub fn new() -> Tally {
-        Tally {
+    pub fn new() -> anyhow::Result<Tally> {
+        Ok(Tally {
             sent: 0,
             accepted: 0,
             delivered: 0,
             rejected: HashMap::new(),
-            ack: histogram(),
-            delivery: histogram(),
-        }
+            ack: histogram()?,
+            delivery: histogram()?,
+        })
     }
 
     pub fn merge(&mut self, o: Tally) {
@@ -287,7 +297,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
     } = plan;
     let (mut sink, mut stream) = ws.split();
     let mut pending: HashMap<String, u64> = HashMap::new();
-    let mut t = Tally::new();
+    let mut t = Tally::new()?;
     let mut stop_at: Option<Instant> = None;
     loop {
         let frame = tokio::select! {
@@ -296,22 +306,22 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                     stop_at = Some(Instant::now() + drain);
                     continue;
                 };
-                let now = now_ms();
+                let now = now_ms()?;
                 let e = author.sign_event(
                     &space,
-                    &types::new_ulid(now),
+                    &types::new_ulid(now)?,
                     now,
                     Some(head.clone()),
                     EventBody::MessagePosted {
-                        message: types::new_id("m"),
+                        message: types::new_id("m")?,
                         text: due_us.to_string(),
                         attaches: None,
                         reply: None,
                         media: None,
                         forwarded: false,
                     },
-                );
-                let env = Envelope::plain(&e);
+                )?;
+                let env = Envelope::plain(&e)?;
                 if due_us >= measure_from_us {
                     pending.insert(env.client_id().to_string(), due_us);
                     t.sent += 1;
@@ -326,7 +336,8 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
             bail!("relay closed the connection")
         };
         let Message::Binary(b) = msg? else { continue };
-        let at_us = start.elapsed().as_micros() as u64;
+        let at_us = u64::try_from(start.elapsed().as_micros())
+            .context("load elapsed time exceeds microsecond range")?;
         match ServerFrame::decode(&b).map_err(|e| anyhow!("undecodable frame: {e}"))? {
             ServerFrame::Event { ev } => {
                 if ev.seq > head.seq {

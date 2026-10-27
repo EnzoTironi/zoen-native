@@ -9,24 +9,35 @@
 use std::sync::{Arc, OnceLock};
 
 /// A reqwest builder that verifies server certificates with the bundled roots.
-pub(crate) fn client() -> reqwest::ClientBuilder {
-    reqwest::Client::builder().tls_backend_preconfigured(tls_config().clone())
+/// Returns a storage/configuration error when the compiled provider cannot
+/// support the required protocols; never falls back to a weaker trust policy.
+pub(crate) fn client() -> Result<reqwest::ClientBuilder, crate::CoreError> {
+    Ok(reqwest::Client::builder().tls_backend_preconfigured(tls_config()?.clone()))
 }
 
-fn tls_config() -> &'static rustls::ClientConfig {
-    static CONFIG: OnceLock<rustls::ClientConfig> = OnceLock::new();
-    CONFIG.get_or_init(|| {
-        let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(
-            rustls::crypto::ring::default_provider(),
-        ))
-        .with_safe_default_protocol_versions()
-        .expect("ring provides TLS 1.2 and 1.3")
+fn tls_config() -> Result<&'static rustls::ClientConfig, crate::CoreError> {
+    static CONFIG: OnceLock<Result<rustls::ClientConfig, String>> = OnceLock::new();
+    CONFIG
+        .get_or_init(|| {
+            build_config(Arc::new(rustls::crypto::ring::default_provider()))
+                .map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .map_err(|message| crate::CoreError::Storage {
+            message: format!("TLS configuration unavailable: {message}"),
+        })
+}
+
+fn build_config(
+    provider: Arc<rustls::crypto::CryptoProvider>,
+) -> Result<rustls::ClientConfig, rustls::Error> {
+    let mut config = rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()?
         .with_root_certificates(mozilla_roots())
         .with_no_client_auth();
-        // reqwest is built without HTTP/2, so advertise only HTTP/1.1.
-        config.alpn_protocols = vec![b"http/1.1".to_vec()];
-        config
-    })
+    // reqwest is built without HTTP/2, so advertise only HTTP/1.1.
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    Ok(config)
 }
 
 fn mozilla_roots() -> rustls::RootCertStore {
@@ -44,6 +55,20 @@ mod tests {
 
     use super::client;
     use crate::CoreError;
+
+    #[test]
+    fn provider_without_supported_cipher_suites_is_refused() {
+        let mut provider = rustls::crypto::ring::default_provider();
+        provider.cipher_suites.clear();
+        assert!(super::build_config(Arc::new(provider)).is_err());
+    }
+
+    #[test]
+    fn provider_without_key_exchange_groups_is_refused() {
+        let mut provider = rustls::crypto::ring::default_provider();
+        provider.kx_groups.clear();
+        assert!(super::build_config(Arc::new(provider)).is_err());
+    }
 
     #[test]
     fn bundled_roots_include_the_mozilla_isrg_root() {
@@ -64,9 +89,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shared_client_refuses_a_self_signed_server_with_a_core_error() {
+    async fn shared_client_refuses_a_self_signed_server_with_a_core_error(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let addr = untrusted_loopback();
-        let http = client()
+        let http = client()?
             .no_proxy()
             .timeout(Duration::from_secs(5))
             .build()
@@ -93,6 +119,8 @@ mod tests {
             }
             other => panic!("untrusted certificate must be CoreError::Invalid, got {other}"),
         }
+
+        Ok(())
     }
 
     fn error_chain(err: &reqwest::Error) -> String {

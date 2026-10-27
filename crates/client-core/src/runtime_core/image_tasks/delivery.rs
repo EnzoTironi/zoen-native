@@ -1,10 +1,13 @@
 //! Transport changes only the original pending publication, never its creation.
-use super::*;
+use super::{
+    direct_writers, image_tasks, DeviceCore, EventBody, FileDoc, ItemContent, ItemKind,
+    NativeError, NativeImage, Result,
+};
 use crate::blob_transport::BlobUploadReceipt;
 use protocol::Envelope;
 
 impl DeviceCore {
-    /// Recheck the reviewed original after the local ItemCreated projection.
+    /// Recheck the reviewed original after the local `ItemCreated` projection.
     /// Unlike task preparation this permits that exact pending artifact only.
     pub fn image_output_file(
         &self,

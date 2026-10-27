@@ -22,20 +22,21 @@ import UIKit
     let text = captionModel["value"] as? String ?? ""
     guard text.utf16.count <= (source == "conversation" ? 65536 : 4096), !text.contains("\0"),
       source != "conversation" || (incoming.count <= 10 && selected.isEmpty && model["screen"] as? String == "preview") else { throw GalleryFailure.invalid }
-    let newSelectedMode = model["screen"] as? String == "selected"
-    let newGrouped = model["grouped"] as? Bool ?? true
-    let mediaChanged = self.source != source || self.items != parsed || self.previewId != preview || selectedMode != newSelectedMode || grouped != newGrouped
+    guard ZoenAttachmentGalleryLayout.usesPager(screen: model["screen"] as? String ?? "preview") else { throw GalleryFailure.invalid }
+    let nextReview = model["screen"] as? String == "selected"
+    let mediaChanged = self.source != source || self.items != parsed || self.previewId != preview
     let focusedChanged = self.source != source || self.previewId != preview
     if self.revision != revision { cancelReorder() }
     let itemChanged = captionItem != preview
     self.source = source; self.items = parsed; self.selected = selected
     self.previewId = preview; self.revision = revision; self.appearance = appearance
-    selectedMode = newSelectedMode; busy = model["busy"] as? Bool ?? false
-    grouped = newGrouped
+    if nextReview && !reviewingSelection { railVisible = selected.count > 1 }
+    if selected.isEmpty { railVisible = false }
+    reviewingSelection = nextReview; busy = model["busy"] as? Bool ?? false
     if busy {pages.values.forEach{$0.stop()};caption.resignFirstResponder()}
-    root.backgroundColor = selectedMode ? appearance.background : .black
-    root.overrideUserInterfaceStyle = selectedMode ? (appearance.isDark ? .dark : .light) : .dark
-    caption.keyboardAppearance = selectedMode ? (appearance.isDark ? .dark : .light) : .dark
+    root.backgroundColor = .black
+    root.overrideUserInterfaceStyle = .dark
+    caption.keyboardAppearance = .dark
     labels = model["labels"] as? [String:String] ?? [:]
     canEdit = source != "conversation" && model["canEdit"] as? Bool == true
     canAdd = source == "draft" && model["canAdd"] as? Bool == true
@@ -59,11 +60,9 @@ import UIKit
     edit.accessibilityLabel = labels["edit"]; add.accessibilityLabel = labels["add"]
     check.accessibilityLabel = labels["select"]
     counter.accessibilityLabel = labels["review"]
-    counter.menu=UIMenu(children:[UIAction(title:labels["messagePreview"] ?? ""){[weak self] _ in self?.emit("selected")}])
     add.menu=UIMenu(children:[("photo","photos"),("camera","camera"),("document","files")].map{kind,label in
       UIAction(title:labels[label] ?? ""){[weak self] _ in self?.emit("add",payload:["kind":kind])}
     })
-    title.text = labels["messagePreview"] ?? ""; dragHint.text = labels["dragToReorder"] ?? ""
     errorLabel.text = model["errorText"] as? String
     retry.setTitle(labels["retry"],for:.normal)
     if let label = model["errorText"] as? String, !label.isEmpty { errorLabel.isHidden = false; retry.isHidden = false }
@@ -112,13 +111,13 @@ import UIKit
     self.visible=visible;root.isHidden = !visible
     if visible {
       if needsRebuild {rebuildMedia();needsRebuild=false};reflow()
-      if !selectedMode,source == "photos",let tile=transitionSourceView?(previewId),let window=tile.window,
+      if source == "photos",let tile=transitionSourceView?(previewId),let window=tile.window,
         let image=(tile as? UIImageView)?.image {
         sourceFrame=tile.convert(tile.bounds,to:window);sourceId=previewId
         let ticket=UUID();heroTicket=ticket
         Task{@MainActor [weak self] in
           await Task.yield()
-          guard let self,heroTicket==ticket,!retired,self.visible,!selectedMode,
+          guard let self,heroTicket==ticket,!retired,self.visible,
             let frame=sourceFrame,let currentWindow=root.window else{return}
           animateHero(image:image,from:root.convert(frame,from:currentWindow),to:imageFrame(),entering:true,ticket:ticket){[weak self] in self?.finishHero()}
         }
@@ -126,7 +125,7 @@ import UIKit
     }
     else {
       caption.resignFirstResponder();cancelReorder();finishHero()
-      pages.values.forEach{$0.retire()};selectedViews.values.forEach{$0.retire()}
+      pages.values.forEach{$0.retire()}
       strip.visibleCells.forEach{($0 as? GalleryStripCell)?.retire()};needsRebuild=true
     }
   }
@@ -137,17 +136,17 @@ import UIKit
     add.isEnabled = !busy && canAdd
     sendButton.isEnabled = !busy && canSend && aligned; sendGlass.alpha = sendButton.isEnabled ? 1 : 0.2
     check.isEnabled = !busy && aligned && (source == "photos" || canRemove) && !hasKeyboardFocus
-    check.isHidden = source == "conversation" || selectedMode || hasKeyboardFocus || (source == "draft" && !canRemove)
+    check.isHidden = source == "conversation" || hasKeyboardFocus || (source == "draft" && !canRemove)
     check.accessibilityIdentifier = source == "draft" ? "attachment-approval-remove":"attachment-approval-select"
     check.accessibilityLabel = labels[source == "draft" ? "remove":"select"]
     let order = selected.firstIndex(of:previewId).map { $0 + 1 }
     check.update(order:order,accent:appearance?.accent ?? .systemBlue)
     counter.update(count:selected.count,expanded:railVisible)
-    counter.isHidden = selectedMode || selected.isEmpty || hasKeyboardFocus
+    counter.isHidden = selected.isEmpty || hasKeyboardFocus
     recipient.isHidden = hasKeyboardFocus || (recipient.text ?? "").isEmpty
     recipientArrow.isHidden = recipient.isHidden
-    edit.isHidden = !canEdit || hasKeyboardFocus || selectedMode
-    add.isHidden = !canAdd || hasKeyboardFocus || selectedMode
+    edit.isHidden = !canEdit || hasKeyboardFocus
+    add.isHidden = !canAdd || hasKeyboardFocus
     toolbar.isHidden = controlsHidden
     captionPanel.isHidden = controlsHidden
     if source == "conversation" {
@@ -157,12 +156,15 @@ import UIKit
     } else { sendGlass.isHidden = false }
     conversationCaption.isHidden = source != "conversation" || controlsHidden || (conversationCaption.text ?? "").isEmpty || conversationCaption.frame.height<=0
     position.isHidden = source != "conversation" || controlsHidden
-    strip.isHidden = controlsHidden || !railVisible || hasKeyboardFocus || selectedMode
+    strip.isHidden = controlsHidden || !railVisible || hasKeyboardFocus
     captionPanel.isUserInteractionEnabled = !controlsHidden
-    for page in pages.values {page.updateVideoPresentation(visible:!controlsHidden,safeArea:safe,captionFrame:conversationCaption.isHidden ? .zero:conversationCaption.frame)}
+    let footer = source == "conversation" ? (conversationCaption.isHidden ? CGRect.zero:conversationCaption.frame) : captionPanel.frame
+    for page in pages.values {
+      page.updateVideoPresentation(visible:!controlsHidden && !hasKeyboardFocus,safeArea:safe,
+        captionFrame:footer.isEmpty ? .zero:page.convert(footer,from:root))
+    }
   }
   var previewIsVisible:Bool {
-    if selectedMode{return true}
     guard !pager.isDragging,!pager.isDecelerating,pager.bounds.width>0,
       let index=items.firstIndex(where:{$0.id==previewId}) else{return false}
     return abs(pager.contentOffset.x-CGFloat(index)*pager.bounds.width)<1/max(1,root.traitCollection.displayScale)

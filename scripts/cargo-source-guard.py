@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Source-bound Cargo invocations in an exclusively leased, cooperating cache."""
 
-import argparse
 import fcntl
 import hashlib
 import json
@@ -77,7 +76,7 @@ def inside(path, directory):
 
 
 
-def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_files):
+def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_files, collateral_names, historical_names=()):
     workspace = pathlib.Path(manifest).parent
     metadata = json.loads(capture([cargo, "metadata", "--offline", "--locked", "--all-features", "--format-version", "1", "--manifest-path", str(manifest)], workspace, env))
     workspace = pathlib.Path(metadata["workspace_root"]).resolve()
@@ -86,9 +85,11 @@ def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_fi
     local = [p for p in metadata["packages"] if p["source"] is None]
     if not local:
         raise GuardError("No local Cargo packages to bind")
-    collisions = {p["name"] for p in local} & {p["name"] for p in metadata["packages"] if p["source"] is not None}
-    if collisions:
-        raise GuardError("Local/third-party package name collision; Cargo clean cannot isolate these sources")
+    collisions = {p["name"] for p in local} & ({p["name"] for p in metadata["packages"] if p["source"] is not None} | set(historical_names))
+    permitted = set(collateral_names)
+    if collisions - permitted or permitted - collisions:
+        history = " with recorded third-party cache history" if collisions & set(historical_names) else ""
+        raise GuardError(f"Local/third-party package name collision{history}; explicitly name each collateral package clean")
     packages = {}
     for package in local:
         package_manifest = pathlib.Path(package["manifest_path"]).resolve(strict=True)
@@ -139,8 +140,8 @@ def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_fi
         if env.get(name):
             path = pathlib.Path(shutil.which(env[name]) or env[name]).resolve(strict=True)
             programs[name] = {"path": str(path), "sha256": file_hash(path)}
-    context = {"workspace": str(workspace), "manifest": str(manifest), "target": str(target), "config": config, "configuredTargets": configured_targets, "guard": file_hash(pathlib.Path(__file__)), "configurationHelper": file_hash(CONFIGURATION_HELPER), "cargo": capture([cargo, "-Vv"], workspace, env), "rustc": capture([env.get("RUSTC") or "rustc", "-Vv"], workspace, env), "compilerPrograms": programs, "environment": {name: digest(env[name]) if name in env else None for name in sorted(names)}}
-    return {"context": context, "contextDigest": digest(context), "packages": packages, "thirdPartyNames": sorted({p["name"] for p in metadata["packages"] if p["source"] is not None}), "thirdPartyIds": sorted(digest(p["id"]) for p in metadata["packages"] if p["source"] is not None)}
+    context = {"workspace": str(workspace), "manifest": str(manifest), "target": str(target), "config": config, "configuredTargets": configured_targets, "collateralPackageClean": sorted(permitted), "guard": file_hash(pathlib.Path(__file__)), "configurationHelper": file_hash(CONFIGURATION_HELPER), "cargo": capture([cargo, "-Vv"], workspace, env), "rustc": capture([env.get("RUSTC") or "rustc", "-Vv"], workspace, env), "compilerPrograms": programs, "environment": {name: digest(env[name]) if name in env else None for name in sorted(names)}}
+    return {"context": context, "contextDigest": digest(context), "packages": packages, "collateralPackageIds": sorted(p["id"] for p in metadata["packages"] if p["source"] is not None and p["name"] in permitted), "thirdPartyNames": sorted({p["name"] for p in metadata["packages"] if p["source"] is not None}), "thirdPartyIds": sorted(digest(p["id"]) for p in metadata["packages"] if p["source"] is not None)}
 
 
 def stop_owned(child):
@@ -204,15 +205,7 @@ def cargo_command(command, cwd, env, lock_fd, launched):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest-path", required=True)
-    parser.add_argument("--target-dir", required=True)
-    parser.add_argument("--receipt", required=True)
-    parser.add_argument("--cargo", default="cargo")
-    parser.add_argument("--input-env", action="append", default=[])
-    parser.add_argument("--input-file", action="append", default=[])
-    parser.add_argument("--adopt-idle-target", action="store_true")
-    parser.add_argument("command", nargs=argparse.REMAINDER)
+    parser = _configuration["argument_parser"](__doc__)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command or command[0] not in ("build", "test", "check", "clippy"):
@@ -263,14 +256,24 @@ def main():
         env["CARGO_TARGET_DIR"] = str(target)
         env["CARGO_BUILD_BUILD_DIR"] = str(target)
         env["CARGO_TERM_COLOR"] = "never"
-        before = snapshot(args.cargo, manifest, target, sidecar, receipt, env, args.input_env, args.input_file)
+        history = previous["thirdPartyNames"] if valid else []
+        before = snapshot(args.cargo, manifest, target, sidecar, receipt, env, args.input_env, args.input_file, args.allow_collateral_package_clean, history)
         result["before"] = before
         scope = compilation_scope(cargo_args, before["context"]["configuredTargets"])
         result["scope"] = scope
         scope_key = digest(scope)
-        owner_source = digest({"context": before["contextDigest"], "packages": {key: value["digest"] for key, value in before["packages"].items()}})
+        # SDK/toolchain/environment belong to each target/profile scope. A
+        # host -> simulator -> host build must not erase the other bindings.
+        # Real source/config/tooling changes still retire every prior scope.
+        context = before["context"]
+        owner_source = digest({
+            "workspace": context["workspace"], "manifest": context["manifest"],
+            "config": context["config"], "guard": context["guard"],
+            "configurationHelper": context["configurationHelper"],
+            "packages": {key: value["digest"] for key, value in before["packages"].items()},
+        })
         third_party_names = set(before["thirdPartyNames"]) | set(previous.get("thirdPartyNames", []) if valid else [])
-        if third_party_names & {value["name"] for value in before["packages"].values()}:
+        if (third_party_names & {value["name"] for value in before["packages"].values()}) - set(args.allow_collateral_package_clean):
             raise GuardError("Local package name collides with recorded third-party cache history")
         prior_scope = previous["scopes"].get(scope_key, {}) if valid else {}
         if not isinstance(prior_scope, dict):
@@ -278,6 +281,8 @@ def main():
         trusted = prior_scope.get("status") == "bound" and prior_scope.get("contextDigest") == before["contextDigest"] and set(prior_scope.get("packages", {})) == set(before["packages"])
         clean = [key for key, value in before["packages"].items() if not trusted or prior_scope["packages"][key]["digest"] != value["digest"]]
         result["cleanedPackages"] = clean
+        result["historicalCollateralPackageNames"] = sorted(set(history) & set(args.allow_collateral_package_clean) & {before["packages"][key]["name"] for key in clean})
+        result["collateralCleanedPackageIds"] = before["collateralPackageIds"] if any(before["packages"][key]["name"] in args.allow_collateral_package_clean for key in clean) else []
         scopes = previous["scopes"].copy() if valid and previous.get("ownerSourceDigest") == owner_source else {}
         scopes[scope_key] = {"status": "in_progress"}
         working = {"schema": 1, "status": "in_progress", "target": str(target), "pid": os.getpid(), "ownerSourceDigest": owner_source, "thirdPartyNames": sorted(third_party_names), "scopes": scopes}
@@ -293,7 +298,7 @@ def main():
             atomic_json(state_path, working)
         invocation = [args.cargo, command[0], "--offline", "--locked", "--manifest-path", str(manifest), "--target-dir", str(target), "--message-format=json-render-diagnostics", *command[1:]]
         records = cargo_command(invocation, manifest.parent, env, lock_fd, launched)
-        after = snapshot(args.cargo, manifest, target, sidecar, receipt, env, args.input_env, args.input_file)
+        after = snapshot(args.cargo, manifest, target, sidecar, receipt, env, args.input_env, args.input_file, args.allow_collateral_package_clean, history)
         result["after"] = after
         if before != after:
             raise GuardError("Source/configuration changed during Cargo; outputs remain unqualified")

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Roadmap do Zoen: jornadas, telas e referências, com implementação e aceite separados.">
+  <title>Zoen — caminho até o produto completo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2317634e'/%3E%3Ctext x='9' y='25' fill='white' font-family='sans-serif' font-size='27'%3Ez%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="roadmap.css">
+  <script src="roadmap.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#content">Ir para o conteúdo</a>
+  <main class="shell">
+    <header class="masthead"><a class="brand" href="./" aria-label="Zoen, início do roadmap"><span class="brand-mark" aria-hidden="true">z</span>zoen<span class="brand-note">/ roadmap</span></a><span id="revision" class="revision">Carregando fonte…</span></header>
+    <section class="hero" aria-labelledby="headline">
+      <p class="eyebrow">Um produto inteiro, uma jornada de cada vez</p>
+      <h1 id="headline">Conversar. Criar.<br><span>Continuar de onde parou.</span></h1>
+      <p class="intro">O caminho do Zoen, do iPhone ao desktop. Cada entrega liga a experiência desejada ao código existente e ao que ainda precisa ser comprovado.</p>
+      <div class="platforms" aria-label="Plataformas do produto"><span class="current">iOS <small>agora</small></span><span>Web</span><span>Android</span><span>macOS</span><span>Windows</span><span>Linux</span></div>
+    </section>
+    <section id="overview" class="overview" aria-label="Estado do levantamento"></section>
+    <section id="decisions" class="decisions" aria-label="Decisões de produto" hidden></section>
+    <div class="workspace">
+      <nav class="tabs" aria-label="Explorar o roadmap"><button type="button" data-tab="roadmap" aria-pressed="true">Roadmap <span id="count-roadmap"></span></button><button type="button" data-tab="surfaces" aria-pressed="false">Telas <span id="count-surfaces"></span></button><button type="button" data-tab="telegram" aria-pressed="false">Telegram <span id="count-telegram"></span></button></nav>
+      <section class="tools" aria-label="Filtros">
+        <label class="search-label"><span>Buscar</span><input id="search" type="search" placeholder="Jornada, tela, recurso ou issue…" autocomplete="off"></label>
+        <label><span>Escopo</span><select id="scope"><option value="all">Todos os escopos</option><option value="active">Ativo</option><option value="later">Depois</option><option value="paused">Pausado</option><option value="decision">Referência adicional</option></select></label>
+        <label><span>Implementação</span><select id="implementation"><option value="all">Todos os estados</option><option value="present">Código presente</option><option value="partial">Parcial</option><option value="missing">Ausente</option><option value="unverified">Não verificada</option><option value="different">Modelo diferente</option></select></label>
+        <label><span>Aceite</span><select id="acceptance"><option value="all">Todos os aceites</option><option value="pending">Pendente</option><option value="scoped">Evidência parcial</option><option value="accepted">Aceito</option></select></label>
+      </section>
+      <div id="phase-filter" class="phases" aria-label="Etapas do roadmap"></div>
+      <div class="results-heading"><div><h2 id="view-title">Roadmap</h2><p id="view-description">Carregando jornadas…</p></div><button id="reset" type="button" class="reset" hidden>Limpar filtros</button></div>
+      <p class="legend">Código presente ≠ jornada aceita. O checkbox só marca um aceite registrado; esta página não altera os dados.</p>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <div id="content" tabindex="-1" aria-busy="true"><p class="loading">Abrindo o levantamento…</p></div>
+      <p id="result-count" class="result-count" role="status" aria-live="polite"></p>
+    </div>
+    <section id="visuals" class="visuals" aria-labelledby="visual-title" hidden><h2 id="visual-title">Revisão visual</h2><p>Capturas registradas, sem substituir o aceite da jornada.</p><div id="visual-grid"></div></section>
+    <footer><span>Telegram guia a conversa. Signal guia a confiabilidade.</span><a href="manifest.json">Dados do levantamento ↗</a></footer>
+  </main>
+  <noscript><p class="notice">Ative JavaScript para filtrar os dados. O <a href="manifest.json">manifesto</a> contém os caminhos dos arquivos JSON.</p></noscript>
+</body>
+</html>

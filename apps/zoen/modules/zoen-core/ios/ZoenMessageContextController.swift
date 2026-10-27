@@ -5,6 +5,15 @@ import UIKit
 final class ZoenMessageContextController: UIViewController {
   let request: UUID
   let binding: String
+  let gestureId: String
+  weak var heldText: UITextView?
+  let heldTextPoint: CGPoint
+  let hadHeldText: Bool
+  var textSelectionInitialized = false
+  var selectingText = false
+  var selectionAnnounced = false
+  var textSelectionState: [ZoenContextTextSelectionState] = []
+  var textSelectionInteraction: [(UIView, Bool)] = []
   let sourceGeneration: UInt64
   weak var child: UIView?
   weak var sourceWindow: UIWindow?
@@ -15,12 +24,13 @@ final class ZoenMessageContextController: UIViewController {
   let backdrop = UIView()
   private let material = UIVisualEffectView()
   let actions = UIScrollView()
+  let actionHighlight = UIView()
   let reactionScroll = UIScrollView()
   let preview = UIScrollView()
-  private var actionButtons: [UIButton] = []
+  var actionButtons: [UIButton] = []
   var reactionButtons: [UIButton] = []
   var selected: String?
-  private var closing = false
+  var closing = false
   private var retired = false
   var finished = false
   private var extracted = false
@@ -28,14 +38,15 @@ final class ZoenMessageContextController: UIViewController {
   private var returnAnimator: UIViewPropertyAnimator?
   var sourceFrame = CGRect.zero
   var pressedScale: CGFloat = 1
-  private var hover: UIButton?
-  private var heldSelectionAdmitted = false
+  var hover: UIButton?
+  var heldSelectionAdmitted = false
   var reduceMotion: Bool { configuration.reducedMotion || UIAccessibility.isReduceMotionEnabled }
 
   init(source: ZoenMessageContextSource, configuration: ZoenMessageContextConfiguration,
-       request: UUID, generation: UInt64, binding: String, child: UIView) {
+       request: UUID, generation: UInt64, binding: String, child: UIView, gestureId: String = "", heldText: UITextView? = nil, heldTextPoint: CGPoint = .zero, hadHeldText: Bool = false) {
     self.source = source; self.configuration = configuration; self.request = request
-    sourceGeneration = generation; self.binding = binding; self.child = child
+    self.heldText = heldText; self.heldTextPoint = heldTextPoint; self.hadHeldText = hadHeldText || heldText != nil
+    sourceGeneration = generation; self.binding = binding; self.child = child; self.gestureId = gestureId
     super.init(nibName: nil, bundle: nil)
     NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.willResignActiveNotification, object: nil)
     NotificationCenter.default.addObserver(self, selector: #selector(motionChanged), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
@@ -67,6 +78,10 @@ final class ZoenMessageContextController: UIViewController {
     material.effect = UIBlurEffect(style: configuration.theme.isDark ? .systemMaterialDark : .systemMaterialLight)
     material.backgroundColor = UIColor.contextHex(configuration.theme.background)
     actions.addSubview(material)
+    actionHighlight.isUserInteractionEnabled = false
+    actionHighlight.alpha = 0
+    actionHighlight.backgroundColor = configuration.theme.isDark ? .white : .black
+    actions.addSubview(actionHighlight)
     for action in configuration.actions {
       let button = makeButton(label: action.label, id: action.id, actionRow: true)
       button.setImage(action.symbol.flatMap { UIImage(systemName: $0, withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)) }, for: .normal)
@@ -112,15 +127,20 @@ final class ZoenMessageContextController: UIViewController {
     button.setTitle(label, for: .normal)
     button.accessibilityIdentifier = "message-context-\(id)"
     button.accessibilityTraits = .button
+    if let row = button as? ZoenContextActionButton {
+      row.trackTouch = { [weak self] point, ended, cancelled in
+        self?.trackActionTouch(point, ended: ended, cancelled: cancelled)
+      }
+    }
     button.addAction(UIAction(identifier: UIAction.Identifier(id)) { [weak self] _ in self?.choose(id) }, for: .touchUpInside)
     button.addAction(UIAction { [weak self, weak button] _ in
       guard let self, let button else { return }
-      button.backgroundColor = UIColor.contextHex(self.configuration.theme.highlight)
-    }, for: .touchDown)
+      self.updateSelection(button, animated: true)
+    }, for: [.touchDown, .touchDragEnter])
     button.addAction(UIAction { [weak self, weak button] _ in
-      guard let self, let button else { return }
-      button.backgroundColor = button.isSelected ? UIColor.contextHex(self.configuration.theme.highlight) : .clear
-    }, for: [.touchUpInside, .touchCancel, .touchUpOutside])
+      guard let self, self.hover === button else { return }
+      self.updateSelection(nil, animated: true)
+    }, for: [.touchUpInside, .touchCancel, .touchUpOutside, .touchDragExit])
     return button
   }
   func extract() {
@@ -152,11 +172,15 @@ final class ZoenMessageContextController: UIViewController {
     let safe = view.convert(window.bounds.inset(by: window.safeAreaInsets), from: window).intersection(view.bounds).insetBy(dx: 8, dy: 8)
     guard safe.contextFinite, source.bounds.contextFinite, source.bounds.width <= safe.width else { retire(); return }
     let original = source.convert(source.bounds, to: view)
+    if selectingText {
+      layoutTextSelection(safe: safe, original: original, source: source)
+      return
+    }
     let menuWidth = min(240, safe.width)
     let rowHeights = actionButtons.map { button in
       max(44, ceil(button.titleLabel?.sizeThatFits(CGSize(width: menuWidth - 78, height: .greatestFiniteMagnitude)).height ?? 22) + 22)
     }
-    let totalHeight = rowHeights.reduce(0, +)
+    let totalHeight = rowHeights.reduce(0, +) + (actionButtons.isEmpty ? 0 : 20)
     let actionHeight = min(totalHeight, max(44, safe.height * 0.44))
     let reactionHeight: CGFloat = reactionButtons.isEmpty ? 0 : 63
     let lowerGap: CGFloat = actionButtons.isEmpty ? 0 : 8
@@ -176,7 +200,7 @@ final class ZoenMessageContextController: UIViewController {
     actions.layer.cornerRadius = min(30, actionHeight * 0.5)
     actions.contentSize = CGSize(width: menuWidth, height: totalHeight)
     material.frame = CGRect(x: 0, y: 0, width: menuWidth, height: max(actionHeight, totalHeight))
-    var actionY: CGFloat = 0
+    var actionY: CGFloat = 10
     for (index, button) in actionButtons.enumerated() {
       let rowHeight = rowHeights[index]
       button.frame = CGRect(x: 0, y: actionY, width: menuWidth, height: rowHeight)
@@ -189,6 +213,7 @@ final class ZoenMessageContextController: UIViewController {
         button.pixel = 1 / window.screen.scale
       }
     }
+    layoutActionHighlight()
     let reactionContentWidth = CGFloat(reactionButtons.count) * 36 + CGFloat(max(0, reactionButtons.count - 1)) * 8 + 12
     let reactionWidth = min(safe.width, reactionContentWidth)
     let reactionX = configuration.incoming ? next.maxX - reactionWidth + 22 : next.minX - 26
@@ -199,37 +224,6 @@ final class ZoenMessageContextController: UIViewController {
       button.frame = CGRect(x: 2 + CGFloat(index) * 44, y: 6, width: 44, height: 44)
     }
   }
-  func trackHeldTouch(_ point: CGPoint, origin: CGPoint, ended: Bool, cancelled: Bool) {
-    guard isCurrent, !closing else { return }
-    if cancelled || ended {
-      // Reflow can put a menu row under a stationary finger. Only a preceding
-      // deliberate Move may admit its hover; Up must never hit-test a new row.
-      let selected = !cancelled && heldSelectionAdmitted ? hover : nil
-      heldSelectionAdmitted = false
-      updateHeldHover(nil)
-      if let id = selected?.accessibilityIdentifier?.replacingOccurrences(of: "message-context-", with: "") { choose(id) }
-      return
-    }
-    // Telegram f1dd7a2 ContextControllerImpl ContextGesture branch: vertical >4pt.
-    // The origin is the original held UITouch in the same window coordinates.
-    if !heldSelectionAdmitted && abs(point.y - origin.y) > 4 { heldSelectionAdmitted = true }
-    guard heldSelectionAdmitted else { return }
-    let target = (reactionButtons + actionButtons).first { button in
-      guard let parent = button.superview, !parent.isHidden else { return false }
-      let local = button.convert(point, from: sourceWindow)
-      return button.bounds.contains(local) && parent.bounds.contains(parent.convert(point, from: sourceWindow))
-    }
-    updateHeldHover(target)
-  }
-  private func updateHeldHover(_ target: UIButton?) {
-    if hover !== target {
-      hover?.transform = .identity
-      hover?.backgroundColor = hover?.isSelected == true ? UIColor.contextHex(configuration.theme.highlight) : .clear
-      hover = target
-      target?.backgroundColor = UIColor.contextHex(configuration.theme.highlight)
-      if let target, !reduceMotion { target.transform = CGAffineTransform(scaleX: 1.15, y: 1.15); UISelectionFeedbackGenerator().selectionChanged() }
-    }
-  }
   override var canBecomeFirstResponder: Bool { true }
   override var keyCommands: [UIKeyCommand]? {
     [UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(outside)),
@@ -238,44 +232,29 @@ final class ZoenMessageContextController: UIViewController {
      UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(activateFocused))]
   }
   override func accessibilityPerformEscape() -> Bool { choose(nil); return true }
-  @objc private func nextAction() { moveFocus(1) }
-  @objc private func previousAction() { moveFocus(-1) }
-  @objc private func activateFocused() {
-    if let id = hover?.accessibilityIdentifier?.replacingOccurrences(of: "message-context-", with: "") { choose(id) }
-  }
-  private func moveFocus(_ direction: Int) {
-    guard isCurrent, !closing else { return }
-    let buttons = reactionButtons + actionButtons
-    guard !buttons.isEmpty else { return }
-    let index = hover.flatMap { current in buttons.firstIndex(where: { $0 === current }) } ?? (direction > 0 ? -1 : 0)
-    hover?.backgroundColor = hover?.isSelected == true ? UIColor.contextHex(configuration.theme.highlight) : .clear
-    let next = buttons[(index + direction + buttons.count) % buttons.count]
-    hover = next
-    next.backgroundColor = UIColor.contextHex(configuration.theme.highlight)
-    if let scroll = next.superview as? UIScrollView { scroll.scrollRectToVisible(next.frame, animated: !reduceMotion) }
-    UIAccessibility.post(notification: .layoutChanged, argument: next)
-  }
   @objc private func outside() { choose(nil) }
   @objc func background() { retire() }
   @objc private func motionChanged() {
     if reduceMotion {
-      for layer in [preview.layer, actions.layer, reactionScroll.layer, backdrop.layer] { layer.removeAllAnimations() }
+      for layer in [preview.layer, actions.layer, actionHighlight.layer, reactionScroll.layer, backdrop.layer] { layer.removeAllAnimations() }
+      for button in reactionButtons { button.transform = .identity }
       if closing { finish(); return }
       reflow(animated: false)
     }
   }
-  private func choose(_ value: String?) {
+  func choose(_ value: String?) {
     guard isCurrent, !closing else { return }
     let allowed = Set(configuration.actions.map(\.id) + configuration.reactions.map { "reaction:\($0.emoji)" } + (configuration.moreLabel == nil ? [] : ["more"]))
-    guard value == nil || allowed.contains(value!) else { return }
+    guard value == nil || (!selectingText && allowed.contains(value!)) else { return }
+    if value == "select" { beginTextSelection(); return }
     selected = value
     beginClose(animated: true)
   }
-  func close() async {
+  func close(selectionResult: String? = nil) async {
     if finished { return }
     await withCheckedContinuation { waiter in
       waiters.append(waiter)
-      selected = nil
+      selected = selectionResult
       beginClose(animated: true)
     }
   }
@@ -326,9 +305,14 @@ final class ZoenMessageContextController: UIViewController {
     guard !finished else { return }
     let action = isCurrent ? selected : nil
     // isCurrent must be sampled BEFORE removal invalidates stage.controller.
+    restoreTextSelection()
     stage?.remove(self)
     if viewIfLoaded?.superview != nil || parent != nil { return }
     finished = true
+    if selectionAnnounced {
+      selectionAnnounced = false
+      source?.selectionPhase(self, active: false)
+    }
     source?.finished(self)
     returnAnimator = nil
     NotificationCenter.default.removeObserver(self)
@@ -342,6 +326,23 @@ final class ZoenMessageContextController: UIViewController {
 
 @MainActor
 private final class ZoenContextActionButton: UIButton {
+  var trackTouch: ((CGPoint, Bool, Bool) -> Void)?
+  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    if let touch = touches.first { trackTouch?(touch.location(in: window), false, false) }
+  }
+  override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+    if let touch = touches.first { trackTouch?(touch.location(in: window), false, false) }
+  }
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+    if let touch = touches.first { trackTouch?(touch.location(in: window), true, false) }
+  }
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+    trackTouch?(.zero, false, true)
+  }
+  override func accessibilityActivate() -> Bool {
+    sendActions(for: .touchUpInside)
+    return true
+  }
   let separator = UIView()
   var pixel: CGFloat = 1
   override init(frame: CGRect) {

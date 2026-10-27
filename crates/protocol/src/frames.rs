@@ -1,5 +1,5 @@
 //! Existing client/server frame and request/reply definitions.
-use super::*;
+use super::{DeviceSigned, Envelope, Identity, IdentityId, Role, Sequenced, SpaceId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Cursor {
@@ -12,7 +12,7 @@ pub struct Cursor {
 pub enum EphemeralKind {
     Typing,
     StoppedTyping,
-    /// The agent (or person) is working: "processing", "building", "in_call"…
+    /// The agent (or person) is working: "processing", "building", `in_call`…
     Status {
         status: String,
     },
@@ -141,6 +141,7 @@ pub enum Op {
     },
     /// This identity's devices, unlinked ones included.
     Devices,
+    CompleteRead(crate::complete_reads::Request),
     /// Unlinks one of this identity's devices: it can't sign in again and its key packages
     /// go. Its leaves leave the groups through commits by the other devices.
     Unlink {
@@ -180,6 +181,15 @@ pub enum AgentRequest {
     },
     /// Owner only: one of your agents' status ("active", "paused" or "revoked").
     Status { agent: IdentityId },
+    /// Owner only: canonical lifecycle revision and last operation.
+    ControlStatus { agent: IdentityId },
+    /// Owner only: apply once at exactly the observed lifecycle revision.
+    ControlReviewed {
+        agent: IdentityId,
+        action: AgentAction,
+        operation: String,
+        revision: u64,
+    },
     /// Owner only.
     Control {
         agent: IdentityId,
@@ -196,6 +206,7 @@ pub enum AgentAction {
 }
 
 impl AgentAction {
+    #[must_use]
     pub fn id(self) -> &'static str {
         match self {
             AgentAction::Pause => "pause",
@@ -204,6 +215,7 @@ impl AgentAction {
         }
     }
 
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "pause" => Some(AgentAction::Pause),
@@ -235,6 +247,7 @@ pub struct DeviceCertificate {
 
 impl Op {
     /// A stable name for metrics and traces; carries none of the op's data.
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             Op::Register { .. } => "register",
@@ -254,12 +267,16 @@ impl Op {
             Op::DeliverLink { .. } => "deliver_link",
             Op::FetchLink { .. } => "fetch_link",
             Op::Devices => "devices",
+            Op::CompleteRead(_) => "complete_read",
             Op::Unlink { .. } => "unlink",
             Op::SendDevice { .. } => "send_device",
             Op::Agent(AgentRequest::State) => "agent_state",
             Op::Agent(AgentRequest::Advance { .. }) => "agent_advance",
             Op::Agent(AgentRequest::Define { .. }) => "agent_define",
-            Op::Agent(AgentRequest::Control { .. }) => "agent_control",
+            Op::Agent(AgentRequest::Control { .. } | AgentRequest::ControlReviewed { .. }) => {
+                "agent_control"
+            }
+            Op::Agent(AgentRequest::ControlStatus { .. }) => "agent_control_status",
             Op::Agent(AgentRequest::Status { .. }) => "agent_status",
             Op::CallTurn { .. } => "call_turn",
             Op::RuntimeBinding(_) => "runtime_binding",
@@ -299,10 +316,12 @@ pub enum Reply {
     AgreementKeys(Vec<AgreementKeyRecord>),
     SealedProfiles(Vec<SealedProfile>),
     KeyPackages(Vec<KeyPackageRecord>),
-    /// FetchLink: the sealed box, `None` while nobody left one.
+    /// `FetchLink`: the sealed box, `None` while nobody left one.
     Link(Option<Vec<u8>>),
     Devices(Vec<DeviceRecord>),
+    CompletePage(crate::complete_reads::Page),
     AgentState(AgentStateRecord),
+    AgentControl(crate::agent_control::Record),
     CallTurn(crate::turn::TurnCredentials),
     RuntimeBinding(crate::runtime_binding::Proof),
 }
@@ -345,7 +364,7 @@ pub struct InviteCreated {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ErrorCode {
     Other,
-    /// The client's protocol is older than [`MIN_PROTOCOL_VERSION`]: update the app.
+    /// The client's protocol is older than [`crate::MIN_PROTOCOL_VERSION`]: update the app.
     UpgradeRequired,
     /// Login or certificate failed: retrying won't help.
     Unauthorized,
@@ -356,10 +375,12 @@ pub enum ErrorCode {
 }
 
 /// The relay's words for every rate-limit refusal; [`retry_hint`] reads the delay back.
+#[must_use]
 pub fn slow_down(retry: std::time::Duration) -> String {
     format!("slow down, retry in {:.1} s", retry.as_secs_f64().max(0.1))
 }
 
+#[must_use]
 pub fn retry_hint(message: &str) -> Option<std::time::Duration> {
     let secs = message.split("retry in ").nth(1)?.split(' ').next()?;
     let secs: f64 = secs
@@ -417,7 +438,7 @@ pub enum ServerFrame {
     },
     /// One of your devices is running out of single-use MLS key packages (ADR 0026): it
     /// should publish more. Sent at login and after a claim leaves it under
-    /// [`KEY_PACKAGES_LOW`]. Other devices of the identity ignore it.
+    /// [`crate::KEY_PACKAGES_LOW`]. Other devices of the identity ignore it.
     KeyPackagesLow {
         device: String,
         remaining: u32,

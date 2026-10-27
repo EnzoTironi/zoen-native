@@ -1,12 +1,19 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { bundledLibraryAssets } from "./library-assets.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
+const packageAt = process.argv.indexOf("--package-output");
+if (
+  packageAt >= 0 &&
+  (!process.argv[packageAt + 1] || process.argv[packageAt + 1].startsWith("--"))
+)
+  throw new Error("--package-output requires a destination directory.");
+const packageOutput = packageAt < 0 ? null : resolve(process.argv[packageAt + 1]);
 const output = join(root, "../../apps/zoen/src/miniapps/vendor");
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const upstream = JSON.parse(await readFile(join(root, "upstream.json"), "utf8"));
@@ -23,7 +30,12 @@ for (const file of [
   "NOTICE.md",
   "LICENSE",
   "src/canonical-app.tsx",
+  "src/canonical-canvas.tsx",
+  "src/canonical-serialize.ts",
+  "src/canonical-application.ts",
+  "src/canonical-review.ts",
   "src/host-safe-area.ts",
+  "src/host-touch.css",
   "src/canonical-saves.ts",
   "src/canonical-transfer.ts",
   "licenses/excalidraw-v0.18.0-MIT.txt",
@@ -61,7 +73,7 @@ const result = await build({
 });
 const packages = new Map();
 for (const path of Object.keys(result.metafile.inputs)) {
-  const match = path.match(/^node_modules\/((?:@[^/]+\/)?[^/]+)(?:\/|$)/);
+  const match = path.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)(?:\/|$)/);
   if (!match || packages.has(match[1])) continue;
   const base = join(root, "node_modules", match[1]);
   const pkg = JSON.parse(await readFile(join(base, "package.json"), "utf8"));
@@ -91,6 +103,8 @@ for (const path of Object.keys(result.metafile.inputs)) {
     text: licenseText,
   });
 }
+for (const required of ["react", "@excalidraw/excalidraw", "@modelcontextprotocol/ext-apps"])
+  if (!packages.has(required)) throw new Error(`Missing bundled dependency inventory: ${required}`);
 const bundled = [...packages.values()].sort((a, b) => a.name.localeCompare(b.name));
 const notices = bundled
   .map(
@@ -101,7 +115,9 @@ const notices = bundled
         .trim()}\n`,
   )
   .join("\n");
-const noticesPath = join(root, "THIRD-PARTY-LICENSES.txt");
+if (packageOutput && !process.argv.includes("--check"))
+  await mkdir(packageOutput, { recursive: true });
+const noticesPath = join(packageOutput ?? root, "THIRD-PARTY-LICENSES.txt");
 if (process.argv.includes("--check")) {
   if ((await readFile(noticesPath, "utf8")) !== notices)
     throw new Error("Stale third-party notices");
@@ -152,16 +168,17 @@ const files = {
     { input: JSON.stringify(manifest, null, 2), encoding: "utf8" },
   ),
 };
-for (const [name, content] of Object.entries(files)) {
-  const path = join(output, name);
-  if (process.argv.includes("--check")) {
-    if ((await readFile(path, "utf8")) !== content)
-      throw new Error(`Stale Excalidraw UI artifact: ${name}`);
-  } else {
-    await mkdir(output, { recursive: true });
-    await writeFile(path, content);
+if (!packageOutput)
+  for (const [name, content] of Object.entries(files)) {
+    const path = join(output, name);
+    if (process.argv.includes("--check")) {
+      if ((await readFile(path, "utf8")) !== content)
+        throw new Error(`Stale Excalidraw UI artifact: ${name}`);
+    } else {
+      await mkdir(output, { recursive: true });
+      await writeFile(path, content);
+    }
   }
-}
 const rustOutput = join(root, "../../crates/miniapps/resources");
 const rustManifest = {
   ...manifest,
@@ -176,13 +193,26 @@ for (const [name, content] of Object.entries({
   "excalidraw.html": html,
   "excalidraw.manifest.json": JSON.stringify(rustManifest, null, 2) + "\n",
 })) {
-  const path = join(rustOutput, name);
+  const path = join(packageOutput ?? rustOutput, name);
   if (process.argv.includes("--check")) {
     if ((await readFile(path, "utf8")) !== content) throw new Error(`Stale Rust resource: ${name}`);
   } else await writeFile(path, content);
 }
+if (packageOutput) {
+  for (const [name, content] of Object.entries({
+    "provenance.json": JSON.stringify(manifest.provenance, null, 2) + "\n",
+    LICENSE: await readFile(join(root, "LICENSE"), "utf8"),
+  })) {
+    const path = join(packageOutput, name);
+    if (process.argv.includes("--check")) {
+      if ((await readFile(path, "utf8")) !== content)
+        throw new Error(`Stale external package: ${name}`);
+    } else await writeFile(path, content);
+  }
+}
 console.log(
   JSON.stringify({
+    packageOutput,
     resourceUri: manifest.resourceUri,
     sha256: manifest.sha256,
     bytes: manifest.bytes,

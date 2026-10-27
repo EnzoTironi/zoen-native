@@ -130,12 +130,13 @@ export function stopCapture(
         // iOS can pause the recorder before AppState reaches JS. isRecording
         // false does not mean its M4A is finalized; SDK58 stop also closes paused audio.
         if (!capture.stopped) {
+          capture.durationMs = Math.max(capture.durationMs, recorder.getStatus().durationMillis);
           await recorder.stop();
           capture.stopped = true;
         }
         // Web publishes its recording URI only after stop. Read the final URI
         // while this SharedObject is still mounted, retaining it across retries.
-        if (mounted.current) capture.uri = recorder.uri ?? capture.uri;
+        if (mounted.current && !capture.terminal) capture.uri = recorder.uri ?? capture.uri;
         if (mounted.current && recorder.getStatus().isRecording) {
           capture.stopped = false;
           throw new Error(t('media.theRecordingOnThisDeviceCouldNotBe'));
@@ -151,7 +152,7 @@ export function stopCapture(
         preparedUri.current = undefined;
         const { durationMs } = capture;
         const uri = capture.uri;
-        if (uri && durationMs >= 250 && mounted.current && focused.current) {
+        if (uri && (durationMs >= 250 || capture.terminal) && mounted.current && focused.current) {
           const stride = Math.max(1, Math.ceil(levels.current.length / 160));
           stageVoice(
             {
@@ -167,6 +168,7 @@ export function stopCapture(
           if (mounted.current && focused.current && durationMs < 250)
             void inform(t('media.recordingTooShort'), t('media.recordForAtLeastOneSecondToSend'));
         }
+        if (capture.replacementUri) await discard(capture.replacementUri);
         stoppedCapture.current = null;
       } else if ((prepared.current || preparedUri.current) && mounted.current) {
         if (prepared.current) await recorder.stop();
@@ -464,7 +466,7 @@ export async function prepareCapture(
     recording.current = true;
     setCaptureActive(true);
     setCapturePaused(false);
-    stoppedCapture.current = null;
+    stoppedCapture.current = { uri: recorder.uri ?? undefined, durationMs: 0, stopped: false };
     started = true;
     uriToDiscard.current = recorder.uri ?? undefined;
   } catch (reason) {

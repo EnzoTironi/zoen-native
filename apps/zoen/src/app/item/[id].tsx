@@ -1,3 +1,4 @@
+import { isBinaryEditorId } from '../../miniapps/binary-formats';
 import { t, formatLocale } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { Redirect, Stack, router, useLocalSearchParams } from 'expo-router';
@@ -9,11 +10,14 @@ import { EmptyState, Loading, NativeButton, Surface } from '../../components/pri
 import { useDialogs } from '../../components/dialogs';
 import { PlanBlocks, PlanVersion } from '../../documents/plan-blocks';
 import { ArtifactDiscussion } from '../../documents/artifact-discussion';
+import { DeckVersionAction } from '../../miniapps/deck-version-action';
 import { PageVersionExportAction } from '../../documents/page-version-export-action';
 import { PageBlocks } from '../../documents/page-blocks';
 import { clearPlanUndo, rememberPlanUndo, usePlanUndo } from '../../documents/plan-undo';
 import { FileAttachment } from '../../media/MediaAttachment';
 import { MiniappState } from '../../miniapps/state-view';
+import { AppPackageAction } from '../../miniapps/package-action';
+import { isAppPackage } from '../../miniapps/package-intent';
 
 export default function Item() {
   const { id, history } = useLocalSearchParams<{ id: string; history?: string }>();
@@ -175,6 +179,11 @@ export default function Item() {
               {pastPage.data && pastPage.data.version === selected && !oldError ? (
                 <PageVersionExportAction page={pastPage.data} />
               ) : null}
+              {past.data?.version === selected &&
+              isBinaryEditorId(past.data.app?.app_id) &&
+              !oldError ? (
+                <DeckVersionAction item={past.data} />
+              ) : null}
               {canRestore && oldReady ? (
                 <NativeButton
                   label={busy ? t('documents.restoring') : t('documents.restoreThisVersion')}
@@ -301,6 +310,8 @@ export default function Item() {
                 onPress={() => router.push({ pathname: '/miniapp/[id]', params: { id } })}
               />
             </>
+          ) : isAppPackage(item) ? (
+            <AppPackageAction item={item} />
           ) : item.file?.mime === 'text/html' ? (
             <NativeButton
               label={t('sites.openVersion', { version: item.version })}

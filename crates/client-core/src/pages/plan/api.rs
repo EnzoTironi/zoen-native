@@ -92,7 +92,7 @@ pub enum PlanPageContentDto {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PlanPageBlockDto {
-    /// CRDT identity in DocumentSession; a presentation ID in LocalPendingLegacy.
+    /// CRDT identity in `DocumentSession`; a presentation ID in `LocalPendingLegacy`.
     /// Both are distinct from a line's possibly duplicated legacy ID.
     pub id: String,
     pub content: PlanPageContentDto,
@@ -154,7 +154,7 @@ pub struct PlanPageDto {
     pub source: PlanPageReadSourceDto,
     /// Last semantically accepted shared version, or zero before creation confirms.
     pub version: u32,
-    /// Presentation is available; LocalPendingLegacy does not imply confirmed content.
+    /// Presentation is available; `LocalPendingLegacy` does not imply confirmed content.
     pub ready: bool,
     /// Existing legacy controls only; canonical writes remain closed.
     /// Uses the actual legacy gates; private or unreadable sessions remain read-only.
@@ -164,10 +164,10 @@ pub struct PlanPageDto {
     pub input_revision: String,
     pub pending_sync: bool,
     pub save_error: Option<String>,
-    /// Admitted PlanDoc binding. LocalPendingLegacy and DocumentSession share it.
+    /// Admitted `PlanDoc` binding. `LocalPendingLegacy` and `DocumentSession` share it.
     /// A pure relay confirmation does not change it, and a private session draft does
     /// not move it. Title, budget, summary, section, text, cents, completion, and line
-    /// order of that PlanDoc do.
+    /// order of that `PlanDoc` do.
     pub content_hash: String,
     /// None means the exact mathematical total is outside i64, never truncated or zero.
     pub total_cents: Option<i64>,
@@ -315,7 +315,7 @@ impl Engine {
     }
 }
 
-/// The admitted PlanDoc binding of the current version, the same value `plan_page`
+/// The admitted `PlanDoc` binding of the current version, the same value `plan_page`
 /// reports as `content_hash`.
 fn plan_doc_binding(it: &ItemState) -> Option<String> {
     match &it.current().content {
@@ -325,7 +325,7 @@ fn plan_doc_binding(it: &ItemState) -> Option<String> {
 }
 
 impl Engine {
-    /// Cheap binding read for the undo token: hashes the PlanDoc only.
+    /// Cheap binding read for the undo token: hashes the `PlanDoc` only.
     pub(crate) fn plan_doc_hash(&self, item: &str) -> R<String> {
         plan_doc_binding(self.item_state(item)?)
             .ok_or_else(|| invalid("este Item não é um plano", "this Item is not a Plan"))
@@ -371,7 +371,7 @@ fn local_legacy_blocks(it: &ItemState, document: &PlanDoc) -> Vec<PlanPageBlockD
     blocks
 }
 
-/// One edit binding for both read sources, over the PlanDoc the writers mutate.
+/// One edit binding for both read sources, over the `PlanDoc` the writers mutate.
 /// Presentation and CRDT block ids stay out, so a pure relay confirmation keeps the value.
 fn plan_observed_hash(blocks: &[PlanPageBlockDto]) -> String {
     let mut hasher = Sha256::new();

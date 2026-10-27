@@ -1,340 +1,17 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { test } from 'node:test';
+import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import * as content from '../media/attachment-content.ts';
-import * as categories from '../media/attachment-categories.ts';
-import * as actions from '../media/attachment-route-actions.ts';
 import {
-  NormalMessageDrafts,
-  type NormalDraftScope,
-  type NormalDraftSnapshot,
-} from './normal-message-drafts.ts';
-import type { TimelineEntry } from './types.ts';
+  editorCode,
+  fixture,
+  hooks,
+  jsx,
+  nodes,
+  type Element,
+} from './attachment-route-ui.fixtures.ts';
 const require = createRequire(import.meta.url);
-const { transformSync } = require('@babel/core');
-const compile = (path: string, suffix = '') =>
-  transformSync(readFileSync(new URL(path, import.meta.url), 'utf8') + suffix, {
-    filename: new URL(path, import.meta.url).pathname,
-    babelrc: false,
-    configFile: false,
-    presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
-    plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-    caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
-  }).code as string;
-const routeCode = compile('../media/attachment-route.tsx');
-const pollFieldsCode = compile('../media/poll-attachment-fields.tsx');
-const editorCode = compile('../media/article-editor.tsx');
-type Element = { type: unknown; props: Record<string, any> };
-function nodes(value: unknown): Element[] {
-  if (Array.isArray(value)) return value.flatMap(nodes);
-  if (!value || typeof value !== 'object' || !('props' in value)) return [];
-  const node = value as Element;
-  return [node, ...nodes(node.props.children)];
-}
-const renderElement = (type: unknown, props: object): unknown =>
-  typeof type === 'function' ? type(props) : { type, props };
-const jsx = {
-  jsx: renderElement,
-  jsxs: renderElement,
-  Fragment: 'Fragment',
-};
-function hooks() {
-  type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
-  const slots: Slot[] = [];
-  const caches: unknown[][] = [];
-  let cursor = 0,
-    cacheCursor = 0;
-  let effects: (() => void)[] = [];
-  const next = () => (slots[cursor++] ??= {});
-  const same = (a?: readonly unknown[], b?: readonly unknown[]) =>
-    Boolean(a && b && a.length === b.length && a.every((x, index) => Object.is(x, b[index])));
-  const memo = (read: () => unknown, deps: readonly unknown[]) => {
-    const slot = next();
-    if (!same(slot.deps, deps)) {
-      slot.deps = deps;
-      slot.value = read();
-    }
-    return slot.value;
-  };
-  const effect = (read: () => void | (() => void), deps?: readonly unknown[]) => {
-    const slot = next();
-    if (same(slot.deps, deps)) return;
-    slot.deps = deps;
-    effects.push(() => {
-      slot.cleanup?.();
-      slot.cleanup = read() ?? undefined;
-    });
-  };
-  const react = {
-    useState: (initial: any) => {
-      const slot = next();
-      if (!('value' in slot)) slot.value = typeof initial === 'function' ? initial() : initial;
-      return [
-        slot.value,
-        (value: any) => {
-          slot.value = typeof value === 'function' ? value(slot.value) : value;
-        },
-      ];
-    },
-    useRef: (initial: unknown) => {
-      const slot = next();
-      return (slot.value ??= { current: initial });
-    },
-    useMemo: memo,
-    useCallback: (read: unknown, deps: readonly unknown[]) => memo(() => read, deps),
-    useEffect: effect,
-    useLayoutEffect: effect,
-    useSyncExternalStore: (_: unknown, read: () => unknown) => read(),
-    useImperativeHandle: (ref: any, read: () => unknown, deps: readonly unknown[]) =>
-      effect(() => {
-        ref.current = read();
-        return () => {
-          ref.current = null;
-        };
-      }, deps),
-  };
-  return {
-    react,
-    effect,
-    runtime: {
-      c: (length: number) =>
-        (caches[cacheCursor++] ??= Array(length).fill(Symbol.for('react.memo_cache_sentinel'))),
-    },
-    begin: () => {
-      cursor = 0;
-      cacheCursor = 0;
-      effects = [];
-    },
-    commit: () => {
-      for (const work of effects) work();
-    },
-    retire: () => {
-      for (const slot of slots) slot.cleanup?.();
-    },
-  };
-}
-const tick = async () => {
-  for (let index = 0; index < 35; index++) await Promise.resolve();
-};
-function fixture(kind = 'article') {
-  const h = hooks();
-  let backs = 0,
-    sends = 0,
-    polls = 0,
-    geoReads = 0,
-    contactReads = 0,
-    captured = 0;
-  let owner = { mode: 'account', identityId: 'synthetic-owner', deviceId: 'synthetic-device' };
-  let phase = 'ready';
-  let member = true;
-  let foregroundListener: ((state: string) => void) | undefined;
-  let focusCleanup: (() => void) | undefined;
-  let stored: NormalDraftSnapshot = {
-    revision: '0',
-    text: '**old draft**',
-    reply_to: 'synthetic-reply',
-  };
-  let revision = 0;
-  let nativeText = stored.text;
-  let pollError = false;
-  const scope: NormalDraftScope = {
-    owner: { ...owner, mode: 'account', sessionEpoch: 7 },
-    spaceId: 'synthetic-space',
-    threadRootId: null,
-  };
-  const controller = new NormalMessageDrafts({
-    load: async () => ({ ...stored }),
-    save: async (_, expected, text, reply) => {
-      assert.equal(expected, stored.revision);
-      stored = { revision: String(++revision), text, reply_to: reply };
-      return { ...stored };
-    },
-    send: async (_, expected) => {
-      assert.equal(expected, stored.revision);
-      sends++;
-      stored = { revision: String(++revision), text: '', reply_to: null };
-      return { entry: { id: 'synthetic-message' } as TimelineEntry, draft: { ...stored } };
-    },
-  });
-  const channel = { scope, controller };
-  const state = () => ({ phase, owner });
-  const store = {
-    sessionEpoch: 7,
-    isSessionRetiring: false,
-    getSnapshot: state,
-    messageDrafts: {
-      channel: () => channel,
-      isCurrent: (value: unknown) =>
-        value === channel && owner.identityId === scope.owner.identityId,
-    },
-    mediaDrafts: { channel: () => null },
-    refresh: async () => {},
-    request: async (request: any) => {
-      assert.equal(request.op, 'install_app');
-      assert.equal(request.space_id, scope.spaceId);
-      assert.equal(request.app_id, 'poll');
-      polls++;
-      if (pollError) throw new Error('synthetic unconfirmed effect');
-      return { id: 'synthetic-poll' };
-    },
-  };
-  const module: { exports: any } = { exports: {} };
-  let guard: { enabled: boolean; action: (value: any) => void } | undefined;
-  const routeDependency = (name: string): any => {
-    if (name.startsWith('./')) name = `../../media/${name.slice(2)}`;
-    else if (name.startsWith('../')) name = `../${name}`;
-    if (name.startsWith('@babel/runtime/helpers/')) return require(name);
-    if (name === 'react') return h.react;
-    if (name === 'react/compiler-runtime') return h.runtime;
-    if (name === 'react/jsx-runtime') return jsx;
-    if (name === 'react-native')
-      return {
-        Text: 'Text',
-        View: 'View',
-        ScrollView: 'ScrollView',
-        Linking: { openURL: async () => {} },
-        AppState: {
-          currentState: 'active',
-          addEventListener: (_: string, listener: typeof foregroundListener) => {
-            foregroundListener = listener;
-            return { remove() {} };
-          },
-        },
-      };
-    if (name === 'expo-router')
-      return {
-        Stack: { Screen: 'StackScreen' },
-        router: {
-          back: () => {
-            backs++;
-          },
-        },
-        useLocalSearchParams: () => ({}),
-        useFocusEffect: (read: () => void | (() => void)) =>
-          h.effect(() => {
-            focusCleanup = read() ?? undefined;
-            return focusCleanup;
-          }, []),
-        usePreventRemove: (enabled: boolean, action: (value: any) => void) => {
-          guard = { enabled, action };
-          return () => {
-            guard!.enabled = false;
-          };
-        },
-      };
-    if (name === 'expo-crypto') return { randomUUID: () => 'synthetic-id' };
-    if (name === '../../components/dialogs')
-      return { useDialogs: () => ({ confirm: async () => true }) };
-    if (name === '../../core/provider')
-      return { useClient: () => ({ ...state(), snapshot: { synthetic: true }, store }) };
-    if (name === '../../home/access')
-      return {
-        homeOwnerFor: (value: any) => value.owner,
-        homeSpacesFor: () => new Set(member ? [scope.spaceId] : []),
-      };
-    if (name === '../../i18n') return { t: (key: string) => key };
-    if (name === '../../theme') return { useTheme: () => ({ colors: {} }) };
-    if (name === '../../components/primitives')
-      return { Field: 'Field', Loading: 'Loading', NativeButton: 'NativeButton' };
-    if (name === '../../media/attachment-categories') return categories;
-    if (name === '../../media/attachment-content') return content;
-    if (name === '../../media/attachment-route-actions') return actions;
-    if (name === '../../media/article-editor') return { ArticleEditor: 'ArticleEditor' };
-    if (name === '../../media/attachment-route-platform')
-      return {
-        chooseStaticLocation: async () => {
-          geoReads++;
-          return content.staticLocation(1, 2);
-        },
-        chooseSharedContact: async () => {
-          contactReads++;
-          return content.sharedContact('Synthetic', ['+000']);
-        },
-        prepareContactFile: async () => {
-          throw Error('not used');
-        },
-      };
-    if (name === '../../media/cache-work')
-      return { sensitiveCacheWork: { run: (work: () => unknown) => work() } };
-    if (name === '../../media/poll-attachment-fields') {
-      const fields = { exports: {} };
-      runInNewContext(pollFieldsCode, {
-        module: fields,
-        exports: fields.exports,
-        require: routeDependency,
-      });
-      return fields.exports;
-    }
-    throw new Error(`Unexpected route dependency ${name}`);
-  };
-  runInNewContext(routeCode, {
-    module,
-    exports: module.exports,
-    TextEncoder,
-    require: routeDependency,
-  });
-  const target = {
-    id: scope.spaceId,
-    thread: null,
-    identity: owner.identityId,
-    device: owner.deviceId,
-    epoch: '7',
-  };
-  function render() {
-    h.begin();
-    const tree = module.exports.AttachmentRoute({ kind, destination: target }) as Element;
-    h.commit();
-    const editor = nodes(tree).find((node) => node.type === 'ArticleEditor');
-    if (editor)
-      editor.props.ref.current = {
-        capture: async () => {
-          captured++;
-          return nativeText;
-        },
-      };
-    return tree;
-  }
-  const button = (tree: Element, label: string): Element => {
-    const candidates = nodes(tree);
-    const stack = candidates.find((node) => node.type === 'StackScreen');
-    const headers = [
-      stack?.props.options.headerLeft?.(),
-      stack?.props.options.headerRight?.(),
-    ].filter(Boolean);
-    const result = [...candidates, ...headers].find((node) => node.props.label === label);
-    assert.ok(result, label);
-    return result;
-  };
-  return {
-    render,
-    button,
-    counts: () => ({ backs, sends, polls, geoReads, contactReads, captured }),
-    read: () => stored,
-    native: (text: string) => {
-      nativeText = text;
-    },
-    tick,
-    guard: () => guard!,
-    failPoll: () => {
-      pollError = true;
-    },
-    blur: () => focusCleanup?.(),
-    background: () => foregroundListener?.('background'),
-    revoke: () => {
-      member = false;
-    },
-    replaceOwner: () => {
-      owner = { ...owner, identityId: 'different-owner' };
-    },
-    phase: (value: string) => {
-      phase = value;
-    },
-    retire: () => h.retire(),
-    channel,
-  };
-}
 
 test('production-compiled Article route survives first unloaded render and sends only explicit final native capture', async () => {
   const f = fixture();
@@ -423,7 +100,7 @@ test('compiled mode toggle captures once, never sends, and fences a retained old
   assert.equal(nodes(tree).find((node) => node.type === 'ArticleEditor')!.props.source, true);
 });
 
-test('compiled Location requires explicit preview selection and adds one link to the same draft without sending', async () => {
+test('compiled Location stages one reviewed GeoJSON in the existing journal, preserving text/reply and never sending', async () => {
   const f = fixture('location');
   f.render();
   await f.tick();
@@ -434,12 +111,33 @@ test('compiled Location requires explicit preview selection and adds one link to
   tree = f.render();
   assert.equal(f.counts().geoReads, 1);
   assert.equal(f.read().text, '**old draft**');
+  assert.equal(f.readMedia().content_json, 'null', 'selection is transient until Add');
+  const caption = nodes(tree).find(
+    (node) => node.type === 'Field' && node.props.label === 'attachmentTabs.locationCaption',
+  )!;
+  assert.ok(
+    caption,
+    'the reviewed location accepts its own attachment caption without replacing message text',
+  );
+  caption.props.onChangeText('Reviewed caption');
+  tree = f.render();
   const add = f.button(tree, 'attachmentTabs.addToMessage');
   add.props.onPress();
   add.props.onPress();
   await f.tick();
-  assert.equal(f.read().text, '**old draft**\n\nhttps://maps.apple.com/?ll=1,2');
+  assert.equal(f.prepared.length, 1);
+  assert.deepEqual(JSON.parse(f.prepared[0]!), {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [2, 1] },
+    properties: {},
+  });
+  const saved = JSON.parse(f.readMedia().content_json);
+  assert.equal(saved.reply_to, 'synthetic-reply');
+  assert.equal(saved.items[0].caption, 'Reviewed caption');
+  assert.equal(f.readMedia().assets[0]!.mime, 'application/geo+json');
+  assert.equal(f.read().text, '**old draft**');
   assert.equal(f.counts().sends, 0);
+  assert.equal(f.counts().backs, 1);
 });
 
 test('compiled Poll validation never creates on render/typing; explicit unconfirmed result is held, not resent', async () => {
@@ -485,8 +183,7 @@ test('actual native Article editor formatting handlers use installed native meth
       if (name === 'react/jsx-runtime') return jsx;
       if (name === 'react-native')
         return { View: 'View', ScrollView: 'ScrollView', TextInput: 'TextInput' };
-      if (name === 'react-native-enriched-markdown')
-        return { EnrichedMarkdownTextInput: 'NativeMarkdown' };
+      if (name === './article-native-input') return { ArticleNativeInput: 'NativeMarkdown' };
       if (name === '../components/primitives')
         return { IconButton: 'IconButton', NativeButton: 'NativeButton', Field: 'Field' };
       if (name === '../i18n') return { t: (key: string) => key };
@@ -526,4 +223,86 @@ test('actual native Article editor formatting handlers use installed native meth
   editable = false;
   buttons[0]!.props.onPress();
   assert.equal(calls.length, 7);
+});
+
+test('all compiled attachment sheets use one focus-aware keyboard owner and remeasure on sheet layout', async () => {
+  for (const kind of ['article', 'poll', 'contact', 'location']) {
+    const f = fixture(kind);
+    f.render();
+    await f.tick();
+    const tree = f.render();
+    assert.equal(tree.type, 'KeyboardAwareScrollView', kind);
+    assert.equal(tree.props.automaticallyAdjustKeyboardInsets, false, kind);
+    assert.equal(tree.props.keyboardShouldPersistTaps, 'handled', kind);
+    assert.equal(tree.props.contentInsetAdjustmentBehavior, 'automatic', kind);
+    assert.ok(tree.props.bottomOffset > 0, kind);
+    const before = f.counts();
+    for (const [width, height] of [
+      [393, 550],
+      [852, 160],
+      [393, 550],
+    ])
+      tree.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width, height } } });
+    assert.deepEqual(f.counts(), { ...before, reveals: before.reveals + 3 }, kind);
+    assert.equal(f.read().text, '**old draft**', kind);
+  }
+});
+
+test('compiled Poll relayout preserves every typed field and once-only create without remounting', async () => {
+  const f = fixture('poll');
+  f.render();
+  await f.tick();
+  let tree = f.render();
+  const values = ['Question? 👩‍💻', 'First', 'Second'];
+  for (let index = 0; index < values.length; index++) {
+    nodes(tree)
+      .filter((node) => node.type === 'Field')
+      [index]!.props.onChangeText(values[index]);
+    tree = f.render();
+  }
+  f.button(tree, 'attachmentTabs.addOption').props.onPress();
+  tree = f.render();
+  nodes(tree)
+    .filter((node) => node.type === 'Field')[3]!
+    .props.onChangeText('Third');
+  tree = f.render();
+  const create = f.button(tree, 'attachmentTabs.createPoll');
+  for (const [width, height] of [
+    [852, 160],
+    [393, 550],
+  ]) {
+    tree.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width, height } } });
+    tree = f.render();
+    assert.deepEqual(
+      nodes(tree)
+        .filter((node) => node.type === 'Field')
+        .map((node) => node.props.value),
+      [...values, 'Third'],
+    );
+    assert.equal(tree.props.key, undefined);
+    assert.equal(f.counts().polls, 0);
+    assert.equal(f.counts().backs, 0);
+  }
+  create.props.onPress();
+  create.props.onPress();
+  await f.tick();
+  assert.equal(f.counts().polls, 1);
+  assert.equal(f.counts().backs, 1);
+  tree.props.onLayout({ nativeEvent: { layout: { width: 393, height: 550 } } });
+  assert.equal(f.counts().reveals, 2, 'closed sheet cannot reissue focus work');
+});
+
+test('retained sheet layout callbacks refuse scope retirement without altering or sending drafts', async () => {
+  for (const retire of ['blur', 'background', 'replaceOwner', 'revoke', 'retire'] as const) {
+    const f = fixture();
+    f.render();
+    await f.tick();
+    const tree = f.render();
+    f[retire]();
+    tree.props.onLayout({ nativeEvent: { layout: { width: 852, height: 160 } } });
+    assert.equal(f.counts().reveals, 0, retire);
+    assert.equal(f.counts().captured, 0, retire);
+    assert.equal(f.counts().sends, 0, retire);
+    assert.equal(f.read().text, '**old draft**', retire);
+  }
 });

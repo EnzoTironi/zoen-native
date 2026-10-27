@@ -24,7 +24,7 @@ impl Brain for GuardedBrain {
         cx: super::host::TurnContext<'_>,
         history: &[super::host::Turn],
         inbound: &super::host::Turn,
-    ) -> Result<super::host::BrainOut, String> {
+    ) -> Result<super::host::BrainOut, super::host::BrainError> {
         self.think_with_tools(cx, history, inbound, &[], &[]).await
     }
     async fn think_with_tools(
@@ -34,8 +34,8 @@ impl Brain for GuardedBrain {
         inbound: &super::host::Turn,
         tools: &[super::host::ToolDef],
         steps: &[super::host::ToolStep],
-    ) -> Result<super::host::BrainOut, String> {
-        (self.before)()?;
+    ) -> Result<super::host::BrainOut, super::host::BrainError> {
+        (self.before)().map_err(super::host::BrainError::NotDispatched)?;
         let out = self
             .inner
             .think_with_tools(cx, history, inbound, tools, steps)
@@ -48,8 +48,9 @@ impl Brain for GuardedBrain {
 /// Synchronous controlled output for offline integration tests. No provider,
 /// network, environment or credentials; absent from every production build.
 #[cfg(feature = "scripted")]
-pub type ControlledToolEvaluation =
-    dyn Fn(&[super::host::ToolStep]) -> Result<super::host::BrainOut, String> + Send + Sync;
+pub type ControlledToolEvaluation = dyn Fn(&[super::host::ToolStep]) -> Result<super::host::BrainOut, super::host::BrainError>
+    + Send
+    + Sync;
 
 #[cfg(feature = "scripted")]
 pub struct ControlledToolBrain {
@@ -63,7 +64,7 @@ impl Brain for ControlledToolBrain {
         _: super::host::TurnContext<'_>,
         _: &[super::host::Turn],
         _: &super::host::Turn,
-    ) -> Result<super::host::BrainOut, String> {
+    ) -> Result<super::host::BrainOut, super::host::BrainError> {
         (self.evaluate)(&[])
     }
     async fn think_with_tools(
@@ -73,7 +74,7 @@ impl Brain for ControlledToolBrain {
         _: &super::host::Turn,
         _: &[super::host::ToolDef],
         steps: &[super::host::ToolStep],
-    ) -> Result<super::host::BrainOut, String> {
+    ) -> Result<super::host::BrainOut, super::host::BrainError> {
         (self.evaluate)(steps)
     }
 }
@@ -116,7 +117,7 @@ pub fn fault(point: &str) {
 #[cfg(feature = "scripted")]
 pub mod scripted {
     use super::super::host::{
-        parse_reply, Brain, BrainOut, ToolCall, ToolDef, ToolStep, Turn, TurnContext,
+        parse_reply, Brain, BrainError, BrainOut, ToolCall, ToolDef, ToolStep, Turn, TurnContext,
     };
     use async_trait::async_trait;
     use std::collections::BTreeMap;
@@ -140,7 +141,7 @@ pub mod scripted {
             _cx: TurnContext<'_>,
             _history: &[Turn],
             inbound: &Turn,
-        ) -> Result<BrainOut, String> {
+        ) -> Result<BrainOut, BrainError> {
             self.think_with_tools(_cx, _history, inbound, &[], &[])
                 .await
         }
@@ -152,7 +153,7 @@ pub mod scripted {
             inbound: &Turn,
             tools: &[ToolDef],
             steps: &[ToolStep],
-        ) -> Result<BrainOut, String> {
+        ) -> Result<BrainOut, BrainError> {
             let t = inbound.text.to_lowercase();
             let Some((_, v)) = self
                 .replies

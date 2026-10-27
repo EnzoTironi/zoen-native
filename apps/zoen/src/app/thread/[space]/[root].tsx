@@ -66,9 +66,10 @@ export default function Thread() {
   const [failure, setFailure] = useState<string | null>(null);
   const actions = useMessageActions({
     spaceId: space,
+    threadRootId: root,
     entries: entries ?? [],
-    onReply: (entry) => {
-      updateDraft({ type: 'reply', entry });
+    onReply: (entry, selection) => {
+      updateDraft({ type: 'reply', entry, selection });
       input.current?.focus();
     },
     onEdit: (entry) => {
@@ -129,6 +130,7 @@ export default function Thread() {
                 normalDraft.replyTo || editing
                   ? {
                       entry: editing ?? reply ?? undefined,
+                      quote: editing ? undefined : normalDraft.replyQuote,
                       onCancel: () => updateDraft({ type: 'cancel' }),
                     }
                   : undefined

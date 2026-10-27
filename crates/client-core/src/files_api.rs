@@ -69,7 +69,7 @@ impl Client {
         let current = engine.page(&item_id)?;
         engine.page_apply_from(
             &item_id,
-            &types::new_id("page_edit"),
+            &types::new_id("page_edit")?,
             &current.edit_context,
             &order,
             &changed,
@@ -118,7 +118,7 @@ impl Client {
     }
 
     /// Sends an ordinary attachment in the conversation, atomically with its file.
-    /// Reuse mutation_id only to retry the exact same selected file and target.
+    /// Reuse `mutation_id` only to retry the exact same selected file and target.
     #[allow(clippy::too_many_arguments)]
     pub fn send_file_message(
         &self,
@@ -144,7 +144,7 @@ impl Client {
         )
     }
 
-    /// Sends a caption and attachment as one atomic message. Reusing mutation_id
+    /// Sends a caption and attachment as one atomic message. Reusing `mutation_id`
     /// with a different caption or file is rejected before any write.
     #[allow(clippy::too_many_arguments)]
     pub fn send_file_message_with_caption(

@@ -298,6 +298,12 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
     'expo-image': { Image: 'Image' },
     '@shopify/flash-list': { FlashList: 'FlashList' },
     '@expo/ui': { Host: 'Host', Column: 'Column', Switch: 'Switch' },
+    '@expo/ui/swift-ui/modifiers': Object.fromEntries(
+      ['font', 'foregroundStyle', 'frame', 'padding'].map((name) => [
+        name,
+        (value: unknown) => ({ [name]: value }),
+      ]),
+    ),
   };
   const t = (key: string, params?: unknown) => (params ? `${key}:${JSON.stringify(params)}` : key);
   function requirePort(path: string): any {
@@ -309,6 +315,23 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
     if (/\/i18n(?:\/index.ts)?$/.test(path)) return { t, formatLocale: () => 'en-US' };
     if (path.endsWith('core/provider')) return { useClient: () => ({ ...state, store }) };
     if (path.endsWith('core/query')) return { useCoreQuery: () => query };
+    // This fixture tests the existing profile surface; member controls have their own real-port suite.
+    if (path.endsWith('notifications/use-muted-chats'))
+      return {
+        useMutedChats: () => ({
+          accountRequired: true,
+          state: { chats: [], scope: '', selected: null, clock_ms: null },
+          session: { ticket: () => null },
+        }),
+      };
+    if (path.endsWith('notifications/mute-duration-sheet'))
+      return { MuteDurationSheet: 'MuteDurationSheet' };
+    if (path.endsWith('communities/use-member-actions'))
+      return { useMemberActions: () => ({ available: false, session: {}, state: {} }) };
+    if (path.endsWith('communities/member-addition-sheet'))
+      return { MemberAdditionSheet: 'MemberAdditionSheet' };
+    if (path.endsWith('communities/member-actions-sheet'))
+      return { MemberActionsSheet: 'MemberActionsSheet' };
     if (path.endsWith('components/primitives')) return primitives;
     if (path.endsWith('components/dialogs'))
       return { useDialogs: () => ({ confirm: async () => true }) };
@@ -359,6 +382,7 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
   runInNewContext(compiled.get(kind)!, {
     module,
     exports: module.exports,
+    process: { env: { EXPO_OS: 'ios' } },
     require: requirePort,
     URL,
     Error,

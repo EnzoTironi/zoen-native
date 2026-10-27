@@ -1,6 +1,10 @@
 //! Saving on the original Engine and canonical document state.
 
-use super::*;
+use super::{
+    hash, invalid, json, metadata, stale, storage, t, unavailable, valid_hash, valid_id,
+    validate_scene, AppDoc, AppDocumentDto, Engine, EventBody, HashMap, ItemContent, Receipt,
+    TrustLevel, Value, MAX_RECEIPTS, MAX_SCENE_BYTES, MIME, R,
+};
 
 impl Engine {
     pub(crate) fn app_document_save(
@@ -11,6 +15,23 @@ impl Engine {
         scene_json: &str,
         mutation_id: &str,
     ) -> R<AppDocumentDto> {
+        self.save_app_document(
+            item,
+            expected_version,
+            (expected_sha256, None),
+            scene_json,
+            mutation_id,
+        )
+    }
+    pub(crate) fn save_app_document(
+        &mut self,
+        item: &str,
+        expected_version: u32,
+        expected: (&str, Option<&str>),
+        scene_json: &str,
+        mutation_id: &str,
+    ) -> R<AppDocumentDto> {
+        let (expected_sha256, resource) = expected;
         if !valid_id(mutation_id)
             || !valid_hash(expected_sha256)
             || expected_version == 0
@@ -20,7 +41,7 @@ impl Engine {
         }
         let (me, device, space, current_version, app) = self.app_document_scope(item)?;
         let new_hash = hash(scene_json.as_bytes());
-        let fingerprint = hash(
+        let mut fingerprint = hash(
             &serde_json::to_vec(&(
                 &me,
                 &device,
@@ -31,28 +52,10 @@ impl Engine {
             ))
             .map_err(|_| invalid())?,
         );
-        let receipt_key = format!(
-            "app_document_receipts:{}",
-            hash(&serde_json::to_vec(&(&me, &device, item)).map_err(|_| invalid())?)
-        );
-        let mut receipts: Vec<Receipt> = self
-            .store
-            .meta(&receipt_key)?
-            .map(|s| serde_json::from_str(&s).map_err(|_| storage()))
-            .transpose()?
-            .unwrap_or_default();
-        let mut receipt_ids = BTreeSet::new();
-        if receipts.len() > MAX_RECEIPTS
-            || receipts.iter().any(|r| {
-                !receipt_ids.insert(&r.id)
-                    || !valid_id(&r.id)
-                    || !valid_hash(&r.fingerprint)
-                    || !valid_hash(&r.sha256)
-                    || r.version == 0
-            })
-        {
-            return Err(storage());
+        if let Some(uri) = resource {
+            fingerprint = hash(&serde_json::to_vec(&(fingerprint, uri)).map_err(|_| invalid())?);
         }
+        let (receipt_key, mut receipts) = self.document_receipts(&me, &device, item)?;
         if let Some(r) = receipts.iter().find(|r| r.id == mutation_id) {
             if r.fingerprint != fingerprint {
                 return Err(invalid());
@@ -76,10 +79,28 @@ impl Engine {
                 scene_json: scene_json.into(),
             });
         }
+        if app.view.is_some() && resource != Some(app.resource_uri.as_str()) {
+            return Err(stale());
+        }
+        let source = if app.view.is_some() {
+            self.scene_save_source(item, expected_version, expected, scene_json, mutation_id)?
+        } else {
+            None
+        };
+        if app.view.is_some()
+            && self
+                .identities
+                .get(&me)
+                .is_some_and(|i| i.kind == types::IdentityKind::Agent)
+            && self.trust(&me, &space) < TrustLevel::Act
+            && source.is_none()
+        {
+            return Err(unavailable());
+        }
         if !self.state.writer(&space, &me) || self.app_trust(item) < TrustLevel::Act {
             return Err(unavailable());
         }
-        let current = app.document.as_ref().expect("checked");
+        let current = app.document.as_ref().ok_or_else(invalid)?;
         if expected_version != current_version || expected_sha256 != current.sha256 {
             return Err(stale());
         }
@@ -97,7 +118,7 @@ impl Engine {
                     }
                 }
                 let key = e.file_key(Some(item))?;
-                let file = e.file_doc(
+                let mut file = e.file_doc(
                     &space,
                     &key,
                     "drawing.excalidraw",
@@ -107,6 +128,7 @@ impl Engine {
                     None,
                     &prior,
                 )?;
+                file.app_origin = current.app_origin.clone();
                 e.store
                     .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
                 let mut compact: Value =
@@ -133,6 +155,7 @@ impl Engine {
                 fingerprint,
                 version,
                 sha256: new_hash.clone(),
+                source,
             });
             if receipts.len() > MAX_RECEIPTS {
                 receipts.remove(0);

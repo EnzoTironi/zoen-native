@@ -12,7 +12,8 @@ export function useOwnerPolicy({
   expectedHash,
   purpose,
 }: PolicyTarget) {
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const target = useMemo(
     (): PolicyTarget =>
       purpose === 'account'
@@ -23,7 +24,7 @@ export function useOwnerPolicy({
   const port = useMemo(() => createOwnerPolicyPort(store, target), [store, target]);
   const session = useMemo(() => new OwnerPolicySession(port), [port]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const available = policyAvailability(store, target),
+  const available = policyAvailability(store, target, client),
     key = policyScopeKey(available.scope);
   useFocusEffect(
     useCallback(() => {

@@ -3,7 +3,7 @@ use super::*;
 
 #[tokio::test]
 async fn historical_page_export_keeps_the_observed_version_and_private_draft_after_reopen() {
-    let directory = std::env::temp_dir().join(new_id("page-export-test"));
+    let directory = std::env::temp_dir().join(new_id("page-export-test").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory
         .join("client.sqlite")
@@ -137,7 +137,7 @@ fn historical_export_never_substitutes_an_empty_document_for_missing_verified_me
     let (client, seed) = fixture();
     let markdown = "# Verified media\r\n\r\nKeep these exact bytes 🪴\n";
     let document = Page::from_markdown(markdown).unwrap();
-    let id = new_id("export-blob");
+    let id = new_id("export-blob").unwrap();
     let blob = {
         let mut engine = client.lock();
         let blob = engine

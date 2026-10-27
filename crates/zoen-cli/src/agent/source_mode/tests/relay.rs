@@ -2,14 +2,19 @@
 use client_core::{Client, SecretVault};
 use futures_util::{SinkExt, StreamExt};
 use protocol::{AgentRequest, AgentStateRecord, ClientFrame, Op, Reply, Sequenced, ServerFrame};
-use std::collections::{BTreeMap, HashMap};
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Notify;
 use tokio_tungstenite::tungstenite::Message;
+mod auth;
+mod publication;
+pub(super) use auth::AuthGate;
 
 #[derive(Default)]
-pub(super) struct Vault(Mutex<HashMap<String, Vec<u8>>>);
+pub(super) struct Vault(pub(super) Mutex<HashMap<String, Vec<u8>>>);
 impl SecretVault for Vault {
     fn load(&self, key: String) -> Option<Vec<u8>> {
         self.0.lock().unwrap().get(&key).cloned()
@@ -26,6 +31,9 @@ impl SecretVault for Vault {
 #[derive(Clone, Copy)]
 pub(super) enum Mode {
     Normal,
+    LostPublicationReceipt,
+    Paused,
+    Revoked,
     CursorAck,
     Unsynced,
     InvalidStatus,
@@ -35,6 +43,8 @@ pub(super) enum Mode {
 }
 pub(super) struct Relay {
     pub url: String,
+    pub lifecycle: Arc<Mutex<&'static str>>,
+    pub auth: Arc<AuthGate>,
     pub calls: Arc<Mutex<Vec<&'static str>>>,
     pub cursors: Arc<Mutex<Vec<(String, u64)>>>,
     pub delivered: Arc<Mutex<Option<(String, String, u64)>>>,
@@ -42,6 +52,7 @@ pub(super) struct Relay {
     pub release: Arc<Notify>,
     pub packages: Arc<Mutex<BTreeMap<String, Vec<protocol::KeyPackageRecord>>>>,
     pub histories: Arc<Mutex<BTreeMap<String, Vec<Sequenced>>>>,
+    pub uploads: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Drop for Relay {
@@ -50,8 +61,20 @@ impl Drop for Relay {
     }
 }
 pub(super) async fn relay(mode: Mode) -> Relay {
+    let lifecycle = Arc::new(Mutex::new(match mode {
+        Mode::Paused => "paused",
+        Mode::Revoked => "revoked",
+        _ => "active",
+    }));
+    let current_lifecycle = lifecycle.clone();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
+    let auth = Arc::new(AuthGate::default());
+    let authentication = auth.clone();
+    let lose_receipt = Arc::new(AtomicBool::new(matches!(
+        mode,
+        Mode::LostPublicationReceipt
+    )));
     let calls = Arc::new(Mutex::new(Vec::new()));
     let cursors = Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
     let delivered = Arc::new(Mutex::new(None::<(String, String, u64)>));
@@ -67,12 +90,15 @@ pub(super) async fn relay(mode: Mode) -> Relay {
     >::new()));
     let (published_packages, claim_receipts) = (packages.clone(), claims.clone());
     let histories = Arc::new(Mutex::new(BTreeMap::<String, Vec<Sequenced>>::new()));
+    let uploads = Arc::new(Mutex::new(BTreeMap::<String, Vec<u8>>::new()));
+    let devices = Arc::new(Mutex::new(BTreeSet::<String>::new()));
+    let uploaded = uploads.clone();
     let (release_state, release_signal, history) =
         (released.clone(), release.clone(), histories.clone());
     let (seen, positions, receipts) = (calls.clone(), cursors.clone(), delivered.clone());
     let task = tokio::spawn(async move {
         loop {
-            let (socket, _) = listener.accept().await.unwrap();
+            let (mut socket, _) = listener.accept().await.unwrap();
             let (seen, positions, receipts) = (seen.clone(), positions.clone(), receipts.clone());
             let (release_state, release_signal, history) = (
                 release_state.clone(),
@@ -81,10 +107,23 @@ pub(super) async fn relay(mode: Mode) -> Relay {
             );
             let (published_packages, claim_receipts) =
                 (published_packages.clone(), claim_receipts.clone());
+            let (uploaded, devices) = (uploaded.clone(), devices.clone());
+            let authentication = authentication.clone();
+            let lose_receipt = lose_receipt.clone();
+            let current_lifecycle = current_lifecycle.clone();
             tokio::spawn(async move {
+                let mut first = [0];
+                if socket.peek(&mut first).await.unwrap() == 0 {
+                    return Ok(());
+                }
+                if first[0] == b'P' {
+                    blob_put(&mut socket, &devices, &uploaded).await;
+                    seen.lock().unwrap().push("blob_upload");
+                    return Ok(());
+                }
                 let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
-                    return;
+                    return Ok(());
                 };
                 let ClientFrame::Hello {
                     identity,
@@ -114,7 +153,7 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                 .await
                 .unwrap();
                 let Some(Ok(Message::Binary(bytes))) = ws.next().await else {
-                    return;
+                    return Ok(());
                 };
                 let ClientFrame::Auth { sig } = ClientFrame::decode(&bytes).unwrap() else {
                     panic!("Auth")
@@ -124,6 +163,8 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                     &protocol::auth_message("source-fixture", "source-fixture"),
                     &sig
                 ));
+                authentication.before_ready().await;
+                devices.lock().unwrap().insert(device.clone());
                 ws.send(Message::Binary(
                     ServerFrame::Ready {
                         identity: identity.clone(),
@@ -224,13 +265,21 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                             op: Op::Agent(AgentRequest::State),
                         } => {
                             seen.lock().unwrap().push("agent_state");
-                            let result = Ok(Reply::AgentState(AgentStateRecord {
-                                status: if matches!(mode, Mode::InvalidStatus) { "future-status" } else { "active" }.into(),
+                            let lifecycle = match current_lifecycle.lock() {
+                                Ok(state) => *state,
+                                Err(_) => "unavailable",
+                            };
+                            let result = if lifecycle == "error" {
+                                Err("synthetic lifecycle read failure".into())
+                            } else {
+                                Ok(Reply::AgentState(AgentStateRecord {
+                                status: if matches!(mode, Mode::InvalidStatus) { "future-status" } else { lifecycle }.into(),
                                 kind: if matches!(mode, Mode::InvalidKind) { "future-kind" } else if matches!(mode, Mode::DefinitionKindMismatch) { "Creator" } else { "User" }.into(),
                                 definition_version: if matches!(mode, Mode::DefinitionVersionMismatch) { 3 } else { 2 },
                                 definition: br#"{"version":2,"kind":"user","persona":"Synthetic source fixture","rules":[],"state":{},"model_tier":"cheap"}"#.to_vec(),
                                 cursors: positions.lock().unwrap().clone(),
-                            }));
+                            }))
+                            };
                             ServerFrame::Res { id, result }
                         }
                         ClientFrame::Req {
@@ -274,30 +323,18 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                             let (ev, accepted) = {
                                 let mut logs = history.lock().unwrap();
                                 let log = logs.entry(env.space().into()).or_default();
-                                let seq = log.len() as u64;
-                                let prev = log
-                                    .last()
-                                    .map(|ev| ev.hash.clone())
-                                    .unwrap_or_else(|| types::GENESIS_PREV.into());
-                                let ev = Sequenced {
-                                    seq,
-                                    hash: event_log::chain_hash(
-                                        env.space(),
-                                        seq,
-                                        &prev,
-                                        &env.wire_hash(),
-                                    ),
-                                    prev,
-                                    env,
-                                };
+                                let ev = publication::sequence(log, env)?;
                                 let accepted = ServerFrame::Accepted {
                                     space: ev.env.space().into(),
                                     client_id: ev.env.client_id().into(),
-                                    seq,
+                                    seq: ev.seq,
                                 };
-                                log.push(ev.clone());
                                 (ev, accepted)
                             };
+                            if lose_receipt.swap(false, Ordering::SeqCst) {
+                                // The append succeeded, but this session loses both receipts.
+                                break;
+                            }
                             ws.send(Message::Binary(ServerFrame::Event { ev }.encode().into()))
                                 .await
                                 .unwrap();
@@ -326,11 +363,14 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         break;
                     }
                 }
+                Ok::<(), serde_json::Error>(())
             });
         }
     });
     Relay {
         url,
+        lifecycle,
+        auth,
         calls,
         cursors,
         delivered,
@@ -338,8 +378,60 @@ pub(super) async fn relay(mode: Mode) -> Relay {
         released,
         release,
         histories,
+        uploads,
         task,
     }
+}
+
+// A static App fixture queues encrypted bytes before the host starts. Let the
+// normal sync worker drain its exact signed PUT; this is transport, not a turn.
+async fn blob_put(
+    socket: &mut tokio::net::TcpStream,
+    devices: &Mutex<BTreeSet<String>>,
+    uploaded: &Mutex<BTreeMap<String, Vec<u8>>>,
+) {
+    let mut header = Vec::new();
+    while !header.ends_with(b"\r\n\r\n") {
+        let mut one = [0];
+        socket.read_exact(&mut one).await.unwrap();
+        header.push(one[0]);
+        assert!(header.len() <= 16 * 1024);
+    }
+    let header = String::from_utf8(header).unwrap();
+    let request = header.lines().next().unwrap();
+    let sha = request
+        .strip_prefix("PUT /v1/blobs/")
+        .and_then(|value| value.strip_suffix(" HTTP/1.1"))
+        .expect("only the normal queued blob PUT is supported");
+    let field = |name: &str| {
+        header
+            .lines()
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                key.eq_ignore_ascii_case(name).then(|| value.trim())
+            })
+            .unwrap()
+    };
+    let device = field("x-zoen-device");
+    assert!(devices.lock().unwrap().contains(device));
+    let timestamp = field("x-zoen-ts").parse::<i64>().unwrap();
+    assert!(timestamp >= 0);
+    assert!(event_log::verify_sig(
+        device,
+        &protocol::blob_put_message(sha, timestamp, "source-fixture"),
+        field("x-zoen-sig"),
+    ));
+    let length = field("content-length").parse::<usize>().unwrap();
+    assert!((1..=25 * 1024 * 1024).contains(&length));
+    let mut body = vec![0; length];
+    socket.read_exact(&mut body).await.unwrap();
+    assert_eq!(hex::encode(Sha256::digest(&body)), sha);
+    let previous = uploaded.lock().unwrap().insert(sha.into(), body.clone());
+    assert!(previous.is_none_or(|previous| previous == body));
+    socket
+        .write_all(b"HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        .await
+        .unwrap();
 }
 
 pub(super) async fn online(client: &Client, settle: bool) {

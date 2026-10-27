@@ -6,18 +6,34 @@ use std::io::{self, Write};
 use zoen_agentd::{ToolCall, ToolDef, ToolObservation, ToolStep};
 
 const EVENT: &str = "zoen.agent.tools.v1";
-const KINDS: [&str; 11] = [
+const KINDS: &[&str] = &[
     "create_site",
     "read_site",
     "replace_site_source",
     "create_deckcraft",
+    "create_gridcraft",
+    "create_wordcraft",
+    "create_photocraft",
+    "create_pdfcraft",
+    "read_pdfcraft",
+    "pdfcraft_edit",
+    "read_photocraft",
+    "photocraft_transform",
     "read_deckcraft",
+    "read_gridcraft",
+    "gridcraft_cell_set",
+    "read_wordcraft",
+    "wordcraft_text_replace",
+    "wordcraft_edit_range",
+    "wordcraft_format_range",
     "deckcraft_text_set",
     "deckcraft_slide_notes",
     "deckcraft_shape_insert",
     "deckcraft_slide_new",
     "read_page",
     "replace_page_block",
+    "read_scene",
+    "replace_scene",
 ];
 
 fn enabled(value: Option<&str>) -> bool {
@@ -37,9 +53,10 @@ fn public_kind(host: &SpaceTools<'_>, name: &str) -> Option<Value> {
         &fresh
     };
     let (_, item, kind) = current.names.iter().find(|(def, _, _)| def.name == name)?;
-    if kind == client_core::agent_app_creation::TOOL && item == &host.space {
-        return (client_core::agent_app_creation::model_name(&host.space).as_deref() == Some(name))
-            .then(|| json!({"kind":kind}));
+    if client_core::agent_app_creation::is_model_name(kind) && item == &host.space {
+        return (client_core::agent_app_creation::model_name_for(kind, &host.space).as_deref()
+            == Some(name))
+        .then(|| json!({"kind":kind}));
     }
     if kind == "create_site" && item == &host.space {
         return (client_core::agent_sites::model_name(kind, item).as_deref() == Some(name))
@@ -60,6 +77,13 @@ fn public_kind(host: &SpaceTools<'_>, name: &str) -> Option<Value> {
         (crate::deckcraft::model_name(kind, item)?, "__")
     } else if current.page_items.contains(item) && client_core::agent_page_tools::recognizes(kind) {
         (client_core::agent_page_tools::model_name(kind, item)?, "_")
+    } else if current.scene_items.contains(item)
+        && client_core::agent_scenes::tools::recognizes(kind)
+    {
+        (
+            client_core::agent_scenes::tools::model_name(kind, item)?,
+            "_",
+        )
     } else {
         return None;
     };

@@ -5,7 +5,7 @@ import type { ToolApprovalDto } from './generated/ToolApprovalDto';
 import { imageToolReviewValid } from './image-tool-review.ts';
 
 export type RequestCardDecision = RequestDecision | 'ApproveOnce' | 'Cancel';
-type DecisionCommand = Extract<Command, { op: 'decide_request' | 'decide_tool_request' }>;
+export type DecisionCommand = Extract<Command, { op: 'decide_request' | 'decide_tool_request' }>;
 type DecisionRequest = Pick<
   AgentRequestDto,
   'id' | 'status' | 'tool_approval' | 'can_always_approve'

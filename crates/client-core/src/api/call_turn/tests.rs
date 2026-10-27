@@ -1,10 +1,18 @@
 use super::*;
 
+mod transport;
+
 fn fixture() -> (Arc<Client>, String, String, String, String) {
+    let (client, identity, device, peer) = account_fixture("http://127.0.0.1:1");
+    let space = client.lock().start_direct(&peer).unwrap();
+    (client, identity, device, space, peer)
+}
+
+fn account_fixture(relay: &str) -> (Arc<Client>, String, String, String) {
     let client = Client::open(":memory:".into(), "en".into()).unwrap();
     let mut engine = client.lock();
     engine
-        .create_account("Caller", "turn_caller", "http://127.0.0.1:1")
+        .create_account("Caller", "turn_caller", relay)
         .unwrap();
     engine.set_registered(true).unwrap();
     let peer = engine
@@ -23,10 +31,9 @@ fn fixture() -> (Arc<Client>, String, String, String, String) {
             true,
         )
         .unwrap();
-    let space = engine.start_direct(&peer).unwrap();
     let account = engine.account().unwrap().clone();
     drop(engine);
-    (client, account.identity, account.device, space, peer)
+    (client, account.identity, account.device, peer)
 }
 
 #[test]

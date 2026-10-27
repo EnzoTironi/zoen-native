@@ -161,17 +161,19 @@ impl Code {
         Ok(code)
     }
     fn check(&self) -> R<String> {
-        let bytes = Sha256::digest(
+        let bytes: [u8; 32] = Sha256::digest(
             format!(
                 "zoen-agent-enrollment-pairing-v1\0{}\0{}",
                 self.offer.digest()?,
                 self.agent_signature
             )
             .as_bytes(),
-        );
+        )
+        .into();
+        let [a, b, c, d, ..] = bytes;
         Ok(format!(
             "{:06}",
-            u32::from_be_bytes(bytes[..4].try_into().unwrap()) % 1_000_000
+            u32::from_be_bytes([a, b, c, d]) % 1_000_000
         ))
     }
     fn box_context(&self) -> R<String> {
@@ -400,7 +402,7 @@ impl Client {
             status: AgentEnrollmentStatusDto {
                 preview: review,
                 delivery: AgentEnrollmentDeliveryDto {
-                    receipt_id: types::new_id("enrollment"),
+                    receipt_id: types::new_id("enrollment")?,
                     agent_id: code.offer.agent_id.clone(),
                     offer_digest: digest.into(),
                     outcome: AgentEnrollmentDeliveryOutcome::Unknown,

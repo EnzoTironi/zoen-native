@@ -79,8 +79,8 @@ export class BlockedPeopleSession {
       blockedPeopleScopeKey(this.owner) === blockedPeopleScopeKey(this.port.scope()),
     );
   }
-  ticket(): BlockedPeopleTicket | null {
-    return this.current()
+  ticket(observed: BlockedPeopleState = this.state): BlockedPeopleTicket | null {
+    return observed === this.state && this.current()
       ? Object.freeze({ scope: this.state.scope, revision: this.revision })
       : null;
   }

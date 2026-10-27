@@ -60,6 +60,8 @@ function Navigation() {
               <NativeIntentConsumer />
               <Stack
                 screenOptions={({ route }) => ({
+                  // Fullscreen Apps override this mask; chat and normal navigation stay upright.
+                  orientation: 'portrait',
                   // Tab surfaces own their headings; never restore a native group header.
                   headerShown: route.name !== '(tabs)',
                   headerBackButtonDisplayMode: 'minimal',
@@ -142,6 +144,7 @@ function Navigation() {
                   options={{
                     title: t('common.newChat'),
                     presentation: 'formSheet',
+                    headerTransparent: false,
                     sheetGrabberVisible: true,
                   }}
                 />

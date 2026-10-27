@@ -16,7 +16,8 @@ const APP_ID: &str = "TEAM123456.xyz.tironi.zoen";
 const IP_HEADER: &str = "x-test-client-ip";
 
 #[tokio::test]
-async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() {
+async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let w = World::with_env(
         "agent_link",
         &[
@@ -27,9 +28,9 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
         ],
     )
     .await;
-    let mut owner = RawClient::connect(&w.relay_url(), "dono").await;
-    let mut stranger = RawClient::connect(&w.relay_url(), "estranho").await;
-    let barbeiro = register_agent(&w, &owner, "barbeiro", "#C45C26", Some("scissors")).await;
+    let mut owner = RawClient::connect(&w.relay_url(), "dono").await?;
+    let mut stranger = RawClient::connect(&w.relay_url(), "estranho").await?;
+    let barbeiro = register_agent(&w, &owner, "barbeiro", "#C45C26", Some("scissors")).await?;
 
     // One stable link: asking again returns the same live code, whatever the knobs.
     let a = create(&mut owner, &barbeiro, 50, 3600)
@@ -172,7 +173,7 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
         "red;}</style><script>alert(1)</script>",
         None,
     )
-    .await;
+    .await?;
     let c = create(&mut owner, &agenda, 1, 3600).await.expect("create");
     let page = get(&w, &format!("/a/{}", c.code), &[]);
     assert_eq!(page.status, 200);
@@ -183,11 +184,16 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
     assert!(!page.body.contains("alert(1)"), "{}", page.body);
     assert!(page.body.contains(">A</div>"), "no glyph: the initial");
     redeem(&mut stranger, &c.code).await.expect("first use");
+    assert_eq!(
+        get(&w, &format!("/a/{}", c.code), &[]).status,
+        404,
+        "spent public link stays hidden before an existing redeemer retries"
+    );
     // The same person again counts once: still fine, and the only use isn't spent twice.
     redeem(&mut stranger, &c.code)
         .await
         .expect("same person, same code: no second use");
-    let mut outro = RawClient::connect(&w.relay_url(), "outro").await;
+    let mut outro = RawClient::connect(&w.relay_url(), "outro").await?;
     let err = redeem(&mut outro, &c.code).await.unwrap_err();
     assert!(err.contains("expired or already used"), "{err}");
     assert_eq!(get(&w, &format!("/a/{}", c.code), &[]).status, 404);
@@ -195,6 +201,29 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
         .await
         .expect("replaced");
     assert_ne!(d.code, c.code);
+
+    // A stale physical link after directory revocation must not spend its use.
+    // Restore only the isolated fixture row afterwards to inspect the unchanged
+    // FDB quota; this is not a product path for resuming a revoked agent.
+    let blocked = register_agent(&w, &owner, "blocked_invite", "#4F7CFF", None).await?;
+    let blocked_link = create(&mut owner, &blocked, 1, 3600).await?;
+    {
+        use sqlx::Connection;
+        let mut db = sqlx::PgConnection::connect(&w.db_url).await?;
+        sqlx::query("UPDATE agent_citizens SET revoked_at=now() WHERE agent=$1")
+            .bind(&blocked)
+            .execute(&mut db)
+            .await?;
+        let denied = redeem(&mut stranger, &blocked_link.code).await.unwrap_err();
+        assert!(denied.contains("revoked"), "{denied}");
+        sqlx::query("UPDATE agent_citizens SET revoked_at=NULL WHERE agent=$1")
+            .bind(&blocked)
+            .execute(&mut db)
+            .await?;
+    }
+    redeem(&mut outro, &blocked_link.code)
+        .await
+        .expect("revoked preflight consumed no quota");
 
     // An expired link: no preview, no page, no redeem.
     revoke(&mut owner, &agenda).await.expect("revoke");
@@ -268,6 +297,7 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
             }
         }])
     );
+    Ok(())
 }
 
 async fn register_agent(
@@ -276,8 +306,8 @@ async fn register_agent(
     handle: &str,
     tint: &str,
     glyph: Option<&str>,
-) -> String {
-    let author = Author::device(&Signer::generate(), Signer::generate());
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let author = Author::device(&Signer::generate()?, Signer::generate()?);
     let proof = agent_owner::authorize(&owner.author, &author.identity).unwrap();
     let mut client = RawClient::reconnect(&w.relay_url(), author).await;
     let profile = Identity {
@@ -298,7 +328,7 @@ async fn register_agent(
     match client.request(Op::Register { profile }).await {
         Ok(Reply::Registered(a)) => {
             assert_eq!(a.kind, IdentityKind::Agent);
-            a.id
+            Ok(a.id)
         }
         other => panic!("register agent {handle}: {other:?}"),
     }

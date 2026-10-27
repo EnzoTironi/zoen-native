@@ -106,6 +106,7 @@ type ViewportProps = {
   onNativeScroll?: ScrollViewProps['onScroll'];
   onNativeLayout?: (height: number) => void;
   onNativeInset?: (insets: { top: number; bottom: number }) => void;
+  onComposerLayout?: (height: number) => void;
 };
 
 /** iOS owns keyboard insets natively; other platforms retain their existing layout. */
@@ -134,6 +135,7 @@ function NativeConversationViewport({
   onNativeScroll,
   onNativeLayout,
   onNativeInset,
+  onComposerLayout,
 }: ViewportProps) {
   const [measured, setMeasured] = useState(false);
   const composerHeight = useSharedValue(0);
@@ -182,6 +184,7 @@ function NativeConversationViewport({
             const height = nativeEvent.layout.height;
             if (!Number.isFinite(height) || height <= 0) return;
             composerHeight.set(height);
+            onComposerLayout?.(height);
             if (!measured) setMeasured(true);
           }}
         >

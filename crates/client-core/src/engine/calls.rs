@@ -1,5 +1,11 @@
 //! Call authority is a fold of the existing authenticated log, never an SDK store.
-use super::*;
+#[cfg(test)]
+use super::{new_ulid, Author, Signer, SpaceLog, Store};
+
+use super::{
+    new_secret_id, not_found, now_ms, CoreError, Engine, Event, EventBody, HashMap, Identity,
+    IdentityId, IdentityKind, Privacy, Role, SpaceKind, State, R,
+};
 use types::calls::{CallEndReason, CallMedia, CallRecord, CallSignal, MAX_RING_MS};
 
 impl State {
@@ -85,17 +91,20 @@ impl State {
                     if call.invitation != *invitation || event.at_ms < 0 {
                         return false;
                     }
-                    let caller = call.caller == event.author && call.caller_device == device;
-                    let callee = call.callee == event.author
+                    let from_initiator =
+                        call.caller == event.author && call.caller_device == device;
+                    let from_recipient = call.callee == event.author
                         && call
                             .accepted_device
                             .as_deref()
                             .is_none_or(|chosen| chosen == device);
                     let permitted = match reason {
-                        CallEndReason::Cancelled => caller && call.accepted_device.is_none(),
-                        CallEndReason::Declined => callee && call.accepted_device.is_none(),
+                        CallEndReason::Cancelled => {
+                            from_initiator && call.accepted_device.is_none()
+                        }
+                        CallEndReason::Declined => from_recipient && call.accepted_device.is_none(),
                         CallEndReason::HungUp => {
-                            (caller || callee) && call.accepted_device.is_some()
+                            (from_initiator || from_recipient) && call.accepted_device.is_some()
                         }
                     };
                     permitted && (!call.terminal() || call.end_reason == Some(*reason))
@@ -103,14 +112,17 @@ impl State {
         }
     }
 
-    pub(crate) fn apply_call(&mut self, event: &Event) {
+    #[must_use]
+    pub(crate) fn apply_call(&mut self, event: &Event) -> bool {
         let EventBody::CallV1 { signal } = &event.body else {
-            return;
+            return false;
         };
-        let space = self
-            .spaces
-            .get_mut(&event.space)
-            .expect("validated call Space");
+        let Some(device) = event.device.as_ref() else {
+            return false;
+        };
+        let Some(space) = self.spaces.get_mut(&event.space) else {
+            return false;
+        };
         match signal {
             CallSignal::Invite {
                 call_id,
@@ -139,7 +151,7 @@ impl State {
                     call_id: call_id.clone(),
                     invitation: event_log::content_hash_of(event),
                     caller: event.author.clone(),
-                    caller_device: event.device.clone().expect("validated call device"),
+                    caller_device: device.clone(),
                     callee: callee.clone(),
                     media: *media,
                     invited_at_ms: event.at_ms,
@@ -154,11 +166,9 @@ impl State {
                 });
             }
             CallSignal::Accept { call_id, .. } => {
-                let call = space
-                    .calls
-                    .iter_mut()
-                    .find(|c| c.call_id == *call_id)
-                    .expect("validated call");
+                let Some(call) = space.calls.iter_mut().find(|c| c.call_id == *call_id) else {
+                    return false;
+                };
                 if call.accepted_device.is_none() {
                     call.accepted_device = event.device.clone();
                     call.accepted_at_ms = Some(event.at_ms);
@@ -168,11 +178,9 @@ impl State {
             CallSignal::End {
                 call_id, reason, ..
             } => {
-                let call = space
-                    .calls
-                    .iter_mut()
-                    .find(|c| c.call_id == *call_id)
-                    .expect("validated call");
+                let Some(call) = space.calls.iter_mut().find(|c| c.call_id == *call_id) else {
+                    return false;
+                };
                 if call.end_reason.is_none() {
                     call.ended_at_ms = Some(event.at_ms);
                     call.end_reason = Some(*reason);
@@ -182,6 +190,7 @@ impl State {
                     .retain(|record| record.signal.call_id != *call_id);
             }
         }
+        true
     }
 }
 
@@ -247,7 +256,7 @@ impl Engine {
             .0
             .clone();
         self.assert_call_peer_allowed(&callee)?;
-        let id = new_secret_id("call");
+        let id = new_secret_id("call")?;
         let at = now_ms();
         self.append_at(
             space,

@@ -4,6 +4,13 @@ use serde_json::{json, Value};
 use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, Mutex};
 use types::Role;
+mod app_edit_owned_target_cases;
+mod app_edit_request_cases;
+mod app_edit_target_cases;
+mod gridcraft_cases;
+mod pdfcraft_cases;
+mod photocraft_cases;
+mod wordcraft_cases;
 const ORIGINAL: &[u8] = include_bytes!("fixtures/original.deckcraft");
 const CHANGED: &[u8] = include_bytes!("fixtures/changed.deckcraft");
 #[derive(Default)]
@@ -126,7 +133,7 @@ fn one_signed_app_owns_exact_encrypted_file_versions_and_retry_never_recreates_i
 }
 #[test]
 fn disk_reopen_lost_response_retry_and_exact_export_source_keep_original_accepted_head() {
-    let dir = std::env::temp_dir().join(new_id("deckcraft-canonical"));
+    let dir = std::env::temp_dir().join(new_id("deckcraft-canonical").unwrap());
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("device.sqlite");
     let f = fixture(path.to_str().unwrap());

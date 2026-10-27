@@ -4,7 +4,9 @@ use crate::{
     dto::*,
     engine::{ReqStatus, State},
 };
-use miniapps::deckcraft::{self, agent_tools};
+use miniapps::binary::{self, agent_tools};
+#[cfg(test)]
+use miniapps::deckcraft;
 use serde_json::{json, Value};
 use types::{
     ActionClass, AgentRequest, Capability, EventBody, RequestResolution, ToolDecision,
@@ -23,7 +25,7 @@ fn stale() -> CoreError {
 }
 fn malformed() -> CoreError {
     CoreError::Invalid {
-        reason: "Unsupported or invalid reviewed presentation action.".into(),
+        reason: "Unsupported or invalid reviewed binary App action.".into(),
     }
 }
 fn digest(value: &str) -> bool {
@@ -63,6 +65,9 @@ pub(super) struct ApprovalBinding {
 }
 
 fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
+    if p.schema == crate::agent_scenes::SCHEMA {
+        return crate::agent_scenes::parsed(p);
+    }
     if p.schema == 5 {
         return crate::agent_sites::parsed(p);
     }
@@ -75,8 +80,9 @@ fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
     if p.schema == 2 {
         return crate::agent_pages::approvals::parsed(p);
     }
+    let format = agent_tools::format(&p.canonical_tool).ok_or_else(malformed)?;
     if p.schema != 1
-        || p.engine_revision != deckcraft::ENGINE_REVISION
+        || p.engine_revision != format.revision()
         || !digest(&p.worker_binding)
         || !digest(&p.source_sha256)
         || !digest(&p.task_sha256)
@@ -168,16 +174,42 @@ pub(crate) fn command_intent(p: &ToolProposal, action: Option<&Value>) -> R<Stri
     .map_err(|_| malformed())?))
 }
 
+pub(crate) fn mutation_id(p: &ToolProposal, intent: &str) -> String {
+    let prefix = match agent_tools::format(&p.canonical_tool) {
+        Some(binary::Format::Gridcraft) => "gridcmd",
+        Some(binary::Format::Wordcraft) => "wordcmd",
+        Some(binary::Format::Photocraft) => "photocmd",
+        Some(binary::Format::Pdfcraft) => "pdfcmd",
+        _ => "deckcmd",
+    };
+    format!("{prefix}_{intent}")
+}
 pub(crate) fn operation(tool: &str) -> String {
     use crate::i18n::t;
     match tool {
+        "read_scene" => t("Ler desenho", "Read drawing"),
+        "replace_scene" => t("Editar desenho", "Edit drawing"),
         "create_site" => t("Criar site", "Create Site"),
         "read_site" => t("Ler site", "Read Site"),
         "replace_site_source" => t("Atualizar site", "Update Site"),
         "generate_image" => t("Criar imagem", "Create image"),
         "read_page" => t("Ler página", "Read Page"),
+        "create_gridcraft" => t("Criar planilha", "Create spreadsheet"),
+        "create_photocraft" => t("Criar imagem", "Create image"),
+        "create_pdfcraft" => t("Criar PDF", "Create PDF"),
+        "read_pdfcraft" => t("Ler PDF", "Read PDF"),
+        "pdfcraft_edit" => t("Editar PDF", "Edit PDF"),
+        "read_photocraft" => t("Ler imagem", "Read image"),
+        "photocraft_transform" => t("Transformar imagem", "Transform image"),
+        "create_wordcraft" => t("Criar documento", "Create document"),
+        "read_wordcraft" => t("Ler documento", "Read document"),
+        "wordcraft_text_replace" => t("Substituir texto", "Replace text"),
+        "wordcraft_edit_range" => t("Editar trecho", "Edit range"),
+        "wordcraft_format_range" => t("Formatar trecho", "Format range"),
         "create_deckcraft" => t("Criar apresentação", "Create presentation"),
         "replace_page_block" => t("Substituir bloco da página", "Replace Page block"),
+        "read_gridcraft" => t("Ler planilha", "Read spreadsheet"),
+        "gridcraft_cell_set" => t("Alterar célula", "Set cell"),
         "read_deckcraft" => t("Ler apresentação", "Read presentation"),
         "deckcraft_text_set" => t("Substituir texto", "Replace shape text"),
         "deckcraft_slide_notes" => t("Atualizar notas do slide", "Update slide notes"),
@@ -190,6 +222,12 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
     let args: Value = serde_json::from_str(&p.arguments_json).unwrap_or(Value::Null);
     let heading = format!("{} · v{}", title, p.version);
     match p.canonical_tool.as_str() {
+        "read_scene" => heading,
+        "replace_scene" => format!(
+            "{}\n{}",
+            heading,
+            args["sceneJson"].as_str().unwrap_or_default()
+        ),
         "read_page" => heading,
         "replace_page_block" => format!(
             "{}\n{}\n{}\n{}\n{}",
@@ -199,7 +237,34 @@ pub(crate) fn review_detail(p: &ToolProposal, title: &str) -> String {
             crate::i18n::t("Depois", "After"),
             args["after"]["text"].as_str().unwrap_or_default()
         ),
-        "read_deckcraft" => heading,
+        "read_deckcraft" | "read_gridcraft" | "read_wordcraft" | "read_photocraft"
+        | "read_pdfcraft" => heading,
+        "wordcraft_edit_range" | "wordcraft_format_range" => format!(
+            "{}\n{}:{} → {}:{}\n{}",
+            heading,
+            args["range"]["start"]["paragraph"],
+            args["range"]["start"]["offset"],
+            args["range"]["end"]["paragraph"],
+            args["range"]["end"]["offset"],
+            if p.canonical_tool == "wordcraft_format_range" {
+                args["format"].to_string()
+            } else {
+                args["text"].as_str().unwrap_or_default().to_owned()
+            }
+        ),
+        "photocraft_transform" => format!(
+            "{}\n{}",
+            heading,
+            args["action"].as_str().unwrap_or_default()
+        ),
+        "pdfcraft_edit" => format!("{}\n{}", heading, args["action"]),
+        "gridcraft_cell_set" => format!(
+            "{}\n{}!{}\n{}",
+            heading,
+            args["sheet"].as_str().unwrap_or_default(),
+            args["cell"].as_str().unwrap_or_default(),
+            args["input"].as_str().unwrap_or_default()
+        ),
         "deckcraft_slide_new" => format!(
             "{}\n{}\n{}",
             heading,

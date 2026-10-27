@@ -1,0 +1,252 @@
+[
+  {
+    "id": "TG-polls-anonymous-polls",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/poll-attachment-fields.tsx"
+    ],
+    "gap": "Permitir voto anônimo sem expor identidade no estado/log; App atual exibe nomes dos votantes.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-polls-public-vote-polls",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/attachment-route.tsx",
+      "docs/product/telegram-ios-attachment-tabs.md"
+    ],
+    "gap": "Oferecer enquete na conversa/thread com voto público; hoje cria App separado sem vínculo de resposta/thread.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-polls-multiple-answer-polls",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/poll-attachment-fields.tsx"
+    ],
+    "gap": "Permitir múltiplas escolhas por pessoa e apresentar resultado coerente; App atual é escolha única.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-quiz-polls",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/poll-attachment-fields.tsx"
+    ],
+    "gap": "Definir resposta correta, explicação e feedback sem revelar antecipadamente a solução.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-poll-media-and-locations",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/poll-attachment-fields.tsx",
+      "apps/zoen/src/media/attachment-route.tsx"
+    ],
+    "gap": "Anexar mídia/local à pergunta ou alternativa e manter autorização desses recursos.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-poll-descriptions",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/media/poll-attachment-fields.tsx",
+      "apps/zoen/src/media/attachment-content.ts"
+    ],
+    "gap": "Adicionar descrição abaixo da pergunta e preservá-la no contrato e no resultado.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-suggested-poll-options",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/attachment-route.tsx"
+    ],
+    "gap": "Sugestão existe no App; integrar à enquete da conversa com política e histórico da alternativa.",
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "TG-polls-revoting-controls",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/poll-attachment-fields.tsx"
+    ],
+    "gap": "Oferecer escolha explícita de permitir revoto; App atual anuncia troca de voto sempre disponível.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-shuffled-poll-choices",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/poll-attachment-fields.tsx"
+    ],
+    "gap": "Embaralhar apresentação sem alterar a identidade das alternativas ou a apuração.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-poll-deadlines",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/poll-attachment-fields.tsx"
+    ],
+    "gap": "Configurar encerramento automático com horário confiável e estado final convergente.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-hidden-poll-results",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx"
+    ],
+    "gap": "Ocultar resultados até a condição escolhida; App atual mostra totais e nomes durante votação.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-poll-voter-timestamps",
+    "scope": "active",
+    "implementation": "unverified",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx"
+    ],
+    "gap": "Expor horário verificável de cada voto público; lista de nomes e Activity não provam esse vínculo.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-poll-statistics",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx"
+    ],
+    "gap": "Contagem atual existe; adicionar evolução temporal e critérios de apuração verificáveis.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-poll-audience-limits",
+    "scope": "decision",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/poll-attachment-fields.tsx"
+    ],
+    "gap": "Definir elegibilidade de voto por assinatura/geografia e validar no serviço, não só na interface.",
+    "issues": [
+      170
+    ],
+    "recommendation": "Manter como referência adicional ao escopo aprovado; adotar somente quando melhorar uma jornada do produto."
+  },
+  {
+    "id": "TG-polls-links-in-poll-answers",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/poll.tsx",
+      "apps/zoen/src/media/poll-attachment-fields.tsx"
+    ],
+    "gap": "Modelar e abrir links das alternativas com validação de URL sem registrar voto por acidente.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-poll-history-tab",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "apps/zoen/src/app/shared-media/[id].tsx",
+      "miniapps/builtins/src/poll.tsx"
+    ],
+    "gap": "Adicionar aba de enquetes ativas/encerradas no perfil da conversa, com retorno ao alvo original.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-collaborative-checklists",
+    "scope": "active",
+    "implementation": "different",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/list.tsx",
+      "apps/zoen/src/media/attachment-route.tsx"
+    ],
+    "gap": "Oferecer checklist editável como conteúdo da conversa; lista atual é App separado e compartilha texto estático.",
+    "issues": [
+      170
+    ]
+  },
+  {
+    "id": "TG-polls-checklist-item-permissions",
+    "scope": "active",
+    "implementation": "missing",
+    "acceptance": "pending",
+    "evidence": [
+      "miniapps/builtins/src/list.tsx"
+    ],
+    "gap": "Separar permissões de adicionar e concluir itens com validação canônica; lista atual não apresenta esses controles.",
+    "issues": [
+      170
+    ]
+  }
+]

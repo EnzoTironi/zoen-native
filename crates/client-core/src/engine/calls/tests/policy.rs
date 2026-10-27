@@ -26,7 +26,7 @@ fn blocked<T>(result: R<T>) {
 
 #[test]
 fn blocked_peer_cannot_be_invited_or_accepted_and_decline_remains_available() {
-    let mut f = Fixture::new();
+    let mut f = Fixture::new().unwrap();
     own(&mut f, true);
     f.engine.net.synced.insert("sp_calls".into());
     f.engine.store.block(&f.callee.identity, now_ms()).unwrap();
@@ -41,7 +41,7 @@ fn blocked_peer_cannot_be_invited_or_accepted_and_decline_remains_available() {
     assert!(f.engine.store.outbox().unwrap().is_empty());
 
     // Incoming canonical history still projects, independently of local block policy.
-    let call = f.invite();
+    let call = f.invite().unwrap();
     own(&mut f, false);
     f.engine.store.block(&f.caller.identity, now_ms()).unwrap();
     let before = f.engine.store.event_count().unwrap();
@@ -73,13 +73,14 @@ fn blocked_peer_cannot_be_invited_or_accepted_and_decline_remains_available() {
 
 #[test]
 fn blocking_live_peer_fences_negotiation_but_not_history_or_hangup() {
-    let mut f = Fixture::new();
-    let call = f.invite();
+    let mut f = Fixture::new().unwrap();
+    let call = f.invite().unwrap();
     let accept = f.accept(&call);
-    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept });
+    f.push(f.callee.clone(), 200, EventBody::CallV1 { signal: accept })
+        .unwrap();
     own(&mut f, true);
     let signal = CallTransportSignal {
-        signal_id: new_secret_id("tx"),
+        signal_id: new_secret_id("tx").unwrap(),
         call_id: call.call_id.clone(),
         invitation: call.invitation.clone(),
         recipient_device: f.callee.device.clone().unwrap(),

@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { DefinitionSession } from '../agent-definition/session.ts';
+import { navigationScrollFixture } from './navigation-scroll-view.fixture.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 import { t } from '../i18n/index.ts';
 import type { AgentDefinitionDto } from './generated/AgentDefinitionDto.ts';
@@ -169,12 +170,18 @@ async function fixture() {
     return module.exports;
   }
   const primitives = load(primitivesCode, {
+    // This fixture ports hooks while joining real form/input/responder wiring.
+    // field-identity.test.ts qualifies useId with the actual React lifecycle.
+    react: { useId: () => 'joined-input-field' },
     'expo-symbols': { SymbolView: 'SymbolView' },
+    './native-button-label': { FullWidthButtonLabel: () => null },
     '@expo/ui': { Host: 'Host', Button: 'Button' },
     'expo-image': { Image: 'Image' },
     '../theme/telegram': {},
   });
-  const settings = load(settingsCode, { 'expo-router': { Stack: { Screen: 'Screen' } } });
+  const settings = load(settingsCode, {
+    './navigation-scroll-view': { NavigationScrollView: navigationScrollFixture().render },
+  });
   const view = load(viewCode, {
     '../components/primitives': primitives,
     '../components/settings-screen': settings,

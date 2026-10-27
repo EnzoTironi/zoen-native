@@ -104,7 +104,11 @@ pub(super) fn sync_discovers_owned_app_chunks_and_explicit_history_retains_origi
         )
         .unwrap();
     let wanted = e.wanted_item_blobs();
-    let original = e.item_state(&f.item).unwrap().versions[0]
+    let original = e
+        .item_state(&f.item)
+        .unwrap()
+        .versions
+        .initial()
         .content
         .owned_file()
         .unwrap();

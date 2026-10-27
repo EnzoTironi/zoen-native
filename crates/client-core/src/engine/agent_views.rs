@@ -1,5 +1,8 @@
 //! Agent profiles, owner note counts and activity projections.
-use super::*;
+use super::{
+    not_found, t, trust_dto, AgentActivityDto, AgentProfile, AgentSpaceTrust, Engine, EntryBody,
+    EventBody, IdentityKind, ReqStatus, RequestState, SpaceKind, R,
+};
 
 impl Engine {
     // ── agentes e Concessões ──
@@ -49,7 +52,7 @@ impl Engine {
             persona: self.persona(agent),
             budget_limit_cents: budget.map(|b| b.limit_cents),
             budget_spent_cents: budget.map(|b| b.spent_cents),
-            near_limit: budget.map(|b| b.near_limit()).unwrap_or(false),
+            near_limit: budget.is_some_and(|b| b.near_limit()),
             spaces,
             pending_requests: resolved
                 .iter()

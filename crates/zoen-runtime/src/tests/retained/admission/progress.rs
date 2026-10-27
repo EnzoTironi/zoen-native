@@ -1,20 +1,21 @@
 use super::*;
 
-pub(super) async fn run() {
-    Box::pin(frozen_original_and_restart()).await;
-    Box::pin(source_advances_after_refresh()).await;
-    Box::pin(source_conflicts_after_final_read()).await;
-    Box::pin(current_root_is_required()).await;
-    Box::pin(paired_takeover_is_required()).await;
-    Box::pin(concurrent_workers()).await;
-    Box::pin(gateway_drift()).await;
+pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(frozen_original_and_restart()).await?;
+    Box::pin(source_advances_after_refresh()).await?;
+    Box::pin(source_conflicts_after_final_read()).await?;
+    Box::pin(current_root_is_required()).await?;
+    Box::pin(paired_takeover_is_required()).await?;
+    Box::pin(concurrent_workers()).await?;
+    Box::pin(gateway_drift()).await?;
+    Ok(())
 }
 
-async fn frozen_original_and_restart() {
-    let (mut fixture, run) = original().await;
+async fn frozen_original_and_restart() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut fixture, run) = original().await?;
     let before = native::testing::reply_original(&fixture.world.runtime, &run.run).await;
     assert_eq!(before.0, format!("{ORIGINAL}\n"));
-    fixture.message(LATER).await;
+    fixture.message(LATER).await?;
     fixture.sync(false).await.unwrap();
     let retained = fixture.world.runtime.run_model(&run.run).await.unwrap();
     assert_eq!(retained.financial, FinancialState::Settled { units: 6 });
@@ -61,10 +62,11 @@ async fn frozen_original_and_restart() {
     cold.finance.pool.close().await;
     fixture.finish().await;
     println!("native admission journey: actual paid reply keeps original text and binding across later head and cold replay PASS");
+    Ok(())
 }
 
-async fn source_advances_after_refresh() {
-    let (mut fixture, run) = original().await;
+async fn source_advances_after_refresh() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (mut fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let step = runtime.verified_step(&run.run).await.unwrap();
     let original = binding(&runtime, &step);
@@ -76,7 +78,7 @@ async fn source_advances_after_refresh() {
     runtime.finance.reserve(&original).await.unwrap();
     let claim = runtime.finance.claim(&original).await.unwrap().unwrap();
     let guard = runtime.finance.guard(&original, &step).await.unwrap();
-    fixture.message(LATER).await;
+    fixture.message(LATER).await?;
     assert!(matches!(
         runtime
             .execution
@@ -94,15 +96,17 @@ async fn source_advances_after_refresh() {
     assert_one_release(&fixture).await;
     fixture.finish().await;
     println!("native admission source cut: actual relay append after refreshed facts refuses final admission and releases unsent hold once PASS");
+    Ok(())
 }
 
-async fn source_conflicts_after_final_read() {
-    let (mut fixture, run) = original().await;
+async fn source_conflicts_after_final_read() -> std::result::Result<(), Box<dyn std::error::Error>>
+{
+    let (mut fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     runtime.fault.store(22, Ordering::SeqCst);
     let paid = start(&runtime, &run);
     cut(&runtime).await;
-    fixture.message(LATER).await;
+    fixture.message(LATER).await?;
     runtime.native_cut_resume.notify_one();
     assert!(paid.await.unwrap().is_err());
     runtime.fault.store(0, Ordering::SeqCst);
@@ -114,10 +118,11 @@ async fn source_conflicts_after_final_read() {
     assert_one_release(&fixture).await;
     fixture.finish().await;
     println!("native admission source cut: real source write conflicts after final read, no automatic commit retry or HTTP PASS");
+    Ok(())
 }
 
-async fn current_root_is_required() {
-    let (fixture, run) = original().await;
+async fn current_root_is_required() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let step = runtime.verified_step(&run.run).await.unwrap();
     let original = binding(&runtime, &step);
@@ -145,10 +150,11 @@ async fn current_root_is_required() {
     assert_one_release(&fixture).await;
     fixture.finish().await;
     println!("native admission root cut: actual maintenance changes active capsule under unchanged valid paired leases, old step denied PASS");
+    Ok(())
 }
 
-async fn paired_takeover_is_required() {
-    let (fixture, run) = original().await;
+async fn paired_takeover_is_required() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let runtime = fixture.world.runtime.clone();
     let step = runtime.verified_step(&run.run).await.unwrap();
     native::testing::stale_reply_admission(&runtime, &step).await;
@@ -160,10 +166,11 @@ async fn paired_takeover_is_required() {
     assert_one_release(&fixture).await;
     fixture.finish().await;
     println!("native admission fence cut: forced expiry then actual paired takeover rejects final stale admission and stale release PASS");
+    Ok(())
 }
 
-async fn concurrent_workers() {
-    let (fixture, run) = original().await;
+async fn concurrent_workers() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let first = fixture.world.runtime.clone();
     let second = restored(&fixture).await;
     fixture.world.http.paused.store(true, Ordering::SeqCst);
@@ -191,10 +198,11 @@ async fn concurrent_workers() {
     second.finance.pool.close().await;
     fixture.finish().await;
     println!("native admission journey: two actual runtimes compete for real paired leases, one claim and provider send PASS");
+    Ok(())
 }
 
-async fn gateway_drift() {
-    let (fixture, run) = original().await;
+async fn gateway_drift() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let (fixture, run) = original().await?;
     let mut altered = config(
         &fixture.world.db_url,
         &fixture.world.config_namespace,
@@ -221,4 +229,5 @@ async fn gateway_drift() {
     runtime.finance.pool.close().await;
     fixture.finish().await;
     println!("native admission profile cut: changed gateway refuses original dispatch while independent cleanup remains usable PASS");
+    Ok(())
 }

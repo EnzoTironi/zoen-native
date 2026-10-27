@@ -23,6 +23,7 @@ pub enum PageInputMode {
 pub enum PageInputTarget {
     Block { block_id: String },
     AppendNew,
+    WholeDocument,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct PageInputBindingDto {
@@ -31,6 +32,9 @@ pub struct PageInputBindingDto {
     pub mode: PageInputMode,
     pub base_edit_context: String,
     pub base_block_json: String,
+    /// Canonical whole-document seed on Open only; never a recovered capture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_document_markdown: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct PageInputCaptureDto {
@@ -69,6 +73,8 @@ pub(super) struct Binding {
     pub target: PageInputTarget,
     pub base_edit_context: String,
     pub base_block: Option<TaggedBlock>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_document: Option<Vec<PageBlockDto>>,
     pub mode: PageInputMode,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -80,7 +86,7 @@ pub(super) struct Capture {
     pub sha256: String,
 }
 mod payload_bytes {
-    use super::*;
+    use super::{tagged, Deserialize, MAX_CAPTURE};
     pub fn serialize<S: serde::Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&tagged::encode_bytes(bytes))
     }
@@ -130,6 +136,7 @@ impl InputStateV1 {
                         base_edit_context: b.base_edit_context.clone(),
                         base_block_json: serde_json::to_string(&b.base_block)
                             .map_err(|_| invalid("invalid base block"))?,
+                        base_document_markdown: None,
                     })
                 })
                 .transpose()?,
@@ -150,11 +157,16 @@ impl InputStateV1 {
             if b.base_edit_context.len() > tagged::MAX_CONTEXT_BYTES {
                 return Err(invalid("input context exceeds limit"));
             }
-            match (&b.target, &b.base_block) {
-                (PageInputTarget::AppendNew, None) => {}
-                (PageInputTarget::Block { block_id }, Some(TaggedBlock::Page(p)))
+            match (&b.target, &b.base_block, &b.base_document) {
+                (PageInputTarget::AppendNew, None, None) => {}
+                (PageInputTarget::WholeDocument, None, Some(blocks))
+                    if b.mode == PageInputMode::Markdown =>
+                {
+                    whole_document::validate(blocks)?;
+                }
+                (PageInputTarget::Block { block_id }, Some(TaggedBlock::Page(p)), None)
                     if *block_id == p.id => {}
-                (PageInputTarget::Block { block_id }, Some(TaggedBlock::Plan(p)))
+                (PageInputTarget::Block { block_id }, Some(TaggedBlock::Plan(p)), None)
                     if *block_id == p.id => {}
                 _ => return Err(invalid("invalid input base block")),
             }
@@ -464,6 +476,8 @@ fn empty_block(id: String) -> PageBlockDto {
         lang: String::new(),
         url: String::new(),
         alt: String::new(),
+        setext: None,
+        title: None,
         text: String::new(),
         spans: Vec::new(),
     }
@@ -497,57 +511,63 @@ impl Engine {
     }
     pub(crate) fn page_input_open(
         &self,
-        s: &FileEditDraftScope,
-        r: u64,
-        w: &str,
-        t: PageInputTarget,
-        m: PageInputMode,
-        c: &str,
+        scope: &FileEditDraftScope,
+        revision: u64,
+        writer: &str,
+        target: PageInputTarget,
+        mode: PageInputMode,
+        context: &str,
     ) -> R<PageInputDto> {
-        self.with_input(s, |p| p.input_open(self, r, w, t, m, c))
+        self.with_input(scope, |p| {
+            p.input_open(self, revision, writer, target, mode, context)
+        })
     }
     pub(crate) fn page_input_checkpoint(
         &self,
-        s: &FileEditDraftScope,
-        w: &str,
-        r: u64,
-        q: u64,
-        b: &[u8],
+        scope: &FileEditDraftScope,
+        writer: &str,
+        revision: u64,
+        sequence: u64,
+        payload: &[u8],
     ) -> R<PageInputAck> {
-        self.with_input(s, |p| p.input_checkpoint(self, w, r, q, b))
+        self.with_input(scope, |p| {
+            p.input_checkpoint(self, writer, revision, sequence, payload)
+        })
     }
     pub(crate) fn page_input_discard(
         &self,
-        s: &FileEditDraftScope,
-        w: &str,
-        r: u64,
-        q: u64,
-        h: &str,
+        scope: &FileEditDraftScope,
+        writer: &str,
+        revision: u64,
+        sequence: u64,
+        digest: &str,
         id: &str,
     ) -> R<PageInputAck> {
-        self.with_input(s, |p| p.input_discard(self, w, r, q, h, id))
+        self.with_input(scope, |p| {
+            p.input_discard(self, writer, revision, sequence, digest, id)
+        })
     }
     pub(crate) fn page_input_release_empty(
         &self,
-        s: &FileEditDraftScope,
-        w: &str,
-        r: u64,
+        scope: &FileEditDraftScope,
+        writer: &str,
+        revision: u64,
         id: &str,
     ) -> R<PageInputAck> {
-        self.with_input(s, |p| p.input_release_empty(self, w, r, id))
+        self.with_input(scope, |p| p.input_release_empty(self, writer, revision, id))
     }
     pub(crate) fn page_input_apply(
         &self,
-        s: &FileEditDraftScope,
-        w: &str,
-        r: u64,
-        q: u64,
-        h: &str,
+        scope: &FileEditDraftScope,
+        writer: &str,
+        revision: u64,
+        sequence: u64,
+        digest: &str,
         id: &str,
     ) -> R<PageInputApplyResult> {
-        self.with_input(s, |p| {
-            let (ack, edit) = p.input_apply(self, w, r, q, h, id)?;
-            let page: PageDto = self.page_dto(self.item_state(&s.item_id)?, edit.current)?;
+        self.with_input(scope, |p| {
+            let (ack, edit) = p.input_apply(self, writer, revision, sequence, digest, id)?;
+            let page: PageDto = self.page_dto(self.item_state(&scope.item_id)?, edit.current)?;
             Ok(PageInputApplyResult {
                 ack,
                 edit: PageEditResult {
@@ -568,3 +588,4 @@ mod tests;
 
 mod conversion;
 pub(super) use conversion::page_edits;
+pub(super) mod whole_document;

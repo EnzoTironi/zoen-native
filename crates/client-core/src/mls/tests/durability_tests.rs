@@ -3,7 +3,11 @@
 use super::*;
 use std::path::PathBuf;
 
+mod checkpoint_refresh_cases;
 mod confirmation_cases;
+mod fifo_cases;
+mod import_cases;
+mod integrity_marker_cases;
 mod receive_cases;
 
 struct Database {
@@ -11,10 +15,10 @@ struct Database {
 }
 
 impl Database {
-    fn new() -> Self {
-        let directory = std::env::temp_dir().join(types::new_id("delivery-durability"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let directory = std::env::temp_dir().join(types::new_id("delivery-durability")?);
         std::fs::create_dir_all(&directory).unwrap();
-        Self { directory }
+        Ok(Self { directory })
     }
 
     fn path(&self, name: &str) -> String {
@@ -34,7 +38,11 @@ fn reopen(path: &str, secret: &[u8; 32]) -> Engine {
     engine
 }
 
-fn closed_space(engine: &mut Engine, peer: &Author, space: &str) {
+fn closed_space(
+    engine: &mut Engine,
+    peer: &Author,
+    space: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let owner = engine.net.author.clone().unwrap();
     ingest_signed(
         engine,
@@ -45,14 +53,20 @@ fn closed_space(engine: &mut Engine, peer: &Author, space: &str) {
             kind: SpaceKind::Group,
             privacy: Privacy::Closed,
         },
-    );
-    add_member(engine, &owner, space, peer);
+    )?;
+    add_member(engine, &owner, space, peer)?;
+    Ok(())
 }
 
-fn encrypted_pair(database: &Database, space: &str) -> (Engine, [u8; 32], Engine, [u8; 32]) {
+type EncryptedPair = (Engine, [u8; 32], Engine, [u8; 32]);
+
+fn encrypted_pair(
+    database: &Database,
+    space: &str,
+) -> std::result::Result<EncryptedPair, Box<dyn std::error::Error>> {
     let (mut owner, _, owner_secret) = member(&database.path("owner.sqlite"));
     let (mut peer, _, peer_secret) = member(&database.path("peer.sqlite"));
-    let initial = claim_group(&mut owner, space, std::slice::from_mut(&mut peer));
+    let initial = claim_group(&mut owner, space, std::slice::from_mut(&mut peer))?;
     for frame in initial {
         assert_eq!(peer.ingest(frame), Ingest::Applied);
     }
@@ -64,10 +78,10 @@ fn encrypted_pair(database: &Database, space: &str) -> (Engine, [u8; 32], Engine
     owner
         .commit_now(space, &[records[0].data.clone()], &Default::default())
         .unwrap();
-    relay_ready_to_peer(&mut owner, &mut peer);
+    relay_ready_to_peer(&mut owner, &mut peer)?;
     assert!(owner.ready_epoch(space).is_some());
     assert!(peer.device().unwrap().has_group(space));
-    (owner, owner_secret, peer, peer_secret)
+    Ok((owner, owner_secret, peer, peer_secret))
 }
 
 // Compare the actual sealed provider state, including the sender/receiver ratchets.
@@ -101,33 +115,39 @@ fn message_count(engine: &Engine, space: &str, id: &str) -> usize {
 
 #[test]
 fn plain_receive_scope_failure_rolls_back_event_and_delivered_progress_across_reopen() {
-    receive_cases::plain_receive_scope_failure_rolls_back_event_and_delivered_progress_across_reopen();
+    receive_cases::plain_receive_scope_failure_rolls_back_event_and_delivered_progress_across_reopen().unwrap();
 }
 
 #[test]
 fn plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_retry() {
-    confirmation_cases::plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_retry();
+    confirmation_cases::plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_retry()
+        .unwrap();
 }
 
 #[test]
 fn failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_retry() {
-    receive_cases::failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_retry();
+    receive_cases::failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_retry()
+        .unwrap();
 }
 
 #[test]
 fn sealed_receive_record_failure_rolls_back_ratchet_event_and_readable_receipt() {
-    receive_cases::sealed_receive_record_failure_rolls_back_ratchet_event_and_readable_receipt();
+    receive_cases::sealed_receive_record_failure_rolls_back_ratchet_event_and_readable_receipt()
+        .unwrap();
 }
 
 #[test]
 fn sealed_receive_scope_failure_rolls_back_ratchet_and_retained_opening() {
-    receive_cases::sealed_receive_scope_failure_rolls_back_ratchet_and_retained_opening();
+    receive_cases::sealed_receive_scope_failure_rolls_back_ratchet_and_retained_opening().unwrap();
 }
 
-fn assert_sealed_receive_rollback(trigger: &str, marker: &str) {
-    let database = Database::new();
+fn assert_sealed_receive_rollback(
+    trigger: &str,
+    marker: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new()?;
     let space = "sealed-receive-retention";
-    let (mut owner, _, mut peer, secret) = encrypted_pair(&database, space);
+    let (mut owner, _, mut peer, secret) = encrypted_pair(&database, space)?;
     let message = owner
         .send_message(space, "Retry the same encrypted envelope")
         .unwrap();
@@ -137,7 +157,7 @@ fn assert_sealed_receive_rollback(trigger: &str, marker: &str) {
         .into_iter()
         .find(|envelope| envelope.sealed_kind() == Some(SealedKind::Application))
         .unwrap();
-    let frame = ordered(&owner, envelope);
+    let frame = ordered(&owner, envelope)?;
     assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
     let before = provider_rows(&peer);
     let count_before = peer.store.event_count().unwrap();
@@ -182,12 +202,14 @@ fn assert_sealed_receive_rollback(trigger: &str, marker: &str) {
     assert_eq!(message_count(&peer, space, &message.id), 1);
     assert_eq!(peer.ingest(frame), Ingest::Duplicate);
     assert_eq!(peer.store.event_count().unwrap(), count_before + 1);
+
+    Ok(())
 }
 
 #[test]
 fn pruned_receive_scope_failure_preserves_the_group_until_the_whole_receipt_commits() {
     receive_cases::pruned_receive_scope_failure_preserves_the_group_until_the_whole_receipt_commits(
-    );
+    ).unwrap();
 }
 
 // A client ID is a routing/idempotency label, not proof that a signed event is ours.
@@ -247,48 +269,63 @@ fn assert_pending_confirmation_remote(engine: &Engine, frame: &Sequenced, author
 
 #[test]
 fn pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_event() {
-    confirmation_cases::pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_event();
+    confirmation_cases::pending_confirmation_other_member_does_not_ack_or_stamp_our_plain_event()
+        .unwrap();
 }
 
 #[test]
 fn pending_confirmation_another_certified_device_cannot_ack_this_devices_event() {
     confirmation_cases::pending_confirmation_another_certified_device_cannot_ack_this_devices_event(
-    );
+    ).unwrap();
 }
 
 #[test]
-fn pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt() {
-    confirmation_cases::pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt();
+fn pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    confirmation_cases::pending_confirmation_same_signer_with_different_signed_bytes_is_not_our_receipt()
 }
 
 #[test]
 fn pending_confirmation_other_space_cannot_remove_a_pending_event_on_cold_reopen() {
-    confirmation_cases::pending_confirmation_other_space_cannot_remove_a_pending_event_on_cold_reopen();
+    confirmation_cases::pending_confirmation_other_space_cannot_remove_a_pending_event_on_cold_reopen().unwrap();
 }
 
 #[test]
 fn pending_confirmation_other_mls_member_keeps_pending_overlay_and_cold_outbox() {
     confirmation_cases::pending_confirmation_other_mls_member_keeps_pending_overlay_and_cold_outbox(
-    );
+    ).unwrap();
 }
 
 #[test]
 fn pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_cold_reopen() {
     confirmation_cases::pending_confirmation_exact_signed_echo_cleans_a_crash_window_on_cold_reopen(
-    );
+    ).unwrap();
 }
 
 #[test]
-fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack() {
-    confirmation_cases::pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack();
+fn pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    confirmation_cases::pending_confirmation_outbox_read_failure_never_appends_or_guesses_an_ack()
 }
 
 #[test]
 fn pending_confirmation_retained_older_sealed_echo_survives_resealing() {
-    confirmation_cases::pending_confirmation_retained_older_sealed_echo_survives_resealing();
+    confirmation_cases::pending_confirmation_retained_older_sealed_echo_survives_resealing()
+        .unwrap();
 }
 
 #[test]
 fn pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ratchet_unchanged() {
-    confirmation_cases::pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ratchet_unchanged();
+    confirmation_cases::pending_confirmation_sealed_outbox_read_failure_keeps_event_and_ratchet_unchanged().unwrap();
+}
+
+#[test]
+fn cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_order_after_clock_rollback() {
+    fifo_cases::cold_outbox_fifo_preserves_signed_intents_ciphertext_and_receiver_order_after_clock_rollback().unwrap();
+}
+
+#[test]
+fn backward_clock_welcome_stays_behind_original_commit_and_other_space_advances() {
+    fifo_cases::backward_clock_welcome_stays_behind_original_commit_and_other_space_advances()
+        .unwrap();
 }

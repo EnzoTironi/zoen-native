@@ -1,5 +1,8 @@
 //! Dedicated non-model controls, extracted only from confirmed signed MLS events.
-use super::*;
+use super::{
+    denied, invalid, Client, CoreError, Engine, EventBody, IdentityKind, OwnerPolicyScope,
+    OwnerPolicyStatus, Privacy, SpaceKind, R,
+};
 use types::{owner_budget::SignedOwnerPolicy, Event, OwnerPolicyOutcome};
 
 /// Minted from the actual Core log; never from a prompt, model or IPC argument.
@@ -12,21 +15,27 @@ pub struct OwnerPolicySubmission {
     digest: String,
 }
 impl OwnerPolicySubmission {
+    #[must_use]
     pub fn sequence(&self) -> u64 {
         self.sequence
     }
+    #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
+    #[must_use]
     pub fn space(&self) -> &str {
         &self.space
     }
+    #[must_use]
     pub fn agent(&self) -> &str {
         &self.agent
     }
+    #[must_use]
     pub fn signed(&self) -> &SignedOwnerPolicy {
         &self.signed
     }
+    #[must_use]
     pub fn digest(&self) -> &str {
         &self.digest
     }
@@ -129,6 +138,14 @@ impl Engine {
     }
 
     pub(super) fn owner_policy_agent(&self, space: &str) -> R<String> {
+        let agent = self.owner_policy_agent_scope(space)?;
+        if self.ready_epoch(space).is_none() {
+            return Err(denied());
+        }
+        Ok(agent)
+    }
+
+    pub(super) fn owner_policy_agent_scope(&self, space: &str) -> R<String> {
         let account = self.account().ok_or_else(denied)?;
         self.native_surface_owner(&account.identity, &account.device)?;
         let agent = self.identities.get(&account.identity).ok_or_else(denied)?;
@@ -144,7 +161,6 @@ impl Engine {
             || !self.is_member(space, owner)
             || !self.is_member(space, &agent.id)
             || !self.state.writer(space, &agent.id)
-            || self.ready_epoch(space).is_none()
         {
             return Err(denied());
         }
@@ -238,7 +254,7 @@ impl Engine {
     ) -> R<bool> {
         let pending = self.store.outbox()?;
         Ok(pending.iter().map(|entry| &entry.event)
-            .chain(self.logs.get(submission.space()).into_iter().flat_map(|log| log.events()))
+            .chain(self.logs.get(submission.space()).into_iter().flat_map(event_log::SpaceLog::events))
             .any(|event| {
                 matches!(&event.body, EventBody::OwnerPolicyReported { source, policy_digest, outcome: previous }
                     if event.space == submission.space() && event.author == submission.agent()

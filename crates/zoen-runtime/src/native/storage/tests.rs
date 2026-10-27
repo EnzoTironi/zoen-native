@@ -1,4 +1,6 @@
 use super::*;
+#[path = "capacity_tests.rs"]
+mod capacity;
 
 #[cfg(test)]
 pub(in crate::native) async fn test_cuts(
@@ -249,4 +251,7 @@ pub(in crate::native) async fn test_cuts(
         .release_native_device(principal, &takeover)
         .await
         .unwrap();
+    capacity::run(execution, custody, principal, image)
+        .await
+        .expect("bounded native retirement must recover without an orphan stage");
 }

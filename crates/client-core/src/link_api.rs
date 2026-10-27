@@ -30,6 +30,11 @@ use crate::{
     sync::{VAULT_DEVICE, VAULT_IDENTITY},
     AccountDto, Client, CoreError,
 };
+#[cfg(test)]
+pub(crate) use directory::transport_tests::{
+    online as directory_test_online, relay as directory_test_relay,
+};
+pub(crate) use directory::DirectoryOwner;
 
 const VAULT_PEERS: &str = "link.peers";
 const META_HISTORY: &str = "link.history";
@@ -38,7 +43,7 @@ const MAX_HISTORY_BYTES: usize = 64 << 20;
 const MAX_HISTORY_CHUNK: usize = (1 << 20) + 16;
 const MAX_HISTORY_EVENTS: usize = 100_000;
 
-/// UniFFI's Swift future cancellation isn't sufficient to stop native work. This
+/// `UniFFI`'s Swift future cancellation isn't sufficient to stop native work. This
 /// control cancels awaits explicitly and refuses overlapping receivers per engine.
 pub(crate) struct HistoryControl {
     active: Arc<AtomicBool>,
@@ -109,7 +114,7 @@ impl HistoryReceive {
         self.check()?;
         let result = tokio::select! {
             _ = self.cancellation.changed() => Err(invalid("History receive cancelled.")),
-            _ = tokio::time::sleep_until(self.deadline) => Err(invalid(t("O histórico ainda não chegou. A transferência continuará depois.", "History has not arrived yet. The transfer will continue later."))),
+            () = tokio::time::sleep_until(self.deadline) => Err(invalid(t("O histórico ainda não chegou. A transferência continuará depois.", "History has not arrived yet. The transfer will continue later."))),
             value = work => value,
         };
         self.check()?;
@@ -238,7 +243,7 @@ pub struct DeviceDto {
 }
 
 fn http() -> Result<reqwest::Client, CoreError> {
-    crate::https::client()
+    crate::https::client()?
         .timeout(Duration::from_secs(60))
         .build()
         .map_err(|e| invalid(e.to_string()))
@@ -263,13 +268,13 @@ impl Client {
     }
 
     pub fn cancel_history_receive(&self) {
-        self.cancel_history_receive_impl()
+        self.cancel_history_receive_impl();
     }
 
     /// Permanently fences provisional linking on this Client before owner teardown.
     /// It revokes key use and installation synchronously; it does not wait for task Drop.
     pub fn retire_link_pickup(&self) {
-        self.retire_link_pickup_impl()
+        self.retire_link_pickup_impl();
     }
 }
 
@@ -293,9 +298,9 @@ impl Client {
 #[uniffi::export(async_runtime = "tokio")]
 impl Client {
     /// Waits for actual provisional worker and caller retirement after the owner
-    /// has called retire_link_pickup. No successful timeout or detached cleanup.
+    /// has called `retire_link_pickup`. No successful timeout or detached cleanup.
     pub async fn drain_link_pickup(&self) {
-        self.drain_link_pickup_impl().await
+        self.drain_link_pickup_impl().await;
     }
 
     /// New device: waits for the existing device's box, checks it and becomes the account.

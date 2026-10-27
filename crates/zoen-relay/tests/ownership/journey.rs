@@ -1,8 +1,8 @@
 use super::*;
 
-pub(super) async fn journey() {
+pub(super) async fn journey() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let admin_url = std::env::var("ZOEN_TEST_PG").expect("Postgres");
-    let db_name = format!("ownership_{}", types::new_id("t").to_lowercase());
+    let db_name = format!("ownership_{}", types::new_id("t")?.to_lowercase());
     let mut admin = PgConnection::connect(&admin_url).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {db_name}")))
         .execute(&mut admin)
@@ -19,9 +19,9 @@ pub(super) async fn journey() {
     let proxy = NatsProxy::start(0, upstream.clone()).await;
     let proxy_port = proxy.port;
     let mut a = Node::start(&url, &db_name, &dir, "a", &proxy.url()).await;
-    let probe = types::new_id("sp");
+    let probe = types::new_id("sp")?;
     let alpha = current(&db, &root, &probe).await.fence.owner;
-    let author = Author::device(&Signer::generate(), Signer::generate());
+    let author = Author::device(&Signer::generate()?, Signer::generate()?);
     let mut device_a = Device::connect(a.port, author.clone(), true).await;
     let mut b = Node::start(&url, &db_name, &dir, "b", &nats).await;
     let beta = db
@@ -42,8 +42,8 @@ pub(super) async fn journey() {
         .await
         .unwrap();
     let live = vec![alpha.clone(), beta.clone()];
-    let space_a = choose_space(&alpha, &live);
-    let space_b = choose_space(&beta, &live);
+    let space_a = choose_space(&alpha, &live)?;
+    let space_b = choose_space(&beta, &live)?;
     wait_owner(&db, &root, &space_b, &beta).await;
     wait_owner(&db, &root, &space_a, &alpha).await;
     let mut device_b = Device::connect(b.port, author.clone(), false).await;
@@ -61,11 +61,11 @@ pub(super) async fn journey() {
     };
     // Each ingress writes through the other process's owner RPC.
     let genesis = device_b
-        .publish(create(&space_a, Privacy::Closed))
+        .publish(create(&space_a, Privacy::Closed)?)
         .await
         .unwrap();
     device_a
-        .publish(create(&space_b, Privacy::EndToEnd))
+        .publish(create(&space_b, Privacy::EndToEnd)?)
         .await
         .unwrap();
     let seen = Seen {
@@ -86,7 +86,7 @@ pub(super) async fn journey() {
             hash: current_hash(&db, &root, &space_b).await,
         },
         "plaintext",
-    );
+    )?;
     assert!(device_a
         .publish(bad)
         .await
@@ -96,9 +96,9 @@ pub(super) async fn journey() {
 
     let pool = PgPool::connect(&url).await.unwrap();
     let target =
-        forwarding::audience(&db, &root, &mut device_b, b.port, &author, &alpha, &live).await;
-    forwarding::deadlines(&url, &author, &target).await;
-    forwarding::public_lookup(&url, &db, &root, b.port, &target, &beta, &live).await;
+        forwarding::audience(&db, &root, &mut device_b, b.port, &author, &alpha, &live).await?;
+    forwarding::deadlines(&url, &author, &target).await?;
+    forwarding::public_lookup(&url, &db, &root, b.port, &target, &beta, &live).await?;
     forwarding::late_delivery(
         &url,
         &db_name,
@@ -109,7 +109,7 @@ pub(super) async fn journey() {
         &alpha,
         &live,
     )
-    .await;
+    .await?;
     let stale = Arc::new(
         FdbLog::open_as(Some(&cluster), &db_name, &alpha, Duration::from_secs(1)).unwrap(),
     );
@@ -187,17 +187,17 @@ pub(super) async fn journey() {
             &space_a,
             &seen,
             "isolated ingress must refuse",
-        ))
+        )?)
         .await
         .unwrap_err();
     assert!(r.contains("forwarding unavailable"));
     device_b
-        .publish(message(&author, &space_a, &seen, "after NATS partition"))
+        .publish(message(&author, &space_a, &seen, "after NATS partition")?)
         .await
         .unwrap();
     assert!(stale
         .append_fenced(
-            &message(&author, &space_a, &seen, "isolated stale"),
+            &message(&author, &space_a, &seen, "isolated stale")?,
             true,
             renewed.fence.clone()
         )
@@ -211,7 +211,7 @@ pub(super) async fn journey() {
     );
     a.signal("-STOP");
     let timed = Instant::now();
-    let env = message(&author, &space_a, &seen, "never committed by paused owner");
+    let env = message(&author, &space_a, &seen, "never committed by paused owner")?;
     let replies = futures_util::future::join_all(
         (0..MAX_REQUESTS * 2).map(|_| forwarder.append(&env, &renewed.fence)),
     )
@@ -235,13 +235,13 @@ pub(super) async fn journey() {
     );
     let takeover = wait_owner(&db, &root, &space_a, &beta).await;
     assert!(takeover.fence.token > renewed.fence.token);
-    let replay = message(&author, &space_a, &seen, "survives takeover");
+    let replay = message(&author, &space_a, &seen, "survives takeover")?;
     let first = device_b.publish(replay.clone()).await.unwrap();
     let duplicate = device_b.publish(replay.clone()).await.unwrap();
     assert_eq!((first.seq, &first.hash), (duplicate.seq, &duplicate.hash));
     for env in [
         replay.clone(),
-        message(&author, &space_a, &seen, "stale must not land"),
+        message(&author, &space_a, &seen, "stale must not land")?,
     ] {
         let r = stale
             .append_fenced(&env, true, renewed.fence.clone())
@@ -277,7 +277,7 @@ pub(super) async fn journey() {
     let after_death = wait_owner(&db, &root, &space_a, &beta).await;
     assert!(after_death.fence.token > returned.fence.token);
     let death = device_b
-        .publish(message(&author, &space_a, &seen, "after owner death"))
+        .publish(message(&author, &space_a, &seen, "after owner death")?)
         .await
         .unwrap();
     assert_eq!(death.seq, first.seq + 1);
@@ -304,7 +304,7 @@ pub(super) async fn journey() {
         .unwrap();
     let denied = forwarder
         .append(
-            &message(&author, &space_a, &seen, "revoked"),
+            &message(&author, &space_a, &seen, "revoked")?,
             &after_death.fence,
         )
         .await
@@ -324,4 +324,5 @@ pub(super) async fn journey() {
     .await
     .unwrap();
     std::fs::remove_dir_all(dir).unwrap();
+    Ok(())
 }

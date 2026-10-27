@@ -141,7 +141,9 @@ mod editing;
 mod incoming;
 mod journal;
 mod publication;
+mod settlement;
 mod sharing;
+pub(crate) use settlement::ProfileSettlement;
 mod views;
 
 #[cfg(test)]
@@ -174,10 +176,10 @@ mod own_sync_tests {
         version: u64,
         name: &str,
         rotated: bool,
-    ) -> SealedProfile {
+    ) -> std::result::Result<SealedProfile, Box<dyn std::error::Error>> {
         let author = Author::device(identity, Signer::from_secret(&[92; 32]));
         let key = if rotated {
-            ProfileKey::generate()
+            ProfileKey::generate()?
         } else {
             engine.my_fields(&identity.id()).unwrap().0
         };
@@ -189,13 +191,13 @@ mod own_sync_tests {
                 name: name.into(),
                 ..Default::default()
             },
-        );
-        SealedProfile {
+        )?;
+        Ok(SealedProfile {
             identity: identity.id(),
             version,
             signed: sign_upload(&author, version, &ciphertext).unwrap(),
             ciphertext,
-        }
+        })
     }
 
     #[test]
@@ -207,13 +209,14 @@ mod own_sync_tests {
             photo: Some(photo.clone()),
             ..Default::default()
         };
-        let mut incoming = remote(&engine, &identity, 2, "Other device", false);
+        let mut incoming = remote(&engine, &identity, 2, "Other device", false).unwrap();
         incoming.ciphertext = seal_profile(
             &engine.my_fields(&identity.id()).unwrap().0,
             &identity.id(),
             2,
             &fields,
-        );
+        )
+        .unwrap();
         incoming.signed = sign_upload(
             &Author::device(&identity, Signer::from_secret(&[92; 32])),
             2,
@@ -252,7 +255,7 @@ mod own_sync_tests {
     fn incoming_profile_ciphertext_obeys_existing_size_ceiling_before_cache() {
         let (mut engine, identity) = fixture();
         let bytes = vec![17; MAX_PHOTO_BYTES + 1];
-        let (key, sealed) = crate::media::seal(&bytes);
+        let (key, sealed) = crate::media::seal(&bytes).unwrap();
         let photo = ProfilePhoto {
             sha256: hex::encode(Sha256::digest(&bytes)),
             blob: hex::encode(Sha256::digest(&sealed)),
@@ -269,13 +272,14 @@ mod own_sync_tests {
             photo: Some(photo.clone()),
             ..Default::default()
         };
-        let mut incoming = remote(&engine, &identity, 2, "Synthetic", false);
+        let mut incoming = remote(&engine, &identity, 2, "Synthetic", false).unwrap();
         incoming.ciphertext = seal_profile(
             &engine.my_fields(&identity.id()).unwrap().0,
             &identity.id(),
             2,
             &fields,
-        );
+        )
+        .unwrap();
         incoming.signed = sign_upload(
             &Author::device(&identity, Signer::from_secret(&[92; 32])),
             2,
@@ -315,7 +319,7 @@ mod own_sync_tests {
             .update_my_profile("Local pending", "bio", PhotoChange::Keep)
             .unwrap();
         let old = engine.profile_to_upload().unwrap();
-        let incoming = remote(&engine, &identity, 4, "Other device", false);
+        let incoming = remote(&engine, &identity, 4, "Other device", false).unwrap();
         engine.sealed_profiles_arrived(vec![incoming.clone()], &[identity.id()]);
         assert_eq!(
             engine.my_fields(&identity.id()).unwrap().3.name,
@@ -338,7 +342,7 @@ mod own_sync_tests {
         let path = std::env::temp_dir().join(format!(
             "zoen-profile-sync-{}-{}.sqlite",
             std::process::id(),
-            types::new_ulid(now_ms())
+            types::new_ulid(now_ms()).unwrap()
         ));
         let path = path.to_str().unwrap();
         let (mut engine, identity) = fixture_at(path);
@@ -350,7 +354,7 @@ mod own_sync_tests {
         let mut reopened = Engine::open(path).unwrap();
         reopened.net.author = Some(Author::device(&identity, Signer::from_secret(&[72; 32])));
         reopened.profiles_session_start(true);
-        let baseline = remote(&reopened, &identity, 1, "Original", false);
+        let baseline = remote(&reopened, &identity, 1, "Original", false).unwrap();
         reopened.sealed_profiles_arrived(vec![baseline], &[identity.id()]);
         assert_eq!(reopened.profile_to_upload(), Some(upload));
         drop(reopened);
@@ -371,14 +375,15 @@ mod own_sync_tests {
             .set_profile_fields(&identity.id(), 100, &fields.to_bytes())
             .unwrap();
         engine.mark_profile_intent(100).unwrap();
-        let incoming = remote(&engine, &identity, 8, "Rotated", true);
+        let incoming = remote(&engine, &identity, 8, "Rotated", true).unwrap();
         engine.sealed_profiles_arrived(vec![incoming], &[identity.id()]);
         assert!(engine.own_profile_journal().unwrap().sync.key_unavailable());
-        let old = remote(&engine, &identity, 2, "Old key", false);
+        let old = remote(&engine, &identity, 2, "Old key", false).unwrap();
         engine.sealed_profiles_arrived(vec![old], &[identity.id()]);
         engine.profile_upload_answered(2, Ok(()));
         engine.profile_upload_answered(100, Ok(()));
-        let newer_old_key = remote(&engine, &identity, 101, "Old key published higher", false);
+        let newer_old_key =
+            remote(&engine, &identity, 101, "Old key published higher", false).unwrap();
         engine.sealed_profiles_arrived(vec![newer_old_key], &[identity.id()]);
         let state = engine.own_profile_journal().unwrap().sync;
         assert_eq!(state.blocked_at_version, Some(8));
@@ -427,7 +432,7 @@ mod own_sync_tests {
         let asked = engine.take_need_profiles();
         let before = engine.my_fields(&identity.id()).unwrap();
         let journal = engine.store.meta(META_OWN_SYNC).unwrap();
-        let mut forged = remote(&engine, &identity, 2, "Forged", false);
+        let mut forged = remote(&engine, &identity, 2, "Forged", false).unwrap();
         forged.signed.sig = "00".repeat(64);
         assert!(engine
             .sealed_profiles_arrived(vec![forged], &asked)
@@ -487,7 +492,7 @@ mod own_sync_tests {
             .unwrap();
         engine.profile_changed(&identity.id());
         let asked = engine.take_need_profiles();
-        let stale = remote(&engine, &identity, 0, "Old", false);
+        let stale = remote(&engine, &identity, 0, "Old", false).unwrap();
         engine.sealed_profiles_arrived(vec![stale], &asked);
         assert!(!engine.profiles_answer_complete(&asked));
         assert!(!engine.net.profiles.own_refreshed);

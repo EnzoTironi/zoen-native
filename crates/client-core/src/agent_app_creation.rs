@@ -5,19 +5,43 @@ use crate::{
     engine::{Engine, State, R},
     AppBinaryDocumentDto, Client, CoreError,
 };
-use miniapps::deckcraft::{self, agent_tools, registration};
+use miniapps::binary::{agent_tools, Format};
+#[cfg(test)]
+use miniapps::deckcraft::registration;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use types::{ActionClass, AgentRequest, ToolProposal};
 
 mod execution;
 pub use execution::ApprovedAppCreation;
+#[cfg(test)]
+mod gridcraft_tests;
+#[cfg(test)]
+mod pdfcraft_tests;
+#[cfg(test)]
+mod photocraft_tests;
 mod recovery;
 mod staging;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wordcraft_tests;
 
 pub const TOOL: &str = "create_deckcraft";
+pub const GRID_TOOL: &str = "create_gridcraft";
+pub const WORD_TOOL: &str = "create_wordcraft";
+pub const PHOTO_TOOL: &str = "create_photocraft";
+pub const PDF_TOOL: &str = "create_pdfcraft";
+pub fn creation_format(tool: &str) -> Option<Format> {
+    match tool {
+        TOOL => Some(Format::Deckcraft),
+        GRID_TOOL => Some(Format::Gridcraft),
+        WORD_TOOL => Some(Format::Wordcraft),
+        PHOTO_TOOL => Some(Format::Photocraft),
+        PDF_TOOL => Some(Format::Pdfcraft),
+        _ => None,
+    }
+}
 const SCHEMA: u8 = 3;
 
 fn sha(bytes: &[u8]) -> String {
@@ -25,7 +49,7 @@ fn sha(bytes: &[u8]) -> String {
 }
 fn invalid() -> CoreError {
     CoreError::Invalid {
-        reason: "Invalid presentation creation review.".into(),
+        reason: "Invalid binary App creation review.".into(),
     }
 }
 fn stale() -> CoreError {
@@ -42,33 +66,56 @@ fn token(value: &str) -> bool {
 }
 
 pub fn executor_binding() -> String {
-    sha(&serde_json::to_vec(&(
-        "zoen.native-app.create.v1",
-        deckcraft::ENGINE_REVISION,
-        sha(registration::EMPTY),
-    ))
-    .expect("fixed creation binding"))
+    binding_for(Format::Deckcraft)
 }
-// There is exactly one creation operation per conversation host. Scope remains
+pub fn executor_binding_for(tool: &str) -> Option<String> {
+    creation_format(tool).map(binding_for)
+}
+fn binding_for(format: Format) -> String {
+    let binding = Value::Array(vec![
+        Value::String("zoen.native-app.create.v1".into()),
+        Value::String(format.revision().into()),
+        Value::String(sha(format.seed())),
+    ]);
+    sha(binding.to_string().as_bytes())
+}
+// Each concrete App has one closed creation operation. Scope remains
 // in the signed envelope and future-item intent, not a credential-shaped alias.
 pub fn model_name(space: &str) -> Option<String> {
-    token(space).then(|| TOOL.into())
+    model_name_for(TOOL, space)
+}
+pub fn model_name_for(tool: &str, space: &str) -> Option<String> {
+    (token(space) && creation_format(tool).is_some()).then(|| tool.into())
 }
 pub fn is_model_name(name: &str) -> bool {
-    name == TOOL
+    creation_format(name).is_some()
 }
 pub fn definition(space: &str) -> Option<Value> {
-    if !registration::available() {
+    definition_for(TOOL, space)
+}
+pub fn definition_for(tool: &str, space: &str) -> Option<Value> {
+    if !creation_format(tool)?.available() {
         return None;
     }
-    definition_unchecked(space)
+    definition_unchecked_for(tool, space)
 }
+#[cfg(test)]
 fn definition_unchecked(space: &str) -> Option<Value> {
+    definition_unchecked_for(TOOL, space)
+}
+fn definition_unchecked_for(tool: &str, space: &str) -> Option<Value> {
+    let description=match creation_format(tool)? {
+        Format::Pdfcraft=>"Create one shared editable PDF in this conversation. Call alone and wait for the owner's exact review before requesting its PDF tools. Does not replace an existing document.",
+        Format::Photocraft=>"Create one shared editable raster image in this conversation. Call alone and wait for the owner's exact review before requesting its image tools. Does not replace an existing image.",
+        Format::Wordcraft=>"Create one shared editable plain-text document in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.",
+        Format::Deckcraft=>"Create one shared editable presentation in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.",
+        Format::Gridcraft=>"Create one shared editable spreadsheet in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.",
+    };
     Some(
-        json!({"name":model_name(space)?,"description":"Create one shared editable presentation in this conversation. Call alone and wait for the owner's exact review before requesting its document tools. Does not replace an existing document.","parameters":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":160}},"required":["title"],"additionalProperties":false}}),
+        json!({"name":model_name_for(tool,space)?,"description":description,"parameters":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":160}},"required":["title"],"additionalProperties":false}}),
     )
 }
-fn title(arguments: &Value) -> R<String> {
+fn title(arguments: &Value, format: Format) -> R<String> {
     let object = arguments
         .as_object()
         .filter(|object| object.len() == 1 && object.contains_key("title"))
@@ -80,7 +127,7 @@ fn title(arguments: &Value) -> R<String> {
         || raw.trim() != raw
         || raw.chars().count() > 160
         || raw.chars().any(char::is_control)
-        || deckcraft::Document::parse(registration::EMPTY).is_err()
+        || format.metadata(format.seed(), raw).is_err()
     {
         return Err(invalid());
     }
@@ -96,12 +143,12 @@ fn ask_space(ask: &Value) -> R<&str> {
 /// Existing ToolProposal fields pin the not-yet-created native seed and exact
 /// arguments. Schema3 is a closed family inside the unchanged signed envelope.
 pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
+    let format = creation_format(&p.canonical_tool).ok_or_else(invalid)?;
     if p.schema != SCHEMA
-        || p.canonical_tool != TOOL
-        || p.engine_revision != deckcraft::ENGINE_REVISION
-        || p.worker_binding != executor_binding()
+        || p.engine_revision != format.revision()
+        || p.worker_binding != binding_for(format)
         || p.version != 1
-        || p.sha256 != sha(registration::EMPTY)
+        || p.sha256 != sha(format.seed())
         || !token(&p.artifact)
         || p.step >= 16
         || p.arguments_json.len() > 2048
@@ -112,7 +159,7 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
         return Err(invalid());
     }
     let args: Value = serde_json::from_str(&p.arguments_json).map_err(|_| invalid())?;
-    title(&args)?;
+    title(&args, format)?;
     if agent_tools::canonical_json(&args).map_err(|_| invalid())? != p.arguments_json {
         return Err(invalid());
     }
@@ -134,19 +181,21 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
             .as_array()
             .is_none_or(|calls| !calls.is_empty())
         || ask["round"].as_u64().is_none_or(|round| round >= 4)
-        || call["name"].as_str() != model_name(space).as_deref()
+        || call["name"].as_str() != model_name_for(&p.canonical_tool, space).as_deref()
         || call["id"]
             .as_str()
             .is_none_or(|id| id.is_empty() || id.len() > 128)
         || call["arguments"] != args
-        || Some(&ask["definition"]) != definition_unchecked(space).as_ref()
+        || Some(&ask["definition"]) != definition_unchecked_for(&p.canonical_tool, space).as_ref()
     {
         return Err(invalid());
     }
     let actor = ask["envelope"]["agent"].as_str().ok_or_else(invalid)?;
     let mutation = mutation(p, space, actor)?;
     if p.artifact
-        != crate::app_binary_documents::creation_item_id(actor, &p.device, space, &mutation)?
+        != crate::app_binary_documents::creation_item_id_for(
+            format, actor, &p.device, space, &mutation,
+        )?
     {
         return Err(invalid());
     }
@@ -248,9 +297,11 @@ impl Engine {
         {
             return Err(stale());
         }
-        self.app_binary_creation_result(
+        let format = creation_format(&p.canonical_tool).ok_or_else(invalid)?;
+        self.app_binary_creation_result_for(
+            format,
             space,
-            &title(&args.ok_or_else(invalid)?)?,
+            &title(&args.ok_or_else(invalid)?, format)?,
             &p.sha256,
             &mutation(p, space, actor)?,
         )

@@ -1,6 +1,10 @@
 //! Authenticated relay admission and confirmation of pending intents.
 
-use super::*;
+use super::{
+    chain_hash, content_hash_of, new_ulid, t, Author, CoreError, Engine, Entry, Event, EventBody,
+    Ingest, PendingCommitment, PlanReplay, Projection, Seen, Sequenced, SpaceLog, State,
+    GENESIS_PREV, R,
+};
 
 impl Engine {
     /// What a new event in `space` says its author had seen: the relay-ordered head, or,
@@ -17,9 +21,12 @@ impl Engine {
             .into_iter()
             .map(|p| p.event)
             .find(|e| e.space == space && matches!(e.body, EventBody::SpaceCreated { .. }));
-        Ok(genesis.map(|g| Seen {
+        let Some(genesis) = genesis else {
+            return Ok(None);
+        };
+        Ok(Some(Seen {
             seq: 0,
-            hash: chain_hash(space, 0, GENESIS_PREV, &content_hash_of(&g)),
+            hash: chain_hash(space, 0, GENESIS_PREV, &content_hash_of(&genesis))?,
         }))
     }
 
@@ -40,13 +47,13 @@ impl Engine {
                 what: t("Espaço", "Space"),
             });
         }
-        let client_id = new_ulid(at_ms);
+        let client_id = new_ulid(at_ms)?;
         let seen = if creating {
             None
         } else {
             self.causal_head(space)?
         };
-        let e = signer.sign_event(space, &client_id, at_ms, seen, body);
+        let e = signer.sign_event(space, &client_id, at_ms, seen, body)?;
         let empty = State::default();
         let scoped = self.space_projections.get(space).unwrap_or(&empty);
         let context =
@@ -122,7 +129,10 @@ impl Engine {
 
     pub(super) fn ingest_plain(&mut self, e: Event) -> Ingest {
         let space = e.space.clone();
-        let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
+        let next = self
+            .logs
+            .get(&space)
+            .map_or(0, event_log::SpaceLog::next_seq);
         if e.seq < next {
             if self.approval_replay_needed {
                 if let Err(error) = self.reproject_approval_overlay() {
@@ -152,14 +162,19 @@ impl Engine {
         }
         // The confirmed event, its catch-up scope and an own pending copy describe
         // one receipt. Never publish a confirmation whose bookkeeping failed.
-        let stored = (|| -> store::Result<()> {
-            let tx = self.store.conn().unchecked_transaction()?;
+        let stored = (|| -> crate::engine::R<()> {
+            let tx = self
+                .store
+                .conn()
+                .unchecked_transaction()
+                .map_err(store::StoreError::from)?;
             self.store.append_event(&e)?;
             self.store.set_synced(&space)?;
             if own {
+                self.confirm_owner_policy_welcome(&e)?;
                 self.store.outbox_remove(&e.client_id)?;
             }
-            tx.commit()?;
+            tx.commit().map_err(store::StoreError::from)?;
             Ok(())
         })();
         if let Err(err) = stored {
@@ -271,7 +286,6 @@ impl Engine {
         self.state
             .spaces
             .get(space)
-            .map(|s| s.members.iter().any(|(m, _)| m == who))
-            .unwrap_or(false)
+            .is_some_and(|s| s.members.iter().any(|(m, _)| m == who))
     }
 }

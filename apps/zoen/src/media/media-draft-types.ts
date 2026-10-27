@@ -31,10 +31,16 @@ export type MediaDraftAttachmentOptions = Readonly<{
   presentation: 'media' | 'file';
   grouping: 'separate' | 'grouped';
 }>;
+export type MediaDraftGallery = Readonly<{
+  entries: readonly Readonly<{ asset_id: string; photo_id: string }>[];
+  forced_caption: boolean;
+}>;
 export type MediaDraftAttachments = Readonly<{
   kind: 'attachments';
   reply_to: string | null;
   items: readonly MediaDraftAttachment[];
+  /** Private picker recovery; the referenced bytes belong to the same Rust journal. */
+  gallery?: MediaDraftGallery;
   /** Omitted for the legacy media/separate defaults; persisted by the Rust journal. */
   options?: MediaDraftAttachmentOptions;
 }>;

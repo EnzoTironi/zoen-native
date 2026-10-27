@@ -7,11 +7,19 @@ use crate::{
 use std::result::Result as StdResult;
 use types::owner_budget::OwnerPeriodPolicy;
 type TestResult = StdResult<(), Box<dyn std::error::Error>>;
+mod account_first_disable;
 mod account_management;
+mod admission;
+mod inquiry_observation;
+mod inquiry_recovery;
 mod publication_cases;
+mod retained_membership;
+mod retained_welcome;
+mod welcome_recovery;
+mod worker_observation;
 
 fn setup() -> StdResult<(Fixture, OwnerPolicyScope, String), Box<dyn std::error::Error>> {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::new()?;
     fixture.owner.set_registered(true)?;
     fixture.core.engine.set_registered(true)?;
     let account = fixture.owner.account().ok_or("missing fixture account")?;
@@ -58,7 +66,7 @@ fn deliver_owner(f: &mut Fixture) -> TestResult {
             envelope.is_sealed(),
             "policy must never travel in clear JSON"
         );
-        let frame = ordered(&f.owner, envelope);
+        let frame = ordered(&f.owner, envelope)?;
         assert_eq!(f.owner.ingest(frame.clone()), Ingest::Confirmed);
         f.core.ingest(vec![frame])?;
     }
@@ -68,7 +76,7 @@ fn deliver_agent(f: &mut Fixture) -> TestResult {
     f.core.engine.mls_seal_outbox()?;
     for envelope in f.core.engine.outbox_envelopes() {
         assert!(envelope.is_sealed());
-        let frame = ordered(&f.owner, envelope);
+        let frame = ordered(&f.owner, envelope)?;
         f.core.ingest(vec![frame.clone()])?;
         assert_eq!(f.owner.ingest(frame), Ingest::Applied);
     }
@@ -162,7 +170,7 @@ fn owner_policy_stays_pending_until_exact_confirmed_host_receipt_and_replays_one
     // the native publisher must refuse its unprepared own echo.
     f.core.engine.mls_seal_outbox()?;
     let envelope = f.core.engine.outbox_envelopes().remove(0);
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     assert!(matches!(
         f.core.ingest(vec![frame]),
@@ -225,7 +233,7 @@ fn owner_policy_confirmation_binds_financial_fields_account_device_and_exact_dm(
 #[test]
 fn ordinary_prompt_json_is_not_a_control_and_explicit_refusal_is_not_installation() -> TestResult {
     let (mut f, scope, json) = setup()?;
-    let ordinary = f.message(&json);
+    let ordinary = f.message(&json).unwrap();
     assert!(f
         .core
         .engine
@@ -268,7 +276,7 @@ fn ordinary_prompt_json_is_not_a_control_and_explicit_refusal_is_not_installatio
 #[test]
 fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> TestResult {
     use types::owner_policy_context::OwnerPolicyInquiry;
-    let (mut f, request, hash, envelope) = super::image_review_cases::pending();
+    let (mut f, request, hash, envelope) = super::image_review_cases::pending().unwrap();
     let now = crate::engine::now_ms();
     let author = f.owner.net.author.clone().ok_or("missing owner author")?;
     let inquiry = OwnerPolicyInquiry {
@@ -288,7 +296,7 @@ fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> T
         f.core.owner_policy_image_context(&signed, now).is_err(),
         "unconfirmed request is not context"
     );
-    let frame = ordered(&f.owner, envelope);
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
     let before = f.core.image()?;
@@ -310,7 +318,7 @@ fn policy_quote_reads_only_confirmed_image_review_without_act_or_approval() -> T
             grant: "image-review-act".into(),
         },
         now,
-    );
+    )?;
     assert_eq!(
         f.core.owner_policy_image_context(&signed, now)?,
         image_task_cases::input(),
@@ -342,8 +350,8 @@ fn authenticated_options_prepare_exact_money_and_successor_of_expired_disabled_p
 {
     use chrono::Datelike;
     use types::owner_policy_context::OwnerPolicyOptions;
-    let (mut f, request, hash, envelope) = super::image_review_cases::pending();
-    let frame = ordered(&f.owner, envelope);
+    let (mut f, request, hash, envelope) = super::image_review_cases::pending().unwrap();
+    let frame = ordered(&f.owner, envelope)?;
     assert_eq!(f.owner.ingest(frame.clone()), Ingest::Applied);
     f.core.ingest(vec![frame])?;
     f.owner.set_registered(true)?;

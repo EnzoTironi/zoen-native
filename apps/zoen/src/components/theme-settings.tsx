@@ -6,10 +6,11 @@ import {
   foregroundStyle,
   frame,
 } from '@expo/ui/swift-ui/modifiers';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
+import { THEME_INPUT_PROBE, reportThemeInput } from '../theme/input-probe';
 import { resolveSkyTheme } from '../theme/sky';
 import {
   DEFAULT_THEME_CUSTOMIZATION,
@@ -20,6 +21,8 @@ import {
 import { SettingsScreen } from './settings-screen';
 import { SkyLayer } from './sky-background';
 import { ThemeColorPicker } from './theme-color-picker';
+import { ThemeChatPreview } from './theme-chat-preview';
+import { ThemePresetList } from './theme-preset-list';
 import { THEME_PROFILES, isDarkTheme } from '../theme/catalog';
 
 const accentColors = [
@@ -164,8 +167,10 @@ function Toggle({
   hint,
   value,
   onChange,
+  probe = false,
 }: {
   label: string;
+  probe?: boolean;
   hint?: string;
   value: boolean;
   onChange(value: boolean): void;
@@ -179,11 +184,18 @@ function Toggle({
         justifyContent: 'center',
       }}
     >
-      <Host matchContents style={{ width: '100%' }}>
+      <Host
+        matchContents={process.env.EXPO_OS === 'ios' ? { vertical: true } : true}
+        style={{ width: '100%' }}
+      >
         <Switch
           label={label}
           value={value}
-          onValueChange={onChange}
+          testID={probe ? 'zoen-theme-automatic-probe' : undefined}
+          onValueChange={(next) => {
+            if (probe) reportThemeInput('js-callback');
+            onChange(next);
+          }}
           modifiers={
             process.env.EXPO_OS === 'ios'
               ? [
@@ -262,23 +274,23 @@ export function ThemeSettings() {
     setCustomization,
     preferenceError,
   } = useTheme();
-  const [editing, setEditing] = useState<ThemeProfile>(profile);
+  const editing = profile;
   const settings = customizations[editing];
   const preview = telegramPresentation(editing, settings);
   const sky = resolveSkyTheme(editing, new Date(2026, 0, 1), settings).sky;
   const update = (patch: Partial<ThemeCustomization>) => setCustomization(editing, patch);
   function select(profile: ThemeProfile) {
-    setEditing(profile);
     setPreference(profile);
   }
   return (
-    <SettingsScreen title={t('settings.appearance')} testID="theme-settings-screen">
+    <SettingsScreen
+      title={t('settings.appearance')}
+      testID="theme-settings-screen"
+      onTouchStart={THEME_INPUT_PROBE ? () => reportThemeInput('screen-touch-start') : undefined}
+    >
+      <ThemeChatPreview />
       <Block>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 6 }}
-        >
+        <ThemePresetList profile={profile}>
           {THEME_PROFILES.map((theme) => (
             <Preview
               key={theme}
@@ -287,47 +299,18 @@ export function ThemeSettings() {
               onPress={() => select(theme)}
             />
           ))}
-        </ScrollView>
+        </ThemePresetList>
       </Block>
-      <View style={{ minHeight: 176, borderRadius: 10, overflow: 'hidden', padding: 12, gap: 10 }}>
-        <SkyLayer sky={sky} />
-        <View
-          style={{
-            alignSelf: 'flex-start',
-            maxWidth: '84%',
-            padding: 11,
-            borderRadius: 16,
-            backgroundColor: preview.chat.incoming.fill,
-          }}
-        >
-          <Text style={{ color: preview.chat.incoming.text, fontSize: settings.textSize }}>
-            {t('settings.themePreviewReceived')}
-          </Text>
-        </View>
-        <View
-          style={{
-            alignSelf: 'flex-end',
-            maxWidth: '84%',
-            padding: 11,
-            borderRadius: 16,
-            backgroundColor: preview.chat.outgoing.fill,
-            experimental_backgroundImage:
-              preview.chat.outgoing.fillColors.length > 1
-                ? `linear-gradient(to bottom, ${preview.chat.outgoing.fillColors.join(', ')})`
-                : undefined,
-          }}
-        >
-          <Text style={{ color: preview.chat.outgoing.text, fontSize: settings.textSize }}>
-            {t('settings.themePreviewOwn')}
-          </Text>
-        </View>
-      </View>
       <Block>
         <Toggle
           label={t('settings.themeAutomatic')}
           hint={t('settings.skyFollowsLocalTime')}
+          probe={THEME_INPUT_PROBE}
           value={preference === 'auto'}
-          onChange={(enabled) => setPreference(enabled ? 'auto' : editing)}
+          onChange={(enabled) => {
+            if (THEME_INPUT_PROBE) reportThemeInput('preference-request');
+            setPreference(enabled ? 'auto' : editing);
+          }}
         />
       </Block>
       <Block title={t('settings.themeColors')}>

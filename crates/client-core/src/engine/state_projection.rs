@@ -1,5 +1,9 @@
 //! Fold authenticated accepted events into the existing State.
-use super::*;
+use super::{
+    t, BeforeEvent, Entry, EntryBody, Event, EventBody, HashMap, Identity, IdentityId, ItemContent,
+    ItemKind, MessageMarks, PlanOrigin, Privacy, Projection, ReqStatus, RequestState, Role,
+    SpaceKind, SpaceState, State, Version,
+};
 
 impl State {
     pub(crate) fn apply_checked(
@@ -8,6 +12,26 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !crate::app_resources::event_valid(self, e, identities) {
+            return Projection::Refused;
+        }
+        // Scoped prompts must use the discriminator old consumers cannot dispatch.
+        if matches!(&e.body, EventBody::MessagePosted {reply: Some(reply), ..} if reply.artifact.is_some())
+        {
+            return Projection::Refused;
+        }
+        if let EventBody::AppEditRequested { text, reply, .. } = &e.body {
+            if !self.writer(&e.space, &e.author)
+                || !crate::agent_binary_documents::source_scope::request_valid(
+                    self, &e.space, text, reply,
+                )
+            {
+                return Projection::Refused;
+            }
+        }
+        if !context.selected_quote_valid(e) {
+            return Projection::Refused;
+        }
         if !self.call_transport_valid(e) {
             return Projection::Refused;
         }
@@ -36,6 +60,9 @@ impl State {
             at_ms: e.at_ms,
             body,
         };
+        if let EventBody::AppCurrentShared { share } = &e.body {
+            return self.apply_app_current_share(e, share, identities, context);
+        }
         match &e.body {
             EventBody::SpaceCreated {
                 title,
@@ -114,7 +141,7 @@ impl State {
                     && voice_item.is_some_and(|i| {
                         self.items.get(i).is_some_and(|it| {
                             it.space == e.space
-                                && it.versions.first().is_some_and(|v| v.author == e.author)
+                                && it.versions.initial().author == e.author
                                 && matches!(&it.current().content, ItemContent::File(d) if d.is_voice())
                         })
                     });
@@ -134,6 +161,7 @@ impl State {
                         attaches: attaches.clone(),
                         reply: reply.clone(),
                         marks: MessageMarks {
+                            text_revision: Some(event_log::content_hash_of(e)),
                             forwarded: *forwarded,
                             media: media.clone(),
                             ..Default::default()
@@ -144,6 +172,20 @@ impl State {
                 if let Some(metadata) = media.as_ref() {
                     self.media_groups
                         .record(&e.space, &e.author, reply, *forwarded, metadata);
+                }
+            }
+            EventBody::AppEditRequested { text, reply, .. } => {
+                if let Some(s) = self.spaces.get_mut(&e.space) {
+                    s.entries.push(entry(EntryBody::Message {
+                        text: text.clone(),
+                        attaches: None,
+                        reply: Some(reply.clone()),
+                        marks: MessageMarks {
+                            text_revision: Some(event_log::content_hash_of(e)),
+                            ..Default::default()
+                        },
+                    }));
+                    s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
             }
             EventBody::ChatPrefsSet { space, prefs } => {
@@ -172,6 +214,7 @@ impl State {
                     {
                         if let Some(new_text) = marks.apply(author, &e.author, note) {
                             *text = new_text;
+                            marks.text_revision = Some(event_log::content_hash_of(e));
                             if marks.deleted {
                                 *attaches = None;
                             }
@@ -201,15 +244,17 @@ impl State {
                 note,
             } => {
                 if let Some(it) = self.items.get_mut(item) {
-                    let number = it.versions.len() as u32 + 1;
-                    let content =
+                    let Some(number) = it.current().number.checked_add(1) else {
+                        return Projection::Refused;
+                    };
+                    let merged_content =
                         crate::apps::reconcile_concurrent(&it.current().content, content, e.at_ms)
                             .unwrap_or_else(|| content.clone());
                     it.has_voice_history |=
-                        matches!(&content, ItemContent::File(file) if file.is_voice());
+                        matches!(&merged_content, ItemContent::File(file) if file.is_voice());
                     it.versions.push(Version {
                         number,
-                        content,
+                        content: merged_content,
                         author: e.author.clone(),
                         at_ms: e.at_ms,
                         note: note.clone(),
@@ -232,13 +277,15 @@ impl State {
                 note,
             } => {
                 if let Some(it) = self.items.get_mut(item) {
-                    if let Some(target) = it
+                    let target = it
                         .versions
                         .iter()
                         .find(|v| v.number == *to_version)
-                        .cloned()
-                    {
-                        let number = it.versions.len() as u32 + 1;
+                        .cloned();
+                    if let Some(target) = target {
+                        let Some(number) = it.current().number.checked_add(1) else {
+                            return Projection::Refused;
+                        };
                         it.has_voice_history |=
                             matches!(&target.content, ItemContent::File(file) if file.is_voice());
                         it.versions.push(Version {
@@ -261,11 +308,7 @@ impl State {
                 }
             }
             EventBody::GrantIssued { grant } => {
-                self.grants.push(GrantState {
-                    grant: grant.clone(),
-                    at_ms: e.at_ms,
-                    revoked: false,
-                });
+                self.apply_issued_grant(e, grant);
             }
             EventBody::GrantRevoked { grant } => {
                 for g in self
@@ -318,8 +361,8 @@ impl State {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.entries.push(entry(EntryBody::System {
                         text: t(
-                            "Nova revisão solicitada. A aprovação anterior não foi renovada.",
-                            "New review requested. The previous approval was not renewed.",
+                            "Nova revisão solicitada. A ação ainda precisa ser aprovada.",
+                            "New review requested. The action still requires approval.",
                         ),
                     }));
                 }
@@ -352,9 +395,15 @@ impl State {
                     }));
                 }
             }
-            EventBody::CallTransportV1 { .. } => self.apply_call_transport(e),
+            EventBody::CallTransportV1 { .. } => {
+                if !self.apply_call_transport(e) {
+                    return Projection::Refused;
+                }
+            }
             EventBody::CallV1 { .. } => {
-                self.apply_call(e);
+                if !self.apply_call(e) {
+                    return Projection::Refused;
+                }
             }
             EventBody::UsageRecorded { agent, cents, .. } => {
                 self.usage.push((agent.clone(), *cents, e.at_ms));
@@ -368,7 +417,8 @@ impl State {
             | EventBody::Checkpoint { .. }
             | EventBody::DeviceJoining { .. }
             | EventBody::Sealed { .. }
-            | EventBody::Unsupported { .. } => {}
+            | EventBody::Unsupported { .. }
+            | EventBody::AppCurrentShared { .. } => {}
         }
         match &e.body {
             EventBody::ItemCreated {

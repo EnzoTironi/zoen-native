@@ -102,8 +102,7 @@ export function AudioClipControls({
     playback.getSnapshot,
   );
   const total = status.durationSeconds;
-  const current = status.currentSeconds;
-  const progress = total > 0 ? current / total : 0;
+  const progress = total > 0 ? status.currentSeconds / total : 0;
   const rate = status.rate;
   const loadFailed = status.loadFailed;
   const failureMessage = status.error ? t('media.thisAudioCouldNotBePlayed') : null;
@@ -172,6 +171,7 @@ export function AudioClipControls({
           }}
         >
           <AudioProgress
+            sourceIdentity={playback}
             levels={levels}
             progress={progress}
             duration={total}
@@ -182,21 +182,6 @@ export function AudioClipControls({
               void playback.seekSeconds(fraction * total).catch(() => {});
             }}
           />
-          <Text
-            pointerEvents="none"
-            style={{
-              position: compact ? 'absolute' : undefined,
-              bottom: compact ? 2 : undefined,
-              left: compact ? 0 : undefined,
-              color: ink,
-              opacity: 0.72,
-              fontSize: compact ? 13 : 12,
-              lineHeight: compact ? 16 : undefined,
-              fontVariant: ['tabular-nums'],
-            }}
-          >
-            {clipTime(current > 0 && current < total ? current : total)}
-          </Text>
         </View>
         <View style={{ alignItems: 'flex-end', justifyContent: 'center', minWidth: 44 }}>
           <Pressable

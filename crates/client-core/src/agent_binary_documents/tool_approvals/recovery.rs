@@ -60,13 +60,13 @@ impl Client {
                 )?;
                 continue;
             }
-            let tool = agent_tools::tools()
-                .into_iter()
-                .find(|tool| {
-                    agent_tools::model_name(&tool.name, &p.artifact).as_deref() == Some(name)
-                })
-                .ok_or_else(malformed)?
-                .name;
+            let tool = agent_tools::tools_for(
+                agent_tools::format(&p.canonical_tool).ok_or_else(malformed)?,
+            )
+            .into_iter()
+            .find(|tool| agent_tools::model_name(&tool.name, &p.artifact).as_deref() == Some(name))
+            .ok_or_else(malformed)?
+            .name;
             let args = &call["arguments"];
             if args["artifactId"].as_str() != Some(p.artifact.as_str()) {
                 return Err(denied());
@@ -97,7 +97,7 @@ impl Client {
                         &p.artifact,
                         command.version,
                         &command.sha256,
-                        &format!("deckcmd_{intent}"),
+                        &mutation_id(&command, &intent),
                         &intent,
                     )?
                     .ok_or_else(stale)?;

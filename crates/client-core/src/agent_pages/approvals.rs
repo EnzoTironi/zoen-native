@@ -1,5 +1,5 @@
 //! Schema2 is a closed native Page contract inside the existing signed envelope.
-use super::*;
+use super::{invalid, stale, AgentPageTurn, Client, R};
 use crate::{
     agent_binary_documents::tool_approvals as shared,
     agent_page_tools as tools,
@@ -14,9 +14,11 @@ pub struct ApprovedPageTurn {
     proposal: ToolProposal,
 }
 impl ApprovedPageTurn {
+    #[must_use]
     pub fn turn(&self) -> &AgentPageTurn {
         &self.turn
     }
+    #[must_use]
     pub fn proposal(&self) -> &ToolProposal {
         &self.proposal
     }
@@ -107,7 +109,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
         && p.serving != req.agent
         && item.space == space
         && item.current().number == p.version
-        && tools::prefix(state, &p.artifact, p.version).ok().as_deref() == Some(p.sha256.as_str())
+        && tools::prefix_matches(state, &p.artifact, p.version, &p.sha256)
         && source_sha == p.source_sha256
         && req.tool_proposal_hash(space).as_deref() == Some(&req.content_hash)
         && p.task_sha256
@@ -120,7 +122,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
 }
 
 /// Pages use current Page membership plus a single signed approval. There is no
-/// App principal or implicit app:<id> Trust::Act grant for a native document.
+/// App principal or implicit app:<id> `Trust::Act` grant for a native document.
 pub(crate) fn access(state: &State, p: &ToolProposal) -> bool {
     parsed(p).is_ok()
         && state.items.get(&p.artifact).is_some_and(|item| {
@@ -168,7 +170,7 @@ impl Client {
         match tools::parse(&input.canonical_tool, &input.arguments).map_err(|_| invalid())? {
             tools::Command::Read { artifact } if artifact == current.artifact_id => {}
             tools::Command::Replace(command) if command.artifact_id == current.artifact_id => {
-                e.agent_page_validate_write(&command)?
+                e.agent_page_validate_write(&command)?;
             }
             _ => return Err(stale()),
         }
@@ -225,9 +227,10 @@ impl Client {
                         .map_or(0, |r| r.generation)
                 })
         {
+            let prior = r.req.tool_proposal.as_ref().ok_or_else(stale)?;
             let mut same = p.clone();
-            same.expires_at_ms = r.req.tool_proposal.as_ref().unwrap().expires_at_ms;
-            same.review = r.req.tool_proposal.as_ref().unwrap().review.clone();
+            same.expires_at_ms = prior.expires_at_ms;
+            same.review = prior.review.clone();
             if r.req.tool_proposal.as_deref() != Some(&same) {
                 return Err(stale());
             }
@@ -250,7 +253,7 @@ impl Client {
             );
         }
         let mut req = AgentRequest {
-            id: types::new_id("rq"),
+            id: types::new_id("rq")?,
             agent: current.actor_id.clone(),
             title: operation,
             detail,
@@ -298,10 +301,12 @@ impl Client {
         {
             return Err(stale());
         }
-        let snapshot = e.agent_page_snapshot_at(&p.artifact, p.version)?;
-        if snapshot.prefix_sha256 != p.sha256 {
+        let mut snapshot = e.agent_page_snapshot_at(&p.artifact, p.version)?;
+        if !tools::prefix_matches(&e.state, &p.artifact, p.version, &p.sha256) {
             return Err(stale());
         }
+        // Retain the original signed legacy binding, never rewrite the proposal.
+        snapshot.prefix_sha256.clone_from(&p.sha256);
         let turn = AgentPageTurn {
             snapshot,
             device,

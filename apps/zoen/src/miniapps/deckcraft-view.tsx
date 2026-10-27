@@ -1,16 +1,18 @@
+import type { DeckcraftExportHead } from './deckcraft-export';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { locale, t } from '../i18n/index.ts';
+import { homeSpacesFor } from '../home/access.ts';
 import { useClient } from '../core/provider';
 import type { ItemDetail } from '../core/types';
 import type { AppSpecDto } from '../core/generated/AppSpecDto';
 import { Loading, NativeButton, Surface } from '../components/primitives';
 import { useTheme } from '../theme';
 import { useAppSheetCloseButton } from './app-sheet-context';
-import { DECKCRAFT_ENGINE_REVISION } from './canonical-binary';
+import { binaryEditorFormat, type BinaryExportFormat } from './binary-formats';
 import { createDeckcraftSession } from './deckcraft-session';
 import type { DeckcraftFeedbackReason } from './deckcraft-feedback.ts';
 import { shareDeckcraftExport } from './deckcraft-export-files';
@@ -22,6 +24,7 @@ import { readVerifiedMiniappResource } from './resource-load';
 import { sandboxHtml, type VerifiedMiniappResource } from './sandbox';
 
 type Props = {
+  selectedHead?: DeckcraftExportHead;
   item: ItemDetail;
   spec: AppSpecDto;
   fill?: boolean;
@@ -50,12 +53,18 @@ export function DeckcraftView(props: Props) {
     }, []),
   );
   return focus.lifetime ? (
-    <FocusedDeckcraft key={focus.epoch} {...props} registerClose={focus.lifetime.register} />
+    <FocusedDeckcraft
+      key={`${focus.epoch}:${JSON.stringify(props.selectedHead)}`}
+      {...props}
+      registerClose={focus.lifetime.register}
+    />
   ) : null;
 }
 
 function FocusedDeckcraft(props: Props & { registerClose: RegisterClose }) {
   const { item, spec, registerClose } = props;
+  const format = binaryEditorFormat(spec.id);
+  const messages = format.messages;
   const { store } = useClient();
   const { colors } = useTheme();
   const epoch = useRef(store.sessionEpoch).current;
@@ -83,10 +92,10 @@ function FocusedDeckcraft(props: Props & { registerClose: RegisterClose }) {
       (state.mode === 'account' && (!account?.unlocked || account.setup_pending)) ||
       `${state.mode}:${account?.identity_id ?? state.snapshot?.me?.id ?? ''}:${account?.device_id ?? ''}` !==
         owner ||
-      !state.snapshot?.conversations.some((chat) => chat.id === item.space_id)
+      !homeSpacesFor(state).has(item.space_id)
     )
-      throw Error(t('decks.accountChanged'));
-  }, [store, epoch, owner, item.space_id]);
+      throw Error(t(`${messages}.accountChanged`));
+  }, [store, epoch, owner, item.space_id, messages]);
   useEffect(() => {
     let active = true;
     const lifetime = frameAuthority(checkOwner);
@@ -97,31 +106,32 @@ function FocusedDeckcraft(props: Props & { registerClose: RegisterClose }) {
     void (async () => {
       lifetime.check();
       if (
-        spec.id !== 'deckcraft' ||
-        spec.resource_uri !== 'ui://zoen/deckcraft/index.html' ||
-        item.app?.app_id !== 'deckcraft'
+        spec.id !== format.id ||
+        spec.resource_uri !== format.resourceUri ||
+        item.app?.app_id !== format.id
       )
-        throw Error(t('decks.unavailable'));
+        throw Error(t(`${messages}.unavailable`));
       const verified = await readVerifiedMiniappResource(
         () => store.driver.request({ op: 'app_resource', uri: spec.resource_uri }),
-        'deckcraft',
+        format.id,
         spec.resource_uri,
         lifetime.check,
       );
       lifetime.check();
       if (
         !verified.manifest.runtimePackage ||
-        verified.manifest.runtimePackage.revision !== DECKCRAFT_ENGINE_REVISION ||
+        verified.manifest.runtimePackage.engine !== format.id ||
+        verified.manifest.runtimePackage.revision !== format.engineRevision ||
         verified.manifest.capabilities.length ||
         verified.manifest.allowedDomains.length
       )
-        throw Error(t('decks.unavailable'));
+        throw Error(t(`${messages}.unavailable`));
       if (active) setRead({ key: readKey, verified, check: lifetime.check });
     })().catch((error: unknown) => {
       if (active)
         setRead({
           key: readKey,
-          error: error instanceof Error ? error.message : t('decks.unavailable'),
+          error: error instanceof Error ? error.message : t(`${messages}.unavailable`),
         });
     });
     return () => {
@@ -129,7 +139,17 @@ function FocusedDeckcraft(props: Props & { registerClose: RegisterClose }) {
       lifetime.close();
       unregister();
     };
-  }, [store, checkOwner, registerClose, readKey, spec.id, spec.resource_uri, item.app?.app_id]);
+  }, [
+    store,
+    checkOwner,
+    registerClose,
+    readKey,
+    spec.id,
+    spec.resource_uri,
+    item.app?.app_id,
+    format,
+    messages,
+  ]);
   if (read.key !== readKey) return <Loading />;
   if (read.error)
     return (
@@ -158,6 +178,7 @@ function FocusedDeckcraft(props: Props & { registerClose: RegisterClose }) {
 
 function DeckcraftDocument({
   item,
+  selectedHead,
   fill = false,
   verified,
   checkOwner,
@@ -172,6 +193,16 @@ function DeckcraftDocument({
   onInitialRetry: () => void;
 }) {
   const { store } = useClient();
+  const format = binaryEditorFormat(verified.manifest.id);
+  const messages = format.messages;
+  const exportLabels: Record<BinaryExportFormat, string> = {
+    pptx: 'PowerPoint',
+    pdf: 'PDF',
+    xlsx: 'Excel',
+    docx: 'Word',
+    pcraft: t('documents.projectFile'),
+    png: 'PNG',
+  };
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const closeButton = useAppSheetCloseButton();
@@ -229,7 +260,9 @@ function DeckcraftDocument({
       return;
     }
     const current = createDeckcraftSession({
+      editor: format.id,
       itemId: item.id,
+      selectedHead,
       title: () => latest.current.item.title,
       verified,
       driver: store.driver,
@@ -242,6 +275,7 @@ function DeckcraftDocument({
       close: () => router.back(),
       share: (format, head, call) =>
         shareDeckcraftExport({
+          editor: binaryEditorFormat(verified.manifest.id).id,
           format,
           head,
           call,
@@ -254,7 +288,7 @@ function DeckcraftDocument({
     callbacks.current.onDocumentController?.(current.controller);
     let live = true;
     const unregisterPreflight = store.registerSessionPreflight(() => {
-      if (live) throw Error(t('decks.closeFirst'));
+      if (live) throw Error(t(`${messages}.closeFirst`));
     });
     const close = () => {
       if (!live) return;
@@ -287,10 +321,24 @@ function DeckcraftDocument({
       close();
       unregisterClose();
     };
-  }, [store, verified, item.id, checkOwner, registerClose, context]);
+  }, [
+    store,
+    verified,
+    item.id,
+    selectedHead,
+    checkOwner,
+    registerClose,
+    context,
+    format,
+    messages,
+  ]);
   useEffect(() => {
     session.current?.syncContext();
   }, [scheme, dimensions, safeAreaInsets, closeButton]);
+  useEffect(() => {
+    if (state.opened && !selectedHead && format.liveReview)
+      void session.current?.refresh(item.version).catch(() => {});
+  }, [item.version, state.opened, selectedHead, format.liveReview]);
   const html = useMemo(
     () => sandboxHtml(verified.resource.text, [], verified.manifest.runtimePackage),
     [verified],
@@ -302,19 +350,22 @@ function DeckcraftDocument({
   const blocked = state.blocked || frameFailure !== null;
   const error = frameFailure ?? state.error;
   const label = !state.opened
-    ? t('decks.opening')
+    ? t(`${messages}.opening`)
     : error
-      ? t('decks.pending')
+      ? t(`${messages}.pending`)
       : state.phase === 'saving'
-        ? t('decks.saving')
+        ? t(`${messages}.saving`)
         : state.phase === 'pending'
-          ? t('decks.pending')
-          : t('decks.saved');
+          ? t(`${messages}.pending`)
+          : t(`${messages}.saved`);
   return (
-    <View testID="deckcraft-document" style={fill ? { flex: 1, minHeight: 0 } : { height: 640 }}>
+    <View
+      testID={`${format.id}-document`}
+      style={fill ? { flex: 1, minHeight: 0 } : { height: 640 }}
+    >
       <Text
         accessibilityLiveRegion="polite"
-        testID="deckcraft-save-status"
+        testID={`${format.id}-save-status`}
         style={{
           position: 'absolute',
           width: 1,
@@ -344,11 +395,44 @@ function DeckcraftDocument({
           blocked={blocked}
           runtimePackage={verified.manifest.runtimePackage}
           onMessage={receive}
-          onError={() => setFrameFailure(t('decks.editorStopped'))}
+          onError={() => setFrameFailure(t(`${messages}.editorStopped`))}
         />
+        {selectedHead && state.opened ? (
+          <View
+            testID={`${format.id}-history-export`}
+            style={{
+              position: 'absolute',
+              bottom: safeAreaInsets.bottom + 12,
+              left: 12,
+              gap: 8,
+              padding: 12,
+              borderRadius: 16,
+              backgroundColor: colors.background,
+            }}
+          >
+            <Text style={{ color: colors.secondary }}>
+              {t('documents.previewVersion', { version: selectedHead.version })}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {format.exports.map((format) => (
+                <NativeButton
+                  key={format}
+                  secondary
+                  label={exportLabels[format]}
+                  testID={`${verified.manifest.id}-history-export-${format}`}
+                  disabled={blocked}
+                  onPress={() => {
+                    if (retryOwner && session.current === retryOwner)
+                      void retryOwner.share(format).catch(() => {});
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
         {state.opened && error && !blocked ? (
           <View
-            testID="deckcraft-save-warning"
+            testID={`${format.id}-save-warning`}
             style={{
               position: 'absolute',
               left: 12,
@@ -368,8 +452,8 @@ function DeckcraftDocument({
             state.reason !== 'export_failed' ? (
               <NativeButton
                 secondary
-                testID="deckcraft-warning-retry-save"
-                label={t('decks.retrySave')}
+                testID={`${format.id}-warning-retry-save`}
+                label={t(`${messages}.retrySave`)}
                 onPress={() => {
                   void session.current?.controller.flush().catch(() => {});
                 }}
@@ -379,7 +463,7 @@ function DeckcraftDocument({
         ) : null}
         {!state.opened || (error && blocked) ? (
           <View
-            testID="deckcraft-interaction-cover"
+            testID={`${format.id}-interaction-cover`}
             style={{
               position: 'absolute',
               inset: 0,
@@ -398,8 +482,8 @@ function DeckcraftDocument({
                   !frameFailure ? (
                     <NativeButton
                       secondary
-                      testID="deckcraft-recovery-retry-save"
-                      label={t('decks.retrySave')}
+                      testID={`${format.id}-recovery-retry-save`}
+                      label={t(`${messages}.retrySave`)}
                       onPress={() => {
                         void session.current?.controller.flush().catch(() => {});
                       }}
@@ -408,7 +492,7 @@ function DeckcraftDocument({
                 ) : (
                   <NativeButton
                     secondary
-                    testID="deckcraft-retry-open"
+                    testID={`${format.id}-retry-open`}
                     label={t('miniapps.tryAgain')}
                     onPress={() => {
                       if (retryOwner && session.current === retryOwner && !retryOwner.opened)
@@ -417,7 +501,11 @@ function DeckcraftDocument({
                   />
                 )}
                 {state.opened && onDocumentDiscard ? (
-                  <NativeButton secondary label={t('decks.discard')} onPress={onDocumentDiscard} />
+                  <NativeButton
+                    secondary
+                    label={t(`${messages}.discard`)}
+                    onPress={onDocumentDiscard}
+                  />
                 ) : null}
               </>
             ) : (

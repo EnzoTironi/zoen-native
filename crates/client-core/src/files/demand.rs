@@ -1,6 +1,9 @@
 //! Demand operations on the original Engine state.
 
-use super::*;
+use super::{
+    invalid_file, random_key, t, validate_file, ChunkRef, CoreError, Engine, FileDto, HashMap,
+    ItemContent, Wanted, MAX_FILE_BYTES, R,
+};
 
 impl Engine {
     /// A demand never inherits authority from JS or an old account. Recheck the
@@ -123,9 +126,9 @@ impl Engine {
         if !self.net.synced.contains(&item.space) {
             return out;
         }
-        let file = self
-            .file_doc_at(&key.item, Some(key.version))
-            .expect("validated canonical file");
+        let Ok(file) = self.file_doc_at(&key.item, Some(key.version)) else {
+            return out;
+        };
         for chunk in &file.chunks {
             if self.store.has_media(&chunk.sha256).unwrap_or(false) {
                 continue;
@@ -151,18 +154,31 @@ impl Engine {
             if !self.net.synced.contains(&it.space) {
                 continue;
             }
-            if matches!(&it.current().content, ItemContent::App(_))
-                && !self
-                    .me
-                    .as_deref()
-                    .is_some_and(|me| self.is_member(&it.space, me))
+            // `synced` records catch-up, not continuing read authority. This
+            // list also admits HTTP completions, including current File chunks
+            // that would otherwise bypass a revoked foreground demand.
+            if !self
+                .me
+                .as_deref()
+                .is_some_and(|me| self.is_member(&it.space, me))
             {
                 continue;
             }
             let mut refs: Vec<(&ChunkRef, &str)> = Vec::new();
-            match it.versions.last().map(|v| &v.content) {
-                Some(content) if content.owned_file().is_some() => {
-                    let f = content.owned_file().expect("matched owned file");
+            let content = &it.versions.current().content;
+            if let ItemContent::App(app) = content {
+                if let Some(view) = &app.view {
+                    if crate::app_resources::valid(app) {
+                        refs.extend(
+                            view.chunks
+                                .iter()
+                                .map(|chunk| (chunk, "application/octet-stream")),
+                        );
+                    }
+                }
+            }
+            match (content, content.owned_file()) {
+                (_, Some(f)) => {
                     if validate_file(f, MAX_FILE_BYTES as u64).is_err() {
                         continue;
                     }
@@ -173,7 +189,7 @@ impl Engine {
                         refs.push((c, "application/octet-stream"));
                     }
                 }
-                Some(ItemContent::Page(_)) => {
+                (ItemContent::Page(_), None) => {
                     for v in &it.versions {
                         if let ItemContent::Page(p) = &v.content {
                             if let Some(b) = &p.blob {

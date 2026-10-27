@@ -69,9 +69,10 @@ impl Client {
                         .map_or(0, |r| r.generation)
                 })
         {
+            let prior = r.req.tool_proposal.as_ref().ok_or_else(stale)?;
             let mut same = p.clone();
-            same.expires_at_ms = r.req.tool_proposal.as_ref().unwrap().expires_at_ms;
-            same.review = r.req.tool_proposal.as_ref().unwrap().review.clone();
+            same.expires_at_ms = prior.expires_at_ms;
+            same.review = prior.review.clone();
             if r.req.tool_proposal.as_deref() != Some(&same) {
                 return Err(stale());
             }
@@ -81,7 +82,7 @@ impl Client {
         let artifact_title = e.item_state(&p.artifact)?.current().content.title();
         let detail = review_detail(&p, &artifact_title);
         let mut req = AgentRequest {
-            id: types::new_id("rq"),
+            id: types::new_id("rq")?,
             agent: turn.document.actor_id.clone(),
             title: operation,
             detail,
@@ -95,14 +96,20 @@ impl Client {
         };
         req.content_hash = req.tool_proposal_hash(&turn.space).ok_or_else(malformed)?;
         if !e.state.tool_request_matches(&req, &turn.space)
-            || !e
-                .state
-                .tool_app_act(req.tool_proposal.as_ref().unwrap(), crate::engine::now_ms())
+            || !e.state.tool_app_act(
+                req.tool_proposal.as_ref().ok_or_else(malformed)?,
+                crate::engine::now_ms(),
+            )
         {
             return Err(stale());
         }
         // Core Block remains non-overridable. No budget or standing grant is added.
-        let action = if req.tool_proposal.as_ref().unwrap().canonical_tool == "read_deckcraft" {
+        let action = if agent_tools::is_read(
+            &req.tool_proposal
+                .as_ref()
+                .ok_or_else(malformed)?
+                .canonical_tool,
+        ) {
             ActionClass::Reply
         } else {
             ActionClass::Reversible

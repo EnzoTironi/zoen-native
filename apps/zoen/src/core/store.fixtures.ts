@@ -80,6 +80,7 @@ export function unreadSnapshot(unread: number): Snapshot {
         kind: 'Group',
         privacy: 'EndToEnd',
         members: [],
+        can_write: true,
         counterpart: null,
         last_preview: 'A received file',
         last_author: null,

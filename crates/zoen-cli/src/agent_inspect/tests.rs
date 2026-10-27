@@ -5,7 +5,8 @@ mod relay;
 use relay::{citizen, online, relay, Mode, PRIVATE};
 
 #[test]
-fn arguments_and_home_preflight_fail_without_creating_a_store() {
+fn arguments_and_home_preflight_fail_without_creating_a_store(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let argv = |parts: &[&str]| {
         parts
             .iter()
@@ -34,7 +35,7 @@ fn arguments_and_home_preflight_fail_without_creating_a_store() {
         assert!(validate_args(&argv(&parts)).is_err());
     }
     assert!(crate::agent_enrollment::requires_home_lock("agent-inspect"));
-    let missing = std::env::temp_dir().join(types::new_id("zoen-inspect-missing"));
+    let missing = std::env::temp_dir().join(types::new_id("zoen-inspect-missing")?);
     assert_eq!(
         existing_home(&missing),
         Err("agent_inspect_existing_home_required")
@@ -45,6 +46,7 @@ fn arguments_and_home_preflight_fail_without_creating_a_store() {
         Some("agent_inspect_existing_home_required")
     );
     assert!(!missing.exists());
+    Ok(())
 }
 
 #[tokio::test]
@@ -138,7 +140,9 @@ async fn server_refusal_invalid_state_and_duplicate_cursor_are_closed_errors() {
     for (mode, expected) in [
         (Mode::StateDenied, "agent_inspect_state_unavailable"),
         (Mode::InvalidState, "agent_inspect_invalid_state"),
-        (Mode::DuplicateCursor, "agent_inspect_duplicate_cursor"),
+        // Client::agent_state rejects malformed complete sets before exposing
+        // any cursor to the inspector. Preserve its closed boundary error.
+        (Mode::DuplicateCursor, "agent_inspect_state_unavailable"),
     ] {
         let server = relay(mode).await;
         let agent = citizen(&server.url, true);
@@ -149,6 +153,19 @@ async fn server_refusal_invalid_state_and_duplicate_cursor_are_closed_errors() {
         assert!(!error.contains(PRIVATE));
         assert_eq!(*server.calls.lock().unwrap(), vec!["agent_state"]);
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn duplicate_cursor_is_rejected_by_the_core_before_any_inventory_is_exposed() {
+    let server = relay(Mode::DuplicateCursor).await;
+    let agent = citizen(&server.url, true);
+    online(&agent.0, true).await;
+    server.calls.lock().unwrap().clear();
+    let error = agent.0.agent_state().await.unwrap_err();
+    assert!(matches!(error, client_core::CoreError::Invalid { reason }
+        if reason == protocol::complete_reads::INVALID));
+    assert_eq!(*server.calls.lock().unwrap(), vec!["agent_state"]);
+    assert!(server.cursors.lock().unwrap().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

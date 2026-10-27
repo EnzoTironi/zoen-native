@@ -1,5 +1,5 @@
 // Pure validation of worker operations; no signing, client or session owner.
-import { bytes, integer, object, string } from './boundary.ts';
+import { boolean, bytes, integer, object, string } from './boundary.ts';
 import type { CoreOperation } from './worker-client.ts';
 
 export function parseOperation(input: unknown): CoreOperation {
@@ -63,6 +63,8 @@ export function parseOperation(input: unknown): CoreOperation {
       return { kind: 'cursor_repair_config' };
     case 'reconcile':
       return { kind: 'reconcile', now: integer(value.now) };
+    case 'read_capability':
+      return { kind: 'read_capability', enabled: boolean(value.enabled) };
     case 'claim_clock':
       return { kind: 'claim_clock', value: string(value.value) };
     case 'maintenance':

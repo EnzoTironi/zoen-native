@@ -1,0 +1,333 @@
+[
+  {
+    "id": "presentation:message-actions",
+    "name": "Ações e seleção da mensagem",
+    "kind": "menu",
+    "path": "apps/zoen/src/components/message-actions.ios.tsx",
+    "entrypoint": "Chat/Thread → useMessageActions → MessageActions iOS → ZoenMessageContextController; fallback Modal",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Menu nativo e fallback são uma família; seleção de texto e ações por autoridade dependem do estado da mensagem."
+    ],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "presentation:reaction-details",
+    "name": "Reações e participantes",
+    "kind": "sheet",
+    "path": "apps/zoen/src/components/reaction-details.ios.tsx",
+    "entrypoint": "Chat/Thread → useMessageActions → ReactionDetails; emoji livre e participantes",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Emoji livre usa teclado na mesma apresentação; troca de entrada/owner precisa aceite nativo."
+    ],
+    "issues": [
+      172
+    ]
+  },
+  {
+    "id": "presentation:member-actions",
+    "name": "Ações do participante",
+    "kind": "sheet",
+    "path": "apps/zoen/src/communities/member-actions-sheet.tsx",
+    "entrypoint": "space/[id] → MemberActionsSheet → funções/restrições/remoção",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "presentation:member-addition",
+    "name": "Adicionar participantes",
+    "kind": "sheet",
+    "path": "apps/zoen/src/communities/member-addition-sheet.tsx",
+    "entrypoint": "space/[id] → MemberAdditionSheet/Content → seleção e funções",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      181
+    ]
+  },
+  {
+    "id": "presentation:device-details",
+    "name": "Detalhes e revogação do dispositivo",
+    "kind": "sheet",
+    "path": "apps/zoen/src/devices/device-details.tsx",
+    "entrypoint": "devices → DeviceDetails → revogar; HistoryTransfer é painel inline na rota devices, não outro sheet",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      177
+    ]
+  },
+  {
+    "id": "presentation:authorize-device",
+    "name": "Autorizar novo dispositivo",
+    "kind": "sheet",
+    "path": "apps/zoen/src/components/authorize-device.tsx",
+    "entrypoint": "devices → BottomSheet → AuthorizeDevice; variante Web separada",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      177
+    ]
+  },
+  {
+    "id": "presentation:muted-chat-detail",
+    "name": "Detalhes da conversa silenciada",
+    "kind": "sheet",
+    "path": "apps/zoen/src/notifications/muted-chats-screen.tsx",
+    "entrypoint": "settings/muted-chats → MutedChatsScreen → BottomSheet",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      178
+    ]
+  },
+  {
+    "id": "presentation:media-composer",
+    "name": "Gravação, revisão e legenda de mídia",
+    "kind": "sheet",
+    "path": "apps/zoen/src/media/media-composer-view.tsx",
+    "entrypoint": "Chat/Thread → useMediaComposerController → renderMediaComposer → MediaSheet/VoiceReview; variantes MediaSheet iOS/portátil não somam superfícies",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Gravação bloqueada, trim pendente e envio incerto são estados da mesma família; não telas adicionais."
+    ],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "presentation:device-consent",
+    "name": "Consentimento local do App",
+    "kind": "sheet",
+    "path": "apps/zoen/src/miniapps/device-consent.ios.tsx",
+    "entrypoint": "Miniapp host/remote → DeviceConsent; fallback portátil Modal",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "presentation:editor-agent",
+    "name": "Agente do editor",
+    "kind": "sheet",
+    "path": "apps/zoen/src/miniapps/editor-agent-sheet.tsx",
+    "entrypoint": "Host/editor → EditorAgentSheet → escolha/conectar/permissões",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      175,
+      180
+    ]
+  },
+  {
+    "id": "presentation:package-release",
+    "name": "Publicar pacote do App",
+    "kind": "sheet",
+    "path": "apps/zoen/src/miniapps/package-release-sheet.tsx",
+    "entrypoint": "AppPackageAction/host → PackageReleaseSheet",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      180
+    ]
+  },
+  {
+    "id": "presentation:home-actions",
+    "name": "Ações do Início",
+    "kind": "menu",
+    "path": "apps/zoen/src/home/menus.ios.tsx",
+    "entrypoint": "tabs/index → HomeActions; iOS Menu/Android DropdownMenu/Web âncora",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      174,
+      180
+    ]
+  },
+  {
+    "id": "presentation:home-card",
+    "name": "Ações do cartão do Início",
+    "kind": "menu",
+    "path": "apps/zoen/src/home/menus.ios.tsx",
+    "entrypoint": "AppCard/ReorderableCards → HomeCardMenu; fixar/histórico",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      174,
+      180
+    ]
+  },
+  {
+    "id": "presentation:media-actions",
+    "name": "Escolher origem do anexo",
+    "kind": "menu",
+    "path": "apps/zoen/src/media/media-actions.ios.tsx",
+    "entrypoint": "MediaComposer → MediaActions → foto/câmera/documento",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      173
+    ]
+  },
+  {
+    "id": "presentation:call-menu",
+    "name": "Escolher chamada de áudio/vídeo",
+    "kind": "menu",
+    "path": "apps/zoen/src/calls/header-action.ios.tsx",
+    "entrypoint": "ChatScreen → CallHeaderAction → Menu",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      178,
+      266
+    ]
+  },
+  {
+    "id": "presentation:workspace-create",
+    "name": "Criar no workspace",
+    "kind": "menu",
+    "path": "apps/zoen/src/documents/workspace-create.ios.tsx",
+    "entrypoint": "WorkspaceBrowser → WorkspaceCreate",
+    "scope": "paused",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      179
+    ]
+  },
+  {
+    "id": "presentation:attachment-selector",
+    "name": "Painel de fotos/arquivos do compositor",
+    "kind": "sheet",
+    "path": "apps/zoen/src/media/attachment-photo-picker.ios.tsx",
+    "entrypoint": "MediaComposer controller → useAttachmentPhotoPicker → keyboard native host → AttachmentContainer/Photos/FileContent",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Seleção limitada/negada, ordem e paginação são estados; galeria em tela cheia é controller separado."
+    ],
+    "issues": [
+      173,
+      225
+    ]
+  },
+  {
+    "id": "presentation:dialog-confirm",
+    "name": "Confirmação compartilhada",
+    "kind": "system",
+    "path": "apps/zoen/src/components/dialogs.tsx",
+    "entrypoint": "useDialogs.confirm → Alert.alert; Web Dialog equivalente; chamadas detalhadas no scratch",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Todas as confirmações chamam a mesma família de diálogo; mensagem e ação destrutiva variam por dono."
+    ],
+    "issues": [
+      172,
+      177,
+      175
+    ]
+  },
+  {
+    "id": "presentation:dialog-inform",
+    "name": "Aviso compartilhado",
+    "kind": "system",
+    "path": "apps/zoen/src/components/dialogs.tsx",
+    "entrypoint": "useDialogs.inform → Alert.alert; Web Dialog equivalente",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      172,
+      177
+    ]
+  },
+  {
+    "id": "presentation:session-gate",
+    "name": "Entrada, abertura e falha da sessão",
+    "kind": "system",
+    "path": "apps/zoen/src/components/session-gate.tsx",
+    "entrypoint": "app/_layout → SessionGate → SessionContent/SignInButtons",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Opening/erasing/failed/setup são estados da família; sign-in apenas redireciona."
+    ],
+    "issues": [
+      177
+    ]
+  },
+  {
+    "id": "presentation:account-access",
+    "name": "Recuperar e vincular acesso",
+    "kind": "system",
+    "path": "apps/zoen/src/components/account-access.tsx",
+    "entrypoint": "SessionGate → AccountAccess",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [],
+    "issues": [
+      177
+    ]
+  },
+  {
+    "id": "presentation:markdown-selection-menu",
+    "name": "Menu de seleção do Markdown",
+    "kind": "menu",
+    "path": "apps/zoen/src/components/message-markdown.tsx",
+    "entrypoint": "Markdown → native enriched markdown enableBlockContextMenu(selectable)",
+    "scope": "active",
+    "implementation": "present",
+    "visualEvidence": "source-only",
+    "gaps": [
+      "Menu pertence ao componente nativo de texto; copiar código usa callback próprio e haptic."
+    ],
+    "issues": [
+      172
+    ]
+  }
+]

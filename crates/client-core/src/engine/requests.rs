@@ -1,5 +1,11 @@
 //! Canonical request views, decisions and standing grants.
-use super::*;
+use super::{
+    action_label, content_hash, new_id, not_found, now_ms, reason_label, standing_allow_permitted,
+    standing_key, standing_label, t, ActionClass, AgentRequest, AgentRequestDto, Capability,
+    CoreError, Currentness, DecideOutcome, Decision, Engine, EventBody, GrantScope, ItemKind,
+    PlanReplay, ReqStatus, RequestDecision, RequestState, RequestStatus, StandingDecisionDto,
+    ToolApprovalDto, ToolDecision, R,
+};
 
 impl Engine {
     pub(crate) fn request_dto(&self, r: &RequestState) -> AgentRequestDto {
@@ -26,8 +32,7 @@ impl Engine {
                 content_hash: r.req.content_hash.clone(),
                 artifact_id: p.artifact.clone(),
                 artifact_title: self.state.items.get(&p.artifact)
-                    .and_then(|i|i.versions.iter().find(|version|version.number==p.version))
-                    .map(|version|version.content.title()).unwrap_or_else(|| {
+                    .and_then(|i|i.versions.iter().find(|version|version.number==p.version)).map_or_else(|| {
                         if p.schema == 5 {
                             crate::agent_sites::parsed(p).ok().and_then(|(_, args)| args)
                                 .and_then(|args| args["title"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -37,12 +42,12 @@ impl Engine {
                         } else if self.image_generation_review(p).is_some() {
                             t("Imagem", "Image")
                         } else { String::new() }
-                    }),
+                    }, |version|version.content.title()),
                 version: p.version,
                 operation: crate::agent_binary_documents::tool_approvals::operation(&p.canonical_tool),
                 expires_ms: p.expires_at_ms,
-                preview_kind: (p.schema==5).then(||"site".into()),
-                review: Some(self.tool_review_dto(r)),
+                preview_kind: if p.schema==5 { Some("site".into()) } else if p.schema==6 && p.canonical_tool=="replace_scene" { Some("scene".into()) } else { None },
+                review: Some(self.tool_review_dto(r, p)),
                 canonical_tool: Some(p.canonical_tool.clone()),
                 image: self.image_generation_review(p),
             }),
@@ -194,20 +199,20 @@ impl Engine {
             }),
             Decision::Request(_) => {
                 let content_hash = match &link {
-                    Some((item, line)) if self.item_state(item)?.kind == ItemKind::Plan => {
+                    Some((item, line_id)) if self.item_state(item)?.kind == ItemKind::Plan => {
                         let plan = self.plan_snapshot(item)?;
                         Self::line_hash(
                             plan.document
-                                .line(line)
+                                .line(line_id)
                                 .ok_or_else(|| not_found(&t("linha", "line")))?,
-                        )
+                        )?
                     }
-                    Some(_) => content_hash(&title),
-                    None => content_hash(&(title, detail, audience)),
+                    Some(_) => content_hash(&title)?,
+                    None => content_hash(&(title, detail, audience))?,
                 };
                 let req = AgentRequest {
                     tool_proposal: None,
-                    id: new_id("rq"),
+                    id: new_id("rq")?,
                     agent: agent.into(),
                     title: title.into(),
                     detail: detail.into(),
@@ -416,15 +421,11 @@ impl Engine {
             .request_order
             .iter()
             .filter(|id| {
-                self.state
-                    .requests
-                    .get(*id)
-                    .map(|r| {
-                        r.req.agent == agent
-                            && r.status == ReqStatus::Pending
-                            && self.request_is_current(&r.req)
-                    })
-                    .unwrap_or(false)
+                self.state.requests.get(*id).is_some_and(|r| {
+                    r.req.agent == agent
+                        && r.status == ReqStatus::Pending
+                        && self.request_is_current(&r.req)
+                })
             })
             .cloned()
             .collect();

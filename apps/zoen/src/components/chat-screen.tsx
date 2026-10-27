@@ -29,6 +29,10 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     input,
     initialEnd,
     searchReveal,
+    navigationMetrics,
+    onComposerLayout,
+    onInsetRequested,
+    onSearchContentLayout,
     normalDraft,
     editing,
     reply,
@@ -56,6 +60,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     loadedSpace,
     rows,
     railHeight,
+    rail,
     Math,
     noticeHeight,
     items,
@@ -76,6 +81,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
       <ChatHeader
         id={id}
         scrollViewTag={nativeScrollTag}
+        navigationMetrics={navigationMetrics}
         title={chat.title}
         counterpart={chat.counterpart}
         activityLabel={activityLabel}
@@ -104,7 +110,11 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
           initialEnd.onViewportLayout(height);
           searchReveal.onLayout(height);
         }}
-        onNativeInset={searchReveal.onInset}
+        onNativeInset={(inset) => {
+          searchReveal.onInset(inset);
+          onInsetRequested(inset);
+        }}
+        onComposerLayout={onComposerLayout}
         composer={
           <>
             <MessageComposer
@@ -112,6 +122,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                 !searchState.active && (normalDraft.replyTo || editing)
                   ? {
                       entry: editing ?? reply ?? undefined,
+                      quote: editing ? undefined : normalDraft.replyQuote,
                       onCancel: () => updateDraft({ type: 'cancel' }),
                     }
                   : undefined
@@ -201,7 +212,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                           current.query.trim() &&
                           conversationQueryFits(current.query.trim())
                         )
-                          launchConversationAssistant(id, current.query.trim());
+                          launchConversationAssistant(id, current.query.trim(), store);
                       },
                     }
                   : undefined
@@ -222,10 +233,16 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
               backgroundColor: 'transparent',
             }}
           >
-            <ConversationRail onHeight={setRailHeight}>
+            <ConversationRail
+              onHeight={setRailHeight}
+              height={railHeight}
+              motion={rail}
+              collapsible={conversationMiniapps.length > 0}
+            >
               <MiniappRail
                 key={`${cards.ownerKey}:${id}`}
                 onReorder={cards.reorder}
+                onEditingChange={rail.onEditingChange}
                 items={conversationMiniapps}
                 paddingVertical={6}
                 error={home.error}
@@ -303,7 +320,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               contentInsetAdjustmentBehavior="never"
-              ListHeaderComponent={<ConversationRailSpacer height={railHeight} />}
+              ListHeaderComponent={<ConversationRailSpacer motion={rail} />}
               ListFooterComponent={composerSpacer}
               contentContainerStyle={{
                 paddingHorizontal: 16,
@@ -336,6 +353,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                   groupChat={chat.kind !== 'Direct'}
                   item={items.find((item) => item.id === messageCard(entry)?.item_id)}
                   highlighted={entry.id === selectedSearchId}
+                  revealQuery={searchState.query}
+                  onRevealLayout={entry.id === selectedSearchId ? onSearchContentLayout : undefined}
                   disabled={searchState.active}
                   reactionPending={actions.busy}
                   onReply={actions.reply}

@@ -7,7 +7,7 @@ fn expired_history(
     fixture: &mut crate::deckcraft::tests::Fixture,
     space: &str,
     original: &types::AgentRequest,
-) -> (types::AgentRequest, String) {
+) -> std::result::Result<(types::AgentRequest, String), Box<dyn std::error::Error>> {
     let client = std::mem::replace(
         &mut fixture.client,
         Client::open(":memory:".into(), "en".into()).unwrap(),
@@ -32,7 +32,7 @@ fn expired_history(
             .iter()
             .any(|event| event.client_id == row.event.client_id)
         {
-            db.append_event(log.sequence(row.event.clone())).unwrap();
+            db.append_event(log.sequence(row.event.clone())?).unwrap();
         }
         db.outbox_remove(&row.event.client_id).unwrap();
     }
@@ -61,7 +61,7 @@ fn expired_history(
         .unwrap()
         .as_millis() as i64;
     let mut expired = original.clone();
-    expired.id = types::new_id("expired-host-review");
+    expired.id = types::new_id("expired-host-review")?;
     expired.tool_proposal.as_mut().unwrap().expires_at_ms = now - 1000;
     expired.content_hash = expired.tool_proposal_hash(space).unwrap();
     for (author, at, body) in [
@@ -97,17 +97,17 @@ fn expired_history(
             },
         ),
     ] {
-        let event = author.sign_event(space, &types::new_ulid(at), at, log.head(), body);
-        db.append_event(log.sequence(event)).unwrap();
+        let event = author.sign_event(space, &types::new_ulid(at)?, at, log.head(), body)?;
+        db.append_event(log.sequence(event)?).unwrap();
     }
     log.verify().unwrap();
-    (expired, log.events().last().unwrap().client_id.clone())
+    Ok((expired, log.events().last().unwrap().client_id.clone()))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_original_journal_budget()
-{
-    let mut fixture = crate::deckcraft::tests::fixture();
+async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_original_journal_budget(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = crate::deckcraft::tests::fixture()?;
     let space = fixture
         .client
         .item(fixture.base.item_id.clone())
@@ -134,7 +134,7 @@ async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_origin
         .tool_approval_requests(&space, &fixture.source)
         .pop()
         .unwrap();
-    let (expired, intent) = expired_history(&mut fixture, &space, &original);
+    let (expired, intent) = expired_history(&mut fixture, &space, &original)?;
     // Only this newly signed, never-executed fixture request is registered.
     // A missing/legacy production record cannot acquire this witness retroactively.
     JournalState::register_hold(
@@ -214,7 +214,7 @@ async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_origin
         &space,
         &next,
         &fixture.owner,
-    );
+    )?;
     let client = canonical_tool_approval_tests::reopen(&fixture.path, fixture.vault.clone());
     let context = cx(&client, &journal, &item, starts.clone());
     canonical_tool_approval_tests::handle(&client, &context, &space, &fixture.source).await;
@@ -247,13 +247,14 @@ async fn actual_page_host_stages_one_new_pending_review_and_resumes_under_origin
     let path = fixture.path.clone();
     drop(fixture);
     std::fs::remove_dir_all(path).unwrap();
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn absent_legacy_or_unknown_journal_cannot_restage_an_expired_page_action_or_call_the_model()
-{
+async fn absent_legacy_or_unknown_journal_cannot_restage_an_expired_page_action_or_call_the_model(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for witness in ["absent", "legacy", "unknown"] {
-        let mut fixture = crate::deckcraft::tests::fixture();
+        let mut fixture = crate::deckcraft::tests::fixture()?;
         let space = fixture
             .client
             .item(fixture.base.item_id.clone())
@@ -285,7 +286,7 @@ async fn absent_legacy_or_unknown_journal_cannot_restage_an_expired_page_action_
             .tool_approval_requests(&space, &fixture.source)
             .pop()
             .unwrap();
-        let (expired, intent) = expired_history(&mut fixture, &space, &original);
+        let (expired, intent) = expired_history(&mut fixture, &space, &original)?;
         if witness == "unknown" {
             JournalState::register_hold(
                 &journal,
@@ -359,4 +360,5 @@ async fn absent_legacy_or_unknown_journal_cannot_restage_an_expired_page_action_
         drop(fixture);
         std::fs::remove_dir_all(path).unwrap();
     }
+    Ok(())
 }

@@ -28,6 +28,7 @@ fn fixture_at(path: &str) -> (Arc<Client>, PageDto) {
 #[test]
 fn closing_and_reopening_the_database_recovers_the_exact_edit_receipt_and_draft() {
     journal_recovery::closing_and_reopening_the_database_recovers_the_exact_edit_receipt_and_draft()
+        .unwrap()
 }
 
 #[test]
@@ -113,7 +114,10 @@ fn readers_and_removed_members_cannot_change_cached_pages_or_journals() {
     admission::readers_and_removed_members_cannot_change_cached_pages_or_journals()
 }
 
-fn confirm_pending(engine: &Client, item: &str) -> String {
+fn confirm_pending(
+    engine: &Client,
+    item: &str,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
     let mut e = engine.lock();
     let pending = e
         .store
@@ -128,8 +132,8 @@ fn confirm_pending(engine: &Client, item: &str) -> String {
     let space = pending.event.space.clone();
     let head = e.logs[&space].head().unwrap();
     let seq = head.seq + 1;
-    let env = protocol::Envelope::plain(&pending.event);
-    let hash = event_log::chain_hash(&space, seq, &head.hash, &env.wire_hash());
+    let env = protocol::Envelope::plain(&pending.event)?;
+    let hash = event_log::chain_hash(&space, seq, &head.hash, &env.wire_hash())?;
     let result = e.ingest(protocol::Sequenced {
         seq,
         prev: head.hash,
@@ -137,11 +141,12 @@ fn confirm_pending(engine: &Client, item: &str) -> String {
         env,
     });
     assert_eq!(result, crate::sync::Ingest::Confirmed);
-    pending.event.client_id
+    Ok(pending.event.client_id)
 }
 
 #[test]
-fn newer_draft_waits_for_ack_and_survives_a_permanent_refusal() {
+fn newer_draft_waits_for_ack_and_survives_a_permanent_refusal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     publication::newer_draft_waits_for_ack_and_survives_a_permanent_refusal()
 }
 
@@ -157,7 +162,7 @@ fn corrupt_journal_preserves_saved_read_and_refuses_overwriting_the_draft() {
 
 #[test]
 fn public_page_reads_reuse_verified_media_and_require_it_again_after_reload() {
-    publication::public_page_reads_reuse_verified_media_and_require_it_again_after_reload()
+    publication::public_page_reads_reuse_verified_media_and_require_it_again_after_reload().unwrap()
 }
 
 #[test]
@@ -173,6 +178,24 @@ fn shared_session_does_not_activate_public_plan_page_writers() {
 mod admission;
 mod collaborative_edits;
 mod journal_recovery;
+mod lossless_duplication;
 mod publication;
 
 mod version_exports;
+
+#[test]
+fn page_nonce_refuses_partial_entropy_instead_of_publishing_a_value() {
+    let result = rand_u64_with(|bytes| {
+        bytes[..4].fill(7);
+        Err(getrandom::Error::UNSUPPORTED)
+    });
+    assert!(matches!(result, Err(CoreError::Storage { .. })));
+    assert_eq!(
+        rand_u64_with(|bytes| {
+            bytes.copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+            Ok(())
+        })
+        .unwrap(),
+        u64::from_le_bytes([1, 2, 3, 4, 5, 6, 7, 8])
+    );
+}

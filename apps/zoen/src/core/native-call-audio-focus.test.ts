@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 test(
   'actual Swift call privacy intent, retirement races and audio handoff preserve ownership',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 150_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-call-audio-'));
     try {
@@ -33,13 +33,15 @@ test(
           '6',
           '-strict-concurrency=complete',
           '-warnings-as-errors',
+          '-j',
+          '1',
           '-module-cache-path',
           join(directory, 'module-cache'),
           ...files,
           '-o',
           binary,
         ],
-        { env: { ...process.env, SDKROOT: sdk }, timeout: 40_000 },
+        { env: { ...process.env, SDKROOT: sdk }, timeout: 120_000 },
       );
       const result = execFileSync(binary, [], { encoding: 'utf8', timeout: 10_000 });
       assert.match(

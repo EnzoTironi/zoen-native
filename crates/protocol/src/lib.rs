@@ -22,6 +22,7 @@
 //! socket's: the relay writes through a bounded queue and disconnects a device that falls
 //! too far behind, which then resumes from its cursors.
 
+pub mod agent_control;
 mod envelope;
 mod frames;
 pub use envelope::{valid_invite_code, Envelope, Sequenced};
@@ -31,6 +32,7 @@ pub use frames::{
     InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, ServerFrame,
 };
 
+pub mod complete_reads;
 pub mod cursor_repair;
 pub mod experiments;
 pub mod links;
@@ -80,6 +82,7 @@ pub const CAPABILITIES: &[&str] = &[
     "invites",
     "presence",
     "profiles",
+    complete_reads::CAPABILITY,
     AGENT_OWNER_PROOF,
     KEY_PACKAGE_CLAIM_CAPABILITY,
     runtime_binding::CAPABILITY,
@@ -92,16 +95,19 @@ pub const CAPABILITIES: &[&str] = &[
 pub struct KeyPackageClaimClock(i64);
 
 impl KeyPackageClaimClock {
+    #[must_use]
     pub fn from_server_ms(time: i64) -> Option<Self> {
         (1..=0xFFFF_FFFF_FFFF).contains(&time).then_some(Self(time))
     }
 
+    #[must_use]
     pub fn milliseconds(self) -> i64 {
         self.0
     }
 }
 
 /// Canonical uppercase ULIDs only: no prefixes, aliases or overflowing leading bits.
+#[must_use]
 pub fn key_package_claim_time_ms(operation: &str) -> Option<i64> {
     if operation.len() != 26
         || !matches!(operation.as_bytes().first(), Some(b'0'..=b'7'))
@@ -113,15 +119,17 @@ pub fn key_package_claim_time_ms(operation: &str) -> Option<i64> {
 }
 
 /// The capabilities both sides have, in our order.
+#[must_use]
 pub fn negotiate(theirs: &[String]) -> Vec<String> {
     CAPABILITIES
         .iter()
         .filter(|c| theirs.iter().any(|t| t == *c))
-        .map(|c| c.to_string())
+        .map(ToString::to_string)
         .collect()
 }
 
 /// What the device signs to log in: binds the nonce to this relay and protocol.
+#[must_use]
 pub fn auth_message(nonce: &str, relay: &str) -> Vec<u8> {
     format!("{PROTOCOL}:auth:{relay}:{nonce}").into_bytes()
 }
@@ -130,10 +138,12 @@ pub fn auth_message(nonce: &str, relay: &str) -> Vec<u8> {
 /// relay, so a captured header only re-uploads the same bytes for a few minutes.
 /// What a device signs to put or delete a chunk of a history transfer (ADR 0045).
 /// `op` is "put" or "delete"; `n` and `sha256` are empty for a delete.
+#[must_use]
 pub fn transfer_message(op: &str, transfer: &str, n: &str, sha256: &str, ts_ms: i64) -> Vec<u8> {
     format!("{PROTOCOL}:transfer-{op}:{transfer}:{n}:{sha256}:{ts_ms}").into_bytes()
 }
 
+#[must_use]
 pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
     format!("{PROTOCOL}:blob-put:{relay}:{sha256}:{ts_ms}").into_bytes()
 }
@@ -142,6 +152,7 @@ pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
 pub const BACKUP_UPLOAD_MAGIC: &[u8; 8] = b"ZOENBG1\0";
 
 /// Proof that a recovered device controls the key being enrolled for this backup.
+#[must_use]
 pub fn backup_enroll_message(
     identity: &str,
     device: &str,
@@ -153,6 +164,7 @@ pub fn backup_enroll_message(
 
 /// What a device signs for a backup write (ADR 0046): binds the operation, the identity,
 /// the body's hash and a timestamp to this relay.
+#[must_use]
 pub fn backup_message(
     relay: &str,
     identity: &str,
@@ -164,17 +176,14 @@ pub fn backup_message(
 }
 
 /// Handles: 3–24 chars, lowercase letters, digits, `_` and `.`; must start with a letter.
+#[must_use]
 pub fn normalize_handle(raw: &str) -> Option<String> {
     let h = raw.trim().trim_start_matches('@').to_lowercase();
     let ok_len = (3..=24).contains(&h.chars().count());
     let ok_chars = h
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.');
-    let ok_start = h
-        .chars()
-        .next()
-        .map(|c| c.is_ascii_lowercase())
-        .unwrap_or(false);
+    let ok_start = h.chars().next().is_some_and(|c| c.is_ascii_lowercase());
     (ok_len && ok_chars && ok_start).then_some(h)
 }
 
@@ -185,8 +194,9 @@ mod tests {
     use types::GENESIS_PREV;
 
     #[test]
-    fn recovery_reference_survives_pruning_and_cannot_be_substituted() {
-        let author = Author::root(Signer::generate());
+    fn recovery_reference_survives_pruning_and_cannot_be_substituted(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let author = Author::root(Signer::generate()?);
         let reference = event_log::recovery::RecoveryRef {
             version: 1,
             epoch: 7,
@@ -194,7 +204,7 @@ mod tests {
         };
         let mut sealed = Sealed::new(SealedKind::Commit, 1, b"MLS ciphertext".to_vec());
         sealed.recovery = reference.encode();
-        let full = Envelope::sealed(&author, "space", "commit", 1, None, sealed);
+        let full = Envelope::sealed(&author, "space", "commit", 1, None, sealed)?;
         let stub = full.pruned().unwrap();
         assert_eq!(stub.recovery(), full.recovery());
         assert_eq!(stub.wire_hash(), full.wire_hash());
@@ -212,6 +222,7 @@ mod tests {
             .unwrap()
             .verify()
             .is_err());
+        Ok(())
     }
 
     fn fixture(name: &str) -> Sequenced {
@@ -311,7 +322,7 @@ mod tests {
         assert!(grafted.recovery().is_none());
         let modified = Sequenced {
             env: grafted,
-            ..original.clone()
+            ..original
         };
         SpaceLog::from_events(
             "sp_upgrade",
@@ -339,7 +350,8 @@ mod tests {
     }
 
     #[test]
-    fn versioned_stubs_authenticate_unknown_fields_and_refuse_legacy_markers() {
+    fn versioned_stubs_authenticate_unknown_fields_and_refuse_legacy_markers(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let author = Author::root(event_log::Signer::from_secret(&[37; 32]));
         let env = Envelope::sealed(
             &author,
@@ -348,7 +360,7 @@ mod tests {
             3,
             None,
             Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
-        );
+        )?;
         let mut bytes = env.content().to_vec();
         // A newer client's unknown length-delimited field 127 must remain signed.
         bytes.extend_from_slice(&[0xfa, 0x07, 0x03, b'n', b'e', b'w']);
@@ -376,13 +388,15 @@ mod tests {
             .verify()
             .is_err());
         assert_eq!(
-            chain_hash("sp", 0, GENESIS_PREV, &full.wire_hash()),
-            chain_hash("sp", 0, GENESIS_PREV, &stub.wire_hash())
+            chain_hash("sp", 0, GENESIS_PREV, &full.wire_hash())?,
+            chain_hash("sp", 0, GENESIS_PREV, &stub.wire_hash())?
         );
+        Ok(())
     }
 
     #[test]
-    fn version_four_signatures_cannot_be_downgraded_to_legacy_tag_five_stubs() {
+    fn version_four_signatures_cannot_be_downgraded_to_legacy_tag_five_stubs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let author = Author::root(event_log::Signer::from_secret(&[39; 32]));
         let full = Envelope::sealed(
             &author,
@@ -391,7 +405,7 @@ mod tests {
             3,
             None,
             Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
-        );
+        )?;
         full.verify().unwrap();
         let original_hash = full.wire_hash();
         let mut forged = full.parsed.clone();
@@ -402,14 +416,14 @@ mod tests {
         };
         sealed.data.clear();
         sealed.data_hash.clear();
-        let forged = Envelope::new(forged.encode(), full.sig.clone(), None, None)
+        let forged = Envelope::new(forged.encode(), full.sig, None, None)
             .unwrap()
             .with_legacy_pruned(Some(original_hash.clone()))
             .unwrap();
         assert!(forged.verify().is_err());
 
         // The persisted Event path must reject the same opaque legacy hash replay.
-        let hash = chain_hash("sp", 0, GENESIS_PREV, &original_hash);
+        let hash = chain_hash("sp", 0, GENESIS_PREV, &original_hash)?;
         let mut event = event_from_content(
             forged.content,
             forged.sig,
@@ -421,6 +435,7 @@ mod tests {
         .unwrap();
         event.sealed_wire = Some(original_hash);
         assert!(verify_author(&event).is_err());
+        Ok(())
     }
 
     #[test]
@@ -479,7 +494,7 @@ mod tests {
             negotiate(&["presence".into(), "telepathy".into(), "blobs".into()]),
             vec!["blobs", "presence"]
         );
-        assert!(negotiate(&[]).is_empty());
+        assert_eq!(negotiate(&[]), Vec::<&str>::new());
         assert_eq!(
             negotiate(&[AGENT_OWNER_PROOF.into()]),
             vec![AGENT_OWNER_PROOF]

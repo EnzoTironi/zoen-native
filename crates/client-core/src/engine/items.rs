@@ -1,5 +1,8 @@
 //! Current/historical item views and ordinary restoration.
-use super::*;
+use super::{
+    kind_id, kind_label, not_found, plan_to_dto, t, CoreError, Engine, EventBody, ItemContent,
+    ItemDetail, ItemKind, ItemState, VersionDto, R,
+};
 
 impl Engine {
     pub fn item(&self, id: &str) -> R<ItemDetail> {
@@ -66,8 +69,34 @@ impl Engine {
             title: snapshot
                 .as_ref()
                 .map_or_else(|| v.content.title(), |plan| plan.document.title.clone()),
-            origin: it.origin.clone(),
-            created_by: self.persona(&it.versions[0].author),
+            origin: it
+                .shared
+                .as_ref()
+                .and_then(|shared| {
+                    self.state
+                        .spaces
+                        .get(&it.space)
+                        .and_then(|space| space.entries.iter().find(|e| e.id() == shared.event))
+                })
+                .map_or_else(
+                    || it.origin.clone(),
+                    |entry| {
+                        format!(
+                            "{} {}",
+                            t(
+                                "Versão atual compartilhada por",
+                                "Current version shared by"
+                            ),
+                            self.persona(&entry.author).name
+                        )
+                    },
+                ),
+            // A current-state share does not reveal/prove the original creator.
+            created_by: self.persona(if it.shared.is_some() {
+                ""
+            } else {
+                &it.versions.initial().author
+            }),
             plan,
             text,
             version: snapshot.as_ref().map_or(v.number, |plan| plan.version),
@@ -105,7 +134,7 @@ impl Engine {
             .position(|v| v.number == number)
             .ok_or_else(|| not_found(&t("versão", "version")))?;
         let mut past = state.clone();
-        past.versions.truncate(position + 1);
+        past.versions.truncate_after(position);
         let version = past.current();
         let mut detail = self.item(id)?;
         detail.version = version.number;

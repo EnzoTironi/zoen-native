@@ -21,7 +21,7 @@ impl Drop for Fixture {
     }
 }
 impl Fixture {
-    fn close(&mut self) {
+    pub(super) fn close(&mut self) {
         self.client.stop_sync();
         let empty = Client::open(":memory:".into(), "en".into()).unwrap();
         let current = std::mem::replace(&mut self.client, empty);
@@ -32,8 +32,8 @@ impl Fixture {
         );
         drop(current); // release the real Store's exclusive SQLite connection
     }
-    pub(super) fn new(relay: &str) -> Self {
-        let path = std::env::temp_dir().join(types::new_id("host-source-test"));
+    pub(super) fn new(relay: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("host-source-test")?);
         std::fs::create_dir(&path).unwrap();
         let owner_vault = Arc::new(Vault::default());
         let human = Client::open(
@@ -86,21 +86,22 @@ impl Fixture {
         let signer = Signer::from_secret(&key);
         let store = store::Store::open(db.to_str().unwrap()).unwrap();
         store.put_identity(&profile, None).unwrap(); // public only, no owner key import
-        let space = types::new_id("source_space");
+        let space = types::new_id("source_space")?;
         drop(store);
         // Admit the signed canonical prefix through the normal ingestion path.
         // Direct Store insertion omits the durable relay-ordered Space marker.
         let mut engine = client_core::Engine::open(db.to_str().unwrap()).unwrap();
-        let mut admit = |event: &types::Event| {
+        let mut admit = |event: &types::Event| -> Result<(), Box<dyn std::error::Error>> {
             assert_eq!(
                 engine.ingest(protocol::Sequenced {
                     seq: event.seq,
                     prev: event.prev.clone(),
                     hash: event.hash.clone(),
-                    env: protocol::Envelope::plain(event),
+                    env: protocol::Envelope::plain(event)?,
                 }),
                 client_core::Ingest::Applied
             );
+            Ok(())
         };
         let mut log = SpaceLog::new(&space);
         admit(log.append(
@@ -111,7 +112,7 @@ impl Fixture {
                 kind: types::SpaceKind::Group,
                 privacy: types::Privacy::Closed,
             },
-        ));
+        )?)?;
         admit(log.append(
             &agent,
             1_792_510_809_001,
@@ -119,21 +120,21 @@ impl Fixture {
                 identity: owner.clone(),
                 role: types::Role::Member,
             },
-        ));
-        let mut post = |text: &str| {
+        )?)?;
+        let mut post = |text: &str| -> std::result::Result<String, Box<dyn std::error::Error>> {
             let event = log
-                .append(&signer, 1_792_510_809_002, message(text, None))
+                .append(&signer, 1_792_510_809_002, message(text, None)?)?
                 .clone();
-            admit(&event);
-            event.client_id
+            admit(&event)?;
+            Ok(event.client_id)
         };
-        let other = post("Other source must never be executed by this run.");
-        let source = post("Inspect only the selected source.");
+        let other = post("Other source must never be executed by this run.")?;
+        let source = post("Inspect only the selected source.")?;
         log.verify().unwrap();
         drop(engine);
         let client = Client::open(db.to_str().unwrap().into(), "en".into()).unwrap();
         assert!(client.unlock(vault.clone()).unwrap());
-        Self {
+        Ok(Self {
             path,
             client,
             vault,
@@ -142,7 +143,7 @@ impl Fixture {
             space,
             source,
             other,
-        }
+        })
     }
     pub(super) fn reopen(&mut self) {
         self.close();
@@ -154,9 +155,32 @@ impl Fixture {
         assert!(client.unlock(self.vault.clone()).unwrap());
         self.client = client;
     }
+    pub(super) fn history(
+        &mut self,
+    ) -> Result<Vec<protocol::Sequenced>, Box<dyn std::error::Error>> {
+        self.close();
+        let db = store::Store::open(self.path.join("agent.sqlite").to_str().unwrap())?;
+        let history = db
+            .events(&self.space)?
+            .into_iter()
+            .map(|event| {
+                Ok(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(&event)?,
+                })
+            })
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+        drop(db);
+        self.reopen();
+        Ok(history)
+    }
     /// Sequence and ingest this synthetic agent's actual queued publication.
     /// A registered Page cannot offer an unconfirmed optimistic import as a read base.
-    pub(super) fn confirm_publications(&mut self) {
+    pub(super) fn confirm_publications(
+        &mut self,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         self.close();
         let path = self.path.join("agent.sqlite");
         let db = store::Store::open(path.to_str().unwrap()).unwrap();
@@ -165,23 +189,28 @@ impl Fixture {
         drop(db);
         let mut engine = client_core::Engine::open(path.to_str().unwrap()).unwrap();
         for row in pending.into_iter().filter(|r| r.event.space == self.space) {
-            let event = log.sequence(row.event).clone();
+            let event = log.sequence(row.event)?.clone();
             assert_eq!(
                 engine.ingest(protocol::Sequenced {
                     seq: event.seq,
                     prev: event.prev.clone(),
                     hash: event.hash.clone(),
-                    env: protocol::Envelope::plain(&event),
+                    env: protocol::Envelope::plain(&event)?,
                 }),
                 client_core::Ingest::Confirmed
             );
         }
         drop(engine);
         self.reopen();
+        Ok(())
     }
-    pub(super) fn append(&mut self, body: types::EventBody, owner: bool) -> String {
+    pub(super) fn append(
+        &mut self,
+        body: types::EventBody,
+        owner: bool,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
         self.close();
-        flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space);
+        flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space)?;
         let db = store::Store::open(self.path.join("agent.sqlite").to_str().unwrap()).unwrap();
         let mut log = SpaceLog::from_events(&self.space, db.events(&self.space).unwrap()).unwrap();
         let key = if owner {
@@ -194,22 +223,25 @@ impl Fixture {
             [91; 32]
         };
         let event = log
-            .append(&Signer::from_secret(&key), 1_792_510_810_000, body)
+            .append(&Signer::from_secret(&key), 1_792_510_810_000, body)?
             .clone();
         db.append_event(&event).unwrap();
         log.verify().unwrap();
         drop(db);
         self.reopen();
-        event.client_id
+        Ok(event.client_id)
     }
     /// Actual signed expired approval + inert owner intent, with no sleeps and
     /// no live account access. The device/root are this synthetic fixture's keys.
     pub(super) fn expired_review(
         &mut self,
         original: &types::AgentRequest,
-    ) -> (types::AgentRequest, String, Vec<protocol::Sequenced>) {
+    ) -> std::result::Result<
+        (types::AgentRequest, String, Vec<protocol::Sequenced>),
+        Box<dyn std::error::Error>,
+    > {
         self.close();
-        flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space);
+        flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space)?;
         let db = store::Store::open(self.path.join("agent.sqlite").to_str().unwrap()).unwrap();
         let mut log = SpaceLog::from_events(&self.space, db.events(&self.space).unwrap()).unwrap();
         let device: [u8; 32] = self
@@ -234,7 +266,7 @@ impl Fixture {
             .unwrap()
             .as_millis() as i64;
         let mut expired = original.clone();
-        expired.id = types::new_id("expired_review");
+        expired.id = types::new_id("expired_review")?;
         expired.tool_proposal.as_mut().unwrap().expires_at_ms = now - 1000;
         expired.content_hash = expired.tool_proposal_hash(&self.space).unwrap();
         for (author, at, body) in [
@@ -270,24 +302,27 @@ impl Fixture {
                 },
             ),
         ] {
-            let event = author.sign_event(&self.space, &types::new_ulid(at), at, log.head(), body);
-            db.append_event(log.sequence(event)).unwrap();
+            let event =
+                author.sign_event(&self.space, &types::new_ulid(at)?, at, log.head(), body)?;
+            db.append_event(log.sequence(event)?).unwrap();
         }
         log.verify().unwrap();
         let intent = log.events().last().unwrap().client_id.clone();
         let history = log
             .events()
             .iter()
-            .map(|event| protocol::Sequenced {
-                seq: event.seq,
-                prev: event.prev.clone(),
-                hash: event.hash.clone(),
-                env: protocol::Envelope::plain(event),
+            .map(|event| {
+                Ok(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(event)?,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
         drop(db);
         self.reopen();
-        (expired, intent, history)
+        Ok((expired, intent, history))
     }
 
     /// Supply genuine SDK-generated owner key packages to the owned loopback
@@ -321,9 +356,12 @@ impl Fixture {
         server.released.store(false, Ordering::SeqCst);
     }
 
-    pub(super) async fn approve(&mut self, request: &client_core::AgentRequestDto) {
+    pub(super) async fn approve(
+        &mut self,
+        request: &client_core::AgentRequestDto,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         self.close();
-        flush(&self.path, "agent.sqlite", "owner.sqlite", &self.space);
+        flush(&self.path, "agent.sqlite", "owner.sqlite", &self.space)?;
         let owner = Client::open(
             self.path.join("owner.sqlite").to_str().unwrap().into(),
             "en".into(),
@@ -338,24 +376,33 @@ impl Fixture {
         assert_eq!(value["request"]["status"], "Approved");
         assert_eq!(value["standing_grant_id"], serde_json::Value::Null);
         drop(owner);
-        flush(&self.path, "owner.sqlite", "agent.sqlite", &self.space);
+        flush(&self.path, "owner.sqlite", "agent.sqlite", &self.space)?;
         self.reopen();
+        Ok(())
     }
 }
 
-pub(super) fn message(text: &str, attaches: Option<String>) -> types::EventBody {
-    types::EventBody::MessagePosted {
-        message: types::new_id("message"),
+pub(super) fn message(
+    text: &str,
+    attaches: Option<String>,
+) -> std::result::Result<types::EventBody, Box<dyn std::error::Error>> {
+    Ok(types::EventBody::MessagePosted {
+        message: types::new_id("message")?,
         text: text.into(),
         attaches,
         media: None,
         reply: None,
         forwarded: false,
-    }
+    })
 }
 
 // Sequence only signed fixture outbox entries and copy public profiles/events.
-fn flush(path: &Path, from: &str, to: &str, space: &str) {
+fn flush(
+    path: &Path,
+    from: &str,
+    to: &str,
+    space: &str,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let source = store::Store::open(path.join(from).to_str().unwrap()).unwrap();
     let mut log = SpaceLog::from_events(space, source.events(space).unwrap()).unwrap();
     for pending in source
@@ -371,7 +418,7 @@ fn flush(path: &Path, from: &str, to: &str, space: &str) {
         {
             event_log::verify_author(&pending.event).unwrap();
             source
-                .append_event(log.sequence(pending.event.clone()))
+                .append_event(log.sequence(pending.event.clone())?)
                 .unwrap();
         }
         source.outbox_remove(&pending.event.client_id).unwrap();
@@ -402,4 +449,5 @@ fn flush(path: &Path, from: &str, to: &str, space: &str) {
         .unwrap()
         .verify()
         .unwrap();
+    Ok(())
 }

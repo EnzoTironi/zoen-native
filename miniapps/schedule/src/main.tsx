@@ -3,7 +3,6 @@
 // agent resolves. The core filters what each person sees: clients get busy times only.
 import { createRoot } from 'react-dom/client';
 import {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -12,11 +11,9 @@ import {
   useSyncExternalStore,
 } from 'react';
 import './styles.css';
-import { zoen, useZoenState, useMembers, GlassCircle, Pill } from '@zoen/ui';
+import { zoen, useMembers, GlassCircle, Pill } from '@zoen/ui';
 import {
-  type ScheduleState,
   type Booking,
-  type ScheduleEvent,
   type Ymd,
   DEFAULT_ACCENT,
   freeSlots,
@@ -32,126 +29,9 @@ import {
   dayOf,
 } from './slots';
 import { L, isPt } from './i18n';
+import { isFor, openCancel, useSchedule } from './schedule-state';
+import { BookingFeedback } from './booking-feedback';
 import { availabilityScope, conflicts, createAvailability } from './availability';
-
-const DEMO: ScheduleState = {
-  title: 'Studio',
-  business: 'Studio',
-  accentHex: null,
-  timezone: 'America/Sao_Paulo',
-  currency: 'BRL',
-  services: [
-    { id: 'session', name: 'Sessão', priceCents: 9000, minutes: 50 },
-    { id: 'quick', name: 'Retorno', priceCents: 4000, minutes: 30 },
-  ],
-  weeklyHours: {
-    '0': [],
-    '1': [
-      ['09:00', '12:00'],
-      ['14:00', '19:00'],
-    ],
-    '2': [
-      ['09:00', '12:00'],
-      ['14:00', '19:00'],
-    ],
-    '3': [
-      ['09:00', '12:00'],
-      ['14:00', '19:00'],
-    ],
-    '4': [
-      ['09:00', '12:00'],
-      ['14:00', '19:00'],
-    ],
-    '5': [
-      ['09:00', '12:00'],
-      ['14:00', '19:00'],
-    ],
-    '6': [['09:00', '13:00']],
-  },
-  slotMinutes: 30,
-  horizonDays: 60,
-  configured: true,
-  bookings: [],
-  events: [],
-  busy: [],
-  viewer: { id: 'me', role: 'client' },
-  next: 1,
-};
-
-/** Theirs when they made it or the agent booked it in their name (the core's `is_for`). */
-const isFor = (b: Booking, id?: string) => !!id && (b.byId === id || b.forId === id);
-
-/** Offline preview only: mirrors the core's book/cancel so the template can be tried. */
-function demoCall(s: ScheduleState, tool: string, args: Record<string, any>): ScheduleState {
-  const n: ScheduleState = structuredClone(s);
-  const now = Date.now();
-  if (tool === 'schedule_book') {
-    const svc = n.services.find((x) => x.id === args.serviceId);
-    if (!svc) throw new Error(L('Something went wrong'));
-    const id = `b${n.next++}`;
-    n.bookings.push({
-      id,
-      serviceId: svc.id,
-      serviceName: svc.name,
-      minutes: svc.minutes,
-      startMs: args.startMs,
-      endMs: args.startMs + svc.minutes * 60_000,
-      byId: n.viewer.id,
-      status: 'pending',
-    });
-    n.events.push({
-      id: `e${n.next++}`,
-      kind: 'book_request',
-      bookingId: id,
-      status: 'open',
-      at: now,
-      by: n.viewer.id,
-    });
-  }
-  if (tool === 'schedule_cancel') {
-    const b = n.bookings.find((x) => x.id === args.bookingId && isFor(x, n.viewer.id));
-    if (!b || b.status === 'cancelled') throw new Error(L('Something went wrong'));
-    if (b.status === 'pending') {
-      b.status = 'cancelled';
-      for (const e of n.events)
-        if (e.bookingId === b.id && e.status === 'open') {
-          e.status = 'resolved';
-          e.resolution = 'withdrawn';
-        }
-    } else {
-      n.events.push({
-        id: `e${n.next++}`,
-        kind: 'cancel_request',
-        bookingId: b.id,
-        status: 'open',
-        at: now,
-        by: n.viewer.id,
-      });
-    }
-  }
-  n.busy = n.bookings
-    .filter((b) => b.status !== 'cancelled')
-    .map(({ startMs, endMs }) => ({ startMs, endMs }));
-  return n;
-}
-
-function useSchedule() {
-  const live = useZoenState<ScheduleState>();
-  const [local, setLocal] = useState<ScheduleState>(DEMO);
-  const hosted = zoen.capabilities.host !== 'none' && zoen.capabilities.host !== 'unknown';
-  const state = (hosted && live?.services ? live : local) as ScheduleState;
-  const call = useCallback(
-    async (tool: string, args: Record<string, any> = {}) => {
-      if (hosted) return zoen.state.call(tool, args);
-      setLocal((s) => demoCall(s, tool, args));
-    },
-    [hosted],
-  );
-  return { state, call, hosted };
-}
-
-const openCancel = (events: ScheduleEvent[], b: Booking) =>
-  events.some((e) => e.bookingId === b.id && e.kind === 'cancel_request' && e.status === 'open');
 
 function App() {
   const { state, call, hosted } = useSchedule();
@@ -606,95 +486,10 @@ function App() {
         )}
       </div>
 
-      {pick && service && (
-        <div className="sticky z-glass">
-          <div style={{ padding: '0 8px', minWidth: 0 }}>
-            <b style={{ display: 'block', fontSize: 14 }}>{service.name}</b>
-            <span style={{ fontSize: 13, color: 'var(--z-ink-2)' }}>
-              {formatTime(pick.startMs, tz, locale)} ·{' '}
-              {formatMoney(service.priceCents, state.currency, locale)}
-            </span>
-          </div>
-          <Pill
-            tone="brand"
-            style={{ background: accent }}
-            onClick={() => {
-              zoen.haptics.tap();
-              setConfirm(true);
-            }}
-          >
-            {L('Send request')}
-          </Pill>
-        </div>
-      )}
-
-      {confirm && service && pick && (
-        <div
-          className="sheet"
-          role="dialog"
-          aria-label={L('Confirm')}
-          onClick={() => setConfirm(false)}
-        >
-          <div className="sheet-card" onClick={(e) => e.stopPropagation()}>
-            <h2>{L('Confirm')}</h2>
-            <div className="sheet-row">
-              <span>{L('What')}</span>
-              <b>{service.name}</b>
-            </div>
-            <div className="sheet-row">
-              <span>{L('When')}</span>
-              <b>{when(pick.startMs)}</b>
-            </div>
-            <div className="sheet-row">
-              <span>{L('Price')}</span>
-              <b>{formatMoney(service.priceCents, state.currency, locale)}</b>
-            </div>
-            <div className="sheet-row">
-              <span>{L('Duration')}</span>
-              <b>
-                {service.minutes} {L('min')}
-              </b>
-            </div>
-            <p style={{ margin: 0, color: 'var(--z-ink-2)', fontSize: 14 }}>
-              {L('Waiting for confirmation')}
-            </p>
-            <div className="sheet-actions">
-              <Pill tone="glass" onClick={() => setConfirm(false)}>
-                {L('Back')}
-              </Pill>
-              <Pill tone="brand" style={{ background: accent }} onClick={requestBook}>
-                {L('Send request')}
-              </Pill>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {sent && (
-        <div className="success" role="status">
-          <div className="success-card">
-            <div className="stamp" aria-hidden="true">
-              <svg width="32" height="32" viewBox="0 0 32 32">
-                <path
-                  d="M7 17l6 6 12-14"
-                  stroke="currentColor"
-                  strokeWidth="3.2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-            <h2>{L('Ask sent')}</h2>
-            <p>{L('You can add it to your calendar once it’s confirmed')}</p>
-            <div className="sheet-actions">
-              <Pill tone="brand" style={{ background: accent }} onClick={() => setSent(false)}>
-                {L('Close')}
-              </Pill>
-            </div>
-          </div>
-        </div>
-      )}
+      <BookingFeedback confirm={confirm} sent={sent} service={service} pick={pick} when={when}
+        currency={state.currency} locale={locale} tz={tz} accent={accent} requestBook={requestBook}
+        onRequestConfirm={() => { zoen.haptics.tap(); setConfirm(true); }}
+        onDismissConfirm={() => setConfirm(false)} onDismissSent={() => setSent(false)} />
 
       {toast && (
         <div className="toast z-glass" role="status">

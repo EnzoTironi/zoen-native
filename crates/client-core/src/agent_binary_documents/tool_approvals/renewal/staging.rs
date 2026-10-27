@@ -7,6 +7,9 @@ impl Engine {
         if action.is_none() {
             return Ok(false);
         }
+        if p.schema == crate::agent_scenes::SCHEMA {
+            return self.scene_tool_accepted(p);
+        }
         if p.schema == 5 {
             return self.site_tool_accepted(p);
         }
@@ -24,7 +27,7 @@ impl Engine {
             &p.artifact,
             p.version,
             &p.sha256,
-            &format!("deckcmd_{intent}"),
+            &mutation_id(p, &intent),
             &intent,
         )
         .map(|result| result.is_some())
@@ -52,8 +55,18 @@ impl Client {
         if intent.id != owner_intent || e.me_id()? != r.req.agent {
             return Err(denied());
         }
-        // Existing authority is checked before even revealing acceptance metadata.
-        e.tool_resolution(predecessor, &r.req.content_hash)?;
+        // Preparation of an unresolved request cannot borrow an approval. The
+        // approved path keeps its existing resolution/confirmation checks; the
+        // pending path validates its frozen proposal without authorizing IO.
+        if r.status == ReqStatus::Approved {
+            e.tool_resolution(predecessor, &r.req.content_hash)?;
+        } else if !review_predecessor(&r)
+            || r.req.tool_proposal_hash(&r.space).as_deref() != Some(r.req.content_hash.as_str())
+            || parsed(old).is_err()
+            || !e.tool_non_blocked(&r.req)
+        {
+            return Err(denied());
+        }
         let (device, owner, space, source) = if old.schema == 5 {
             e.site_proposal_authority(old)?
         } else if old.schema == 3 {
@@ -95,8 +108,8 @@ impl Client {
             .map_or(Some(1), |r| r.generation.checked_add(1))
             .ok_or_else(stale)?;
         let mut request = r.req.clone();
-        request.id = types::new_id("rq");
-        let proposal = request.tool_proposal.as_mut().unwrap();
+        request.id = types::new_id("rq")?;
+        let proposal = request.tool_proposal.as_mut().ok_or_else(stale)?;
         proposal.expires_at_ms = crate::engine::now_ms()
             .checked_add(REQUEST_LIFETIME_MS)
             .ok_or_else(stale)?;

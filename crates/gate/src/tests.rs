@@ -73,7 +73,7 @@ impl DecisionProvider for Spy {
 fn consent_req(cap: &str) -> Request {
     let (access, sensitivity) = classify(cap);
     Request {
-        declared: true,
+        declared: true.into(),
         access,
         sensitivity,
         explicitly_allowed_before: false,
@@ -83,7 +83,7 @@ fn consent_req(cap: &str) -> Request {
         },
         cost_cents: 0,
         budget_remaining_cents: 500,
-        verified: true,
+        verified: true.into(),
         uses: 9,
         trust: TrustLevel::Act,
         mode: ConsentMode::Trusted,
@@ -202,16 +202,20 @@ fn journey_sensitive_never_goes_remote_and_remote_is_redacted() {
     };
     let mut c = Check::new(Point::ToolCall, "summarize steps for ana.souza@gmail.com");
     c.sensitive = true;
-    gate.check(&c);
+    assert_eq!(gate.check(&c).outcome, Outcome::Allow);
     assert!(
         remote_log.lock().unwrap().is_empty(),
         "sensitive went remote"
     );
     assert_eq!(device_log.lock().unwrap().len(), 1);
-    gate.check(&Check::new(
-        Point::Outbound,
-        "ping ana.souza@gmail.com about Saturday",
-    ));
+    assert_eq!(
+        gate.check(&Check::new(
+            Point::Outbound,
+            "ping ana.souza@gmail.com about Saturday",
+        ))
+        .outcome,
+        Outcome::Allow,
+    );
     let sent = remote_log.lock().unwrap().join("\n");
     assert!(!sent.contains("ana.souza"), "remote saw PII: {sent}");
     assert!(sent.contains("[user]@gmail.com"));
@@ -410,4 +414,22 @@ mod clef_contract {
 
 mod conversation_contract {
     include!("conversation_tests.rs");
+}
+
+#[test]
+fn audit_latency_preserves_milliseconds_and_saturates_without_wrapping() {
+    use std::time::Duration;
+    assert_eq!(elapsed_millis(Duration::ZERO), 0);
+    assert_eq!(elapsed_millis(Duration::new(1, 999_999_999)), 1999);
+    assert_eq!(elapsed_millis(Duration::from_millis(u64::MAX)), u64::MAX);
+    assert_eq!(elapsed_millis(Duration::MAX), u64::MAX);
+}
+
+#[test]
+fn audit_hash_keeps_lowercase_sha256_wire_format() {
+    let decision = Gate::default().check(&Check::new(Point::Inbound, "abc"));
+    assert_eq!(
+        decision.audit.input_hash,
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
 }

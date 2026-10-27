@@ -8,13 +8,14 @@ use support::{barrier, recv, send, Relay, SPACE};
 use zoen_relay::receipts::Receipts;
 
 #[tokio::test]
-async fn overload_disconnects_before_forwarding_then_reconnect_replays() {
-    let source = Author::device(&Signer::generate(), Signer::generate());
-    let observer = Author::device(&Signer::generate(), Signer::generate());
-    let relay = Relay::new(vec![source.identity.clone(), observer.identity.clone()], 1).await;
+async fn overload_disconnects_before_forwarding_then_reconnect_replays(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let source = Author::device(&Signer::generate()?, Signer::generate()?);
+    let observer = Author::device(&Signer::generate()?, Signer::generate()?);
+    let relay = Relay::new(vec![source.identity.clone(), observer.identity.clone()], 1).await?;
     let mut source_socket = relay.connect(&source, true).await;
     let mut observer_socket = relay.connect(&observer, true).await;
-    let retained = Signer::generate().id();
+    let retained = Signer::generate()?.id();
     assert!(relay.state.receipts.raise(SPACE, &retained, 9, 7));
     // A real write failure while directory admission/delivery remain healthy.
     sqlx::query("CREATE FUNCTION receipt_outage() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'owned receipt write outage'; END $$")
@@ -114,4 +115,5 @@ async fn overload_disconnects_before_forwarding_then_reconnect_replays() {
     reconnected.close(None).await.unwrap();
     observer_socket.close(None).await.unwrap();
     relay.close().await;
+    Ok(())
 }

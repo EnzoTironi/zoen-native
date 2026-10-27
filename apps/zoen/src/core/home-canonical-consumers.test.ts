@@ -11,6 +11,11 @@ import {
   type ConversationTimelineRow,
 } from './conversation-timeline.ts';
 import { messageCard } from './message-presentation.ts';
+import { conversationScope } from './conversation-scope.ts';
+import { conversationRevealContent } from './conversation-reveal-content.ts';
+import * as binaryFormats from '../miniapps/binary-formats.ts';
+import { selectedDeckHead } from '../miniapps/deck-version-selection.ts';
+import * as appReview from '../miniapps/app-request-review.ts';
 import type { ItemDetail, TimelineEntry } from './types';
 import type { ItemCard } from './generated/ItemCard';
 
@@ -42,7 +47,7 @@ const compiled = Object.fromEntries(
             name: 'actual-chat-owner-and-view',
             setup(builder) {
               builder.onResolve({ filter: /./ }, ({ path }) =>
-                /\/(?:chat-screen|use-chat-controller)$/.test(path)
+                /\/(?:chat-screen|use-chat-controller|use-conversation-search)$/.test(path)
                   ? undefined
                   : { path, external: true },
               );
@@ -152,8 +157,8 @@ function renderScreen(
   const timeline = timelineOverride ?? entries(name === 'Thread');
   const snapshot = {
     me: { id: 'alice' },
-    account: { identity_id: 'alice', device_id: 'phone' },
-    conversations: [{ id: 'chat', kind: 'Direct', title: 'Alice' }],
+    account: { identity_id: 'alice', device_id: 'phone', unlocked: true, setup_pending: false },
+    conversations: [{ id: 'chat', kind: 'Direct', title: 'Alice', members: [{ id: 'alice' }] }],
   };
   const store = {
     sessionEpoch: 1,
@@ -195,6 +200,7 @@ function renderScreen(
           root: 'thread_root',
         }),
         useFocusEffect: noop,
+        useIsFocused: () => true,
         usePreventRemove: () => noop,
       };
     if (path === 'expo-router/react-navigation') return { useHeaderHeight: () => 96 };
@@ -206,7 +212,7 @@ function renderScreen(
     if (path.endsWith('/theme'))
       return { useTheme: () => ({ colors: { text: '#111', secondary: '#555' } }) };
     if (path.endsWith('/home/provider')) return { useHome: () => home };
-    if (path.endsWith('/core/provider'))
+    if (path.endsWith('/core/provider') || path === './provider')
       return {
         useClient: () => ({
           store,
@@ -215,6 +221,8 @@ function renderScreen(
           activity: {},
           notice: null,
           mode: 'account',
+          phase: 'ready',
+          erasePending: false,
         }),
       };
     if (path.endsWith('/core/query'))
@@ -229,9 +237,18 @@ function renderScreen(
     if (path.endsWith('/core/message-presentation')) return { messageCard };
     if (path.endsWith('/core/presentation')) return { messageText: () => 'Drawing update' };
     if (path.endsWith('/core/use-message-draft')) return { useMessageDraft: () => draft };
-    if (path.endsWith('/core/conversation-search')) return { ConversationSearch: SearchPort };
+    if (path.endsWith('/core/conversation-search') || path === './conversation-search')
+      return { ConversationSearch: SearchPort };
+    if (path.endsWith('/core/conversation-scope') || path === './conversation-scope')
+      return { conversationScope };
     if (path.endsWith('/core/initial-timeline-end')) return { InitialTimelineEnd: LayoutPort };
+    if (path === './navigation-container') return { navigationMetricsAvailable: false };
+    if (path === './use-chat-native-metrics')
+      return { useChatNativeMetrics: () => ({ navigationMetrics: {}, observe: undefined }) };
+    if (path === './use-conversation-rail')
+      return { useConversationRail: () => ({ visibleHeight: { value: 0 } }) };
     if (path.endsWith('/core/conversation-reveal')) return { ConversationReveal: LayoutPort };
+    if (path.endsWith('/core/conversation-reveal-content')) return { conversationRevealContent };
     if (path.endsWith('/core/live-activity')) return { chatActivityLabel: () => '' };
     if (path.endsWith('/components/keyboard-motion'))
       return { useKeyboardMotion: () => ({ progress: { value: 0 } }) };
@@ -261,12 +278,18 @@ function renderScreen(
         }),
       };
     if (path.endsWith('/home/menus')) return { HomeCardMenu: 'HomeCardMenu' };
+    if (path === './deck-version-selection') return { selectedDeckHead };
     if (path === './state-view') return { MiniappState: 'MiniappState' };
     if (path === './view-host') return { MiniappView: 'MiniappView' };
+    if (path === './editor-agent-sheet') return { EditorAgentAccess: 'EditorAgentAccess' };
+    if (path === './package-release-sheet')
+      return { AppPackageReleaseSheet: 'AppPackageReleaseSheet' };
+    if (path === './binary-formats') return binaryFormats;
     if (path.endsWith('/native-surfaces/controls'))
       return { MiniappSurfaceControls: 'MiniappSurfaceControls' };
     if (path === './actions' || path.endsWith('/assistant/launch')) return {};
     if (path.endsWith('/media/mosaic-layout')) return { supportsMediaMosaic: mosaic };
+    if (path === './app-request-review') return appReview;
     return assert.fail(`Missing screen port: ${path}`);
   }
   const jsx = (type: string, props: Element['props']) => ({ type, props });

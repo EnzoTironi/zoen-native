@@ -1,15 +1,18 @@
 """Real Git histories qualify the documentation-only CI boundary."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "ci-documentation-scope.py"
+sys.path.insert(0, str(SOURCE.parent))
 SPEC = importlib.util.spec_from_file_location("ci_scope", SOURCE)
 SCOPE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SCOPE)
@@ -29,6 +32,9 @@ class DocumentationScopeTests(unittest.TestCase):
                         GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
         self.git("init", "-q")
         self.git("config", "commit.gpgsign", "false")
+        # No detached Git writer may outlive this temporary repository's cleanup.
+        self.git("config", "maintenance.auto", "false")
+        self.git("config", "gc.auto", "0")
         self.write(DOC, "# Runtime\n\nInitial prose.\n")
         self.write("crates/documents/src/lib.rs", "pub fn current() {}\n")
         self.base = self.commit()
@@ -48,6 +54,18 @@ class DocumentationScopeTests(unittest.TestCase):
 
     def classify(self, head=None, event="pull_request"):
         return SCOPE.classify(self.base, head or self.commit(), event)
+
+    def test_fixture_commits_do_not_start_unowned_automatic_maintenance(self):
+        trace = Path(self.temp.name) / ".git" / "fixture-trace.jsonl"
+        self.env["GIT_TRACE2_EVENT"] = str(trace)
+        self.write(DOC, "Changed prose\n")
+        self.commit()
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        self.assertTrue(any(event["event"] == "start" for event in events))
+        maintenance = [event["argv"] for event in events
+                       if event["event"] == "child_start"
+                       and any(command in event.get("argv", []) for command in ("maintenance", "gc"))]
+        self.assertEqual(maintenance, [], "temporary repository cleanup must own all writers")
 
     def test_only_allowlisted_prose_passes_and_validates_links(self):
         self.write(DOC, "# Runtime\n\n[Source](../crates/documents/src/lib.rs).\n")
@@ -94,14 +112,15 @@ class DocumentationScopeTests(unittest.TestCase):
 
     def test_workflow_preserves_full_jobs_after_scope_failure_and_does_not_run_after_cancel(self):
         workflow = (SOURCE.parents[1] / ".github/workflows/ci.yml").read_text()
-        for job in ("rust", "web-e2e"):
+        for job in ("rust-tests", "web-e2e"):
             body = re.search(r"(?ms)^  " + job + r":\n(.*?)(?=^  [a-z]|\Z)", workflow)[1]
             condition = next(line.strip() for line in body.splitlines() if line.startswith("    if:"))
             # A status function overrides GitHub's implicit success() predicate.
             # Empty outputs after a failed selector must keep the full job selected.
             self.assertIn("!cancelled()", condition)
             self.assertIn("needs.change-scope.result != 'success' ||", condition)
-            self.assertIn("needs.change-scope.outputs.documentation_only != 'true'", condition)
+            expected = "run_rust != 'false'" if job == "rust-tests" else "documentation_only != 'true'"
+            self.assertIn("needs.change-scope.outputs." + expected, condition)
 
     def test_delete_rename_and_symlink_never_skip(self):
         for operation in ("delete", "rename", "symlink"):

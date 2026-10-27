@@ -23,7 +23,7 @@ impl<S: Signer> Client<S> {
             title = t("Sem título", "Untitled");
         }
         let (content, uploads) = self.page_content(title, path.into(), page.snapshot())?;
-        let item = browser_id("it", now);
+        let item = browser_id("it", now)?;
         self.queue_domain_body(
             space,
             EventBody::ItemCreated {
@@ -128,7 +128,7 @@ impl<S: Signer> Client<S> {
         let receipt = Receipt {
             fingerprint: request_hash.clone(),
             context_hash,
-            content_hash: observed.content_hash(),
+            content_hash: observed.content_hash().map_err(|error| error.to_string())?,
             frontiers: observed.frontiers().encode(),
             sequence: self
                 .saved
@@ -168,7 +168,15 @@ impl<S: Signer> Client<S> {
         if !read.ready {
             return Err("A página ainda está chegando.".into());
         }
-        if read.live.content_hash() == read.shadow.content_hash() {
+        if read
+            .live
+            .content_hash()
+            .map_err(|error| error.to_string())?
+            == read
+                .shadow
+                .content_hash()
+                .map_err(|error| error.to_string())?
+        {
             return Ok(false);
         }
         let path = match &item.versions[0].content {

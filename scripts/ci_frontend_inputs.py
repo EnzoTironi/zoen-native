@@ -1,0 +1,109 @@
+"""Reviewed inputs shared by the CI selectors; no job-selection logic."""
+
+# Reviewed Cargo roots, test commands, client coverage and embedded-resource
+# recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
+FRONTEND_CONTRACTS = {
+    "scripts/expo_artifact_candidate.py": "0f43561817f940cb50e607c5d94ce06ad4aafde130690b683c4bae6099332a31",
+    "miniapps/pdfcraft-ui/prepare-engine.py": "4704dfe72d3608e5a48e5847d3c3fae14e5042e286ee0351003eeb9c9a6b1879",
+    "miniapps/pdfcraft-ui/build-resource-manifest.mjs": "69635b70da63254efc2a96629c869e8398a6989e8890fa756b64c76c1225c586",
+    "miniapps/pdfcraft-ui/build-bootstrap.mjs": "4f12348f144c96525b34398e176c9b661358cff63a2f30c6a316fe07e62eab79",
+    "crates/miniapps/resources/generated/pdfcraft-bootstrap.manifest.json": "4dbd8df5f2a55d056f196ad59a4ce7a4fecc60046f1419d60a5668d944059b83",
+    "crates/miniapps/resources/pdfcraft.manifest.json": "88788d3ee5417d7f5f10988e70d9a3236303ece80b3438f65413af248cc8b5b3",
+    "scripts/ci-rust-shards.py": "66cf8a228cb51e4f38ba4c23be42f88a43bf4a9b39daf149b0d410d813ba19ea",
+    "scripts/expo-cargo-artifacts.mjs": "5ec949608b6a4412de758346f349c9fd0bac65bee203db8d43d9d43e1a425860",
+    "crates/miniapps/resources/photocraft.manifest.json": "679b7e47b9a6a0dd70512e7159b8fa6dcb2309f6a82f5764eb3bb08864ab21ea",
+    "crates/miniapps/resources/generated/photocraft-bootstrap.manifest.json": "95a59a6a06b3f88b69a669e8b2734bb6eb8ea0f5fedd894312b6486a1f707c05",
+    "miniapps/photocraft-ui/build-bootstrap.mjs": "82497408552cb6b06f47e43f9dd0f7633bf4b04ecbfe76ebdd0ae75fc5b4c78a",
+    "miniapps/photocraft-ui/build-resource-manifest.mjs": "8c810ac8097bd7b42ff50b2e3f46f5bb650c90c0ff452ba92b3a431e1b847620",
+    "miniapps/photocraft-ui/prepare-engine.py": "f8214583ce6f495f8a4ebff67edc808e07ab0456627601f05822f5d9f4c99cac",
+    "tools/miniapp-build/binary-resource-manifest.mjs": "17f2ddd1bcf9b77fa6ff1eac47a1e608a7e797a32cc2c81208ab3166ab09e490",
+    # Word includes shared frontend source through its generated bootstrap.
+    "crates/miniapps/resources/wordcraft.manifest.json": "9871ce3650fa798c724e72a95b262bd17b60dafeec8823d58191d71a5d918156",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json": "ca088db1b5e84949804b4c5bfab2dfa8d12591b0fdc859a3ac17050de91e71f6",
+    "miniapps/wordcraft-ui/build-bootstrap.mjs": "944862507c8e710eb1584b80654706a6535c34003a67ef247bab27de6d0ad31c",
+    "miniapps/wordcraft-ui/build-resource-manifest.mjs": "58883d2a1600baae7d61930d85f72086e0063a80e3b95a1b7c60284fdc4085db",
+    "miniapps/wordcraft-ui/prepare-engine.py": "a0233d12d280a9a8bf502b278dd0645374c54ccb65aedee60f17bcd310721988",
+    "crates/miniapps/resources/countdown.manifest.json": "e4e75fe59826cc21cc32f60e844cae5e803b3ff4b093134599319716fe1adbd7",
+    "crates/miniapps/resources/deckcraft.manifest.json": "84fe2ab6c2c5b5cb5a8265017cfb773d4e603ec004aec48b54ed47bce10fc721",
+    "crates/miniapps/resources/excalidraw.manifest.json": "a3868679c85f85949dd71aedacc2bb50f94d956f585c74fa43e5261bacb41f14",
+    "crates/miniapps/resources/gridcraft.manifest.json": "ef08efcc71cbc458d6a848ab3a16564a0c8ceb8a1cfce461a61e944a03f7a6a5",
+    "crates/miniapps/resources/hike.manifest.json": "c0762587d7627c503e9a5f48ed0f3e1c1c45bf28fd00d97477523d159bcab5dd",
+    "crates/miniapps/resources/list.manifest.json": "1d7fe1009d8f024ec75ce76a3c1906fae87725ecd3511cba08b8f1d5c1795261",
+    "crates/miniapps/resources/maptap.manifest.json": "72aebc640b874a00bdc5d524a1d8f07905d2159d76d92fbaad6d73950d10d4cd",
+    "crates/miniapps/resources/pet.manifest.json": "7aaad3736d5c87b5a16f3af3e9d4cb8507505ff3420470c00e07221ee6d1b626",
+    "crates/miniapps/resources/poll.manifest.json": "5f44fa3e1bb71d062cf8ea9835262a6302838e60f1aada14eda564264d48fedc",
+    "crates/miniapps/resources/recipe.manifest.json": "883bfd891b0c53e44c9c828175de1a793708bf687382135e3b46c07785253942",
+    "crates/miniapps/resources/schedule.manifest.json": "592f54dc702801f6dfcf2ad233940e0233492677851a3f4c818da1feb008faf9",
+    "miniapps/hike/manifest.json": "914ae6e337aad530a133c2abb435e70dd4fe80e15b35815aa1a667a2d00e04d1",
+    "miniapps/schedule/manifest.json": "98c2f8e8e1bda22fbed394da8619fd173543a55f21472e57d3427b5d38c95a30",
+    "miniapps/gridcraft-ui/prepare-engine.py": "fdf549eaa51030840973c39ee7cd2ddd29eb2084c7c000444be39bd5715bc4d5",
+    "miniapps/gridcraft-ui/build-resource-manifest.mjs": "8914b2b78e8483905fc124271a05c646981641018387dca719a085812fa8a56b",
+    "miniapps/deckcraft-ui/build.py": "7c7174d17f521ba4f3d307cc21f6ef511dd54b85619383333cbf3878087b2434",
+    "miniapps/deckcraft-ui/build-runtime.mjs": "6af2fd64c6a5500387e2e668943dad5caffeaed6f9b12a9edc4978de4015f36f",
+    "miniapps/deckcraft-ui/build-resource-manifest.mjs": "b42a717513b924557cc5bdba395424763469b2813eede6fa1790fd18c3a30b27",
+    "crates/zoen-agentd/src/citizen/codex.rs": "4d5e32fb4677abf8e2429b7a8867c50ca7e9998dc2d073dc8e0d6e4f9def41df",
+    "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
+    "Cargo.toml": "6abf6b794f912e0e95fcb66d5ea6f89a176b04a1b2b8714d1c21f40f091827bb",
+    ".github/workflows/ci.yml": "c682599963459f11504f73b36e25da0a3473f0b5195da249dfaebea57dcd647c",
+    ".github/workflows/expo.yml": "cdf7ecf20dc72c12c564792c95043bd25e28adf59d3e18851594f815ab3e1520",
+    # Android installer and its invoked fixtures are real workflow inputs.
+    "scripts/install-android-sdk.py": "aff7527c4fb23ca29e9d9eeace380837e9a23eb20b88d5499e33fd4e30cf1144",
+    "scripts/test-install-android-sdk.py": "986a43af641273820ad8d50ca62a1b52e0f64bf70066b836c04dd08da82244cd",
+    "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "2f0eccb5f4de55d63dd56a287685921b4acdb4224308d9d7747edd2eec2464cd",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "3bd56bac1f1f496a2213c69c2242c6233891cd377fc298db94260b14fcd91318",
+    "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json": "10c784d78a451c963826cbbcc8335de1485d89b0e90a84b36c14777b21f6c0b4",
+    "miniapps/deckcraft-ui/build-bootstrap.mjs": "ecf7c02ddf67fac3f3bbb566b00940c2c5becc5a8f94060bf410a0f9b74fb57e",
+    "miniapps/gridcraft-ui/build-bootstrap.mjs": "0ed258e83d06338d27393778c552a1094e694ca1a0f585c28dec11728ecc64ec",
+    "tools/miniapp-build/managed-binary-bootstrap.mjs": "2fab14e03bb95ccd5707c648527d598c882f1835b22a78c620a348aaaba2629e",
+    "scripts/build-expo-core.mjs": "99fa3265955b75ce881f413b4ef93832c1010aa948fd3e7b225e95ae1b9aef96",
+    "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
+}
+RESOURCE_MANIFESTS = (
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json",
+    "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json",
+    "crates/miniapps/resources/countdown.manifest.json",
+    "crates/miniapps/resources/deckcraft.manifest.json",
+    "crates/miniapps/resources/excalidraw.manifest.json",
+    "crates/miniapps/resources/gridcraft.manifest.json",
+    "crates/miniapps/resources/wordcraft.manifest.json",
+    "crates/miniapps/resources/photocraft.manifest.json",
+    "crates/miniapps/resources/generated/photocraft-bootstrap.manifest.json",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json",
+    "crates/miniapps/resources/generated/pdfcraft-bootstrap.manifest.json",
+    "crates/miniapps/resources/pdfcraft.manifest.json",
+    "crates/miniapps/resources/hike.manifest.json",
+    "crates/miniapps/resources/list.manifest.json",
+    "crates/miniapps/resources/maptap.manifest.json",
+    "crates/miniapps/resources/pet.manifest.json",
+    "crates/miniapps/resources/poll.manifest.json",
+    "crates/miniapps/resources/recipe.manifest.json",
+    "crates/miniapps/resources/schedule.manifest.json",
+    "miniapps/hike/manifest.json",
+    "miniapps/schedule/manifest.json",
+)
+
+BUNDLE_MANIFESTS = (
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json",
+    "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json",
+    "crates/miniapps/resources/generated/photocraft-bootstrap.manifest.json",
+    "crates/miniapps/resources/generated/pdfcraft-bootstrap.manifest.json",
+)
+SOURCE_BUNDLE_MANIFESTS = (
+    "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json",
+    "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json",
+    "crates/miniapps/resources/generated/wordcraft-bootstrap.manifest.json",
+    "crates/miniapps/resources/generated/photocraft-bootstrap.manifest.json",
+    "crates/miniapps/resources/generated/pdfcraft-bootstrap.manifest.json",
+)
+RUST_ROOTS = ("crates", "tools/uniffi-bindgen")  # Bound by the Cargo.toml pin.
+# Exact pinned bodies: Codex's disabled feature name and Apple's association
+# JSON key are not filesystem readers. Any change to either body disables skip.
+NON_INPUT_APP_LITERALS = frozenset({
+    "crates/zoen-agentd/src/citizen/codex.rs",
+    "crates/zoen-relay/src/lib.rs",
+})
+

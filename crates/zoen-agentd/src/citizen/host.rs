@@ -12,6 +12,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+mod brain;
+pub use brain::{Brain, BrainError};
+
 /// The capability a Creator's `create_agent` action is gated as.
 pub const CREATE_AGENT_CAPABILITY: &str = "agent.create";
 
@@ -54,7 +57,7 @@ impl AgentSpec {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum TurnOutcome {
     /// Nothing to say (or the agent is paused).
@@ -89,6 +92,8 @@ pub enum HostError {
     NotMember,
     #[error("the brain failed: {0}")]
     Brain(String),
+    #[error("the brain did not dispatch: {0}")]
+    BrainNotDispatched(String),
     #[error("invalid tool continuation: {0}")]
     ToolContinuation(String),
     #[error("tool admission refused: {0}")]
@@ -300,6 +305,19 @@ pub trait ToolHost: Send + Sync {
     fn refreshed_tools(&self) -> Option<Vec<ToolDef>> {
         None
     }
+    /// A durable host fences each new invocation before dispatch, including after tools.
+    fn begin_model(&self) -> Result<(), String> {
+        Ok(())
+    }
+    /// A complete returned batch is known before any Gate/tool work begins.
+    fn model_calls(
+        &self,
+        _calls: &[ToolCall],
+        _steps: &[ToolStep],
+        _round: usize,
+    ) -> Result<(), String> {
+        Ok(())
+    }
     /// Diagnostics only, at the actual Brain boundary. Default has no side effects.
     fn observe_model_input(&self, _tools: &[ToolDef], _steps: &[ToolStep], _round: usize) {}
     /// A closed class, never a raw result or an execution/approval permit.
@@ -337,30 +355,6 @@ pub const MAX_CALLS_PER_ROUND: usize = 4;
 pub const MAX_TOOL_STEPS: usize = MAX_TOOL_ROUNDS * MAX_CALLS_PER_ROUND;
 /// Upper bound shared with the canonical host's persisted continuation payload.
 pub const MAX_TOOL_CONTINUATION_BYTES: usize = 128 * 1024;
-
-#[async_trait]
-pub trait Brain: Send + Sync {
-    async fn think(
-        &self,
-        cx: TurnContext<'_>,
-        history: &[Turn],
-        inbound: &Turn,
-    ) -> Result<BrainOut, String>;
-
-    /// One think with `tools` on offer and this turn's `steps` so far. A brain that can't
-    /// call tools just thinks.
-    async fn think_with_tools(
-        &self,
-        cx: TurnContext<'_>,
-        history: &[Turn],
-        inbound: &Turn,
-        tools: &[ToolDef],
-        steps: &[ToolStep],
-    ) -> Result<BrainOut, String> {
-        let _ = (tools, steps);
-        self.think(cx, history, inbound).await
-    }
-}
 
 #[derive(Deserialize)]
 struct CreateAgentWire {
@@ -437,6 +431,20 @@ fn json_fence(text: &str) -> Option<(&str, &str, &str)> {
 pub struct Runtime {
     pub gate: Gate,
     pub brain: Box<dyn Brain>,
+}
+
+impl Runtime {
+    /// Binds a completed response to the policy that admitted it, without re-running a provider.
+    pub fn delivery_policy_sha256(&self) -> Result<String, HostError> {
+        let encoded = serde_json::to_vec(&(
+            "zoen.delivery-policy.v1",
+            self.tool_policy_sha256()?,
+            Gate::questions(Point::ConversationMessage),
+            Gate::questions(Point::Outbound),
+        ))
+        .map_err(|_| HostError::ToolContinuation("policy encoding".into()))?;
+        Ok(hex::encode(Sha256::digest(encoded)))
+    }
 }
 
 mod runtime;

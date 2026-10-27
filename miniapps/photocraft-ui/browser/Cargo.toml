@@ -1,0 +1,42 @@
+[package]
+name = "photocraft-zoen-web"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+photocraft-engine = { path = "../engine" }
+photocraft-doc = { path = "../doc" }
+photocraft-zoen-host = { path = "../zoen-host", features = ["browser"] }
+photocraft-ui-egui = { path = "../ui-egui" }
+egui = "0.36"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+eframe = { version = "0.36", default-features = false, features = ["glow", "default_fonts", "accesskit"] }
+wasm-bindgen = "=0.2.129"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+egui_kittest = { version = "0.36", features = ["eframe"] }
+photocraft-format = { path = "../format" }
+photocraft-codecs = { path = "../codecs" }

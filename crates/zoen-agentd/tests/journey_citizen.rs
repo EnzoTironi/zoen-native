@@ -51,12 +51,12 @@ struct Owner {
     person: Identity,
 }
 
-fn owner() -> Owner {
-    let root = Signer::generate();
-    Owner {
-        device: Author::device(&root, Signer::generate()),
+fn owner() -> Result<Owner, Box<dyn std::error::Error>> {
+    let root = Signer::generate()?;
+    Ok(Owner {
+        device: Author::device(&root, Signer::generate()?),
         person: person(&root),
-    }
+    })
 }
 
 fn creator(host: &mut Host, o: &Owner, space: &str) -> String {
@@ -88,8 +88,9 @@ fn turn(space: &str, from: &str, text: &str) -> Turn {
 }
 
 #[tokio::test]
-async fn journey_owner_offline_creator_proposes_and_owner_device_approves_the_bot() {
-    let o = owner();
+async fn journey_owner_offline_creator_proposes_and_owner_device_approves_the_bot(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let o = owner()?;
     let mut host = Host::new(
         Gate::default(),
         brain(&[("pode criar", CREATE), ("tem horário", "Tenho sábado 10h.")]),
@@ -153,11 +154,13 @@ async fn journey_owner_offline_creator_proposes_and_owner_device_approves_the_bo
         .handle_turn(&bot_id, turn("sp_stranger", "x", "oi"))
         .await
         .is_err());
+    Ok(())
 }
 
 #[tokio::test]
-async fn journey_a_non_owner_cannot_make_the_creator_create_an_agent() {
-    let o = owner();
+async fn journey_a_non_owner_cannot_make_the_creator_create_an_agent(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let o = owner()?;
     let mut host = Host::new(Gate::default(), brain(&[("pode criar", CREATE)]));
     let group = "sp_group";
     let creator_id = creator(&mut host, &o, group);
@@ -174,11 +177,12 @@ async fn journey_a_non_owner_cannot_make_the_creator_create_an_agent() {
             reason: "create-agent:not-the-owner".into()
         }
     );
+    Ok(())
 }
 
 #[tokio::test]
-async fn journey_a_user_agent_cannot_create_agents() {
-    let o = owner();
+async fn journey_a_user_agent_cannot_create_agents() -> Result<(), Box<dyn std::error::Error>> {
+    let o = owner()?;
     let mut host = Host::new(Gate::default(), brain(&[("pode criar", CREATE)]));
     let bot = claim_citizen(
         &o.device,
@@ -204,11 +208,13 @@ async fn journey_a_user_agent_cannot_create_agents() {
         .await
         .unwrap();
     assert!(matches!(out, TurnOutcome::Blocked { .. }), "{out:?}");
+    Ok(())
 }
 
 #[tokio::test]
-async fn journey_the_gate_asks_the_owner_instead_of_acting() {
-    let o = owner();
+async fn journey_the_gate_asks_the_owner_instead_of_acting(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let o = owner()?;
     // Encoded content the gate can't vouch for: it wants a human, so nothing is said and
     // the message goes to the owner to decide.
     let mut host = Host::new(Gate::default(), brain(&[("comprovante", "Recebido!")]));
@@ -227,10 +233,12 @@ async fn journey_the_gate_asks_the_owner_instead_of_acting() {
         }
         other => panic!("the gate's ask was not routed to the owner: {other:?}"),
     }
+    Ok(())
 }
 
 #[tokio::test]
-async fn journey_gate_blocks_injected_inbound_before_the_brain() {
+async fn journey_gate_blocks_injected_inbound_before_the_brain(
+) -> Result<(), Box<dyn std::error::Error>> {
     struct Fixed(String);
     impl HttpTransport for Fixed {
         fn post_json(
@@ -255,7 +263,7 @@ async fn journey_gate_blocks_injected_inbound_before_the_brain() {
         })),
         ..Gate::default()
     };
-    let o = owner();
+    let o = owner()?;
     let mut host = Host::new(gate, brain(&[("instructions", CREATE)]));
     let id = creator(&mut host, &o, "sp");
     let out = host
@@ -270,10 +278,11 @@ async fn journey_gate_blocks_injected_inbound_before_the_brain() {
         .await
         .unwrap();
     assert!(matches!(out, TurnOutcome::Blocked { .. }), "{out:?}");
+    Ok(())
 }
 
 #[test]
-fn journey_only_a_fenced_block_is_an_action() {
+fn journey_only_a_fenced_block_is_an_action() -> Result<(), Box<dyn std::error::Error>> {
     use zoen_agentd::citizen::{parse_reply, BrainOut};
     let bare = r#"{"create_agent":{"name":"X","handle":"x","persona":"p"}}"#;
     assert!(matches!(parse_reply(bare), BrainOut::Say(_)));
@@ -285,10 +294,12 @@ fn journey_only_a_fenced_block_is_an_action() {
             ..
         }
     ));
+    Ok(())
 }
 
 #[test]
-fn journey_definition_round_trips_for_relay_opaque_blob() {
+fn journey_definition_round_trips_for_relay_opaque_blob() -> Result<(), Box<dyn std::error::Error>>
+{
     let def = creator_definition();
     let bytes = def.encode().unwrap();
     let back = Definition::decode(&bytes).unwrap();
@@ -296,6 +307,7 @@ fn journey_definition_round_trips_for_relay_opaque_blob() {
     assert_eq!(back.model_tier, ModelTier::Cheap);
     assert!(!back.persona.is_empty());
     assert!(!back.rules.is_empty());
+    Ok(())
 }
 
 mod tools {
@@ -303,7 +315,9 @@ mod tools {
     use async_trait::async_trait;
     use std::sync::Mutex;
     use zoen_agentd::citizen::{BrainOut, MAX_TOOL_ROUNDS};
-    use zoen_agentd::{Brain, Runtime, ToolCall, ToolDef, ToolHost, ToolStep, TurnContext};
+    use zoen_agentd::{
+        Brain, BrainError, Runtime, ToolCall, ToolDef, ToolHost, ToolStep, TurnContext,
+    };
 
     #[derive(Default)]
     struct Shop {
@@ -337,7 +351,7 @@ mod tools {
             _: TurnContext<'_>,
             _: &[Turn],
             _: &Turn,
-        ) -> Result<BrainOut, String> {
+        ) -> Result<BrainOut, BrainError> {
             Ok(BrainOut::Say("(no tools)".into()))
         }
         async fn think_with_tools(
@@ -347,7 +361,7 @@ mod tools {
             _: &Turn,
             tools: &[ToolDef],
             steps: &[ToolStep],
-        ) -> Result<BrainOut, String> {
+        ) -> Result<BrainOut, BrainError> {
             if steps.len() >= self.want || tools.is_empty() {
                 let r: Vec<_> = steps.iter().map(|s| s.result.as_str()).collect();
                 return Ok(BrainOut::Say(format!("done: {}", r.join(","))));
@@ -393,7 +407,8 @@ mod tools {
     }
 
     #[tokio::test]
-    async fn a_call_runs_and_the_model_speaks_from_its_result() {
+    async fn a_call_runs_and_the_model_speaks_from_its_result(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let shop = Shop::default();
         let brain = Caller {
             call: (
@@ -410,10 +425,11 @@ mod tools {
             }
         );
         assert_eq!(shop.ran.lock().unwrap().len(), 1);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn the_loop_stops_at_the_round_limit() {
+    async fn the_loop_stops_at_the_round_limit() -> Result<(), Box<dyn std::error::Error>> {
         let shop = Shop::default();
         let brain = Caller {
             call: (
@@ -426,10 +442,12 @@ mod tools {
         let out = run(brain, &shop, vec![]).await;
         assert!(matches!(out, TurnOutcome::Say { .. }), "{out:?}");
         assert_eq!(shop.ran.lock().unwrap().len(), MAX_TOOL_ROUNDS);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn unknown_tools_and_destructive_calls_never_reach_the_host() {
+    async fn unknown_tools_and_destructive_calls_never_reach_the_host(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let shop = Shop::default();
         let brain = Caller {
             call: ("delete_everything", json!({})),
@@ -452,10 +470,12 @@ mod tools {
             "{out:?}"
         );
         assert!(shop.ran.lock().unwrap().is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn steps_from_an_interrupted_run_are_read_not_rerun() {
+    async fn steps_from_an_interrupted_run_are_read_not_rerun(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let shop = Shop::default();
         let call = (
             "schedule_book",
@@ -479,5 +499,6 @@ mod tools {
             }
         );
         assert!(shop.ran.lock().unwrap().is_empty());
+        Ok(())
     }
 }

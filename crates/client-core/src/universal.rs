@@ -3,10 +3,12 @@
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use types::*;
+use types::{BackgroundSpec, EventBody, IdentityKind, ItemContent, ItemKind};
 
 use crate::apps;
-use crate::dto::*;
+use crate::dto::{
+    BackgroundDto, MediaRefDto, MessageSearchPage, TimelineEntry, UniversalHit, UniversalResults,
+};
 use crate::engine::{now_ms, Engine, Entry, EntryBody, R};
 use crate::i18n::t;
 use crate::CoreError;
@@ -104,9 +106,16 @@ impl Engine {
         } else if let Some(m) = spec.media.as_mut() {
             (m.key, m.blob) = (None, None);
         }
-        self.append(space, &me, EventBody::BackgroundSet { background: spec })?;
+        let appended = self.append(space, &me, EventBody::BackgroundSet { background: spec })?;
         let s = self.space_state(space)?;
-        Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
+        let entry = s
+            .entries
+            .iter()
+            .find(|entry| entry.id() == appended.client_id)
+            .ok_or_else(|| CoreError::Storage {
+                message: "The appended entry is missing from its projection.".into(),
+            })?;
+        Ok(self.entry_dto(entry))
     }
 
     /// The chat's current shared background: the latest `BackgroundSet` in its log.
@@ -235,7 +244,7 @@ impl Engine {
             }
         }
         for it in self.state.items.values() {
-            let v = it.versions.last().expect("item sempre tem v1");
+            let v = it.versions.current();
             let plan = if it.kind == ItemKind::Plan {
                 match self.plan_snapshot(&it.id) {
                     Ok(plan) => Some(plan),
@@ -336,7 +345,7 @@ impl Engine {
         let has_more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
         let next_cursor = if has_more {
-            let row = rows.last().expect("a nonzero limit leaves a row");
+            let row = rows.last().ok_or_else(invalid)?;
             Some(
                 serde_json::to_string(&MessageSearchCursor {
                     space: space.into(),

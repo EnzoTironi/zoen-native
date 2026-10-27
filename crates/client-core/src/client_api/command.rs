@@ -1,10 +1,20 @@
 //! The closed application command contract.
-use super::*;
+use super::{
+    page_size, Deserialize, PageBlockDto, RequestDecision, ToolRequestDecision, TrustLevelDto,
+    UndoToken,
+};
 
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    AppCurrentShareContext {
+        scope: crate::app_current_share::AppShareScope,
+    },
+    ShareAppCurrent {
+        context: crate::app_current_share::AppShareContext,
+        mutation_id: String,
+    },
     StartOwnerPolicyDirect {
         expected_identity_id: String,
         expected_device_id: String,
@@ -54,6 +64,9 @@ pub(super) enum Command {
     OwnerPolicyStatus {
         scope: crate::owner_policy::OwnerPolicyScope,
         source: String,
+    },
+    SceneToolReview {
+        input: crate::agent_scenes::SceneToolReviewInput,
     },
     SiteToolReview {
         expected_identity_id: String,
@@ -136,6 +149,13 @@ pub(super) enum Command {
         #[serde(default = "page_size")]
         limit: u32,
     },
+    ReviewReplySelection {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        thread_root_id: Option<String>,
+        selection: crate::ReplySelection,
+    },
     MessageDraft {
         expected_identity_id: String,
         expected_device_id: String,
@@ -150,6 +170,8 @@ pub(super) enum Command {
         expected_revision: String,
         text: String,
         reply_to: Option<String>,
+        #[serde(default)]
+        reply_quote: Option<crate::ReplySelection>,
     },
     SendMessageDraft {
         expected_identity_id: String,
@@ -163,6 +185,31 @@ pub(super) enum Command {
         message_id: String,
         expected_revision: String,
         expected_message_revision: String,
+    },
+    AppEditTargets {
+        input: crate::app_edit_requests::AppEditTargetInput,
+    },
+    RequestAppEdit {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        item_id: String,
+        expected_version: u32,
+        expected_sha256: String,
+        text: String,
+        mutation_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        share_current: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        target_agent_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        expected_target_revision: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        expected_resource_uri: Option<String>,
     },
     SendMessage {
         space_id: String,
@@ -185,6 +232,22 @@ pub(super) enum Command {
         space_id: String,
         message_id: String,
         emoji: Option<String>,
+    },
+    ForwardReview {
+        scope: crate::ForwardScope,
+    },
+    ForwardStatus {
+        source: crate::ForwardSource,
+    },
+    ConfirmForward {
+        scope: crate::ForwardScope,
+        operation_id: String,
+        source_revision: String,
+    },
+    DismissForward {
+        scope: crate::ForwardScope,
+        operation_id: String,
+        accepted_message_id: Option<String>,
     },
     ForwardMessage {
         source_space: String,
@@ -228,6 +291,22 @@ pub(super) enum Command {
         pinned: bool,
         archived: bool,
         muted: bool,
+        #[serde(default)]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        preserve_mute: Option<bool>,
+    },
+    SetChatMute {
+        space_id: String,
+        mode: crate::ChatMuteMode,
+        expected_muted_until_ms: Option<String>,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    SetChatMuted {
+        space_id: String,
+        muted: bool,
+        expected_identity_id: String,
+        expected_device_id: String,
     },
     StartDirect {
         identity_id: String,
@@ -255,9 +334,46 @@ pub(super) enum Command {
         space_id: String,
         identity_id: String,
     },
+    FindMemberCandidates {
+        space_id: String,
+        query: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        owned_agents_only: Option<bool>,
+    },
+    AddMemberReviewed {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+    },
     AddAdmin {
         space_id: String,
         identity_id: String,
+    },
+    SpaceMemberContext {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    RemoveMemberReviewed {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+    },
+    SetMemberRoleReviewed {
+        space_id: String,
+        identity_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+        role: String,
     },
     RemoveMember {
         space_id: String,
@@ -268,6 +384,26 @@ pub(super) enum Command {
     },
     EncryptChat {
         space_id: String,
+    },
+    AgentControlRetry {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+        observed_operation_id: String,
+        action: crate::AgentControl,
+    },
+    AgentControlRead {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    AgentControlChange {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_revision: String,
+        action: crate::AgentControl,
     },
     AgentStatus {
         agent_id: String,
@@ -493,6 +629,13 @@ pub(super) enum Command {
         data_base64: String,
         mutation_id: String,
     },
+    AppBinaryCreateFor {
+        app_id: String,
+        space_id: String,
+        title: String,
+        data_base64: String,
+        mutation_id: String,
+    },
     AppBinarySave {
         item_id: String,
         expected_version: u32,
@@ -510,6 +653,37 @@ pub(super) enum Command {
     },
     AppDocumentRead {
         item_id: String,
+    },
+    AppResourceInstall {
+        input: crate::app_resources::Install,
+    },
+    AppResourceFind {
+        input: crate::app_resources::Install,
+    },
+    AppDocumentResource {
+        item_id: String,
+        expected_resource_uri: String,
+    },
+    AppResourceUpdate {
+        input: crate::app_resources::Update,
+    },
+    AppDocumentReadPinned {
+        item_id: String,
+        expected_resource_uri: String,
+    },
+    AppDocumentSavePinned {
+        item_id: String,
+        expected_resource_uri: String,
+        expected_version: u32,
+        expected_sha256: String,
+        scene_json: String,
+        mutation_id: String,
+    },
+    AppDocumentCopyPinned {
+        item_id: String,
+        expected_resource_uri: String,
+        scene_json: String,
+        mutation_id: String,
     },
     AppDocumentCopy {
         item_id: String,

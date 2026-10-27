@@ -1,12 +1,18 @@
 //! Ordered server frames borrow the one live session's local bookkeeping.
 
-use super::*;
+use super::{
+    flush, report_rejection, responses, send, tracing_like, watch, ClaimClockSample, ClientFrame,
+    Ctx, CursorRepair, DeferredReceipts, Duration, EphemeralKind, ErrorCode, Exit, HashMap,
+    HashSet, Ingest, KeyPackageClaimClock, ProfileTraffic, PublicationRetries, RejectionOutcome,
+    ServerFrame, Sink, Waiting,
+};
 
 /// A per-call borrow, never another cursor, receipt or connection owner.
 pub(super) struct FrameContext<'a> {
     pub(super) ctx: &'a Ctx,
     pub(super) sink: &'a mut Sink,
     pub(super) sent: &'a mut HashMap<String, Option<u64>>,
+    pub(super) retries: &'a mut PublicationRetries,
     pub(super) backoff: &'a mut Duration,
     pub(super) cursor_repair: &'a mut CursorRepair,
     pub(super) repair_deadline: &'a watch::Sender<Option<tokio::time::Instant>>,
@@ -29,6 +35,7 @@ pub(super) async fn dispatch_frame(
         ctx,
         sink,
         sent,
+        retries,
         backoff,
         cursor_repair,
         repair_deadline,
@@ -65,7 +72,12 @@ pub(super) async fn dispatch_frame(
                 let _ = repair_deadline.send_replace(cursor_repair.abort_deadline());
             }
             if r == Ingest::Confirmed {
-                sent.remove(&client_id);
+                retries.settled(&client_id);
+                let tracked = sent.remove(&client_id).is_some();
+                tracing_like(&format!(
+                    "publication confirmed tracked={tracked} in_flight={}",
+                    sent.len()
+                ));
             }
             match r {
                 Ingest::Confirmed => {
@@ -73,7 +85,7 @@ pub(super) async fn dispatch_frame(
                     // an offline genesis as soon as their predecessor lands.
                     dirty.insert(space);
                     media_kick.notify_one();
-                    if let Err(e) = flush(ctx, sink, sent).await {
+                    if let Err(e) = flush(ctx, sink, sent, retries).await {
                         return Err(Exit::Retry(e));
                     }
                 }
@@ -112,7 +124,13 @@ pub(super) async fn dispatch_frame(
                 return Err(Exit::Retry(e.to_string()));
             }
         }
-        ServerFrame::Accepted { .. } => {}
+        ServerFrame::Accepted { client_id, .. } => {
+            tracing_like(&format!(
+                "publication accepted tracked={} in_flight={}",
+                sent.contains_key(&client_id),
+                sent.len()
+            ));
+        }
         ServerFrame::Rejected {
             space,
             client_id,
@@ -120,20 +138,22 @@ pub(super) async fn dispatch_frame(
             permanent,
         } => {
             let sent_epoch = sent.remove(&client_id).flatten();
-            let outcome =
-                engine!(|engine| engine.reject(&client_id, &reason, permanent, sent_epoch));
+            let (outcome, pending) = engine!(|engine| {
+                let outcome = engine.reject(&client_id, &reason, permanent, sent_epoch);
+                (outcome, engine.net.pending.contains_key(&client_id))
+            });
             tracing_like(&format!(
                 "publication {client_id} refused: {reason}; {outcome:?}"
             ));
             if outcome.user_failed() {
                 dirty.insert(space);
             }
-            if !permanent {
-                // Transient (rate limit, db hiccup): retry shortly.
-                let poke = engine!(|engine| engine.net.poke.is_some());
-                if poke {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                }
+            if !permanent && pending {
+                // Keep the minimum even if retaining the refusal hit a local
+                // error. Socket reads and independent lanes must keep running.
+                retries.defer(client_id, &reason);
+            } else {
+                retries.settled(&client_id);
             }
             if matches!(
                 outcome,
@@ -141,7 +161,7 @@ pub(super) async fn dispatch_frame(
             ) {
                 // Retry may already have a current sealed copy. A terminal
                 // dependency failure can release later Space heads immediately.
-                if let Err(e) = flush(ctx, sink, sent).await {
+                if let Err(e) = flush(ctx, sink, sent, retries).await {
                     return Err(Exit::Retry(e));
                 }
             }
@@ -212,11 +232,11 @@ pub(super) async fn dispatch_frame(
                 // Reset retries only after this connection actually caught up.
                 *backoff = Duration::from_millis(500);
                 ctx.status.send_modify(|s| s.synced = true);
-                engine!(|engine| engine.mls_refresh_checkpoints());
+                engine!(super::super::engine::Engine::mls_refresh_checkpoints);
                 engine!(|engine| engine.net.link.ask_devices = true);
                 // Ephemeral sends may have been lost before this socket existed.
                 // Rebuild receipts after catch-up, even with no new remote events.
-                let receipts = engine!(|engine| engine.receipts_to_replay());
+                let receipts = engine!(super::super::engine::Engine::receipts_to_replay);
                 let mut failed = None;
                 for (space, kind) in receipts {
                     if let Err(e) = send(
@@ -239,12 +259,12 @@ pub(super) async fn dispatch_frame(
                     return Err(Exit::Retry(e));
                 }
             }
-            if let Err(e) = engine!(|engine| engine.mls_ask_rejoin()) {
+            if let Err(e) = engine!(super::super::engine::Engine::mls_ask_rejoin) {
                 tracing_like(&format!("rejoin: {e}"));
             }
             // Anything still pending after a full catch-up goes out again (it
             // may have needed the Space to exist first).
-            if let Err(e) = flush(ctx, sink, sent).await {
+            if let Err(e) = flush(ctx, sink, sent, retries).await {
                 return Err(Exit::Retry(e));
             }
             ctx.notify_connection();
@@ -257,6 +277,7 @@ pub(super) async fn dispatch_frame(
                     ctx,
                     sink,
                     sent,
+                    retries,
                     waiting,
                     profiles_inflight,
                     traffic,
@@ -268,10 +289,14 @@ pub(super) async fn dispatch_frame(
             .await?;
         }
         ServerFrame::ProfileChanged { identity, .. } => {
-            engine!(|engine| engine.profile_changed(&identity))
+            let own = engine!(|engine| {
+                engine.profile_changed(&identity);
+                engine.me.as_deref() == Some(identity.as_str())
+            });
+            tracing_like(&format!("sealed profile invalidated own={own}"));
         }
         ServerFrame::KeyPackagesLow { device, remaining } => {
-            engine!(|engine| engine.mls_key_packages_low(&device, remaining))
+            engine!(|engine| engine.mls_key_packages_low(&device, remaining));
         }
         ServerFrame::DeviceMessage { from, to, sealed } => {
             if let Err(e) = engine!(
@@ -279,7 +304,7 @@ pub(super) async fn dispatch_frame(
             ) {
                 return Err(Exit::Retry(e.to_string()));
             }
-            if engine!(|engine| engine.take_initial_history_ready()) {
+            if engine!(super::super::engine::Engine::take_initial_history_ready) {
                 if let Some(listener) = &ctx.listener {
                     listener.on_ephemeral(
                         String::new(),

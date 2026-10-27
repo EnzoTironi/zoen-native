@@ -21,10 +21,10 @@ const CHILD_FINAL: &str = "Levar água 💧\n+ lanche";
 struct Database(PathBuf);
 
 impl Database {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(types::new_id("edit-convergence"));
+    fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(types::new_id("edit-convergence")?);
         std::fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Ok(Self(path))
     }
 
     fn path(&self, name: &str) -> String {
@@ -75,13 +75,13 @@ fn post(id: &str, text: &str, reply: Option<ReplyRef>) -> EventBody {
     }
 }
 
-fn frame(event: &Event) -> Sequenced {
-    Sequenced {
+fn frame(event: &Event) -> std::result::Result<Sequenced, Box<dyn std::error::Error>> {
+    Ok(Sequenced {
         seq: event.seq,
         prev: event.prev.clone(),
         hash: event.hash.clone(),
-        env: Envelope::plain(event),
-    }
+        env: Envelope::plain(event)?,
+    })
 }
 
 fn text(entry: &TimelineEntry) -> &str {
@@ -160,8 +160,9 @@ fn assert_replica(engine: &Engine, expected: &[TimelineEntry]) {
 }
 
 #[test]
-fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reopen() {
-    let database = Database::new();
+fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reopen(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new().unwrap();
     let local_path = database.path("local.sqlite");
     let remote_path = database.path("remote.sqlite");
     let owner = Signer::from_secret(&[41; 32]);
@@ -197,6 +198,8 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
                 INLINE,
                 "Obrigado, combinado.",
                 Some(ReplyRef {
+                    quote: None,
+                    artifact: None,
                     to: ROOT.into(),
                     thread: false,
                 }),
@@ -209,6 +212,8 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
                 CHILD,
                 "Levar lanche",
                 Some(ReplyRef {
+                    quote: None,
+                    artifact: None,
                     to: ROOT.into(),
                     thread: true,
                 }),
@@ -220,10 +225,10 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
             post(NEIGHBOR, "Mensagem vizinha", None),
         ),
     ] {
-        let signed = by.sign_event(SPACE, id, AT + relay.len() as i64, relay.head(), body);
-        let event = relay.sequence(signed);
-        assert_eq!(local.ingest(frame(event)), Ingest::Applied);
-        assert_eq!(remote.ingest(frame(event)), Ingest::Applied);
+        let signed = by.sign_event(SPACE, id, AT + relay.len() as i64, relay.head(), body)?;
+        let event = relay.sequence(signed)?;
+        assert_eq!(local.ingest(frame(event)?), Ingest::Applied);
+        assert_eq!(remote.ingest(frame(event)?), Ingest::Applied);
     }
     assert_eq!(
         local.timeline(SPACE).unwrap(),
@@ -257,9 +262,9 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
                     text: edited.into(),
                 },
             },
-        );
+        )?;
         local.store.outbox_put(&signed).unwrap();
-        confirmed_edits.push(relay.sequence(signed).clone());
+        confirmed_edits.push(relay.sequence(signed)?.clone());
     }
     // Stage real durable signed intents; this fixture does not test public edit-command admission.
     local.reload().unwrap();
@@ -271,17 +276,17 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
     let mut local = Engine::open(&local_path).unwrap();
     assert_replica(&local, &expected);
     for event in &confirmed_edits {
-        assert_eq!(local.ingest(frame(event)), Ingest::Confirmed);
+        assert_eq!(local.ingest(frame(event)?), Ingest::Confirmed);
         assert_replica(&local, &expected);
-        assert_eq!(remote.ingest(frame(event)), Ingest::Applied);
+        assert_eq!(remote.ingest(frame(event)?), Ingest::Applied);
     }
     assert_replica(&remote, &expected);
     assert!(local.store.outbox().unwrap().is_empty());
     assert_eq!(local.store.event_count().unwrap(), 9);
     assert_eq!(remote.store.event_count().unwrap(), 9);
     for event in relay.events() {
-        assert_eq!(local.ingest(frame(event)), Ingest::Duplicate);
-        assert_eq!(remote.ingest(frame(event)), Ingest::Duplicate);
+        assert_eq!(local.ingest(frame(event)?), Ingest::Duplicate);
+        assert_eq!(remote.ingest(frame(event)?), Ingest::Duplicate);
     }
     assert_replica(&local, &expected);
     assert_replica(&remote, &expected);
@@ -294,4 +299,5 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
         assert!(reopened.store.outbox().unwrap().is_empty());
         reopened.logs[SPACE].verify().unwrap();
     }
+    Ok(())
 }

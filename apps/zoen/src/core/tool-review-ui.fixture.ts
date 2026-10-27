@@ -5,17 +5,21 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as flow from './tool-review-renewal.ts';
+import * as ownership from './account-scope.ts';
 import * as siteSource from '../sites/source.ts';
 import { createLocalization } from '../i18n/runtime.ts';
 import { reviewRenewal } from '../i18n/catalogs/review-renewal.ts';
 import { imageToolReviewValid } from './image-tool-review.ts';
 import { imageReview } from '../i18n/catalogs/image-review.ts';
+import * as decision from './tool-request-decision.ts';
+import * as appReview from '../miniapps/app-request-review.ts';
 
 const files = {
   view: '../agents/tool-review-recovery.tsx',
   hook: '../agents/use-tool-review.ts',
   card: '../agents/request-card.tsx',
   site: '../agents/site-tool-review.tsx',
+  action: '../agents/app-request-review-action.tsx',
 };
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -28,25 +32,52 @@ const compiled = new Map(
           : new URL(path, import.meta.url),
         'utf8',
       );
-      const transformed =
-        name === 'view'
-          ? transformSync(source, {
-              filename: fileURLToPath(new URL(path, import.meta.url)),
-              configFile: false,
-              babelrc: false,
-              presets: [require.resolve('babel-preset-expo')],
-              caller: {
-                name: 'metro',
-                platform: 'ios',
-                engine: 'hermes',
-                isDev: false,
-                supportsReactCompiler: true,
-              },
-            }).code
-          : source;
-      if (name === 'view') assert.match(transformed, /react\/compiler-runtime/);
+      const useCompiler = name !== 'site';
+      const diagnostics: string[] = [];
+      const transformed = useCompiler
+        ? transformSync(source, {
+            filename: fileURLToPath(new URL(path, import.meta.url)),
+            configFile: false,
+            babelrc: false,
+            presets: [require.resolve('babel-preset-expo')],
+            plugins: [
+              [
+                'babel-plugin-react-compiler',
+                {
+                  target: '19',
+                  logger: {
+                    logEvent(
+                      _file: unknown,
+                      event: { kind: string; detail?: { options?: { reason?: string } } },
+                    ) {
+                      if (event.kind === 'CompileError' || event.kind === 'CompileDiagnostic')
+                        diagnostics.push(event.detail?.options?.reason ?? event.kind);
+                    },
+                  },
+                },
+              ],
+            ],
+            caller: {
+              name: 'metro',
+              platform: 'ios',
+              engine: 'hermes',
+              isDev: false,
+              supportsStaticESM: false,
+            },
+          }).code
+        : source;
+      // RequestCard already falls back on b260 because its existing async
+      // decision handler uses try/finally. Exercise that normal output without
+      // hiding additional diagnostics or changing unrelated decision behavior.
+      assert.deepEqual(
+        diagnostics,
+        name === 'card'
+          ? ["(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"]
+          : [],
+      );
+      if (name === 'view' || name === 'hook') assert.match(transformed, /react\/compiler-runtime/);
       const result = await build({
-        stdin: { contents: transformed, loader: name === 'view' ? 'js' : 'tsx' },
+        stdin: { contents: transformed, loader: useCompiler ? 'js' : 'tsx' },
         bundle: true,
         format: 'cjs',
         platform: 'node',
@@ -89,7 +120,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
   let now = Date.now();
   let nextTimer = 0;
   const timers = new Map<number, { at: number; fn: () => void }>();
-  const compilerCaches: unknown[][] = [];
+  const compilerCaches = new Map<keyof typeof files, unknown[][]>();
   let cacheCursor = 0,
     stateCursor = 0;
   let resultMessage: string | null = null;
@@ -181,7 +212,9 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
       if (path === 'react/compiler-runtime')
         return {
           c(size: number) {
-            return (compilerCaches[cacheCursor++] ??= Array(size).fill(
+            let caches = compilerCaches.get(name);
+            if (!caches) compilerCaches.set(name, (caches = []));
+            return (caches[cacheCursor++] ??= Array(size).fill(
               Symbol.for('react.memo_cache_sentinel'),
             ));
           },
@@ -232,7 +265,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
             cleanups.push(fn());
           },
         };
-      if (path.includes('i18n/index'))
+      if (path === '../i18n' || path.includes('i18n/index'))
         return {
           t: (key: string) =>
             key.startsWith('reviewRenewal.')
@@ -256,10 +289,17 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
       if (path.endsWith('/image-tool-review')) return { imageToolReviewValid };
       if (path.endsWith('/tool-request-decision'))
         return {
-          toolApprovalExpired: (tool: any) => Number(tool.expires_ms) <= now,
-          toolApprovalValid: () => true,
+          ...decision,
+          toolApprovalExpired: (tool: Parameters<typeof decision.toolApprovalExpired>[0]) =>
+            decision.toolApprovalExpired(tool, now),
+          requestDecisionCommand: (...args: Parameters<typeof decision.requestDecisionCommand>) =>
+            decision.requestDecisionCommand(args[0], args[1], now),
         };
       if (path.endsWith('/ZoenCoreModule')) return { sitePreviewVersion: 2 };
+      if (path.endsWith('/account-scope.ts')) return ownership;
+      if (path.endsWith('/drawing-tool-review')) return { DrawingToolReview: 'DrawingToolReview' };
+      if (path.endsWith('/app-request-review')) return appReview;
+      if (path.endsWith('/app-request-review-action')) return load('action');
       if (path.endsWith('/sites/source')) return siteSource;
       if (path.endsWith('/sites/preview')) return { SitePreview: 'SitePreview' };
       if (path.endsWith('/site-tool-review'))
@@ -274,7 +314,8 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
             state: displayedSession.getSnapshot(),
           }),
         };
-      if (path.endsWith('/core/provider')) return { useClient: () => ({ store }) };
+      if (path.endsWith('/core/provider')) return { useClient: () => ({ store, ...state }) };
+      if (path.endsWith('/core/account-scope')) return ownership;
       if (path.endsWith('/tool-review-renewal.ts')) return flow;
       throw new Error(`Unexpected fixture import ${path}`);
     };
@@ -328,6 +369,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
       });
     },
     card: (request: any, result: string | null = null) => {
+      cacheCursor = 0;
       stateCursor = 0;
       resultMessage = result;
       return load('card').RequestCard({ request });

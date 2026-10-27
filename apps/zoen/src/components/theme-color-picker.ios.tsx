@@ -1,6 +1,11 @@
 import { Host } from '@expo/ui';
 import { ColorPicker } from '@expo/ui/swift-ui';
-import { accessibilityLabel, frame, labelStyle } from '@expo/ui/swift-ui/modifiers';
+import {
+  accessibilityLabel,
+  accessibilityValue,
+  frame,
+  labelsHidden,
+} from '@expo/ui/swift-ui/modifiers';
 
 export function ThemeColorPicker({
   label,
@@ -22,8 +27,9 @@ export function ThemeColorPicker({
           if (/^#[\da-f]{6}$/i.test(opaque)) onChange(opaque.toUpperCase());
         }}
         modifiers={[
-          labelStyle('iconOnly'),
+          labelsHidden(),
           accessibilityLabel(label),
+          accessibilityValue(value),
           frame({ width: 44, height: 44 }),
         ]}
       />
