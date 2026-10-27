@@ -1,4 +1,6 @@
-import { memo, useMemo } from 'react';
+import { MessageTextSelection } from './message-context-ports';
+import { t } from '../i18n/index.ts';
+import { memo, useMemo, use, type ReactNode } from 'react';
 import { Text, type LayoutChangeEvent } from 'react-native';
 import { EnrichedMarkdownText, type MarkdownStyle } from 'react-native-enriched-markdown';
 import { messageMarkdownLink, messageMarkdownMayLoadMedia } from '../core/message-markdown';
@@ -13,6 +15,7 @@ export type MessageMarkdownProps = {
   maxWidth: number;
   testID?: string;
   selectable?: boolean;
+  onQuoteSelection?: (text: string, sourceRangesJSON?: string) => void;
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
@@ -25,8 +28,11 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   testID,
   selectable = false,
   onLayout,
+  onQuoteSelection,
 }: MessageMarkdownProps) {
   const { colors, scheme } = useTheme();
+  const selection = use(MessageTextSelection);
+  const quote = onQuoteSelection ?? (selection?.active ? selection.quote : undefined);
   const launchLink = useLinkLaunch(text);
   const copyCode = useMessageCodeCopy(text, testID);
   const markdownStyle = useMemo<MarkdownStyle>(() => {
@@ -124,7 +130,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         {text}
       </Text>
     );
-  return (
+  const rendered = (
     <EnrichedMarkdownText
       testID={testID}
       onLayout={onLayout}
@@ -138,19 +144,61 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         latexMath: false,
         noMedia: process.env.EXPO_OS === 'ios',
       }}
-      selectable={selectable}
+      selectable={selectable || selection?.active === true}
+      contextMenuItems={
+        quote
+          ? [
+              {
+                text: t('chat.quoteSelection'),
+                icon: 'quote.bubble',
+                onPress: (event) =>
+                  quote(
+                    event.text,
+                    'sourceRangesJSON' in event && typeof event.sourceRangesJSON === 'string'
+                      ? event.sourceRangesJSON
+                      : undefined,
+                  ),
+              },
+            ]
+          : undefined
+      }
       allowFontScaling
       enableLinkPreview={false}
-      enableBlockContextMenu={selectable}
+      enableBlockContextMenu={selectable || selection?.active === true}
       enableTaskListItemToggle={false}
       streamingAnimation={false}
       onCodeBlockPress={({ code }) => {
+        if (selection?.active) return;
         void copyCode(code);
       }}
       onLinkPress={({ url }) => {
+        if (selection?.active) return;
         const target = messageMarkdownLink(url);
         if (target) void launchLink(target);
       }}
     />
   );
+  return selection?.active && selection.error ? (
+    <>
+      {rendered}
+      <Text
+        accessibilityRole="alert"
+        style={{ color: colors.secondary, fontSize: 13, paddingVertical: 8 }}
+      >
+        {t('chat.quoteSelectionUnavailable')}
+      </Text>
+    </>
+  ) : (
+    rendered
+  );
 });
+
+/** Ordinary RN text keeps its existing layout; selection borrows the same native
+ * Markdown viewer used by formatted messages inside the retained source surface. */
+export function MessageTextSelectionLeaf({
+  children,
+  ...props
+}: MessageMarkdownProps & { children: ReactNode }) {
+  const selection = use(MessageTextSelection);
+  return selection?.active ? <MessageMarkdown {...props} selectable /> : children;
+}

@@ -224,6 +224,16 @@ export async function communityUi(
     if (name === './member-actions') return flow;
     if (name === './member-addition') return addition;
     if (name === './member-context-port') return port;
+    if (name.endsWith('/notifications/use-muted-chats'))
+      return {
+        useMutedChats: () => ({
+          accountRequired: true,
+          state: { chats: [], scope: '', selected: null, clock_ms: null },
+          session: { ticket: () => null },
+        }),
+      };
+    if (name.endsWith('/notifications/mute-duration-sheet'))
+      return { MuteDurationSheet: 'MuteDurationSheet' };
     if (name.endsWith('/use-member-actions')) return load('hook');
     if (name.endsWith('/member-addition-sheet'))
       return { MemberAdditionSheet: 'MemberAdditionSheet' };

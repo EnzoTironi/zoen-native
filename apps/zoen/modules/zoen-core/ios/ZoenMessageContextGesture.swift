@@ -9,6 +9,9 @@ import UIKit.UIGestureRecognizerSubclass
 final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerDelegate {
   weak var source: ZoenMessageContextSource?
   private var observedGeneration: UInt64 = 0
+  private weak var heldTextView: UITextView?
+  private var hadHeldTextView = false
+  private var heldTextPoint = CGPoint.zero
   private var firstPoint = CGPoint.zero
   private var lastPoint = CGPoint.zero
   private var startedAt: CFTimeInterval = 0
@@ -43,11 +46,16 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     // recognizer implements. Nested links/media/controls keep their own input.
     for current in path where current !== found.children.first {
       if current.accessibilityIdentifier?.hasPrefix("message-context-control:") == true ||
-          current is UIControl || current is UITextView || current is UITextField ||
+          current is UIControl || current is UITextField ||
+          (current as? UITextView).map({ !ZoenMessageContextTextAdmission.allows($0,
+            point: touch.location(in: $0), boundary: found.contentHost) }) == true ||
           current.accessibilityTraits.contains(.button) || current.accessibilityTraits.contains(.adjustable) ||
           current.accessibilityTraits.contains(.link) { cancelAdmission(); return false }
     }
     if source !== found { cancelAdmission(); source = found }
+    heldTextView = path.compactMap { $0 as? UITextView }.first
+    hadHeldTextView = heldTextView != nil
+    heldTextPoint = heldTextView.map { touch.location(in: $0) } ?? .zero
     return true
   }
   override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -67,8 +75,9 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     if singleTap != nil, firstTapBinding == source.binding, source.handlesTap {
       singleTap?.cancel(); singleTap = nil; firstTapBinding = nil
       doubleTap = true
+      let text = heldTextView, point = heldTextPoint, hadText = hadHeldTextView
       source.cancelSurfaceTouch()
-      source.dispatch(kind: "double")
+      source.dispatch(kind: "double", textView: text, textPoint: point, hadText: hadText)
       state = .began
       return
     }
@@ -129,9 +138,10 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     if progress >= 1 {
       held = true
       displayLink?.invalidate(); displayLink = nil
+      let text = heldTextView, point = heldTextPoint, hadText = hadHeldTextView
       source?.cancelSurfaceTouch()
       state = .began
-      source?.dispatch(kind: "hold")
+      source?.dispatch(kind: "hold", textView: text, textPoint: point, hadText: hadText)
     }
   }
   private var current: Bool {
@@ -147,6 +157,7 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     if state == .began || state == .changed { state = .cancelled }
     else if state == .possible && touchActive { state = .failed }
     held = false; doubleTap = false; touchActive = false
+    heldTextView = nil; hadHeldTextView = false; heldTextPoint = .zero
   }
   private func fail() {
     cancelAdmission()
@@ -157,7 +168,30 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     super.reset()
     displayLink?.invalidate(); displayLink = nil
     held = false; doubleTap = false; touchActive = false
+    heldTextView = nil; hadHeldTextView = false; heldTextPoint = .zero
     source?.resetPress(animated: true)
     // Keep only the bounded .16s semantic tap admission across recognizer reset.
+  }
+}
+
+// The renderer owns hit-testing of attributed links, code, spoilers, tasks and
+// images. Unknown renderers and selectable/editable native text keep their input.
+@MainActor
+enum ZoenMessageContextTextAdmission {
+  static func allows(_ text: UITextView, point: CGPoint, boundary: UIView) -> Bool {
+    guard !text.isEditable, !text.isSelectable, text.isDescendant(of: boundary),
+          point.x.isFinite, point.y.isFinite, text.bounds.contains(point) else { return false }
+    let selector = NSSelectorFromString("zoenMessageContextBodyAtPoint:")
+    var ancestor = text.superview
+    while let renderer = ancestor, renderer !== boundary {
+      if renderer.responds(to: selector) {
+        let local = renderer.convert(point, from: text)
+        guard renderer.bounds.contains(local),
+              let result = renderer.perform(selector, with: NSValue(cgPoint: local))?.takeUnretainedValue() as? NSNumber else { return false }
+        return result.boolValue
+      }
+      ancestor = renderer.superview
+    }
+    return false
   }
 }

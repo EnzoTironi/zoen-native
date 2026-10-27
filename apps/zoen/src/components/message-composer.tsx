@@ -1,3 +1,4 @@
+import type { ReplySelection } from '../core/generated/ReplySelection';
 import { createRef, type ReactNode, type Ref } from 'react';
 import { Text, View, Pressable, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -113,7 +114,7 @@ export function MessageComposer({
   mediaEnabled?: boolean;
   suspended?: boolean;
   search?: ComposerSearchMode;
-  context?: { entry?: TimelineEntry; onCancel: () => void };
+  context?: { entry?: TimelineEntry; quote?: ReplySelection | null; onCancel: () => void };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
   const { colors, scheme, presentation: p, reducedMotion } = useTheme();
@@ -334,7 +335,12 @@ export function MessageComposer({
             }
           />
         ) : !files && context ? (
-          <MessageContext entry={context.entry} editing={editing} onCancel={context.onCancel} />
+          <MessageContext
+            entry={context.entry}
+            quote={context.quote}
+            editing={editing}
+            onCancel={context.onCancel}
+          />
         ) : null}
         {search ? (
           <Text
@@ -350,7 +356,17 @@ export function MessageComposer({
             {search.status}
           </Text>
         ) : (
-          review
+          <>
+            {context?.quote ? (
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{ color: colors.secondary, paddingHorizontal: 12, paddingBottom: 6 }}
+              >
+                {t('chat.quoteTextReplyOnly')}
+              </Text>
+            ) : null}
+            {review}
+          </>
         )}
         <ComposerGlassContainer
           testID="message-composer-row"
@@ -463,7 +479,7 @@ export function MessageComposer({
             threadRootId={threadRootId ?? null}
             thread={thread}
             disabled={sending || editing || Boolean(search) || draft?.ready === false}
-            suspended={suspended || Boolean(search)}
+            suspended={suspended || Boolean(search) || Boolean(context?.quote)}
             onSent={onMediaSent}
             renderControls={({ attachment, voice, review, files }) =>
               controls({

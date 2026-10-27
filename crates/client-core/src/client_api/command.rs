@@ -149,6 +149,13 @@ pub(super) enum Command {
         #[serde(default = "page_size")]
         limit: u32,
     },
+    ReviewReplySelection {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        thread_root_id: Option<String>,
+        selection: crate::ReplySelection,
+    },
     MessageDraft {
         expected_identity_id: String,
         expected_device_id: String,
@@ -163,6 +170,8 @@ pub(super) enum Command {
         expected_revision: String,
         text: String,
         reply_to: Option<String>,
+        #[serde(default)]
+        reply_quote: Option<crate::ReplySelection>,
     },
     SendMessageDraft {
         expected_identity_id: String,
@@ -282,6 +291,16 @@ pub(super) enum Command {
         pinned: bool,
         archived: bool,
         muted: bool,
+        #[serde(default)]
+        #[cfg_attr(feature = "client-types", ts(optional))]
+        preserve_mute: Option<bool>,
+    },
+    SetChatMute {
+        space_id: String,
+        mode: crate::ChatMuteMode,
+        expected_muted_until_ms: Option<String>,
+        expected_identity_id: String,
+        expected_device_id: String,
     },
     SetChatMuted {
         space_id: String,

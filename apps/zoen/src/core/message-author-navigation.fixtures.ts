@@ -190,9 +190,16 @@ export function fixture() {
   let layoutEffects: (() => void)[] = [];
   let effects: (() => void)[] = [];
   let focused = true;
-  let focusEffect: Effect | undefined;
-  let nextFocusEffect: Effect | undefined;
-  let focusCleanup: (() => void) | undefined;
+  const focusListeners = { focus: new Set<() => void>(), blur: new Set<() => void>() };
+  const navigation = {
+    isFocused: () => focused,
+    addListener: (event: 'focus' | 'blur', listener: () => void) => {
+      focusListeners[event].add(listener);
+      return () => {
+        focusListeners[event].delete(listener);
+      };
+    },
+  };
   const depsEqual = (left: readonly unknown[] | undefined, right: readonly unknown[] | undefined) =>
     Boolean(
       left &&
@@ -278,9 +285,7 @@ export function fixture() {
           routes.push({ pathname: route.pathname, params: { id: route.params.id } });
         },
       },
-      useFocusEffect: (callback: Effect) => {
-        nextFocusEffect = callback;
-      },
+      useFocusEffect: undefined,
     },
     'expo-clipboard': {
       setStringAsync: () => assert.fail('Profile navigation must not copy content'),
@@ -311,6 +316,27 @@ export function fixture() {
     './message-actions': { MessageActions: () => null },
     './reaction-details': { ReactionDetails: () => null },
   };
+  // Execute the installed Expo hook: each call owns its own React effect and
+  // navigation listeners. A single fixture callback silently overwrote earlier hooks.
+  const focusModule = { exports: {} as { useFocusEffect: (callback: Effect) => void } };
+  runInNewContext(
+    readFileSync(
+      new URL('../../node_modules/expo-router/build/useFocusEffect.js', import.meta.url),
+      'utf8',
+    ),
+    {
+      exports: focusModule.exports,
+      require: (name: string) => {
+        if (name === 'react') return modules.react;
+        if (name === './useNavigation') return { useNavigation: () => navigation };
+        if (name === './link/useLoadedNavigation')
+          return { useOptionalNavigation: () => navigation };
+        throw new Error(`Unexpected Expo focus import: ${name}`);
+      },
+    },
+  );
+  (modules['expo-router'] as { useFocusEffect: unknown }).useFocusEffect =
+    focusModule.exports.useFocusEffect;
   const module = {
     exports: {} as {
       useMessageActions(options: Options & { onReply(): void; onEdit(): void }): Actions;
@@ -342,11 +368,6 @@ export function fixture() {
     if (compilerUsesCache) assert.ok(compiledHookCalls > 0);
     for (const commit of layoutEffects) commit();
     for (const commit of effects) commit();
-    if (focusEffect !== nextFocusEffect) {
-      focusCleanup?.();
-      focusEffect = nextFocusEffect;
-      focusCleanup = focused ? (focusEffect?.() ?? undefined) : undefined;
-    }
     return result;
   };
   return {
@@ -380,17 +401,14 @@ export function fixture() {
     },
     blur: () => {
       focused = false;
-      focusCleanup?.();
-      focusCleanup = undefined;
+      for (const listener of focusListeners.blur) listener();
     },
     focus: () => {
       focused = true;
-      focusCleanup = focusEffect?.() ?? undefined;
+      for (const listener of focusListeners.focus) listener();
     },
     unmount: () => {
       for (const current of slots) current.cleanup?.();
-      focusCleanup?.();
-      focusCleanup = undefined;
     },
   };
 }

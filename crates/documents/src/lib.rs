@@ -10,6 +10,7 @@
 
 mod block_storage;
 mod markdown;
+pub mod message_quote;
 
 use block_storage::{apply_edit, char_marks, get_str, read_block, u16_to_char, write_block};
 pub use block_storage::{block_markdown, spans_of};
