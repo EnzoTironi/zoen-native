@@ -5,7 +5,8 @@ import { runInNewContext } from 'node:vm';
 import * as React from 'react';
 import { build } from 'esbuild';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
-import { deferred } from './store.fixtures.ts';
+import { deferred, Driver, draftSession } from './store.fixtures.ts';
+import { ClientStore } from './store.ts';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -60,6 +61,7 @@ export async function fixture(
   mode: 'demo' | 'account' = 'demo',
   initialResults?: any,
   platform = 'ios',
+  canonicalStore = false,
 ) {
   const root = createReactTestRoot();
   const state: any = {
@@ -85,7 +87,7 @@ export async function fixture(
     reads: any[] = [],
     queries: any[] = [];
   let searchRead: ((command: any) => Promise<any>) | null = null;
-  const store = {
+  let store: any = {
     sessionEpoch: 0,
     isSessionRetiring: false,
     getSnapshot: () => state,
@@ -93,6 +95,7 @@ export async function fixture(
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
+    subscribeCanonicalChanges: () => () => {},
     driver: {
       request: (command: any) => {
         if (['universal_search', 'universal_search_page', 'search_messages'].includes(command.op)) {
@@ -128,6 +131,29 @@ export async function fixture(
         focusListeners.delete(changed);
       };
     }, [effect]);
+  }
+  let canonicalSnapshot: any;
+  if (canonicalStore) {
+    const base = draftSession();
+    canonicalSnapshot = {
+      ...base,
+      account: { ...base.account, ...state.snapshot.account, registered: true },
+      me: { ...base.me, id: 'me' },
+      conversations: [
+        {
+          ...base.conversations[0],
+          id: 'chat',
+          members: [{ ...base.conversations[0]!.members[0], id: 'me' }],
+        },
+      ],
+    };
+    const driver = new Driver(),
+      request = store.driver.request;
+    driver.opening = async () => structuredClone(canonicalSnapshot);
+    driver.operation = async (command) =>
+      command.op === 'snapshot' ? structuredClone(canonicalSnapshot) : request(command);
+    store = new ClientStore(driver);
+    await store.open('account');
   }
   const module = { exports: {} as any };
   const Container = ({ children }: any) => React.createElement(React.Fragment, null, children);
@@ -187,7 +213,7 @@ export async function fixture(
           },
         };
       if (name === '../core/provider' || name === './provider')
-        return { useClient: () => ({ store, ...state }) };
+        return { useClient: () => ({ store, ...(canonicalStore ? store.getSnapshot() : state) }) };
       if (name === '../theme') return { useTheme: () => ({ colors: {} }) };
       if (name === '../i18n/index.ts') return { t: (key: string) => key };
       if (name === '../profile/profile-avatar') return { ProfileAvatar: () => null };
@@ -208,6 +234,7 @@ export async function fixture(
     routes,
     reads,
     queries,
+    canonicalSnapshot,
     searchRead: (fn: typeof searchRead) => {
       searchRead = fn;
     },
