@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +31,21 @@ test(
       const patches = [
         ['ENRMInputParser.mm', 'parseComposerMarkdown:', '010+composer-parser'],
         ['ENRMMarkdownSerializer+Composer.mm', 'serializeComposerText:', '012+composer-formatting'],
+        [
+          'ENRMComposerRanges.mm',
+          'ENRMNormalizeComposerRanges',
+          '018+composer-range-normalization',
+        ],
+        [
+          'ENRMComposerVariants.mm',
+          'ENRMRepresentableComposerInline',
+          '019+composer-inline-variants',
+        ],
+        [
+          'ENRMComposerAvailability.mm',
+          'ENRMComposerCanToggle',
+          '021+composer-format-availability',
+        ],
       ];
       for (const [source, marker, name] of patches) {
         if (
@@ -49,6 +72,16 @@ test(
         '-o',
         join(directory, 'md4c.o'),
       ]);
+      execFileSync('xcrun', [
+        'clang',
+        '-fobjc-arc',
+        '-fblocks',
+        '-c',
+        '-I' + input,
+        join(input, 'ENRMComposerInputState.m'),
+        '-o',
+        join(directory, 'input-state.o'),
+      ]);
       const binary = join(directory, 'roundtrip');
       const files = [
         'ENRMInputParser',
@@ -61,6 +94,11 @@ test(
         'ENRMFormattingStore',
         'ENRMRangeEditAdjustment',
         'ENRMBlockStore',
+        'ENRMComposerRanges',
+        'ENRMComposerVariants',
+        'ENRMComposerAvailability',
+        'ENRMBlockEditCoordinator',
+        'ENRMLinkCoordinator',
       ];
       execFileSync(
         'xcrun',
@@ -73,6 +111,7 @@ test(
           '-I' + join(pkg, 'cpp/md4c'),
           join(app, 'modules/zoen-core/tests/ComposerMarkdown/RoundTripTests.mm'),
           ...files.map((name) => join(input, `${name}.mm`)),
+          join(directory, 'input-state.o'),
           join(directory, 'md4c.o'),
           '-framework',
           'Foundation',
@@ -81,7 +120,14 @@ test(
         ],
         { timeout: 60_000 },
       );
-      type Result = { plain: string; markdown: string; types: number[] };
+      type Result = {
+        plain: string;
+        markdown: string;
+        types: number[];
+        ranges: { type: number; start: number; length: number }[];
+        selection: number[];
+        available: boolean;
+      };
       const run = (markdown: string, options: Record<string, unknown> = {}): Result =>
         JSON.parse(
           execFileSync(binary, {
@@ -146,10 +192,163 @@ test(
       assert.equal(run('ab', { code: [0, 2] }).markdown, '`ab`');
       assert.equal(run('a\nb', { code: [0, 3] }).markdown, '`a`\n`b`');
       assert.equal(run('a\nb', { quote: [0, 3] }).markdown, '> a\n> b');
+      const crossed = run('**ab**cd', { code: [1, 2], selection: [1, 2] });
+      assert.equal(crossed.plain, 'abcd');
+      assert.equal(crossed.markdown, '**a`b`**`c`d');
+      assert.deepEqual(crossed.selection, [1, 2]);
+      const coverage = (result: Result) =>
+        Array.from({ length: result.plain.length }, (_, i) =>
+          [
+            ...new Set(
+              result.ranges
+                .filter((r) => i >= r.start && i < r.start + r.length)
+                .map((r) => r.type),
+            ),
+          ].sort(),
+        );
+      const reopened = run(crossed.markdown);
+      assert.equal(reopened.plain, crossed.plain);
+      assert.deepEqual(coverage(reopened), coverage(crossed));
+      assert.equal(reopened.markdown, crossed.markdown);
+      const undone = run('**ab**cd', { code: [1, 2], selection: [1, 2], undo: true });
+      assert.equal(undone.markdown, '**ab**cd');
+      assert.deepEqual(undone.selection, [1, 2]);
+      const unicodeCode = run('**😀a**bc', { code: [2, 2], selection: [2, 2] });
+      assert.equal(unicodeCode.markdown, '**😀`a`**`b`c');
+      assert.equal(run(unicodeCode.markdown).plain, '😀abc');
+      assert.deepEqual(unicodeCode.selection, [2, 2]);
+      const crossedEmphasis = run('abcde', {
+        toggles: [
+          { type: 0, start: 0, length: 3 },
+          { type: 1, start: 2, length: 3 },
+        ],
+      });
+      assert.deepEqual(coverage(crossedEmphasis), [[0], [0], [0, 1], [1], [1]]);
+      assert.equal(crossedEmphasis.markdown, '**ab*c***_de_');
+      assert.equal(run(crossedEmphasis.markdown).markdown, crossedEmphasis.markdown);
+      for (const toggles of [
+        [
+          { type: 0, start: 0, length: 3 },
+          { type: 1, start: 2, length: 3 },
+        ],
+        [
+          { type: 1, start: 0, length: 3 },
+          { type: 0, start: 2, length: 3 },
+        ],
+        [
+          { type: 0, start: 0, length: 3 },
+          { type: 3, start: 2, length: 3 },
+        ],
+        [
+          { type: 3, start: 0, length: 3 },
+          { type: 0, start: 2, length: 3 },
+        ],
+        [
+          { type: 0, start: 0, length: 3 },
+          { type: 5, start: 2, length: 3 },
+        ],
+      ]) {
+        const styled = run('abcde', { toggles });
+        const reimported = run(styled.markdown);
+        assert.equal(reimported.plain, 'abcde');
+        assert.deepEqual(coverage(reimported), coverage(styled));
+        assert.equal(run(reimported.markdown).plain, 'abcde');
+      }
+      const escapedCode = run('\\*literal\\*', { code: [0, 9] });
+      assert.equal(run(escapedCode.markdown).plain, '*literal*');
+      assert.equal(
+        run('\\*literal\\*', { code: [0, 9], toggles: [{ type: 6, start: 0, length: 9 }] })
+          .markdown,
+        '\\*literal\\*',
+      );
+      assert.equal(
+        run('`*literal*`', { toggles: [{ type: 6, start: 0, length: 9 }] }).markdown,
+        '\\*literal\\*',
+      );
+      for (const value of ['*x*', '[a](b)', '`c`', '\\*literal\\*', '🪷 café']) {
+        const edited = run('**café** 🦊', { edit: { start: 2, delete: 0, text: value } });
+        const expected = 'ca' + value + 'fé 🦊';
+        assert.equal(edited.plain, expected);
+        assert.equal(run(edited.markdown).plain, expected);
+        assert.equal(run(run(edited.markdown).markdown).plain, expected);
+        const undoEdit = run('**café** 🦊', {
+          edit: { start: 2, delete: 0, text: value },
+          undo: true,
+        });
+        assert.equal(undoEdit.markdown, '**café** 🦊');
+      }
+      // Plausible long draft under the same native fixture deadline. Strategy
+      // count remains four; it never branches once per formatting range.
+      const longText = 'café 🦊 abcdefghij '.repeat(40);
+      const longToggles = Array.from({ length: 40 }, (_, i) => [
+        { type: 0, start: i * 19, length: 10 },
+        { type: 1, start: i * 19 + 5, length: 12 },
+      ]).flat();
+      const longDraft = run(longText, { toggles: longToggles });
+      assert.equal(longDraft.plain, longText);
+      assert.equal(run(longDraft.markdown).plain, longText);
+      for (const markdown of ['<span>raw</span>', '| a | b |\n| --- | --- |\n| c | d |']) {
+        const partial = run(markdown, { availability: { type: 6, start: 2, length: 2 } });
+        assert.equal(partial.available, false);
+        assert.equal(partial.markdown, markdown, 'availability probe cannot mutate opaque source');
+        assert.equal(
+          run(markdown, { availability: { type: 6, start: 0, length: markdown.length } }).available,
+          true,
+        );
+      }
+      assert.equal(
+        run('<span>raw</span>', { availability: { quote: true, start: 2, length: 2 } }).available,
+        false,
+      );
+      const linked = '[label](https://original.example)';
+      assert.equal(
+        run(linked, { availability: { type: 4, start: 0, length: 2, url: 'https://new.example' } })
+          .markdown,
+        linked,
+      );
+      assert.equal(
+        run('abcde', { availability: { type: 0, start: 0, length: 3 } }).available,
+        true,
+      );
+      assert.equal(
+        run('abcde', { availability: { quote: true, start: 0, length: 3 } }).available,
+        true,
+      );
+      assert.equal(
+        run('abcde', { availability: { type: 4, start: 0, length: 3 } }).available,
+        true,
+      );
+      assert.equal(run('  ', { availability: { type: 0, start: 0, length: 2 } }).available, false);
       assert.equal(
         run('**before**\n\n' + opaque[0] + '\n\n_after_').plain,
         'before\n\n' + opaque[0] + '\n\nafter',
         'opaque block cannot erase surrounding rich spans',
+      );
+      const production = readFileSync(join(input, 'EnrichedMarkdownTextInput.mm'), 'utf8');
+      const actionStart = production.indexOf('- (dispatch_block_t)composerMenuAction:');
+      const actionEnd = production.indexOf('\n- (void)performComposerFormatting:', actionStart);
+      assert.ok(actionStart >= 0 && actionEnd > actionStart);
+      writeFileSync(
+        join(directory, 'ComposerMenuAction.inc'),
+        production.slice(actionStart, actionEnd),
+      );
+      const menuBinary = join(directory, 'menu-action');
+      execFileSync('xcrun', [
+        'clang',
+        '-fobjc-arc',
+        '-fblocks',
+        '-I' + input,
+        '-I' + directory,
+        join(app, 'modules/zoen-core/tests/ComposerMarkdown/MenuActionTests.m'),
+        join(input, 'ENRMComposerInputState.m'),
+        '-framework',
+        'Foundation',
+        '-o',
+        menuBinary,
+      ]);
+      assert.match(
+        execFileSync(menuBinary, { encoding: 'utf8' }),
+        /Production composer menu action PASS/,
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });

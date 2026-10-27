@@ -1,0 +1,349 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm
+@@ -1,71 +1,151 @@
+ #import "ENRMMarkdownSerializer.h"
++#import "ENRMComposerRanges.h"
++
++static NSInteger ENRMComposerPriority(ENRMInputStyleType type)
++{
++  switch (type) {
++    case ENRMInputStyleTypeLink: return 0;
++    case ENRMInputStyleTypeSpoiler: return 1;
++    case ENRMInputStyleTypeStrikethrough: return 2;
++    case ENRMInputStyleTypeStrong: return 3;
++    case ENRMInputStyleTypeEmphasis: return 4;
++    case ENRMInputStyleTypeCode: return 5;
++    case ENRMInputStyleTypeLiteralEscape: return 6;
++    default: return 7;
++  }
++}
++
++static BOOL ENRMSameComposerMark(ENRMFormattingRange *a, ENRMFormattingRange *b)
++{
++  return a.type == b.type &&
++    (a.type != ENRMInputStyleTypeLiteralEscape || NSEqualRanges(a.range, b.range)) &&
++    ((a.url == b.url) || [a.url isEqualToString:b.url]);
++}
++
++static NSString *ENRMComposerWrap(ENRMFormattingRange *mark, NSString *body,
++  NSUInteger start, NSUInteger end, NSInteger variant)
++{
++  switch (mark.type) {
++    case ENRMInputStyleTypeStrong: return [NSString stringWithFormat:@"**%@**", body];
++    case ENRMInputStyleTypeEmphasis: {
++      BOOL reopened = start > mark.range.location;
++      BOOL interrupted = end < NSMaxRange(mark.range);
++      BOOL alternate = ((variant & 1) && reopened) || ((variant & 2) && interrupted);
++      return [NSString stringWithFormat:alternate ? @"_%@_" : @"*%@*", body];
++    }
++    case ENRMInputStyleTypeStrikethrough: return [NSString stringWithFormat:@"~~%@~~", body];
++    case ENRMInputStyleTypeSpoiler: return [NSString stringWithFormat:@"||%@||", body];
++    case ENRMInputStyleTypeLink: return [NSString stringWithFormat:@"[%@](%@)", body, mark.url ?: @""];
++    case ENRMInputStyleTypeLiteralEscape: return [@"\\" stringByAppendingString:body];
++    case ENRMInputStyleTypeCode: {
++      NSUInteger longest = 0, run = 0;
++      for (NSUInteger i = 0; i < body.length; i++) {
++        run = [body characterAtIndex:i] == '`' ? run + 1 : 0;
++        longest = MAX(longest, run);
++      }
++      NSString *fence = [@"" stringByPaddingToLength:longest + 1 withString:@"`" startingAtIndex:0];
++      BOOL pad = [body hasPrefix:@"`"] || [body hasSuffix:@"`"] ||
++        ([body hasPrefix:@" "] && [body hasSuffix:@" "] &&
++         [body stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet].length);
++      return pad ? [NSString stringWithFormat:@"%@ %@ %@", fence, body, fence]
++                 : [NSString stringWithFormat:@"%@%@%@", fence, body, fence];
++    }
++    default: return body;
++  }
++}
++
++NSString *ENRMEncodeComposerInline(NSString *text, NSArray<ENRMFormattingRange *> *source, NSInteger variant)
++{
++  NSMutableArray<ENRMFormattingRange *> *ranges = [NSMutableArray new];
++  NSMutableIndexSet *boundaries = [NSMutableIndexSet indexSetWithIndex:0];
++  [boundaries addIndex:text.length];
++  for (ENRMFormattingRange *range in source) {
++    if (!range.range.length || range.range.location > text.length ||
++        range.range.length > text.length - range.range.location ||
++        ENRMComposerPriority(range.type) == 7) continue;
++    NSUInteger start = range.range.location, end = NSMaxRange(range.range);
++    for (NSUInteger i = start; i <= end; i++) {
++      BOOL lineBreak = i < end && ([text characterAtIndex:i] == '\n' || [text characterAtIndex:i] == '\r');
++      if (i != end && !(range.type == ENRMInputStyleTypeCode && lineBreak)) continue;
++      if (i > start) {
++        ENRMFormattingRange *part = [ENRMFormattingRange rangeWithType:range.type
++          range:NSMakeRange(start, i - start) url:range.url];
++        [ranges addObject:part];
++        [boundaries addIndex:start];
++        [boundaries addIndex:i];
++      }
++      start = i + 1;
++    }
++  }
++  [ranges sortUsingComparator:^NSComparisonResult(ENRMFormattingRange *a, ENRMFormattingRange *b) {
++    NSInteger x = ENRMComposerPriority(a.type), y = ENRMComposerPriority(b.type);
++    return x < y ? NSOrderedAscending : x > y ? NSOrderedDescending : NSOrderedSame;
++  }];
++  // Frames close and reopen at a crossing boundary. Code always contains raw
++  // characters; other marks wrap it instead of becoming literal code payload.
++  NSMutableArray<ENRMFormattingRange *> *active = [NSMutableArray new];
++  NSMutableArray<NSMutableString *> *frames = [NSMutableArray arrayWithObject:[NSMutableString new]];
++  NSMutableArray<NSNumber *> *starts = [NSMutableArray arrayWithObject:@0];
++  NSUInteger position = boundaries.firstIndex;
++  while (position != NSNotFound) {
++    NSUInteger next = [boundaries indexGreaterThanIndex:position];
++    NSMutableArray<ENRMFormattingRange *> *desired = [NSMutableArray new];
++    BOOL code = NO;
++    for (ENRMFormattingRange *range in ranges) {
++      if (position < range.range.location || position >= NSMaxRange(range.range)) continue;
++      if (range.type == ENRMInputStyleTypeCode) code = YES;
++      if (range.type == ENRMInputStyleTypeLiteralEscape && code) continue;
++      if (!desired.count ||
++          !ENRMSameComposerMark(desired.lastObject, range)) [desired addObject:range];
++    }
++    NSUInteger common = 0;
++    while (common < active.count && common < desired.count &&
++           ENRMSameComposerMark(active[common], desired[common])) common++;
++    while (active.count > common) {
++      NSString *body = frames.lastObject;
++      NSString *wrapped = ENRMComposerWrap(active.lastObject, body, starts.lastObject.unsignedIntegerValue, position, variant);
++      [starts removeLastObject];
++      [frames removeLastObject];
++      [active removeLastObject];
++      [frames.lastObject appendString:wrapped];
++    }
++    for (NSUInteger i = common; i < desired.count; i++) {
++      [active addObject:desired[i]];
++      [frames addObject:[NSMutableString new]];
++      [starts addObject:@(position)];
++    }
++    if (next != NSNotFound)
++      [frames.lastObject appendString:[text substringWithRange:NSMakeRange(position, next - position)]];
++    position = next;
++  }
++  return frames.firstObject;
++}
+ 
+ @implementation ENRMMarkdownSerializer (Composer)
+-+ (NSString *)serializeComposerText:(NSString *)text ranges:(NSArray<ENRMFormattingRange *> *)ranges
+++ (NSString *)serializeComposerText:(NSString *)text ranges:(NSArray<ENRMFormattingRange *> *)source
+                        blockRanges:(NSArray<ENRMBlockRange *> *)blocks
+ {
+-  NSMutableArray<NSDictionary *> *events = [NSMutableArray new];
+-  NSMutableArray<ENRMFormattingRange *> *normalized=[NSMutableArray new];
+-  for(ENRMFormattingRange *range in ranges) {
+-    if(range.type!=ENRMInputStyleTypeCode || NSMaxRange(range.range)>text.length){[normalized addObject:range];continue;}
+-    NSUInteger start=range.range.location,end=NSMaxRange(range.range);
+-    for(NSUInteger i=start;i<=end;i++)if(i==end || [text characterAtIndex:i]=='\n' || [text characterAtIndex:i]=='\r') {
+-      if(i>start)[normalized addObject:[ENRMFormattingRange rangeWithType:range.type range:NSMakeRange(start,i-start)]];
+-      start=i+1;
+-    }
++  NSArray<ENRMFormattingRange *> *ranges = ENRMCoalescedComposerRanges(text, source);
++  NSString *inlineText = ENRMComposerHasCrossedEmphasis(ranges)
++    ? ENRMRepresentableComposerInline(text, ranges) : nil;
++  if (!inlineText) {
++    if (ENRMComposerHasCrossedEmphasis(ranges)) ranges = ENRMNormalizeComposerRanges(text, ranges);
++    inlineText = ENRMEncodeComposerInline(text, ranges, 0);
+   }
+-  for (ENRMFormattingRange *r in normalized) {
+-    if (!r.range.length || r.range.location > text.length || r.range.length > text.length-r.range.location) continue;
+-    NSString *open = @"", *close = @"";
+-    NSUInteger start=r.range.location,end=NSMaxRange(r.range);
+-    if (r.type == ENRMInputStyleTypeCode) {
+-      NSString *body=[text substringWithRange:r.range];
+-      NSUInteger longest=0,run=0;
+-      for (NSUInteger i=0;i<body.length;i++) {run=[body characterAtIndex:i]=='`' ? run+1:0;longest=MAX(longest,run);}
+-      NSString *fence=[@"" stringByPaddingToLength:longest+1 withString:@"`" startingAtIndex:0];
+-      BOOL pad=[body hasPrefix:@"`"] || [body hasSuffix:@"`"] ||
+-        ([body hasPrefix:@" "] && [body hasSuffix:@" "] && [body stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet].length);
+-      open=pad ? [fence stringByAppendingString:@" "]:fence;
+-      close=pad ? [@" " stringByAppendingString:fence]:fence;
+-    } else {
+-      switch (r.type) {
+-        case ENRMInputStyleTypeStrong:open=close=@"**";break;
+-        case ENRMInputStyleTypeEmphasis:open=close=@"*";break;
+-        case ENRMInputStyleTypeStrikethrough:open=close=@"~~";break;
+-        case ENRMInputStyleTypeSpoiler:open=close=@"||";break;
+-        case ENRMInputStyleTypeLink:open=@"[";close=[NSString stringWithFormat:@"](%@)",r.url ?: @""];break;
+-        case ENRMInputStyleTypeLiteralEscape:open=@"\\";break;
+-        default:continue;
+-      }
+-    }
+-    [events addObject:@{@"at":@(start),@"end":@NO,@"type":@(r.type),@"token":open}];
+-    [events addObject:@{@"at":@(end),@"end":@YES,@"type":@(r.type),@"token":close}];
+-  }
+-  [events sortUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b) {
+-    NSComparisonResult order=[a[@"at"] compare:b[@"at"]];if(order)return order;
+-    if(![a[@"end"] isEqual:b[@"end"]])return [a[@"end"] boolValue] ? NSOrderedAscending:NSOrderedDescending;
+-    NSInteger first=[a[@"type"] integerValue],second=[b[@"type"] integerValue];
+-    if([a[@"end"] boolValue]){NSInteger tmp=first;first=second;second=tmp;}
+-    return first<second ? NSOrderedAscending:first>second ? NSOrderedDescending:NSOrderedSame;
+-  }];
+-  NSMutableString *output=[NSMutableString new];NSUInteger position=0;
+-  for(NSDictionary *event in events){NSUInteger next=[event[@"at"] unsignedIntegerValue];
+-    if(next>position)[output appendString:[text substringWithRange:NSMakeRange(position,next-position)]];
+-    [output appendString:event[@"token"]];position=next;
+-  }
+-  [output appendString:[text substringFromIndex:position]];
+-  // Delimiters add no newlines, so block line positions remain those of text.
+-  NSMutableArray<NSString *> *lines=[[output componentsSeparatedByString:@"\n"] mutableCopy];
+-  for(ENRMBlockRange *block in blocks){
+-    if(block.range.location>text.length || block.range.length>text.length-block.range.location)continue;
+-    NSUInteger first=[[text substringToIndex:block.range.location] componentsSeparatedByString:@"\n"].count-1;
+-    NSUInteger count=[[text substringWithRange:block.range] componentsSeparatedByString:@"\n"].count;
+-    NSString *prefix=@"";
+-    if(block.type==ENRMInputBlockTypeQuote)prefix=@"> ";
+-    else if(ENRMHeadingLevelForBlockType(block.type))prefix=[[@"" stringByPaddingToLength:ENRMHeadingLevelForBlockType(block.type) withString:@"#" startingAtIndex:0] stringByAppendingString:@" "];
+-    else if(block.type==ENRMInputBlockTypeUnorderedListItem)prefix=@"- ";
+-    else if(block.type==ENRMInputBlockTypeOrderedListItem)prefix=[NSString stringWithFormat:@"%ld. ",(long)MAX(1,block.ordinal)];
+-    for(NSUInteger i=first;i<MIN(lines.count,first+count);i++)lines[i]=[prefix stringByAppendingString:lines[i]];
++  NSMutableArray<NSString *> *lines = [[inlineText componentsSeparatedByString:@"\n"] mutableCopy];
++  for (ENRMBlockRange *block in blocks) {
++    if (block.range.location > text.length || block.range.length > text.length - block.range.location) continue;
++    NSUInteger first = [[text substringToIndex:block.range.location] componentsSeparatedByString:@"\n"].count - 1;
++    NSUInteger count = [[text substringWithRange:block.range] componentsSeparatedByString:@"\n"].count;
++    NSString *prefix = @"";
++    if (block.type == ENRMInputBlockTypeQuote) prefix = @"> ";
++    else if (ENRMHeadingLevelForBlockType(block.type))
++      prefix = [[@"" stringByPaddingToLength:ENRMHeadingLevelForBlockType(block.type) withString:@"#" startingAtIndex:0] stringByAppendingString:@" "];
++    else if (block.type == ENRMInputBlockTypeUnorderedListItem) prefix = @"- ";
++    else if (block.type == ENRMInputBlockTypeOrderedListItem)
++      prefix = [NSString stringWithFormat:@"%ld. ", (long)MAX(1, block.ordinal)];
++    for (NSUInteger i = first; i < MIN(lines.count, first + count); i++)
++      lines[i] = [prefix stringByAppendingString:lines[i]];
+   }
+   return [lines componentsJoinedByString:@"\n"];
+ }
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.h
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.h
+@@ -0,0 +1,18 @@
++#pragma once
++#import "ENRMFormattingRange.h"
++
++NS_ASSUME_NONNULL_BEGIN
++
++// Markdown cannot encode crossing strong/emphasis delimiter runs everywhere.
++// Keep their native model and serialized model identical; Code remains nested.
++NSArray<ENRMFormattingRange *> *ENRMNormalizeComposerRanges(NSString *text, NSArray<ENRMFormattingRange *> *ranges);
++@class ENRMFormattingStore;
++// Only an admitted raw replacement or Code removal introduces this provenance.
++// Imported opaque Markdown remains untouched and Code emits its raw payload.
++void ENRMRetainComposerLiteralText(ENRMFormattingStore *store, NSString *text, NSRange inserted);
++BOOL ENRMComposerHasCrossedEmphasis(NSArray<ENRMFormattingRange *> *ranges);
++NSString *ENRMEncodeComposerInline(NSString *text, NSArray<ENRMFormattingRange *> *ranges, NSInteger variant);
++NSString *_Nullable ENRMRepresentableComposerInline(NSString *text, NSArray<ENRMFormattingRange *> *ranges);
++NSArray<ENRMFormattingRange *> *ENRMCoalescedComposerRanges(NSString *text, NSArray<ENRMFormattingRange *> *ranges);
++
++NS_ASSUME_NONNULL_END
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.mm
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.mm
+@@ -0,0 +1,64 @@
++#import "ENRMComposerRanges.h"
++#import "ENRMFormattingStore.h"
++
++NSArray<ENRMFormattingRange *> *ENRMNormalizeComposerRanges(NSString *text, NSArray<ENRMFormattingRange *> *ranges)
++{
++  ranges = ENRMCoalescedComposerRanges(text, ranges);
++  if (!ENRMComposerHasCrossedEmphasis(ranges) || ENRMRepresentableComposerInline(text, ranges)) return ranges;
++  NSMutableArray<ENRMFormattingRange *> *result = [NSMutableArray new];
++  for (ENRMFormattingRange *range in ranges)
++    if (range.range.length <= NSUIntegerMax - range.range.location) [result addObject:[ENRMFormattingRange rangeWithType:range.type range:range.range url:range.url]];
++  for (ENRMFormattingRange *a in result) {
++    for (ENRMFormattingRange *b in result) {
++      BOOL ambiguous = (a.type == ENRMInputStyleTypeStrong && b.type == ENRMInputStyleTypeEmphasis) ||
++        (a.type == ENRMInputStyleTypeEmphasis && b.type == ENRMInputStyleTypeStrong);
++      if (ambiguous && a.range.location < b.range.location &&
++          b.range.location < NSMaxRange(a.range) && NSMaxRange(a.range) < NSMaxRange(b.range)) {
++        // Preserve both outside fragments and all characters. The later-starting
++        // mark owns only this otherwise unrepresentable crossing intersection.
++        a.range = NSMakeRange(a.range.location, b.range.location - a.range.location);
++      }
++    }
++  }
++  return ENRMCoalescedComposerRanges(text, result);
++}
++
++void ENRMRetainComposerLiteralText(ENRMFormattingStore *store, NSString *text, NSRange inserted)
++{
++  if (inserted.location > text.length || inserted.length > text.length - inserted.location) return;
++  NSMutableArray<ENRMFormattingRange *> *ranges = [store.allRanges mutableCopy];
++  for (NSUInteger i = inserted.location; i < NSMaxRange(inserted); i++) {
++    unichar c = [text characterAtIndex:i];
++    BOOL punctuation = (c >= 33 && c <= 47) || (c >= 58 && c <= 64) ||
++      (c >= 91 && c <= 96) || (c >= 123 && c <= 126);
++    if (punctuation && ![store rangeOfType:ENRMInputStyleTypeLiteralEscape containingPosition:i])
++      [ranges addObject:[ENRMFormattingRange rangeWithType:ENRMInputStyleTypeLiteralEscape
++        range:NSMakeRange(i, 1)]];
++  }
++  [store setRanges:ranges];
++}
++
++NSArray<ENRMFormattingRange *> *ENRMCoalescedComposerRanges(NSString *text, NSArray<ENRMFormattingRange *> *ranges)
++{
++  ENRMFormattingStore *marks = [ENRMFormattingStore new];
++  NSMutableArray<ENRMFormattingRange *> *result = [NSMutableArray new];
++  for (ENRMFormattingRange *range in ranges) {
++    if (range.range.location > text.length || range.range.length > text.length - range.range.location) continue;
++    ENRMFormattingRange *part = [ENRMFormattingRange rangeWithType:range.type range:range.range url:range.url];
++    BOOL delimiters = part.type == ENRMInputStyleTypeStrong || part.type == ENRMInputStyleTypeEmphasis ||
++      part.type == ENRMInputStyleTypeStrikethrough || part.type == ENRMInputStyleTypeSpoiler;
++    if (delimiters) {
++      NSUInteger start = part.range.location, end = NSMaxRange(part.range);
++      NSCharacterSet *space = NSCharacterSet.whitespaceAndNewlineCharacterSet;
++      while (start < end && [space characterIsMember:[text characterAtIndex:start]]) start++;
++      while (end > start && [space characterIsMember:[text characterAtIndex:end - 1]]) end--;
++      if (start == end) continue;
++      part.range = NSMakeRange(start, end - start);
++    }
++    if (part.type == ENRMInputStyleTypeStrong || part.type == ENRMInputStyleTypeEmphasis)
++      [marks addRange:part];
++    else [result addObject:part];
++  }
++  [result addObjectsFromArray:marks.allRanges];
++  return result;
++}
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -15,6 +15,7 @@
+ #import "ENRMInputEventEmitter.h"
+ #import "ENRMComposerInputState.h"
+ #import "ENRMMarkdownSerializer.h"
++#import "ENRMComposerRanges.h"
+ #import "ENRMInputFormatter.h"
+ #import "ENRMInputLayoutManager.h"
+ #import "ENRMInputLinkPrompt.h"
+@@ -1057,6 +1058,8 @@
+   [_editSession enterPhase:ENRMEditPhaseFormatting];
+ 
+   NSRange savedSelection = _textView.selectedRange;
++  if (_composer.binding.length)
++    [_formattingStore setRanges:ENRMNormalizeComposerRanges(ENRMGetPlainText(_textView), _formattingStore.allRanges)];
+ 
+   [_formatter applyFormattingRanges:_formattingStore.allRanges
+                          toTextView:_textView
+@@ -1169,6 +1172,9 @@
+   BOOL wasActive = [_formattingStore toggleStyle:styleType
+                                          inRange:selection
+                                conflictingStyles:mergingConfig.conflictingStyles];
++
++  if (_composer.binding.length && selection.length)
++    ENRMRetainComposerLiteralText(_formattingStore, ENRMGetPlainText(_textView), selection);
+ 
+   [_typingController togglePendingStyle:styleType wasActive:wasActive hasSelection:(selection.length > 0)];
+ 
+@@ -2010,6 +2016,9 @@
+     }
+   }
+ #endif
++
++  if (_composer.binding.length && _composer.richText && insertedLength)
++    ENRMRetainComposerLiteralText(_formattingStore, ENRMGetPlainText(_textView), NSMakeRange(editLocation, insertedLength));
+ 
+   if (touchedNewline) {
+     [self applyFormattingScopedFromParagraphAtLocation:editLocation];
