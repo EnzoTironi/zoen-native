@@ -60,3 +60,29 @@ root; its whole-file digest and regular mode must match at both endpoints.
 All other basename readers, including qualified paths and delayed transformations,
 remain conservative inputs. No per-route exceptions or roadmap-content hashes
 are added.
+
+## Standalone photo geometry
+
+Codex proposed this narrow #200 optimization after #666 selected all four Rust
+shards for only `ZoenPhotoEditorImage.swift` and `PhotoEditorImageTests.swift`.
+Those two regular Swift inputs use Foundation/CoreGraphics, compile and link as
+an independent pixel executable, and have no verified Rust/resource consumer.
+The selector reuses the existing Cargo/resource pins and cross-boundary reader
+checks at both endpoints; unknown readers, imports, FFI declarations, mixed
+paths, modes, deletions, stale/unverified merge trees or pin drift retain Rust.
+This is an exact two-path exception, not a Swift/native directory exemption.
+
+The existing Node pixel fixture skips on Linux. A conditional macOS job now runs
+that exact fixture without skipping and typechecks the helper against the
+actual iPhoneSimulator SDK with Swift 6 strict concurrency/warnings as errors.
+The existing required `rust` check demands native success for this lane: failure,
+cancellation or skipped/missing qualification cannot become a successful Rust
+replacement. Changes to the workflow/runner also select this proof alongside
+the full Rust suite. The CI-policy PR itself therefore exercises both lanes.
+The runner and workflow are pinned; changing/removing their protection restores
+full Rust selection until reviewed. Other checks and branch protections remain.
+
+This removes application Rust tests that cannot observe these image pixels.
+It does not claim an App build, editor/journal integration, device acceptance or
+coverage of arbitrary native code. Those existing qualifications remain separate;
+no running/historical CI job is cancelled or relabelled by this policy.
