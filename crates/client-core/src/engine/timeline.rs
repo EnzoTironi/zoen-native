@@ -40,11 +40,16 @@ impl Engine {
 
     pub(crate) fn space_summary_at(&self, id: &str, now: i64) -> R<SpaceSummary> {
         let s = self.space_state(id)?;
-        let kind = match s.kind {
-            SpaceKind::Direct => SpaceKindDto::Direct,
-            SpaceKind::Group => SpaceKindDto::Group,
-            SpaceKind::Community => SpaceKindDto::Community,
-            SpaceKind::Personal => return Err(not_found(&t("Espaço", "Space"))),
+        let saved = self.saved_messages_space(id);
+        let kind = if saved {
+            SpaceKindDto::Saved
+        } else {
+            match s.kind {
+                SpaceKind::Direct => SpaceKindDto::Direct,
+                SpaceKind::Group => SpaceKindDto::Group,
+                SpaceKind::Community => SpaceKindDto::Community,
+                SpaceKind::Personal => return Err(not_found(&t("Espaço", "Space"))),
+            }
         };
         let me = self.me.clone().unwrap_or_default();
         let members: Vec<Persona> = s.members.iter().map(|(m, _)| self.persona(m)).collect();
@@ -82,16 +87,23 @@ impl Engine {
             muted,
             muted_until_ms: prefs.muted_until_ms.filter(|_| muted),
             id: s.id.clone(),
-            title: counterpart
-                .as_ref()
-                .map_or_else(|| s.title.clone(), |c| c.name.clone()),
+            title: if saved {
+                t("Mensagens salvas", "Saved Messages")
+            } else {
+                counterpart
+                    .as_ref()
+                    .map_or_else(|| s.title.clone(), |c| c.name.clone())
+            },
             kind,
             privacy: match s.privacy {
                 Privacy::EndToEnd => PrivacyDto::EndToEnd,
                 Privacy::Closed => PrivacyDto::Closed,
                 Privacy::Public => PrivacyDto::Public,
             },
-            can_write: s.integrity_error.is_none() && self.state.writer(id, &me),
+            can_write: s.integrity_error.is_none()
+                && self.state.writer(id, &me)
+                && (!saved
+                    || (self.saved_messages_canonical(id) && self.ready_epoch(id).is_some())),
             members,
             counterpart,
             last_preview,

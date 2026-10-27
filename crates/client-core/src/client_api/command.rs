@@ -289,6 +289,10 @@ pub(super) enum Command {
     ChatLayout {
         input: crate::chat_layout::ChatLayoutInput,
     },
+    SavedMessages {
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
     StartDirect {
         identity_id: String,
     },

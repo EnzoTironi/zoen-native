@@ -12,6 +12,7 @@ import { createLocalization } from '../i18n/runtime.ts';
 import { chat } from '../i18n/catalogs/chat.ts';
 import { home } from '../i18n/catalogs/home.ts';
 import { common } from '../i18n/catalogs/common.ts';
+import { settings } from '../i18n/catalogs/settings.ts';
 import { inboxActions } from '../i18n/catalogs/inbox-actions.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 
@@ -180,7 +181,7 @@ export async function inboxUi(locale: 'en' | 'pt-BR' = 'en') {
       };
     }, [effect]);
   }
-  const localization = createLocalization({ chat, common, inboxActions, home }, [locale]);
+  const localization = createLocalization({ chat, common, inboxActions, home, settings }, [locale]);
   const module = { exports: {} as any };
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
@@ -263,7 +264,7 @@ export async function inboxUi(locale: 'en' | 'pt-BR' = 'en') {
           useTheme: () => ({
             presentation: telegramPresentation('day'),
             reducedMotion: false,
-            colors: {},
+            colors: { accent: telegramPresentation('day').accent },
           }),
         };
       if (name === 'fixture:i18n')

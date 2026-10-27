@@ -193,6 +193,7 @@ impl Net {
             let mut engine = lock(&engine);
             // stop_sync cancels its runtime; its dispatcher may not reach normal cleanup.
             engine.mls_claims_disconnected();
+            engine.net.saved_messages_supported = false;
             engine.net.poke = Some(Box::new(move || {
                 let _ = poke_tx.send(Cmd::Flush);
             }));

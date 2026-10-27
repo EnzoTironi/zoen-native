@@ -40,7 +40,9 @@ export default function Thread() {
     ]),
   );
   const groupChat =
-    snapshot?.conversations.some((chat) => chat.id === space && chat.kind !== 'Direct') ?? false;
+    snapshot?.conversations.some(
+      (chat) => chat.id === space && (chat.kind === 'Group' || chat.kind === 'Community'),
+    ) ?? false;
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
   const timelineTopInset = process.env.EXPO_OS === 'ios' ? 0 : statusBarHeight;

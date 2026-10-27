@@ -90,6 +90,12 @@ impl Session {
     ) -> Result<Reply, String> {
         let pool = &self.st.pool;
         match op {
+            Op::EnsureSavedMessages(proposal) => {
+                if !registered {
+                    return Err("sign in first".into());
+                }
+                self.ensure_saved_messages(proposal).await
+            }
             Op::Register { profile } => {
                 let profile = relay_admission::directory::prepare_profile(profile, &self.identity)?;
                 let handle = profile.handle.clone();
