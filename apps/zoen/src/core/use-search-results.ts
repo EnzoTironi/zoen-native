@@ -72,7 +72,15 @@ export function useSearchResults(
     [store, scope, space, initial],
   );
   const state = useSyncExternalStore(search.subscribe, search.getSnapshot, search.getSnapshot);
-  useLayoutEffect(() => () => search.close(), [search]);
+  useLayoutEffect(() => {
+    const stop = store.subscribeCanonicalChanges((spaces) => {
+      if (!space || !spaces || spaces.includes(space)) void search.refreshCanonical();
+    });
+    return () => {
+      stop();
+      search.close();
+    };
+  }, [store, space, search]);
   useFocusEffect(
     useCallback(() => {
       search.open();
