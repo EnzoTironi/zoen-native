@@ -4,6 +4,9 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { agentTrustLevels, confirmAgentTrust } from '../agents/trust-confirmation.ts';
+import { ClientStore } from './store.ts';
+import { Driver, empty } from './store.fixtures.ts';
+import type { Command } from './types.ts';
 import { AgentControlSession } from '../agents/agent-control-session.ts';
 import type { AccountScope } from './account-scope.ts';
 import type { AgentControlDto } from './generated/AgentControlDto.ts';
@@ -82,6 +85,19 @@ async function fixture(withTrust = false) {
     shares: unknown[] = [];
   let invite: Promise<{ link: string }> | null = null;
   let mutation: Promise<void> | null = null;
+  const canonicalEvents: string[] = [];
+  const refreshes: (string | undefined)[] = [];
+  const driver = new Driver();
+  driver.operation = async (command) => {
+    if (command.op === 'snapshot') return empty;
+    requests.push(command);
+    if (mutation) await mutation;
+  };
+  const canonicalStore = new ClientStore(driver);
+  canonicalStore.subscribeCanonicalChanges(() => {
+    canonicalEvents.push('canonical');
+    void session.refresh();
+  });
   const store = {
     driver: {
       request: async (command: unknown) => {
@@ -89,7 +105,12 @@ async function fixture(withTrust = false) {
         return invite ? await invite : { link: 'https://example.test/synthetic-invite' };
       },
     },
-    request: async (command: unknown) => {
+    request: async (command: Command) => {
+      if (withTrust) {
+        const result = await canonicalStore.request(command);
+        canonicalEvents.push('resolved');
+        return result;
+      }
       requests.push(command);
       if (mutation) await mutation;
     },
@@ -150,7 +171,9 @@ async function fixture(withTrust = false) {
     '../../core/query': {
       useCoreQuery: (query: { op: string } | null) => ({
         data: query?.op === 'agent_profile' ? agent : [],
-        retry: () => {},
+        retry: () => {
+          refreshes.push(query?.op);
+        },
       }),
     },
     '../../core/presentation': { money: () => '' },
@@ -189,6 +212,8 @@ async function fixture(withTrust = false) {
   });
   return {
     session,
+    canonicalEvents,
+    refreshes,
     controls,
     confirmations,
     confirm: (value: boolean | Promise<boolean>) => {
@@ -408,6 +433,13 @@ for (const status of ['Active', 'Paused'] as const) {
     assert.deepEqual(JSON.parse(JSON.stringify(f.requests)), [
       { op: 'set_trust', agent_id: 'agent', space_id: 'chat', level: 'Act' },
     ]);
+    assert.deepEqual(f.canonicalEvents, ['canonical', 'resolved']);
+    assert.deepEqual(f.refreshes, [
+      'agent_profile',
+      'standing_decisions',
+      'agent_activity',
+      'preview_decisions',
+    ]);
     assert.equal(
       nodes(f.render()).some((node) => node.props.children === 'agents.autonomyUpdatedInThisChat'),
       true,
@@ -462,30 +494,34 @@ test('retained autonomy handler cannot borrow a new activation', async () => {
   assert.deepEqual(f.requests, []);
 });
 
-for (const outcome of ['success', 'error'] as const) {
-  test(`an admitted autonomy ${outcome} cannot publish into a new activation`, async () => {
-    const f = await fixture(true),
-      result = deferred<void>();
-    f.holdMutation(result.promise);
-    f.confirm(true);
-    autonomy(f.render()).props.onPress();
-    await settle();
-    assert.equal(f.requests.length, 1, 'the original request was admitted');
-    await f.reactivate();
-    if (outcome === 'success') result.resolve();
-    else result.reject(Error('retired request failed'));
-    await settle();
-    const tree = f.render();
-    assert.equal(f.requests.length, 1, 'an admitted request is neither replayed nor cancelled');
-    assert.equal(
-      nodes(tree).some((node) => node.props.children === 'agents.autonomyUpdatedInThisChat'),
-      false,
-    );
-    assert.equal(
-      nodes(tree).some((node) => node.props.children === 'retired request failed'),
-      false,
-    );
-  });
+for (const retirement of ['reactivation', 'blur', 'owner'] as const) {
+  for (const outcome of ['success', 'error'] as const) {
+    test(`an admitted autonomy ${outcome} cannot publish after ${retirement}`, async () => {
+      const f = await fixture(true),
+        result = deferred<void>();
+      f.holdMutation(result.promise);
+      f.confirm(true);
+      autonomy(f.render()).props.onPress();
+      await settle();
+      assert.equal(f.requests.length, 1, 'the original request was admitted');
+      if (retirement === 'reactivation') await f.reactivate();
+      else if (retirement === 'blur') f.session.suspend();
+      else f.retireOwner();
+      if (outcome === 'success') result.resolve();
+      else result.reject(Error('retired request failed'));
+      await settle();
+      const tree = f.render();
+      assert.equal(f.requests.length, 1, 'an admitted request is neither replayed nor cancelled');
+      assert.equal(
+        nodes(tree).some((node) => node.props.children === 'agents.autonomyUpdatedInThisChat'),
+        false,
+      );
+      assert.equal(
+        nodes(tree).some((node) => node.props.children === 'retired request failed'),
+        false,
+      );
+    });
+  }
 }
 test('a current autonomy failure remains visible', async () => {
   const f = await fixture(true),

@@ -149,8 +149,13 @@ export default function Agent() {
               accessibilityRole="radio"
               aria-checked={space.level === level.value}
               onPress={() => {
-                if (space.level === level.value || !lifecycleTicket) return;
-                const current = () => !!control.session.accepts(lifecycleTicket);
+                if (
+                  space.level === level.value ||
+                  !lifecycleTicket ||
+                  !control.session.accepts(lifecycleTicket)
+                )
+                  return;
+                const current = () => control.session.continues(lifecycleTicket);
                 void act(async () => {
                   if (
                     !(await confirmAgentTrust(
@@ -162,7 +167,7 @@ export default function Agent() {
                     ))
                   )
                     return;
-                  if (!current()) return;
+                  if (!control.session.accepts(lifecycleTicket)) return;
                   await store.request({
                     op: 'set_trust',
                     agent_id: id,
