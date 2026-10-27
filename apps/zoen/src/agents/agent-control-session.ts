@@ -192,7 +192,8 @@ export class AgentControlSession {
     await this.refresh();
     if (this.current(ticket.generation)) this.publish({ busy: false });
   }
-  private accepts(ticket: AgentControlTicket) {
+  /** A presentation action must retain this exact scope, activation and canonical observation. */
+  accepts(ticket: AgentControlTicket) {
     const current = this.ticket();
     return (
       current &&
