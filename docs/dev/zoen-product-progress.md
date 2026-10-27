@@ -7,12 +7,14 @@ Use the [complete roadmap checklist](../roadmap/README.md), its
 [issue #170](https://github.com/EnzoTironi/zoen-native/issues/170) for current work.
 PRs #635, #636 and #637 are merged, in addition to #632/#633. Issues #217/#622/#615/#440 closed their bounded read-pagination, rate-limit ordering, authenticated reconnect/approval recovery and original-v544 AutoSky scopes respectively; no provider, physical or whole-journey acceptance follows.
 App 732 is source `9f724c1e` with genuine Core F `c4b8f7ce` (including #632),
-CLI `4ff0ca77` and relay `4057a0af`/schema40. Build/signature passed. QA 732 qualifies native widths/accessibility stacking and
+prepared lifecycle CLI `4ff0ca77`, actual QA canonical-read CLI `f0a01c1f` and relay `4057a0af`/schema40. Build/signature passed. QA 732 qualifies native widths/accessibility stacking and
 one Cancel preserving both drafts, Send=0, with text size restored. See the [maintained artifact pointer](../../apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json).
 The roadmap inventory/visuals remain a dated477ac2f3/App718 review.
 Agents and conversation are active. Apps, editors, shared creation and App SDK
 expansion are paused by Enzo. All 30 journeys, ten creation capabilities and six
 platforms remain in the final scope, with all global acceptance flags false.
+
+Prior scoped receipts remain source-attributed: F724 text/media forwarding each once, identical 1,268,382-byte image (SHA256 `5864d328…`) and retained drafts; 727 global search results/first-tap target passed. See the canonical artifact pointer above for inspected receipts; these are not 732 retests. Lifecycle CLI 4ff was prepared/help-only, not confirmed executed for QA.
 
 The following records are historical evidence at their named sources. They do
 not describe current PR state, active workstreams or final product acceptance.

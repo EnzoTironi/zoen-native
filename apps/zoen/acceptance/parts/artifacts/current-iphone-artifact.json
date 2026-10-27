@@ -15,11 +15,19 @@
   "sourceRelabeled": false,
   "status": "PARTIAL: signed Release732 installed once; scoped native forwarding controls fill their allocated columns and stack visibly at accessibility-extra-large. One Cancel preserved both exact drafts, with no Send. Text size restored; Home/Portrait intentionally left open. This does not qualify forwarding delivery, full journeys or physical iPhone.",
   "buildVerification": "/Users/enzotironi/.codex/builds/zoen-conversation-v732/native-consumer/handoff.json",
-  "backend": "Core/UniFFI genuinely compiled from c4b8f7ce (F), including #632 and durable724 controls/canonical forwarding; reused after complete native input-closure equality, not relabeled as732. Matching CLI source4ff0ca77 and relay 4057a0af/schema40 retain separate package/deployment provenance. No public-backend or authenticated-platform acceptance.",
+  "backend": "Core/UniFFI genuinely compiled from c4b8f7ce (F), including #632 and durable 724 controls/canonical forwarding; reused after complete native input-closure equality, not relabeled as 732. Prepared lifecycle CLI 4ff0ca77 is not confirmed executed by QA beyond help. Canonical reads/media-byte checks used actual G2 CLI f0a01c1f, binary f51ffd55678120dd8bf68b24567b2840fad4c8656d4bf10f2fe5d02f339bb0a0. Relay 4057a0af/schema40 retains deployment provenance. No public-backend or authenticated-platform acceptance.",
   "runtimeComposition": {
     "appFrontendSource": "9f724c1e44cd3e6e1a5c210055fa121239570932",
     "coreSource": "c4b8f7ceef6e2eef2e64079d7ac6d5302a134ed2",
-    "cli": {
+    "relay": {
+      "actualSource": "4057a0afa2d862db1d6e3e7e691a6439fcd606e3",
+      "package": {
+        "path": "/Users/enzotironi/.codex/builds/zoen-agent-invite-replay-v726/relay-package.json",
+        "sha256": "d2de05b5fa83ad5ad0695524da463db486e57acecd1c8e032ee97bded84d433f"
+      }
+    },
+    "schema": 40,
+    "preparedLifecycleCli": {
       "actualSource": "4ff0ca77b7da637340fb884235eda071462b56dc",
       "handoff": {
         "path": "/Users/enzotironi/.codex/builds/zoen-agent-runtime-controls-v726/handoff.json",
@@ -32,16 +40,19 @@
         "binarySHA256": "e1eccec97df839c1aeddd6f24550f5478674da28a80788733a148659d24be561",
         "codesignStrict": true,
         "portableHelpExit": 0
-      }
+      },
+      "role": "Prepared lifecycle CLI; QA727 receipt confirms help only, no fixture operation. Not the CLI used for canonical/media-byte checks."
     },
-    "relay": {
-      "actualSource": "4057a0afa2d862db1d6e3e7e691a6439fcd606e3",
+    "qaCanonicalReadCli": {
+      "actualSource": "f0a01c1f8e6a51ba7a3756fdc68701419ceeded2",
+      "binary": "/Users/enzotironi/.codex/builds/zoen-agent-invite-replay-v726/cli-package/zoen",
+      "binarySHA256": "f51ffd55678120dd8bf68b24567b2840fad4c8656d4bf10f2fe5d02f339bb0a0",
       "package": {
-        "path": "/Users/enzotironi/.codex/builds/zoen-agent-invite-replay-v726/relay-package.json",
-        "sha256": "d2de05b5fa83ad5ad0695524da463db486e57acecd1c8e032ee97bded84d433f"
-      }
-    },
-    "schema": 40
+        "path": "/Users/enzotironi/.codex/builds/zoen-agent-invite-replay-v726/cli-package.json",
+        "sha256": "f335b22db95d1a1b132a8cff5f49f996eb98a8afaf3bcc78c01a15d07b3ae9cb"
+      },
+      "role": "Actual G2 CLI used by sole QA for canonical reads/media-byte checks; lifecycle 4ff execution is not claimed."
+    }
   },
   "pending": [
     "Complete independent-person conversation/media and agent journeys, including recovery and receipts",
@@ -72,5 +83,22 @@
   },
   "installedVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v732/receipt.json",
   "runtimeAcceptance": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v732/receipt.json",
-  "restoreVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v732/cleanup.json"
+  "restoreVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v732/cleanup.json",
+  "priorScopedProgress": [
+    {
+      "appSource": "c4b8f7ceef6e2eef2e64079d7ac6d5302a134ed2",
+      "evidence": [
+        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v724/journey.json",
+        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v724/media-forward-byte-proof.json"
+      ],
+      "scope": "F724 text and media forwarding each recorded one explicit Forward Send and one resulting canonical message. Cold review recovered; both drafts retained. Forwarded image matches original 1268382 bytes, SHA256 5864d328a5b09805637c971e4a6e8802a184b01d7d1cfe80ff1a61e2783f46f1. This is scoped prior-cohort proof, not a 732 retest or independent-recipient/full-journey acceptance."
+    },
+    {
+      "appSource": "51a58c19faa45049ba45e15abb75af1b234d0a46",
+      "evidence": [
+        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v727/receipt.json"
+      ],
+      "scope": "727 global search empty/results and first-result one-tap target passed; all three prior drafts exact after upgrade. Lifecycle/unknown-ACK/voice not executed; case remains incomplete. Not a 732 retest."
+    }
+  ]
 }

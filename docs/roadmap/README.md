@@ -8,11 +8,13 @@ Abrir a [visão navegável](index.html), o [manifesto desta revisão](manifest.j
 
 ## O que já avançou
 
-Os PRs [#635](https://github.com/EnzoTironi/zoen-native/pull/635), [#636](https://github.com/EnzoTironi/zoen-native/pull/636) e [#637](https://github.com/EnzoTironi/zoen-native/pull/637) foram integrados após #632/#633. Os issues [#217](https://github.com/EnzoTironi/zoen-native/issues/217), [#615](https://github.com/EnzoTironi/zoen-native/issues/615), [#622](https://github.com/EnzoTironi/zoen-native/issues/622) e [#440](https://github.com/EnzoTironi/zoen-native/issues/440) foram fechados nos recortes de paginação, reconexão autenticada/recuperação da mesma aprovação, ordem sob rate limit e AutoSky no artefato original v544, respectivamente; não encerram jornadas amplas.
+Os PRs [#635](https://github.com/EnzoTironi/zoen-native/pull/635), [#636](https://github.com/EnzoTironi/zoen-native/pull/636) e [#637](https://github.com/EnzoTironi/zoen-native/pull/637) foram integrados após #632/#633. Os fechamentos #217/#615/#622/#440 cobrem paginação, reconexão/aprovação, ordem sob rate limit e AutoSky original v544, respectivamente; os limites constam no registro canônico, sem aceite de jornada.
 
-O App732 tem fonte `9f724c1e` e reutiliza Core/UniFFI genuíno de `c4b8f7ce` (F), que inclui #632, após igualdade dos inputs nativos. CLI `4ff0ca77` e relay `4057a0af`/schema40 mantêm proveniência própria. Build e assinatura passaram. A QA732 confirmou larguras nativas, empilhamento em fonte ampliada e um Cancelar preservando ambos os rascunhos, sem Enviar; o tamanho do texto foi restaurado. A [referência canônica do artefato](../../apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json) separa essas evidências; esse recorte não demonstra encaminhamento entregue, aceite físico ou jornada completa.
+O App732 tem fonte `9f724c1e` e reutiliza Core/UniFFI genuíno de `c4b8f7ce` (F), que inclui #632, após igualdade dos inputs nativos. CLI `4ff0ca77` ficou preparado; a QA usou G2 `f0a01c1f` nas leituras canônicas/bytes. Relay: `4057a0af`/schema40. Build e assinatura passaram. A QA732 confirmou larguras nativas, empilhamento em fonte ampliada e um Cancelar preservando ambos os rascunhos, sem Enviar; o tamanho do texto foi restaurado. A [referência canônica do artefato](../../apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json) separa essas evidências; esse recorte não demonstra encaminhamento entregue, aceite físico ou jornada completa.
 
 Os **506 itens Telegram revisados e as 77 famílias de telas** medem cobertura de leitura de fonte e inventário. Não demonstram paridade. Fonte inspecionada, teste automatizado, build, execução no Simulator e execução em aparelho físico são evidências distintas; nenhuma substitui a próxima. As três flags globais continuam `false`, e nenhuma das 30 jornadas completas está aceita.
+
+Provas anteriores, com recibos na referência canônica: F724 encaminhou texto/mídia uma vez cada, preservando rascunhos e a imagem de 1.268.382 bytes (SHA256 `5864d328…`); 727 passou busca e destino no primeiro toque. Não são retestes732; CLI4ff foi apenas preparado/help-only.
 
 ## Ordem de entrega
 
