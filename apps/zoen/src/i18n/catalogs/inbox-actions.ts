@@ -14,7 +14,7 @@ export const inboxActions = defineFeature(
     pinned: '%{title} pinned',
     unpinned: '%{title} unpinned',
     changed: 'Could not confirm the change. Check the conversation and try again.',
-    undoChanged: 'The conversation has changed. The previous action could not be undone.',
+    undoNotConfirmed: 'Could not confirm Undo. Check the conversation before trying again.',
   },
   {
     archive: 'Arquivar',
@@ -30,6 +30,7 @@ export const inboxActions = defineFeature(
     pinned: '%{title} fixada',
     unpinned: '%{title} desafixada',
     changed: 'Não foi possível confirmar a alteração. Confira a conversa e tente novamente.',
-    undoChanged: 'A conversa mudou. Não foi possível desfazer a ação anterior.',
+    undoNotConfirmed:
+      'Não foi possível confirmar Desfazer. Confira a conversa antes de tentar novamente.',
   },
 );

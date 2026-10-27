@@ -19,7 +19,7 @@ export function InboxActionFeedback({
   const undo = state.undo;
   if (!undo && !state.error) return null;
   const message = state.error
-    ? t(state.error === 'undo' ? 'inboxActions.undoChanged' : 'inboxActions.changed')
+    ? t(state.error === 'undo' ? 'inboxActions.undoNotConfirmed' : 'inboxActions.changed')
     : t(
         undo!.receipt.field === 'archived'
           ? undo!.receipt.value
