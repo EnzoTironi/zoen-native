@@ -211,7 +211,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                           current.query.trim() &&
                           conversationQueryFits(current.query.trim())
                         )
-                          launchConversationAssistant(id, current.query.trim());
+                          launchConversationAssistant(id, current.query.trim(), store);
                       },
                     }
                   : undefined
