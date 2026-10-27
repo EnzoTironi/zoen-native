@@ -23,6 +23,7 @@ import * as source from '../sites/source.ts';
 import * as enrollment from '../agent-enrollment/session.ts';
 import * as enrollmentPort from '../agent-enrollment/core-port.ts';
 import * as trust from '../agents/trust-confirmation.ts';
+import * as documentAuthority from '../documents/document-authority.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 import { t, formatLocale } from '../i18n/index.ts';
 
@@ -293,6 +294,7 @@ export async function appRequestReviewReactFixture(options: { canonicalFlush?: b
     './session': enrollment,
     './core-port': enrollmentPort,
     '../agents/trust-confirmation': trust,
+    '../documents/document-authority.ts': documentAuthority,
     './editor-agent-admission': admission,
     './editor-agent-port': port,
     './editor-agent-session': { EditorAgentSession: ObservedEditorAgentSession },
@@ -322,6 +324,7 @@ export async function appRequestReviewReactFixture(options: { canonicalFlush?: b
   common['../agent-enrollment/use-agent-enrollment'] = load(
     '../agent-enrollment/use-agent-enrollment.ts',
   );
+  common['./use-request-decision-lease'] = load('../agents/use-request-decision-lease.ts', {});
   common['./use-tool-review'] = load('../agents/use-tool-review.ts');
   common['./tool-review-recovery'] = load('../agents/tool-review-recovery.tsx');
   common['./drawing-tool-review'] = load('../agents/drawing-tool-review.tsx');

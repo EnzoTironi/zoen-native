@@ -14,24 +14,35 @@ import * as policyCore from '../owner-policy/core-port.ts';
 import { imageToolReviewValid } from './image-tool-review.ts';
 import * as siteSource from '../sites/source.ts';
 import * as appReview from '../miniapps/app-request-review.ts';
+import * as documentAuthority from '../documents/document-authority.ts';
 import type { useToolReview } from '../agents/use-tool-review.ts';
 import type { useOwnerPolicy } from '../owner-policy/use-owner-policy.ts';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
+import type { DecideOutcome } from './generated/DecideOutcome';
 import type { OwnerPolicyOptionsStatus } from './generated/OwnerPolicyOptionsStatus';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
 const compile = (file: URL) =>
-  transformSync(readFileSync(file, 'utf8'), {
-    filename: file.pathname,
-    babelrc: false,
-    configFile: false,
-    presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
-    plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-    caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
-  }).code as string;
+  transformSync(
+    readFileSync(
+      file.pathname.endsWith('/agents/request-card.tsx') && process.env.ZOEN_REQUEST_CARD_SOURCE
+        ? process.env.ZOEN_REQUEST_CARD_SOURCE
+        : file,
+      'utf8',
+    ),
+    {
+      filename: file.pathname,
+      babelrc: false,
+      configFile: false,
+      presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+      plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+      caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
+    },
+  ).code as string;
 const compiled = {
   review: compile(new URL('../agents/use-tool-review.ts', import.meta.url)),
+  lease: compile(new URL('../agents/use-request-decision-lease.ts', import.meta.url)),
   policy: compile(new URL('../owner-policy/use-owner-policy.ts', import.meta.url)),
 };
 for (const source of Object.values(compiled)) assert.match(source, /react\/compiler-runtime/);
@@ -45,7 +56,14 @@ assert.match(presentation.recovery, /react\/compiler-runtime/);
 // by tool-review-ui.fixture; this consumer still runs its actual Babel output.
 /** Actual compiled hooks, sessions, ports and Store lifecycle. Only native/Core
  * boundaries are synthetic; no financial operation or external service is used. */
-export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card') {
+export async function reviewPolicyReactFixture(
+  kind: 'review' | 'policy' | 'card',
+  decisionFlow?: {
+    confirm(): Promise<boolean>;
+    submit?(): Promise<DecideOutcome>;
+    resolved?(): void;
+  },
+) {
   const root = createReactTestRoot();
   const driver = new Driver(),
     snapshot = draftSession();
@@ -99,6 +117,8 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card
       },
     },
   };
+  if (decisionFlow)
+    Object.assign(request, { status: 'Pending', tool_approval: null, can_always_approve: true });
   const calls: any[] = [];
   let requests: Promise<AgentRequestDto[]> | null = null;
   let inquiry: Promise<OwnerPolicyOptionsStatus> | null = null;
@@ -111,12 +131,25 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card
       requests = null;
       if (pending) return pending;
       const row = structuredClone(request);
-      if (kind === 'card' && Number(row.tool_approval!.expires_ms) <= Date.now()) {
+      if (
+        kind === 'card' &&
+        row.tool_approval &&
+        Number(row.tool_approval.expires_ms) <= Date.now()
+      ) {
         row.status = 'Stale';
         row.tool_approval!.review!.state = 'Available';
       }
       return [row];
     }
+    if (decisionFlow && (command.op === 'decide_request' || command.op === 'decide_tool_request'))
+      return (
+        decisionFlow.submit?.() ?? {
+          request: { ...request, status: 'Approved' },
+          message: 'Accepted decision',
+          standing_grant_id: null,
+          also_resolved: 0,
+        }
+      );
     if (command.op === 'find_account_policy_options') return null;
     if (command.op === 'request_account_policy_options') {
       const pending = inquiry;
@@ -210,6 +243,7 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card
       },
     },
     'expo-router': { useFocusEffect: focus.exports.useFocusEffect },
+    '../documents/document-authority.ts': documentAuthority,
     '../core/provider': {
       useClient: () => ({
         store,
@@ -230,7 +264,10 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
     '../components/primitives': { Surface: passthrough, Avatar: () => null, NativeButton },
     '../components/dialogs': {
-      useDialogs: () => ({ confirm: async () => assert.fail('Expiry cannot request consent') }),
+      useDialogs: () => ({
+        confirm:
+          decisionFlow?.confirm ?? (async () => assert.fail('Expiry cannot request consent')),
+      }),
     },
     '../core/presentation': { money: () => '' },
     '../core/image-tool-review': { imageToolReviewValid },
@@ -265,6 +302,9 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card
   load(compiled[kind === 'card' ? 'review' : kind], module);
   const card = { exports: {} as Record<string, any> };
   if (kind === 'card') {
+    const lease = { exports: {} };
+    load(compiled.lease, lease);
+    ports['./use-request-decision-lease'] = lease.exports;
     ports['../miniapps/app-request-review'] = appReview;
     ports['../i18n'] = ports['../i18n/index.ts'];
     const action = { exports: {} };
@@ -314,7 +354,11 @@ export async function reviewPolicyReactFixture(kind: 'review' | 'policy' | 'card
     render: () =>
       root.render(
         kind === 'card'
-          ? React.createElement(card.exports.RequestCard, { request, embedded: true })
+          ? React.createElement(card.exports.RequestCard, {
+              request,
+              embedded: true,
+              onResolved: decisionFlow?.resolved,
+            })
           : React.createElement(kind === 'review' ? ReviewSurface : PolicySurface),
       ),
     act: root.act,
