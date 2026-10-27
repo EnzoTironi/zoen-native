@@ -269,11 +269,8 @@ pub(super) enum Command {
         space_id: String,
         message_id: String,
     },
-    UniversalSearch {
-        query: String,
-        kinds: Vec<String>,
-        limit: u32,
-    },
+    UniversalSearchPage(super::search::SearchPageInput),
+    UniversalSearch(super::search::SearchInput),
     RecentAttachments {
         scope: crate::MediaDraftScope,
         kind: crate::RecentAttachmentKind,
