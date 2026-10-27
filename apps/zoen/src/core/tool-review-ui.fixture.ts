@@ -13,11 +13,13 @@ import { imageToolReviewValid } from './image-tool-review.ts';
 import { imageReview } from '../i18n/catalogs/image-review.ts';
 import * as decision from './tool-request-decision.ts';
 import * as appReview from '../miniapps/app-request-review.ts';
+import * as documentAuthority from '../documents/document-authority.ts';
 
 const files = {
   view: '../agents/tool-review-recovery.tsx',
   hook: '../agents/use-tool-review.ts',
   card: '../agents/request-card.tsx',
+  lease: '../agents/use-request-decision-lease.ts',
   site: '../agents/site-tool-review.tsx',
   action: '../agents/app-request-review-action.tsx',
 };
@@ -166,11 +168,13 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
   const listeners = new Set<() => void>(),
     canonical = new Set<() => void>(),
     preflight = new Set<() => void>();
+  const sessionCleanup = new Set<() => Promise<void>>();
   const foreground = new Set<(next: string) => void>(),
     cleanups: (() => void)[] = [];
   let read = async () => structuredClone(rows);
   const siteState: unknown[] = [],
     siteRefs: { current: any }[] = [];
+  let settlingCard = false;
   let siteMounted = false,
     siteRefCursor = 0;
   const store = {
@@ -190,6 +194,10 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
     subscribeCanonicalChanges(fn: () => void) {
       canonical.add(fn);
       return () => canonical.delete(fn);
+    },
+    registerSessionCleanup(fn: () => Promise<void>) {
+      sessionCleanup.add(fn);
+      return () => sessionCleanup.delete(fn);
     },
     registerSessionPreflight(fn: () => void) {
       preflight.add(fn);
@@ -237,6 +245,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
             ];
           },
           useMemo: (fn: () => unknown) => fn(),
+          useLayoutEffect: (fn: () => void) => fn(),
           useCallback: (fn: unknown) => fn,
           useSyncExternalStore: (_s: unknown, get: () => unknown) => get(),
         };
@@ -258,6 +267,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
         return {
           router: { push: (route: unknown) => routes.push(route) },
           useFocusEffect: (fn: () => () => void) => {
+            if (name === 'lease' && settlingCard) return;
             if (name === 'site') {
               if (siteMounted) return;
               siteMounted = true;
@@ -265,6 +275,8 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
             cleanups.push(fn());
           },
         };
+      if (path === '../documents/document-authority.ts') return documentAuthority;
+      if (path === './use-request-decision-lease') return load('lease');
       if (path === '../i18n' || path.includes('i18n/index'))
         return {
           t: (key: string) =>
@@ -372,7 +384,18 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
       cacheCursor = 0;
       stateCursor = 0;
       resultMessage = result;
-      return load('card').RequestCard({ request });
+      // Model the rerender scheduled by the real lease's mounted focus effect.
+      // This static renderer does not run React's scheduler; lifecycle cases use
+      // the real React/Expo/ClientStore fixture instead.
+      load('card').RequestCard({ request });
+      cacheCursor = 0;
+      stateCursor = 0;
+      settlingCard = true;
+      try {
+        return load('card').RequestCard({ request });
+      } finally {
+        settlingCard = false;
+      }
     },
     clock: () => now,
     timerCount: () => timers.size,

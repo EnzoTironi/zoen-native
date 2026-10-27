@@ -24,6 +24,7 @@ import { SiteToolReview } from './site-tool-review';
 import { siteScope, siteAuthority } from '../sites/source';
 import { useTheme } from '../theme';
 import { imageToolReviewValid } from '../core/image-tool-review';
+import { useRequestDecisionLease } from './use-request-decision-lease';
 
 const statuses = {
   Pending: t('agents.waitingForYourDecision'),
@@ -60,6 +61,11 @@ export function RequestCard({
   const [result, setResult] = useState<string | null>(null);
   const [expiryRevision, redrawExpiry] = useState(0);
   const deciding = useRef(false);
+  const resetOutput = useCallback(() => {
+    setFailure(null);
+    setResult(null);
+  }, []);
+  const approval = useRequestDecisionLease(store, client, request, disabled, resetOutput);
   const tool = request.tool_approval;
   const siteNeedsReview = tool?.preview_kind === 'site';
   const drawingNeedsReview =
@@ -108,11 +114,13 @@ export function RequestCard({
         : null;
   const historicalToolApproval = tool != null && toolValid && request.status === 'Approved';
   const pending = request.status === 'Pending' || request.status === 'Stale';
-  const canDecide = pending && toolValid && request.agent.is_mine && !busy && !disabled;
+  const canDecide =
+    pending && toolValid && request.agent.is_mine && !busy && !disabled && approval.available;
   async function decide(decision: RequestCardDecision) {
     if (
       !canDecide ||
       deciding.current ||
+      !approval.lease.accepts(approval.ticket) ||
       (decision === 'ApproveOnce' &&
         ((siteNeedsReview && !siteReviewed) ||
           (drawingNeedsReview &&
@@ -124,31 +132,33 @@ export function RequestCard({
       return;
     const command = requestDecisionCommand(request, decision);
     if (!command) return;
-    const always = decision === 'AlwaysApprove' || decision === 'AlwaysDeny';
-    if (
-      always &&
-      !(await dialogs.confirm({
-        title:
-          decision === 'AlwaysApprove'
-            ? t('agents.alwaysAllowThisTypeOfAction')
-            : t('agents.alwaysDenyThisTypeOfAction'),
-        message: t('agents.standingDecisionConfirmation', {
-          name: request.agent.name,
-          chat: request.space_title,
-          action: request.action_label,
-        }),
-        confirmLabel:
-          decision === 'AlwaysApprove' ? t('agents.alwaysAllow') : t('agents.alwaysDeny'),
-        destructive: decision === 'AlwaysDeny',
-      }))
-    )
-      return;
     deciding.current = true;
-    setBusy(true);
-    setFailure(null);
-    setResult(null);
     try {
+      const always = decision === 'AlwaysApprove' || decision === 'AlwaysDeny';
+      if (
+        always &&
+        !(await dialogs.confirm({
+          title:
+            decision === 'AlwaysApprove'
+              ? t('agents.alwaysAllowThisTypeOfAction')
+              : t('agents.alwaysDenyThisTypeOfAction'),
+          message: t('agents.standingDecisionConfirmation', {
+            name: request.agent.name,
+            chat: request.space_title,
+            action: request.action_label,
+          }),
+          confirmLabel:
+            decision === 'AlwaysApprove' ? t('agents.alwaysAllow') : t('agents.alwaysDeny'),
+          destructive: decision === 'AlwaysDeny',
+        }))
+      )
+        return;
+      if (!approval.lease.accepts(approval.ticket)) return;
+      setBusy(true);
+      setFailure(null);
+      setResult(null);
       const outcome = await (onDecision ? onDecision(command) : store.request(command));
+      if (!approval.lease.continues(approval.ticket)) return;
       setResult(
         outcome.also_resolved
           ? t('agents.alsoResolved', { message: outcome.message, count: outcome.also_resolved })
@@ -156,6 +166,7 @@ export function RequestCard({
       );
       onResolved?.();
     } catch (reason) {
+      if (!approval.lease.continues(approval.ticket)) return;
       setFailure(
         reason instanceof Error ? reason.message : t('agents.thisDecisionCouldNotBeSaved'),
       );
