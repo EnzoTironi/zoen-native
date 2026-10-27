@@ -7,7 +7,11 @@ keep the full Rust job. Its timeout, Clippy flags, failures and journey assertio
 are unchanged. Existing running CI is never cancelled or relabelled by this code.
 
 The frontend class accepts regular added/modified TypeScript under
-`apps/zoen/src`, with a single exact ancestral base. Generated code, vendor
+`apps/zoen/src`, with a single exact ancestral base. When the PR branch is behind its event base,
+the workflow instead classifies base-to-candidate changes only after verifying
+the actual checkout has the exact event base/head parents and the canonical
+conflict-free merge tree. The same resource, reader and pin checks apply at the
+base and tested candidate; missing or forged candidates retain Rust. Generated code, vendor
 resources, platform/native bridges, critical Core type/driver contracts and
 non-TypeScript files are excluded. Mixed changes, renames, deletions, symlinks,
 mode changes, empty/binary inputs and uncertain Git history retain Rust.
