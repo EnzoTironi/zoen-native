@@ -188,6 +188,64 @@ class FrontendScopeTests(FrontendRepositoryFixture):
         right = self.git("commit-tree", tree, "-p", second, "-p", first, "-m", "right")
         self.assert_full(self.classify(right, base=left))
 
+    def candidate(self, base, head):
+        self.git("checkout", "-q", base)
+        self.git("merge", "--no-ff", "--no-edit", head)
+        return self.git("rev-parse", "HEAD")
+
+    def test_canonical_tested_merge_admits_stale_frontend_without_skipping_contracts(self):
+        self.edit_frontend()
+        head = self.commit()
+        self.git("checkout", "-q", self.base)
+        self.write("crates/fixture/src/lib.rs", "pub fn already_on_base() {}\n")
+        base = self.commit()
+        candidate = self.candidate(base, head)
+        self.assert_full(SCOPE.classify(base, head, "pull_request"))
+        result = SCOPE.classify(base, head, "pull_request", candidate)
+        self.assertTrue(result["frontend_only"], result)
+        self.assertEqual(result["paths"], [FRONTEND])
+        # A new base-side reader changes the actual integration boundary even
+        # though the branch itself still contains only the frontend edit.
+        self.git("checkout", "-q", base)
+        self.write("contracts/reader.json", json.dumps({"input": FRONTEND}))
+        reading_base = self.commit()
+        reading_candidate = self.candidate(reading_base, head)
+        self.assert_full(SCOPE.classify(reading_base, head, "pull_request", reading_candidate))
+
+    def test_candidate_parent_tree_checkout_and_conflict_uncertainty_stay_full(self):
+        self.edit_frontend()
+        head = self.commit()
+        self.git("checkout", "-q", self.base)
+        self.write("unrelated.txt", "base\n")
+        base = self.commit()
+        candidate = self.candidate(base, head)
+        tree = self.git("rev-parse", base + "^{tree}")
+        forged = self.git("commit-tree", tree, "-p", base, "-p", head, "-m", "forged")
+        self.assert_full(SCOPE.classify(base, head, "pull_request", "0" * 40))
+        self.assert_full(SCOPE.classify(base, head, "pull_request", head))
+        self.git("checkout", "-q", forged)
+        self.assert_full(SCOPE.classify(base, head, "pull_request", forged))
+        self.assert_full(SCOPE.classify(base, head, "pull_request", candidate))
+        self.git("checkout", "-q", base)
+        self.write(FRONTEND, "conflicting base body\n")
+        conflict_base = self.commit()
+        false_merge = self.git("commit-tree", tree, "-p", conflict_base, "-p", head, "-m", "conflict")
+        self.git("checkout", "-q", false_merge)
+        self.assert_full(SCOPE.classify(conflict_base, head, "pull_request", false_merge))
+
+    def test_canonical_merge_mixed_rust_or_native_input_remains_full(self):
+        for path in ("crates/fixture/src/lib.rs", "apps/zoen/src/core/types.ts",
+                     "apps/zoen/modules/native.swift", "apps/zoen/src/core/generated/Command.ts"):
+            self.git("checkout", "-q", self.base)
+            self.edit_frontend()
+            self.write(path, "changed contract\n")
+            head = self.commit()
+            self.git("checkout", "-q", self.base)
+            self.write("unrelated.txt", "base\n")
+            base = self.commit()
+            candidate = self.candidate(base, head)
+            self.assert_full(SCOPE.classify(base, head, "pull_request", candidate))
+
     def test_json_and_github_outputs_only_skip_after_positive_classification(self):
         self.edit_frontend()
         head = self.commit()
