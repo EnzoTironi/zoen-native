@@ -52,6 +52,7 @@ the pinned `patch-package@8.0.1`:
 6. `006+public-js-bindings`: input props plus Markdown JS/types/platform gates.
 7. `007+quote-source-map`: retain literal MD4C source spans through native attributed
    text and its real selection menu, including genuine RN-generated event emitters.
+   Codegen uses `useLocalIncludePaths: true` to preserve the pod’s private sibling-header layout.
    Offsets use half-open UTF-16 units in the exact canonical Markdown revision.
    Unmapped layout spacers/normalization refuse the entire quote before draft mutation;
    this never substitutes rendered offsets or searches for repeated selected text.
