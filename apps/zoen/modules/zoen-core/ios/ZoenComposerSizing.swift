@@ -65,15 +65,25 @@ enum ZoenComposerSizing {
             frame.maxY <= root.bounds.maxY + 0.5 else { return nil }
       containerInsets = max(0, root.bounds.height - frame.height)
     }
-    let attributedFont: UIFont? = if let attributed = editor.attributedText, attributed.length > 0 {
-      attributed.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+    let actualFontSize: Double
+    if canonicalInput {
+      // Heading/code runs intentionally differ from the body font. Validate
+      // the same native formatter's base size, not the first selected style.
+      let baseFontSelector = NSSelectorFromString("zoenComposerBaseFontSize")
+      guard root.responds(to: baseFontSelector),
+            let size = root.perform(baseFontSelector)?.takeUnretainedValue() as? NSNumber else { return nil }
+      actualFontSize = size.doubleValue
     } else {
-      nil
+      let attributedFont: UIFont? = if let attributed = editor.attributedText, attributed.length > 0 {
+        attributed.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+      } else {
+        nil
+      }
+      guard let font = attributedFont ?? editor.font ?? editor.typingAttributes[.font] as? UIFont else {
+        return nil
+      }
+      actualFontSize = Double(font.pointSize)
     }
-    guard let font = attributedFont ?? editor.font ?? editor.typingAttributes[.font] as? UIFont else {
-      return nil
-    }
-    let actualFontSize = Double(font.pointSize)
     guard actualFontSize.isFinite,
           abs(actualFontSize - expectedFontSize) <= 0.5 else { return nil }
     // UITextView accounts for paragraph attributes and its own insets. Only

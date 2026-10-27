@@ -17,6 +17,7 @@ export function preparePackage(app: string, directory: string) {
     '014+composer-input-owner',
     '015+composer-input-lifecycle',
     '016+composer-input-receipt',
+    '017+composer-plain-paste-sizing',
   ].map((stage) => join(app, `patches/react-native-enriched-markdown+1.1.1+${stage}.patch`));
   const paths = new Set(
     patches.flatMap((patch) =>
@@ -65,6 +66,10 @@ export function preparePackage(app: string, directory: string) {
         'composerMode',
       ),
     () => existsSync(join(pkg, 'ios/input/ENRMComposerInputState.m')),
+    () =>
+      readFileSync(join(pkg, 'ios/input/EnrichedMarkdownTextInput.mm'), 'utf8').includes(
+        'zoenComposerBaseFontSize',
+      ),
   ];
   for (const [index, patch] of patches.entries())
     if (!markers[index]!())
