@@ -345,7 +345,7 @@ impl HttpTransport for Cloudflare {
 fn clef_gate(reply: &'static str, model: ClefModel) -> (Gate, Arc<Cloudflare>) {
     let cf = Arc::new(Cloudflare {
         reply,
-        sent: Default::default(),
+        sent: std::sync::Mutex::default(),
     });
     let gate = Gate {
         remote: Some(Box::new(Clef {
