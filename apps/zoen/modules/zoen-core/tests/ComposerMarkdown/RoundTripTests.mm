@@ -63,6 +63,7 @@ int main() { @autoreleasepool {
   for (NSDictionary *toggle in request[@"toggles"]) {
     ENRMInputStyleType type = (ENRMInputStyleType)[toggle[@"type"] integerValue];
     NSRange range = NSMakeRange([toggle[@"start"] unsignedIntegerValue], [toggle[@"length"] unsignedIntegerValue]);
+    range = ENRMComposerFormattingSelection(text, type, range);
     [styles toggleStyle:type inRange:range
       conflictingStyles:NSSet.set];
     ENRMRetainComposerLiteralText(styles, text, range);

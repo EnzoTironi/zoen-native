@@ -319,6 +319,15 @@ test(
         true,
       );
       assert.equal(run('  ', { availability: { type: 0, start: 0, length: 2 } }).available, false);
+      const unformatted = run('abc ', {
+        toggles: [
+          { type: 0, start: 0, length: 4 },
+          { type: 0, start: 0, length: 4 },
+        ],
+        selection: [0, 4],
+      });
+      assert.equal(unformatted.markdown, 'abc ');
+      assert.deepEqual(unformatted.selection, [0, 4]);
       assert.equal(
         run('**before**\n\n' + opaque[0] + '\n\n_after_').plain,
         'before\n\n' + opaque[0] + '\n\nafter',

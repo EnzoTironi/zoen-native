@@ -2,12 +2,14 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerA
 new file mode 100644
 --- /dev/null
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.h
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,14 @@
 +#pragma once
 +#import "ENRMFormattingRange.h"
 +#import "ENRMBlockRange.h"
 +
 +NS_ASSUME_NONNULL_BEGIN
++
++NSRange ENRMComposerFormattingSelection(NSString *text, ENRMInputStyleType type, NSRange selection);
 +
 +BOOL ENRMComposerCanToggle(NSString *text, NSArray<ENRMFormattingRange *> *ranges,
 +  ENRMInputStyleType type, NSRange selection, NSString *_Nullable linkURL);
@@ -19,7 +21,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerA
 new file mode 100644
 --- /dev/null
 +++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.mm
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,98 @@
 +#import "ENRMComposerAvailability.h"
 +#import "ENRMComposerRanges.h"
 +#import "ENRMFormattingStore.h"
@@ -45,11 +47,28 @@ new file mode 100644
 +  return store;
 +}
 +
++NSRange ENRMComposerFormattingSelection(NSString *text, ENRMInputStyleType type, NSRange selection)
++{
++  if (selection.location > text.length || selection.length > text.length - selection.location)
++    return NSMakeRange(NSNotFound, 0);
++  if (type == ENRMInputStyleTypeStrong || type == ENRMInputStyleTypeEmphasis ||
++      type == ENRMInputStyleTypeStrikethrough || type == ENRMInputStyleTypeSpoiler) {
++    NSUInteger start = selection.location, end = NSMaxRange(selection);
++    NSCharacterSet *space = NSCharacterSet.whitespaceAndNewlineCharacterSet;
++    while (start < end && [space characterIsMember:[text characterAtIndex:start]]) start++;
++    while (end > start && [space characterIsMember:[text characterAtIndex:end - 1]]) end--;
++    return NSMakeRange(start, end - start);
++  }
++  return selection;
++}
++
 +BOOL ENRMComposerCanToggle(NSString *text, NSArray<ENRMFormattingRange *> *ranges,
 +  ENRMInputStyleType type, NSRange selection, NSString *linkURL)
 +{
 +  if (type > ENRMInputStyleTypeCode || !selection.length || selection.location > text.length ||
 +      selection.length > text.length - selection.location || type == ENRMInputStyleTypeUnderline) return NO;
++  selection = ENRMComposerFormattingSelection(text, type, selection);
++  if (!selection.length) return NO;
 +  ENRMFormattingStore *store = ENRMComposerCopiedStore(ranges);
 +  BOOL removed = NO;
 +  if (type == ENRMInputStyleTypeLink) {
@@ -182,7 +201,16 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if (_composer.binding.length && _composer.undoDepth == 0) {
      [self performComposerFormatting:^{ [self toggleInlineStyle:styleType]; }]; return;
    }
-@@ -1194,6 +1250,10 @@
+@@ -1162,6 +1218,8 @@
+   ENRMStyleMergingConfig *mergingConfig = handler.mergingConfig;
+ 
+   NSRange selection = _textView.selectedRange;
++  if (_composer.binding.length)
++    selection = ENRMComposerFormattingSelection(ENRMGetPlainText(_textView), styleType, selection);
+ 
+   if ([_formattingStore isToggleBlocked:styleType
+                              atPosition:selection.location
+@@ -1194,6 +1252,10 @@
  - (void)toggleBlockType:(ENRMInputBlockType)type level:(NSInteger)level
  {
    if(![self draftMayMutate])return;
@@ -193,7 +221,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkd
    if (_composer.binding.length && _composer.undoDepth == 0) {
      [self performComposerFormatting:^{ [self toggleBlockType:type level:level]; }]; return;
    }
-@@ -1532,11 +1592,17 @@
+@@ -1532,11 +1594,17 @@
  - (void)setLink:(NSString *)url
  {
    if(![self draftMayMutate])return;
