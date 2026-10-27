@@ -13,6 +13,7 @@ export type ConversationSearchState = Readonly<{
 }>;
 export type ConversationSearchSource = {
   current(): boolean;
+  fitsQuery?(query: string): boolean;
   search(query: string, cursor: string | null): Promise<MessageSearchPage>;
 };
 const initial = (): ConversationSearchState => ({
@@ -43,7 +44,8 @@ export class ConversationSearch {
   private generation = 0;
   private listeners = new Set<() => void>();
   private readonly source: ConversationSearchSource;
-  constructor(source: ConversationSearchSource) {
+  constructor(source: ConversationSearchSource, query = '') {
+    this.state = { ...initial(), query };
     this.source = source;
   }
   isCurrent() {
@@ -63,6 +65,11 @@ export class ConversationSearch {
   open() {
     this.publish({ active: true });
   }
+  /** Keep the reviewed projection when returning, but retire all pending reads. */
+  suspend() {
+    this.generation++;
+    this.publish({ active: false, loading: false });
+  }
   close() {
     this.generation++;
     this.state = initial();
@@ -80,11 +87,13 @@ export class ConversationSearch {
       error: null,
     });
   }
+  fitsQuery(query: string) {
+    return this.source.fitsQuery?.(query) ?? conversationQueryFits(query);
+  }
   async search() {
     const query = this.state.query.trim();
     const generation = ++this.generation;
-    if (!this.state.active || !query || !conversationQueryFits(query) || !this.source.current())
-      return;
+    if (!this.state.active || !query || !this.fitsQuery(query) || !this.source.current()) return;
     this.publish({
       loading: true,
       completed: false,
@@ -110,15 +119,23 @@ export class ConversationSearch {
   }
   /** Search pages are newest first; older advances, newer moves back. */
   async move(direction: 'older' | 'newer') {
-    if (!this.source.current() || this.state.loading) return;
+    if (!this.isCurrent() || this.state.loading) return;
     const next = this.state.index + (direction === 'older' ? 1 : -1);
     if (next < 0) return;
     if (next < this.state.hits.length) {
       this.publish({ index: next });
       return;
     }
+    if (direction === 'older') await this.append(next);
+  }
+  /** List consumers load the next canonical page without moving their selection. */
+  async loadMore(observed: ConversationSearchState = this.state) {
+    if (observed !== this.state) return;
+    await this.append(this.state.index);
+  }
+  private async append(next: number) {
     const cursor = this.state.cursor;
-    if (!cursor || direction !== 'older') return;
+    if (!this.isCurrent() || this.state.loading || !cursor) return;
     const generation = ++this.generation;
     const query = this.state.query.trim();
     this.publish({ loading: true, error: null });
@@ -151,8 +168,9 @@ export class ConversationSearch {
 function uniqueHits(hits: readonly UniversalHit[]): UniversalHit[] {
   const seen = new Set<string>();
   return hits.filter((hit) => {
-    if (seen.has(hit.ref_id)) return false;
-    seen.add(hit.ref_id);
+    const key = JSON.stringify([hit.kind, hit.space_id, hit.ref_id]);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
