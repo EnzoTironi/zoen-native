@@ -1,3 +1,4 @@
+import type { ReplySelection } from './generated/ReplySelection';
 import type { TimelineEntry } from './types';
 
 export function canConsumeMediaReply(
@@ -38,7 +39,7 @@ export function projectMessageDraft(
 }
 export type MessageDraftAction =
   | { type: 'text'; value: string }
-  | { type: 'reply'; entry: TimelineEntry }
+  | { type: 'reply'; entry: TimelineEntry; selection?: ReplySelection }
   | { type: 'edit'; entry: TimelineEntry; text: string }
   | { type: 'cancel' }
   | { type: 'media-accepted'; contextRevision: number }

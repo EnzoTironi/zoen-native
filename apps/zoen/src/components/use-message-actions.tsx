@@ -1,3 +1,5 @@
+import type { ReplySelection } from '../core/generated/ReplySelection';
+import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -31,11 +33,13 @@ export function useMessageActions({
   onReply,
   onEdit,
   onThread,
+  threadRootId = null,
 }: {
   spaceId: string;
   entries: readonly TimelineEntry[];
   disabled?: boolean;
-  onReply: (entry: TimelineEntry) => void;
+  threadRootId?: string | null;
+  onReply: (entry: TimelineEntry, selection?: ReplySelection) => void;
   onEdit: (entry: TimelineEntry) => void;
   onThread?: (entry: TimelineEntry) => void;
 }) {
@@ -116,6 +120,13 @@ export function useMessageActions({
       return value && messageCanInteract(value) ? value : undefined;
     },
     [scope, spaceId, store],
+  );
+  const quote = useMessageQuoteSelection(
+    current,
+    onReply,
+    `${scope}:${store.sessionEpoch}`,
+    spaceId,
+    threadRootId,
   );
   useEffect(
     () =>
@@ -380,6 +391,7 @@ export function useMessageActions({
     thread,
     profile,
     react,
+    quotePanel: quote.panel,
     panel:
       selection?.mode === 'participants' || selection?.mode === 'emoji' ? (
         <ReactionDetails
@@ -456,6 +468,14 @@ export function useMessageActions({
           onReply={() => {
             if (selected) reply(selected);
           }}
+          onSelectText={
+            process.env.EXPO_OS === 'ios' &&
+            mode === 'account' &&
+            selected?.text_revision &&
+            messageText(selected).trim()
+              ? quote.open
+              : undefined
+          }
           onThread={() => {
             if (selected) thread(selected);
           }}

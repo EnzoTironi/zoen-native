@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { memo, useMemo } from 'react';
 import { Text, type LayoutChangeEvent } from 'react-native';
 import { EnrichedMarkdownText, type MarkdownStyle } from 'react-native-enriched-markdown';
@@ -13,6 +14,7 @@ export type MessageMarkdownProps = {
   maxWidth: number;
   testID?: string;
   selectable?: boolean;
+  onQuoteSelection?: (text: string, sourceRangesJSON?: string) => void;
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
@@ -25,6 +27,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   testID,
   selectable = false,
   onLayout,
+  onQuoteSelection,
 }: MessageMarkdownProps) {
   const { colors, scheme } = useTheme();
   const launchLink = useLinkLaunch(text);
@@ -139,6 +142,23 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         noMedia: process.env.EXPO_OS === 'ios',
       }}
       selectable={selectable}
+      contextMenuItems={
+        onQuoteSelection
+          ? [
+              {
+                text: t('chat.quoteSelection'),
+                icon: 'quote.bubble',
+                onPress: (event) =>
+                  onQuoteSelection(
+                    event.text,
+                    'sourceRangesJSON' in event && typeof event.sourceRangesJSON === 'string'
+                      ? event.sourceRangesJSON
+                      : undefined,
+                  ),
+              },
+            ]
+          : undefined
+      }
       allowFontScaling
       enableLinkPreview={false}
       enableBlockContextMenu={selectable}

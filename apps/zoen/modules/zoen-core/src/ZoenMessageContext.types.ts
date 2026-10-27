@@ -3,6 +3,7 @@ export type MessageContextAction =
   | 'reply'
   | 'thread'
   | 'copy'
+  | 'select'
   | 'edit'
   | 'recover'
   | 'forward'

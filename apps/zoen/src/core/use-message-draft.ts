@@ -167,7 +167,7 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
         else channel.controller.setText(channel.scope, action.value);
         break;
       case 'reply':
-        if (channel.controller.setReply(channel.scope, action.entry.id)) {
+        if (channel.controller.setReply(channel.scope, action.entry.id, action.selection ?? null)) {
           const current = store.getSnapshot();
           setQuote({
             channel,
@@ -199,6 +199,7 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
     messageDraft,
     updateDraft,
     replyTo,
+    replyQuote: normal?.replyQuote ?? null,
     capture: (): MessageDraftAttempt | null => {
       if (!channel || !store.messageDrafts.isCurrent(channel)) return null;
       const transient = transientNow.current;

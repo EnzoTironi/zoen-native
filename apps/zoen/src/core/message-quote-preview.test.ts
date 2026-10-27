@@ -1,3 +1,4 @@
+import type { ReplySelection } from './generated/ReplySelection';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -96,6 +97,7 @@ type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void }
 type Result = {
   messageDraft: MessageDraft;
   replyTo: string | null;
+  replyQuote: ReplySelection | null;
   capture(): MessageDraftAttempt | null;
   updateDraft(action: MessageDraftAction): void;
 };
@@ -110,10 +112,11 @@ async function fixture(
       text: 'Preserved normal draft',
       reply_to: 'quoted-message',
     }),
-    save: async (_scope, revision, text, reply_to) => ({
+    save: async (_scope, revision, text, reply_to, reply_quote) => ({
       revision: `${revision}x`,
       text,
       reply_to,
+      ...(reply_quote ? { reply_quote } : {}),
     }),
     send: async () => assert.fail('Quote preview must not send content'),
   });
@@ -428,4 +431,31 @@ test('capture rejects callbacks retained by a channel that is no longer admitted
   assert.equal(old.capture(), null, 'admission is checked even before the next React render');
   f.render();
   assert.equal(old.capture(), null);
+});
+
+test('selected excerpt survives live source edits and cancellation clears only its existing draft context', async () => {
+  const f = await fixture();
+  const selection: ReplySelection = {
+    source_id: 'quoted-message',
+    revision: 'signed-original',
+    spans: [{ start_utf16: 0, end_utf16: 8 }],
+    text: 'Original',
+  };
+  const initial = f.render();
+  initial.updateDraft({ type: 'reply', entry: message(), selection });
+  const staged = f.render();
+  assert.deepEqual(staged.replyQuote, selection);
+  const changed = message('Entire source changed', { edited: true });
+  f.read(async () => changed);
+  f.cache([changed]);
+  assert.deepEqual(f.render().replyQuote, selection);
+  assert.equal(text((await f.settle()).messageDraft.reply), 'Entire source changed');
+  assert.deepEqual(
+    f.render().replyQuote,
+    selection,
+    'canonical excerpt is independent of live legacy preview',
+  );
+  f.render().updateDraft({ type: 'cancel' });
+  assert.equal(f.render().replyQuote, null);
+  assert.equal(f.render().messageDraft.text, 'Preserved normal draft');
 });

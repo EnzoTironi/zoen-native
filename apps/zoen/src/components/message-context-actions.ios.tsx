@@ -48,6 +48,7 @@ export function ExtractedMessageActions({
       ['reply', t('chat.reply'), props.onReply],
       ['thread', t('chat.openReplies'), props.onThread],
       ['forward', t('chat.forward'), !entry.deleted ? props.onForward : undefined],
+      ['select', t('chat.selectText'), props.onSelectText],
       ['copy', t('chat.copyText'), props.onCopy],
       ['share', t('media.share'), props.onShare],
       [
@@ -92,6 +93,7 @@ export function ExtractedMessageActions({
           thread: props.onThread,
           forward: props.onForward,
           copy: props.onCopy,
+          select: props.onSelectText,
           share: props.onShare,
           edit: props.onEdit,
           recover: props.onRecover,

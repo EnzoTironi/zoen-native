@@ -2,6 +2,11 @@ import { defineFeature } from '../catalog.ts';
 
 export const chat = defineFeature(
   {
+    selectText: 'Select text',
+    quoteSelection: 'Quote',
+    quoteTextReplyOnly: 'Remove the quote to attach media.',
+    quoteSelectionUnavailable:
+      'This selection cannot be quoted. Select text without layout separators.',
     all: 'All',
     unread: 'Unread',
     today: 'Today',
@@ -216,6 +221,11 @@ export const chat = defineFeature(
     agentLabel: 'Agent',
   },
   {
+    selectText: 'Selecionar texto',
+    quoteSelection: 'Citar',
+    quoteTextReplyOnly: 'Remova a citação para anexar mídia.',
+    quoteSelectionUnavailable:
+      'Não foi possível citar este trecho. Selecione texto sem separadores de layout.',
     all: 'Todas',
     unread: 'Não lidas',
     today: 'Hoje',
