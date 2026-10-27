@@ -54,8 +54,9 @@ This efficiency slice is separate from the cold `agent-inspect` defect #519.
 
 Roadmap JSON references are evidence links only when the existing static-evidence
 validator proves their consumer boundary at both endpoints. A new material
-consumer or unknown evidence file retains Rust. Basename collisions are ignored
-only inside a complete unescaped repository-qualified literal naming another
-regular source blob at both endpoints; bare, relative, constructed, unknown,
-symlinked or changed targets remain conservative inputs. No per-route reader
-exceptions or evidence-content hashes are added.
+consumer or unknown evidence file retains Rust. One complete reviewed reader,
+`test-android-core-contract.py`, builds synthetic files under its own temporary
+root; its whole-file digest and regular mode must match at both endpoints.
+All other basename readers, including qualified paths and delayed transformations,
+remain conservative inputs. No per-route exceptions or roadmap-content hashes
+are added.

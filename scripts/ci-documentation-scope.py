@@ -149,7 +149,7 @@ def validate_frontend(base, head, ancestor, paths):
         # Cross-boundary readers and shared JSON can be outside the Cargo
         # directories. Frontend-to-frontend imports remain in the app lane.
         from ci_frontend_readers import material_readers
-        readers = material_readers(git, regular_blob, base, head, tree, paths,
+        readers = material_readers(git, regular_blob, base, head,
                                    frontend_reference_readers(tree, paths))
         for reader in readers:
             if reader not in disjoint or frontend_reference_readers(
