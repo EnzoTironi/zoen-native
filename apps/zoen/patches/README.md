@@ -56,6 +56,9 @@ the pinned `patch-package@8.0.1`:
    Offsets use half-open UTF-16 units in the exact canonical Markdown revision.
    Unmapped layout spacers/normalization refuse the entire quote before draft mutation;
    this never substitutes rendered offsets or searches for repeated selected text.
+8. `008+message-context-admission`: lets the parent message context admit read-only
+   rendered body while reusing the renderer’s exact interactive-point hit test.
+   Editable/selectable text, links, tasks, spoilers, images and code retain input.
 
 Each patch is an authored maintained file below 20,000 bytes. They are sequential
 diffs of complete package states, not arbitrary slices of a large diff. The two
@@ -72,7 +75,7 @@ that metadata separately from package source equality.
 Patch-package records applied patch hashes and refuses changed applied stages.
 A failed stage must exit nonzero and stop later stages. On a pristine install it
 cannot infer that a disjoint patch was deleted from version control: verify all
-six expected stages and the full final source manifest during qualification.
+eight expected stages and the full final source manifest during qualification.
 
 For edits to a non-final stage, use patch-package's documented `--rebase` workflow
 and regenerate successor diffs as needed. Do not hand-split hunks or substitute
