@@ -260,6 +260,14 @@ pub(super) enum Command {
         space_id: String,
         message_id: String,
     },
+    UniversalSearchPage {
+        query: String,
+        kinds: Vec<String>,
+        cursor: Option<String>,
+        limit: u32,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
     UniversalSearch {
         query: String,
         kinds: Vec<String>,

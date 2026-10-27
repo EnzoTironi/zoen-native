@@ -139,6 +139,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::AgentEnrollmentDeliveryDto::export_all(&config)?;
     crate::AgentEnrollmentStatusDto::export_all(&config)?;
     crate::UniversalResults::export_all(&config)?;
+    crate::UniversalSearchPage::export_all(&config)?;
     Ok(())
 }
 
