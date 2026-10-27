@@ -1,3 +1,4 @@
+import type { ReplySelection } from '../core/generated/ReplySelection';
 import Animated, { Easing, FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
 import { Text, View } from 'react-native';
 import { telegramAudio } from '../core/telegram-audio-presentation';
@@ -11,10 +12,12 @@ import { Icon, IconButton } from './primitives';
 export function MessageContext({
   entry,
   editing = false,
+  quote,
   onCancel,
 }: {
   entry?: TimelineEntry;
   editing?: boolean;
+  quote?: ReplySelection | null;
   onCancel?: () => void;
 }) {
   const { presentation: p, reducedMotion } = useTheme();
@@ -95,11 +98,13 @@ export function MessageContext({
           numberOfLines={1}
           style={{ color: p.chat.input.placeholder, fontSize: 15, lineHeight: 18 }}
         >
-          {entry
-            ? entry.voice
-              ? t('media.voiceMessage')
-              : messageText(entry)
-            : t('chat.messageUnavailable')}
+          {quote && !editing
+            ? quote.text
+            : entry
+              ? entry.voice
+                ? t('media.voiceMessage')
+                : messageText(entry)
+              : t('chat.messageUnavailable')}
         </Text>
       </Animated.View>
       {onCancel ? (

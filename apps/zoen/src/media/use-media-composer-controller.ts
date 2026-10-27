@@ -1,4 +1,9 @@
-import { RecordingPresets, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
+import {
+  RecordingPresets,
+  useAudioRecorder,
+  useAudioRecorderState,
+  type RecordingStatus,
+} from 'expo-audio';
 import { useFocusEffect } from 'expo-router';
 import {
   useCallback,
@@ -18,7 +23,12 @@ import { useAttachmentComposer } from './attachment-composer';
 import { pauseAudioPlayback } from './AudioClip';
 import { sensitiveCacheWork } from './cache-work';
 import type { MediaPickKind } from './media-actions.types';
-import { discard, failureMessage, type Recording } from './media-composer-shared';
+import {
+  discard,
+  failureMessage,
+  type Recording,
+  type StoppedCapture,
+} from './media-composer-shared';
 import type { VoiceDraftOwner } from './voice-draft-owner';
 import type { VoiceDraft } from './voice-edit';
 import type { VoiceReviewOwner } from './voice-review-owner';
@@ -30,6 +40,7 @@ import {
 } from './voice-trim-preview';
 
 import { nativeCaptureOwner, type CaptureLease } from './native-capture-owner.ts';
+import { finishNativeCapture, rememberCaptureDuration } from './media-composer-terminal';
 import * as captureOperations from './media-composer-capture';
 import type { MediaComposerOptions } from './media-composer-contract';
 import * as lifecycle from './media-composer-lifecycle';
@@ -64,12 +75,16 @@ export function useMediaComposerController({
   const media = store.driver.media;
   const { colors } = useTheme();
   const { inform } = useDialogs();
-  const recorder = useAudioRecorder({
-    ...RecordingPresets.HIGH_QUALITY,
-    numberOfChannels: 1,
-    bitRate: 64000,
-    isMeteringEnabled: true,
-  });
+  const terminal = useRef<(status: RecordingStatus) => void>(() => {});
+  const recorder = useAudioRecorder(
+    {
+      ...RecordingPresets.HIGH_QUALITY,
+      numberOfChannels: 1,
+      bitRate: 64000,
+      isMeteringEnabled: true,
+    },
+    (status) => terminal.current(status),
+  );
   const recorderState = useAudioRecorderState(recorder, 100);
   const [captureOwner] = useState(() => ({}));
   const webCaptureLease = useRef<CaptureLease | null>(null);
@@ -100,11 +115,7 @@ export function useMediaComposerController({
   const disabledNow = useRef(disabled);
   const prepared = useRef(false);
   const preparedUri = useRef<string | undefined>(undefined);
-  const stoppedCapture = useRef<{
-    uri: string | undefined;
-    durationMs: number;
-    stopped: boolean;
-  } | null>(null);
+  const stoppedCapture = useRef<StoppedCapture | null>(null);
   const recording = useRef(false);
   const audioModeNeedsRestore = useRef(false);
   const trimNow = useRef<PendingVoiceTrim>(null);
@@ -268,6 +279,30 @@ export function useMediaComposerController({
       replaceVoiceControl,
     ],
   );
+  useLayoutEffect(() => {
+    rememberCaptureDuration({ recording, stoppedCapture, stopTask }, recorderState.durationMillis);
+  }, [recorderState.durationMillis, captureActive]);
+  useLayoutEffect(() => {
+    terminal.current = (status) =>
+      finishNativeCapture(
+        {
+          recording,
+          stoppedCapture,
+          stopTask,
+          recorder,
+          mounted,
+          captureControl,
+          voiceControlNow,
+          getCaptureLease,
+          captureOwner,
+          setFailure,
+        },
+        status,
+      );
+    return () => {
+      terminal.current = () => {};
+    };
+  }, [recorder, stop, getCaptureLease, captureOwner]);
   useEffect(
     () =>
       lifecycle.voiceLifecycle7({

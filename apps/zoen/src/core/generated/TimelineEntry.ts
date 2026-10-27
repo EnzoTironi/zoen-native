@@ -7,7 +7,11 @@ import type { ReactionDto } from "./ReactionDto";
 import type { ReplyQuote } from "./ReplyQuote";
 import type { VoiceNoteDto } from "./VoiceNoteDto";
 
-export type TimelineEntry = { id: string, seq: string, author: Persona, at_ms: string, kind: EntryKind, 
+export type TimelineEntry = { 
+/**
+ * Stable logical event identity of the currently visible source text.
+ */
+text_revision?: string, id: string, seq: string, author: Persona, at_ms: string, kind: EntryKind, 
 /**
  * Signed attachment presentation and explicit album membership. Legacy messages omit it.
  */

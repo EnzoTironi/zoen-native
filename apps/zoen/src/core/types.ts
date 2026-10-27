@@ -1,3 +1,4 @@
+import type { ReplySelection } from './generated/ReplySelection';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
 import type { PageInputPort } from '../documents/page-input';
 import type { LogEventsPage } from './generated/LogEventsPage';
@@ -127,6 +128,7 @@ type Results = {
   app_edit_targets: AppEditTargets;
   app_current_share_context: AppShareContext;
   share_app_current: AppShareResult;
+  review_reply_selection: ReplySelection;
   message_draft: MessageDraftDto;
   save_message_draft: MessageDraftDto;
   send_message_draft: MessageDraftSendResult;

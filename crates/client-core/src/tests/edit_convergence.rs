@@ -198,6 +198,7 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
                 INLINE,
                 "Obrigado, combinado.",
                 Some(ReplyRef {
+                    quote: None,
                     artifact: None,
                     to: ROOT.into(),
                     thread: false,
@@ -211,6 +212,7 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
                 CHILD,
                 "Levar lanche",
                 Some(ReplyRef {
+                    quote: None,
                     artifact: None,
                     to: ROOT.into(),
                     thread: true,

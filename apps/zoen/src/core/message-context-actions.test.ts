@@ -1,3 +1,4 @@
+import { selectedMessageQuote } from './selected-message-quote.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -48,6 +49,7 @@ function fixture(
     pending?: boolean;
     row?: boolean;
     recover?: boolean;
+    quote?: boolean;
   } = {},
 ) {
   const result = deferred<string | null>(),
@@ -62,7 +64,24 @@ function fixture(
   let deps: unknown[] | undefined;
   const refs: { current: unknown }[] = [];
   let cursor = 0;
+  let selectionHandler: any;
+  const quote = {
+    source_id: 'message',
+    revision: 'signed',
+    spans: [{ start_utf16: 9, end_utf16: 13 }],
+    text: 'same',
+  };
   const request = {
+    ...(options.quote
+      ? {
+          textSelection: {
+            bind: (handler: any) => {
+              selectionHandler = handler;
+              return () => calls.push('selection-detach');
+            },
+          },
+        }
+      : {}),
     binding: 'binding',
     gestureId: 'gesture',
     kind: 'hold',
@@ -81,6 +100,8 @@ function fixture(
   let props: any = {
     entry: {
       id: 'message',
+      text_revision: 'signed',
+      kind: { Message: { text: '**same** same', card: null } },
       author: { is_me: options.mine ?? true },
       deleted: options.deleted ?? false,
       delivery: options.recover ? 'Failed' : 'Sent',
@@ -100,6 +121,17 @@ function fixture(
     onEdit: options.recover ? undefined : () => calls.push('edit'),
     onRecover: options.recover ? () => calls.push('recover') : undefined,
     onDelete: () => calls.push('delete'),
+    onSelectText: options.quote
+      ? () => {
+          calls.push('selecting');
+          return () => calls.push('quote-cancel');
+        }
+      : undefined,
+    onQuoteReview: async () => {
+      calls.push('review-only');
+      return quote;
+    },
+    onQuote: () => calls.push('quoted'),
   };
   const theme = {
     background: '#111111',
@@ -133,6 +165,7 @@ function fixture(
     '../i18n/index.ts': { t: (key: string) => key },
     '../theme': { useTheme: () => ({ presentation: { context: theme }, reducedMotion: true }) },
     './message-context-presentation': { MessageContextPresentation },
+    '../core/selected-message-quote': { selectedMessageQuote },
   };
   runInNewContext(compiled, {
     module,
@@ -164,6 +197,8 @@ function fixture(
     configurations,
     theme,
     request,
+    quote,
+    selection: () => selectionHandler,
     revoke: () => {
       live = false;
     },
@@ -293,3 +328,34 @@ test('handler/reaction updates keep one native presentation but completion uses 
   await tick();
   assert.deepEqual(f.calls, ['close', 'fresh-reply']);
 });
+
+test('native in-context selection reviews only, and only restored current result stages exact quote', async () => {
+  const f = fixture({ quote: true });
+  f.render();
+  await tick();
+  f.selection().started();
+  const payload = await f.selection().review('same', JSON.stringify(f.quote.spans));
+  assert.deepEqual(f.calls, ['selecting', 'review-only']);
+  f.result.resolve('select:' + payload);
+  await tick();
+  assert.deepEqual(f.calls, ['selecting', 'review-only', 'quoted', 'quote-cancel', 'close']);
+});
+for (const failure of ['source', 'revision', 'spans'] as const)
+  test(`native quote result with wrong ${failure} restores without changing draft`, async () => {
+    const f = fixture({ quote: true });
+    f.render();
+    await tick();
+    f.selection().started();
+    const bad = {
+      ...f.quote,
+      ...(failure === 'source'
+        ? { source_id: 'foreign' }
+        : failure === 'revision'
+          ? { revision: 'other' }
+          : { spans: [] }),
+    };
+    f.result.resolve('select:' + JSON.stringify(bad));
+    await tick();
+    assert.ok(!f.calls.includes('quoted'));
+    assert.ok(f.calls.includes('close'));
+  });

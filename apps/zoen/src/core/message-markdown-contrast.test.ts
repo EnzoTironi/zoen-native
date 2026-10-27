@@ -1,3 +1,6 @@
+import * as React from 'react';
+import * as jsxRuntime from 'react/jsx-runtime';
+import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -59,7 +62,15 @@ type NormalizedStyle = Record<
 
 function fixture() {
   let theme = resolveSkyTheme('day', new Date(2026, 9, 26, 12));
-  let memo: { deps: unknown[]; value: unknown } | undefined;
+  const root = createReactTestRoot();
+  const themeContext = React.createContext(theme);
+  let rendered: Record<string, unknown> | null = null;
+  function NativeMarkdownText(props: Record<string, unknown>) {
+    React.useLayoutEffect(() => {
+      rendered = props;
+    }, [props]);
+    return null;
+  }
   const module = { exports: {} as Record<string, unknown> };
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
@@ -67,17 +78,8 @@ function fixture() {
     process: { env: { EXPO_OS: 'ios' } },
     __DEV__: false,
     require(name: string) {
-      if (name === 'react')
-        return {
-          memo: (value: unknown) => value,
-          useMemo: (read: () => unknown, deps: unknown[]) => {
-            if (!memo || deps.some((value, index) => !Object.is(value, memo!.deps[index])))
-              memo = { deps, value: read() };
-            return memo.value;
-          },
-        };
-      if (name === 'react/jsx-runtime')
-        return { jsx: (type: unknown, props: unknown) => ({ type, props }) };
+      if (name === 'react') return React;
+      if (name === 'react/jsx-runtime') return jsxRuntime;
       if (name === 'react-native')
         return {
           Text: 'PlainText',
@@ -86,25 +88,30 @@ function fixture() {
           processColor: (value: string) => value,
         };
       if (name === 'react-native-enriched-markdown')
-        return { EnrichedMarkdownText: 'NativeMarkdownText' };
-      if (name === '../theme') return { useTheme: () => theme };
+        return { EnrichedMarkdownText: NativeMarkdownText };
+      if (name === '../theme') return { useTheme: () => React.use(themeContext) };
       if (name === './use-link-launch') return { useLinkLaunch: () => () => {} };
       if (name === './use-message-code-copy') return { useMessageCodeCopy: () => () => {} };
       throw new Error(`Unexpected native port ${name}`);
     },
   });
-  const render = module.exports.MessageMarkdown as (props: Record<string, unknown>) => {
-    type: unknown;
-    props: Record<string, unknown>;
-  };
+  const Component = module.exports.MessageMarkdown as React.ComponentType<Record<string, unknown>>;
   const normalize = module.exports.normalizeMarkdownStyle as (style: unknown) => NormalizedStyle;
   return {
-    render(next: typeof theme, color: string, markdown: string) {
+    close: root.close,
+    async render(next: typeof theme, color: string, markdown: string) {
       theme = next;
-      const tree = render({ text: markdown, color, fontSize: 17, maxWidth: 300 });
-      assert.equal(tree.type, 'NativeMarkdownText');
-      assert.equal(tree.props.markdown, markdown, 'appearance never changes the signed source');
-      const style = normalize(tree.props.markdownStyle);
+      await root.render(
+        React.createElement(
+          themeContext,
+          { value: next },
+          React.createElement(Component, { text: markdown, color, fontSize: 17, maxWidth: 300 }),
+        ),
+      );
+      const props = rendered as Record<string, unknown> | null;
+      assert.ok(props, 'Markdown must reach the real native component port');
+      assert.equal(props.markdown, markdown, 'appearance never changes the signed source');
+      const style = normalize(props.markdownStyle);
       assert.equal(style.paragraph.color, color, 'ordinary message ink still follows the bubble');
       return style;
     },
@@ -116,83 +123,92 @@ function over(color: string, backdrop: string): string {
   return mixColor(backdrop, color, alpha);
 }
 
-test('real Markdown normalization keeps table cells readable across theme and bubble ink changes', () => {
+test('real Markdown normalization keeps table cells readable across theme and bubble ink changes', async () => {
   const f = fixture();
-  const markdown = '| Campo | Valor |\n| --- | ---: |\n| alfa | 17 |\n| beta | 23 |';
-  for (const profile of ['night', ...THEME_PROFILES, 'day', 'night'] as const) {
-    for (const outgoing of [null, '#000000', '#FFFFFF']) {
-      const theme = resolveSkyTheme(profile, new Date(2026, 9, 26, 12), {
-        ...DEFAULT_THEME_CUSTOMIZATION,
-        outgoing,
-      });
-      for (const ink of [theme.colors.text, theme.colors.onMine]) {
-        const style = f.render(theme, ink, markdown);
-        const table = style.table;
-        for (const backdrop of [
-          theme.presentation.chat.incoming.fill,
-          ...theme.presentation.chat.outgoing.fillColors,
-        ]) {
-          for (const [foreground, background] of [
-            [table.headerTextColor!, table.headerBackgroundColor!],
-            ...[table.rowEvenBackgroundColor!, table.rowOddBackgroundColor!].flatMap((background) =>
-              [
-                table.color!,
-                style.strong.color ?? table.color!,
-                style.em.color ?? table.color!,
-              ].map((foreground) => [foreground, background]),
-            ),
-          ])
-            assert.ok(
-              contrastRatio(foreground!, over(background!, backdrop)) >= 4.5,
-              `${profile}: table ink ${foreground} must remain readable on ${background} over ${backdrop}`,
-            );
+  try {
+    const markdown = '| Campo | Valor |\n| --- | ---: |\n| alfa | 17 |\n| beta | 23 |';
+    for (const profile of ['night', ...THEME_PROFILES, 'day', 'night'] as const) {
+      for (const outgoing of [null, '#000000', '#FFFFFF']) {
+        const theme = resolveSkyTheme(profile, new Date(2026, 9, 26, 12), {
+          ...DEFAULT_THEME_CUSTOMIZATION,
+          outgoing,
+        });
+        for (const ink of [theme.colors.text, theme.colors.onMine]) {
+          const style = await f.render(theme, ink, markdown);
+          const table = style.table;
+          for (const backdrop of [
+            theme.presentation.chat.incoming.fill,
+            ...theme.presentation.chat.outgoing.fillColors,
+          ]) {
+            for (const [foreground, background] of [
+              [table.headerTextColor!, table.headerBackgroundColor!],
+              ...[table.rowEvenBackgroundColor!, table.rowOddBackgroundColor!].flatMap(
+                (background) =>
+                  [
+                    table.color!,
+                    style.strong.color ?? table.color!,
+                    style.em.color ?? table.color!,
+                  ].map((foreground) => [foreground, background]),
+              ),
+            ])
+              assert.ok(
+                contrastRatio(foreground!, over(background!, backdrop)) >= 4.5,
+                `${profile}: table ink ${foreground} must remain readable on ${background} over ${backdrop}`,
+              );
+          }
         }
       }
     }
+  } finally {
+    await f.close();
   }
 });
 
-test('quote, inline code and highlighted code retain readable ink on their own surfaces', () => {
+test('quote, inline code and highlighted code retain readable ink on their own surfaces', async () => {
   const f = fixture();
-  const markdown = '> **Quote**\n\n`inline()`\n\n```ts\nconst value = 17; // comment\n```';
-  for (const profile of [...THEME_PROFILES, 'night', 'day'] as const) {
-    for (const outgoing of ['#000000', '#FFFFFF', null]) {
-      const theme = resolveSkyTheme(profile, new Date(2026, 9, 26, 12), {
-        ...DEFAULT_THEME_CUSTOMIZATION,
-        outgoing,
-      });
-      for (const ink of [theme.colors.onMine, theme.colors.text]) {
-        const style = f.render(theme, ink, markdown);
-        const surfaces = [
-          ['quote', style.blockquote.color!, style.blockquote.backgroundColor!],
-          [
-            'quote bold',
-            style.strong.color ?? style.blockquote.color!,
-            style.blockquote.backgroundColor!,
-          ],
-          [
-            'quote emphasis',
-            style.em.color ?? style.blockquote.color!,
-            style.blockquote.backgroundColor!,
-          ],
-          ['inline code', style.code.color!, style.code.backgroundColor!],
-          ['code block', style.codeBlock.color, style.codeBlock.backgroundColor],
-          ...Object.entries(style.codeBlock.syntaxColors).map(([token, foreground]) => [
-            token,
-            foreground,
-            style.codeBlock.backgroundColor,
-          ]),
-        ];
-        for (const backdrop of [
-          theme.presentation.chat.incoming.fill,
-          ...theme.presentation.chat.outgoing.fillColors,
-        ])
-          for (const [name, foreground, background] of surfaces)
-            assert.ok(
-              contrastRatio(foreground!, over(background!, backdrop)) >= 4.5,
-              `${profile}/${name}: ink ${foreground} must remain readable on ${background} over ${backdrop}`,
-            );
+  try {
+    const markdown = '> **Quote**\n\n`inline()`\n\n```ts\nconst value = 17; // comment\n```';
+    for (const profile of [...THEME_PROFILES, 'night', 'day'] as const) {
+      for (const outgoing of ['#000000', '#FFFFFF', null]) {
+        const theme = resolveSkyTheme(profile, new Date(2026, 9, 26, 12), {
+          ...DEFAULT_THEME_CUSTOMIZATION,
+          outgoing,
+        });
+        for (const ink of [theme.colors.onMine, theme.colors.text]) {
+          const style = await f.render(theme, ink, markdown);
+          const surfaces = [
+            ['quote', style.blockquote.color!, style.blockquote.backgroundColor!],
+            [
+              'quote bold',
+              style.strong.color ?? style.blockquote.color!,
+              style.blockquote.backgroundColor!,
+            ],
+            [
+              'quote emphasis',
+              style.em.color ?? style.blockquote.color!,
+              style.blockquote.backgroundColor!,
+            ],
+            ['inline code', style.code.color!, style.code.backgroundColor!],
+            ['code block', style.codeBlock.color, style.codeBlock.backgroundColor],
+            ...Object.entries(style.codeBlock.syntaxColors).map(([token, foreground]) => [
+              token,
+              foreground,
+              style.codeBlock.backgroundColor,
+            ]),
+          ];
+          for (const backdrop of [
+            theme.presentation.chat.incoming.fill,
+            ...theme.presentation.chat.outgoing.fillColors,
+          ])
+            for (const [name, foreground, background] of surfaces)
+              assert.ok(
+                contrastRatio(foreground!, over(background!, backdrop)) >= 4.5,
+                `${profile}/${name}: ink ${foreground} must remain readable on ${background} over ${backdrop}`,
+              );
+        }
       }
     }
+  } finally {
+    await f.close();
   }
 });

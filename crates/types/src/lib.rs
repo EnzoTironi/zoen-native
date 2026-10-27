@@ -25,7 +25,7 @@ pub mod owner_budget;
 pub mod owner_policy_context;
 pub use annotation::Annotation;
 pub mod reply;
-pub use reply::{ArtifactRequest, ReplyRef};
+pub use reply::{ArtifactRequest, QuoteSpan, ReplyRef, SelectedQuote};
 mod app_share;
 pub use app_share::{AppCurrentShare, AppItemOrigin, AppShareRef};
 

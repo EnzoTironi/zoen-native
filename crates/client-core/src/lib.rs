@@ -84,9 +84,11 @@ pub use recent_attachments::{
     RecentAttachment, RecentAttachmentKind, RecentAttachmentPage, RecentAttachmentReference,
     RecentAttachmentSourceBinding,
 };
+mod chat_mute;
 pub use universal_pages::UniversalSearchPage;
 mod message_drafts;
 mod native_surfaces;
+pub use chat_mute::ChatMuteMode;
 pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};
 mod pages;
 pub use files::FileDto;
@@ -108,6 +110,8 @@ mod net;
 mod profile;
 mod provider_auth;
 mod replies;
+mod selected_quotes;
+pub use selected_quotes::{QuoteSpan, ReplySelection};
 pub mod runtime_core;
 pub use profile::{PhotoChange, ProfileDto, ProfilePhotoBytes};
 mod sync;

@@ -5,6 +5,13 @@ import type { VoiceDraftOwner } from './voice-draft-owner';
 import type { VoiceReviewOwner } from './voice-review-owner';
 import { VoiceSessionFailure } from './voice-session';
 
+export type StoppedCapture = {
+  uri: string | undefined;
+  durationMs: number;
+  stopped: boolean;
+  terminal?: boolean;
+  replacementUri?: string;
+};
 export type Recording = {
   uri: string;
   durationMs: number;

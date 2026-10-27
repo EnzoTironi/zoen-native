@@ -2,7 +2,7 @@ import UIKit
 
 extension ZoenMessageContextController {
   func trackHeldTouch(_ point: CGPoint, origin: CGPoint, ended: Bool, cancelled: Bool) {
-    guard isCurrent, !closing else { return }
+    guard isCurrent, !closing, !selectingText else { return }
     if cancelled || ended {
       // Reflow can put a menu row under a stationary finger. Only a preceding
       // deliberate Move may admit its hover; Up must never hit-test a new row.
@@ -26,10 +26,11 @@ extension ZoenMessageContextController {
   @objc func nextAction() { moveFocus(1) }
   @objc func previousAction() { moveFocus(-1) }
   @objc func activateFocused() {
+    guard !selectingText else { return }
     if let id = hover?.accessibilityIdentifier?.replacingOccurrences(of: "message-context-", with: "") { choose(id) }
   }
   private func moveFocus(_ direction: Int) {
-    guard isCurrent, !closing else { return }
+    guard isCurrent, !closing, !selectingText else { return }
     let buttons = reactionButtons + actionButtons
     guard !buttons.isEmpty else { return }
     let index = hover.flatMap { current in buttons.firstIndex(where: { $0 === current }) } ?? (direction > 0 ? -1 : 0)
@@ -39,7 +40,7 @@ extension ZoenMessageContextController {
     UIAccessibility.post(notification: .layoutChanged, argument: next)
   }
   func trackActionTouch(_ point: CGPoint, ended: Bool, cancelled: Bool) {
-    guard isCurrent, !closing else { return }
+    guard isCurrent, !closing, !selectingText else { return }
     let local = actions.convert(point, from: sourceWindow)
     let index = ZoenMessageActionHighlight.target(at: local, rows: actionButtons.map(\.frame), visibleBounds: actions.bounds)
     let target = index.map { actionButtons[$0] }

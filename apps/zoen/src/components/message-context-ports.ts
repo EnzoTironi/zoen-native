@@ -16,3 +16,11 @@ export type {
   MessageContextSelection,
   MessageContextTheme,
 } from '../../modules/zoen-core/src/ZoenMessageContext.types';
+
+/** Active only on the original source inside the existing native context controller. */
+export const MessageTextSelection = createContext<{
+  active: boolean;
+  pending: boolean;
+  error: boolean;
+  quote(text: string, ranges?: string): Promise<void>;
+} | null>(null);

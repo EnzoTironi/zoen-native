@@ -259,6 +259,13 @@ impl Engine {
             r.mine = r.people.iter().any(|p| p.id == me);
         }
         TimelineEntry {
+            text_revision: matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted)
+                .then(|| {
+                    marks
+                        .text_revision
+                        .clone()
+                        .unwrap_or_else(|| e.id().to_string())
+                }),
             media: (!marks.deleted)
                 .then(|| marks.media.as_ref().map(MessageMediaDto::from))
                 .flatten(),

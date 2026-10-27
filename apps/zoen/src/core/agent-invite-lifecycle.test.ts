@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { agentTrustLevels, confirmAgentTrust } from '../agents/trust-confirmation.ts';
+import { ClientStore } from './store.ts';
+import { Driver, empty } from './store.fixtures.ts';
+import type { Command } from './types.ts';
 import { AgentControlSession } from '../agents/agent-control-session.ts';
 import type { AccountScope } from './account-scope.ts';
 import type { AgentControlDto } from './generated/AgentControlDto.ts';
@@ -35,12 +39,14 @@ async function settle() {
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
-async function fixture() {
+async function fixture(withTrust = false) {
   let scope: AccountScope = { identity: 'owner', device: 'phone', relay: 'relay', epoch: 1 };
   let record: AgentControlDto = {
     status: 'Active',
@@ -78,6 +84,20 @@ async function fixture() {
   const requests: unknown[] = [],
     shares: unknown[] = [];
   let invite: Promise<{ link: string }> | null = null;
+  let mutation: Promise<void> | null = null;
+  const canonicalEvents: string[] = [];
+  const refreshes: (string | undefined)[] = [];
+  const driver = new Driver();
+  driver.operation = async (command) => {
+    if (command.op === 'snapshot') return empty;
+    requests.push(command);
+    if (mutation) await mutation;
+  };
+  const canonicalStore = new ClientStore(driver);
+  canonicalStore.subscribeCanonicalChanges(() => {
+    canonicalEvents.push('canonical');
+    void session.refresh();
+  });
   const store = {
     driver: {
       request: async (command: unknown) => {
@@ -85,14 +105,20 @@ async function fixture() {
         return invite ? await invite : { link: 'https://example.test/synthetic-invite' };
       },
     },
-    request: async (command: unknown) => {
+    request: async (command: Command) => {
+      if (withTrust) {
+        const result = await canonicalStore.request(command);
+        canonicalEvents.push('resolved');
+        return result;
+      }
       requests.push(command);
+      if (mutation) await mutation;
     },
     refresh: async () => {},
   };
   const agent = {
     persona: { id: 'agent', name: 'Synthetic agent', is_mine: true, bio: '' },
-    spaces: [],
+    spaces: withTrust ? [{ space_id: 'chat', space_title: 'Synthetic chat', level: 'Listen' }] : [],
     owner_notes_pending: 0,
   };
   const slots: unknown[] = [],
@@ -145,13 +171,15 @@ async function fixture() {
     '../../core/query': {
       useCoreQuery: (query: { op: string } | null) => ({
         data: query?.op === 'agent_profile' ? agent : [],
-        retry: () => {},
+        retry: () => {
+          refreshes.push(query?.op);
+        },
       }),
     },
     '../../core/presentation': { money: () => '' },
     '../../agents/trust-confirmation': {
-      agentTrustLevels: () => [],
-      confirmAgentTrust: async () => false,
+      agentTrustLevels,
+      confirmAgentTrust,
     },
     '../../components/primitives': primitives,
     '../../components/settings-rows': { SettingsRows: 'SettingsRows' },
@@ -172,6 +200,7 @@ async function fixture() {
   };
   const module: { exports: Record<string, any> } = { exports: {} };
   runInNewContext(code, {
+    Error,
     module,
     exports: module.exports,
     process: { env: { EXPO_OS: 'ios' } },
@@ -183,6 +212,8 @@ async function fixture() {
   });
   return {
     session,
+    canonicalEvents,
+    refreshes,
     controls,
     confirmations,
     confirm: (value: boolean | Promise<boolean>) => {
@@ -209,6 +240,9 @@ async function fixture() {
     },
     retireOwner: () => {
       scope = { ...scope, epoch: 2 };
+    },
+    holdMutation: (pending: Promise<void>) => {
+      mutation = pending;
     },
     holdInvite: (pending: Promise<{ link: string }>) => {
       invite = pending;
@@ -377,4 +411,129 @@ test('retained revoke press cannot open a confirmation in a new activation', asy
   action(prior, 'revokeAgent').props.onPress();
   assert.deepEqual(f.confirmations, []);
   assert.deepEqual(f.requests, []);
+});
+
+function autonomy(tree: Element, level = 'Act') {
+  const title = agentTrustLevels().find((candidate) => candidate.value === level)?.title;
+  const found = nodes(tree).find(
+    (node) =>
+      node.type === 'Pressable' && nodes(node).some((child) => child.props.children === title),
+  );
+  assert.ok(found, `autonomy ${level}`);
+  return found;
+}
+for (const status of ['Active', 'Paused'] as const) {
+  test(`compiled autonomy keeps valid ${status} consent`, async () => {
+    const f = await fixture(true);
+    await f.observe({ status });
+    f.confirm(true);
+    autonomy(f.render()).props.onPress();
+    await settle();
+    assert.equal(f.confirmations.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.requests)), [
+      { op: 'set_trust', agent_id: 'agent', space_id: 'chat', level: 'Act' },
+    ]);
+    assert.deepEqual(f.canonicalEvents, ['canonical', 'resolved']);
+    assert.deepEqual(f.refreshes, [
+      'agent_profile',
+      'standing_decisions',
+      'agent_activity',
+      'preview_decisions',
+    ]);
+    assert.equal(
+      nodes(f.render()).some((node) => node.props.children === 'agents.autonomyUpdatedInThisChat'),
+      true,
+    );
+  });
+}
+test('declining autonomy confirmation sends nothing', async () => {
+  const f = await fixture(true);
+  f.confirm(false);
+  autonomy(f.render()).props.onPress();
+  await settle();
+  assert.equal(f.confirmations.length, 1);
+  assert.deepEqual(f.requests, []);
+});
+for (const changed of [
+  'reactivation',
+  'blur',
+  'owner',
+  'pause',
+  'pending',
+  'revoked',
+  'observation',
+] as const) {
+  test(`autonomy confirmation cannot outlive ${changed}`, async () => {
+    const f = await fixture(true),
+      answer = deferred<boolean>();
+    f.confirm(answer.promise);
+    autonomy(f.render()).props.onPress();
+    await settle();
+    assert.equal(f.confirmations.length, 1);
+    if (changed === 'reactivation') await f.reactivate();
+    else if (changed === 'blur') f.session.suspend();
+    else if (changed === 'owner') f.retireOwner();
+    else if (changed === 'pause') await f.observe({ status: 'Paused', revision: '2' });
+    else if (changed === 'pending')
+      await f.observe({ pending: 'Pause', operation_id: 'a'.repeat(64) });
+    else if (changed === 'revoked') await f.observe({ status: 'Revoked', revision: '2' });
+    else await f.session.refresh();
+    answer.resolve(true);
+    await settle();
+    assert.deepEqual(f.requests, []);
+  });
+}
+test('retained autonomy handler cannot borrow a new activation', async () => {
+  const f = await fixture(true),
+    old = f.render();
+  await f.reactivate();
+  f.confirm(true);
+  autonomy(old).props.onPress();
+  await settle();
+  assert.deepEqual(f.confirmations, []);
+  assert.deepEqual(f.requests, []);
+});
+
+for (const retirement of ['reactivation', 'blur', 'owner'] as const) {
+  for (const outcome of ['success', 'error'] as const) {
+    test(`an admitted autonomy ${outcome} cannot publish after ${retirement}`, async () => {
+      const f = await fixture(true),
+        result = deferred<void>();
+      f.holdMutation(result.promise);
+      f.confirm(true);
+      autonomy(f.render()).props.onPress();
+      await settle();
+      assert.equal(f.requests.length, 1, 'the original request was admitted');
+      if (retirement === 'reactivation') await f.reactivate();
+      else if (retirement === 'blur') f.session.suspend();
+      else f.retireOwner();
+      if (outcome === 'success') result.resolve();
+      else result.reject(Error('retired request failed'));
+      await settle();
+      const tree = f.render();
+      assert.equal(f.requests.length, 1, 'an admitted request is neither replayed nor cancelled');
+      assert.equal(
+        nodes(tree).some((node) => node.props.children === 'agents.autonomyUpdatedInThisChat'),
+        false,
+      );
+      assert.equal(
+        nodes(tree).some((node) => node.props.children === 'retired request failed'),
+        false,
+      );
+    });
+  }
+}
+test('a current autonomy failure remains visible', async () => {
+  const f = await fixture(true),
+    result = deferred<void>();
+  f.holdMutation(result.promise);
+  f.confirm(true);
+  autonomy(f.render()).props.onPress();
+  await settle();
+  result.reject(Error('current request failed'));
+  await settle();
+  assert.equal(
+    nodes(f.render()).some((node) => node.props.children === 'current request failed'),
+    true,
+  );
 });

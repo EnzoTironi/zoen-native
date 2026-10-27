@@ -97,7 +97,8 @@ def frontend_reference_readers(tree, paths, reader=None):
             command += ["-e", r"(^|[^A-Za-z0-9_.-])" + re.escape(token) + r"([^A-Za-z0-9_.-]|$)"]
     locations = [reader] if reader else [".", ":(exclude)apps/zoen/src/**",
         ":(exclude)*.md", ":(exclude)" + SELF, ":(exclude)" + TEST,
-        ":(exclude)scripts/tests/test_ci_frontend_scope.py", ":(exclude)" + DISJOINT_TEST]
+        ":(exclude)scripts/tests/test_ci_frontend_scope.py",
+        ":(exclude)scripts/tests/test_ci_frontend_readers_scope.py", ":(exclude)" + DISJOINT_TEST]
     search = subprocess.run(command + [tree, "--", *locations],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if search.returncode not in (0, 1):
@@ -147,7 +148,10 @@ def validate_frontend(base, head, ancestor, paths):
                 raise ValueError("Frontend source is an embedded-resource input: " + path)
         # Cross-boundary readers and shared JSON can be outside the Cargo
         # directories. Frontend-to-frontend imports remain in the app lane.
-        for reader in frontend_reference_readers(tree, paths):
+        from ci_frontend_readers import material_readers
+        readers = material_readers(git, regular_blob, base, head,
+                                   frontend_reference_readers(tree, paths))
+        for reader in readers:
             if reader not in disjoint or frontend_reference_readers(
                     tree, [path for path in paths if path not in disjoint[reader]], reader):
                 raise ValueError("A tracked cross-boundary input refers to frontend source")

@@ -51,3 +51,12 @@ Tests create isolated real Git histories, with automatic maintenance disabled,
 and cover positive selection, full fallback, JSON/output contracts, direct and
 transitive resource inputs, invalid/stale/ambiguous bases and guard preservation.
 This efficiency slice is separate from the cold `agent-inspect` defect #519.
+
+Roadmap JSON references are evidence links only when the existing static-evidence
+validator proves their consumer boundary at both endpoints. A new material
+consumer or unknown evidence file retains Rust. One complete reviewed reader,
+`test-android-core-contract.py`, builds synthetic files under its own temporary
+root; its whole-file digest and regular mode must match at both endpoints.
+All other basename readers, including qualified paths and delayed transformations,
+remain conservative inputs. No per-route exceptions or roadmap-content hashes
+are added.

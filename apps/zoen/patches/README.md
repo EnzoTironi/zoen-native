@@ -50,6 +50,20 @@ the pinned `patch-package@8.0.1`:
 4. `004+draft-checkpoint-commands`: the complete draft-checkpoint method section.
 5. `005+native-no-media`: parser admission and both native renderer/cache paths.
 6. `006+public-js-bindings`: input props plus Markdown JS/types/platform gates.
+7. `007+quote-source-map`: retain literal MD4C source spans through native attributed
+   text and its real selection menu, including genuine RN-generated event emitters.
+   Codegen uses `useLocalIncludePaths: true` to preserve the pod’s private sibling-header layout.
+   Offsets use half-open UTF-16 units in the exact canonical Markdown revision.
+   Unmapped layout spacers/normalization refuse the entire quote before draft mutation;
+   this never substitutes rendered offsets or searches for repeated selected text.
+8. `008+message-context-admission`: lets the parent message context admit read-only
+   rendered body while reusing the renderer’s exact interactive-point hit test.
+   Editable/selectable text, links, tasks, spoilers, images and code retain input.
+9. `009+github-quote-pipeline`: route admission and source-range events through the
+   actual GitHub segmented renderer selected by MessageMarkdown. Segment text
+   retains original AST source coordinates; the selected segment supplies the
+   native callback. Remove unused Text-only quote/admission ports, retain the common
+   parser/mapper, and genuinely regenerate the GitHub event emitters.
 
 Each patch is an authored maintained file below 20,000 bytes. They are sequential
 diffs of complete package states, not arbitrary slices of a large diff. The two
@@ -66,7 +80,7 @@ that metadata separately from package source equality.
 Patch-package records applied patch hashes and refuses changed applied stages.
 A failed stage must exit nonzero and stop later stages. On a pristine install it
 cannot infer that a disjoint patch was deleted from version control: verify all
-six expected stages and the full final source manifest during qualification.
+nine expected stages and the full final source manifest during qualification.
 
 For edits to a non-final stage, use patch-package's documented `--rebase` workflow
 and regenerate successor diffs as needed. Do not hand-split hunks or substitute

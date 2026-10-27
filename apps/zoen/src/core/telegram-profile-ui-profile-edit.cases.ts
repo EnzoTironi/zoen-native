@@ -27,7 +27,7 @@ test('profile header uses the pinned100pt avatar,28pt title and58pt real action 
     ],
   });
   const action = target(tree, 'message');
-  assert.equal(action.props.style({ pressed: false }).height, 58);
+  assert.equal(action.props.style({ pressed: false }).minHeight, 58);
   action.props.onPress();
   assert.equal(called, 1);
 });

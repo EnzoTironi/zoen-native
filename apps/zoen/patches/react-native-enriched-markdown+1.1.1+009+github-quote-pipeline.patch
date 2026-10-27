@@ -1,0 +1,236 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+index e024652..deffbf1 100644
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+@@ -1,3 +1,4 @@
++#import "ENRMQuoteRanges.h"
+ #import "EnrichedMarkdown.h"
+ #import "ContextMenuUtils.h"
+ #import "ENRMAccessibilityLabels.h"
+@@ -87,7 +88,8 @@ - (void)emitCodeBlockPress:(NSString *)code language:(NSString *)language;
+ - (void)emitContextMenuItemPress:(NSString *)itemText
+                     selectedText:(NSString *)selectedText
+                   selectionStart:(NSUInteger)selectionStart
+-                    selectionEnd:(NSUInteger)selectionEnd;
++                    selectionEnd:(NSUInteger)selectionEnd
++                sourceRangesJSON:(NSString *)sourceRangesJSON;
+ @end
+
+ @implementation EnrichedMarkdown {
+@@ -926,7 +928,8 @@ - (EnrichedMarkdownInternalText *)createTextViewForRenderedSegment:(ENRMRenderRe
+           [strongSelf emitContextMenuItemPress:itemText
+                                   selectedText:selectedText
+                                 selectionStart:selectionStart
+-                                  selectionEnd:selectionEnd];
++                                  selectionEnd:selectionEnd
++                              sourceRangesJSON:ENRMQuoteRanges(ENRMGetAttributedText(textView), NSMakeRange(selectionStart, selectionEnd - selectionStart))];
+         });
+     return buildEditMenuForSelection(textView.textStorage, textView.selectedRange, segmentMarkdown, strongSelf->_config,
+                                      @[ baseMenu ], customItems, strongSelf -> _selectionMenuConfig);
+@@ -1454,6 +1457,7 @@ - (void)emitContextMenuItemPress:(NSString *)itemText
+                     selectedText:(NSString *)selectedText
+                   selectionStart:(NSUInteger)selectionStart
+                     selectionEnd:(NSUInteger)selectionEnd
++                sourceRangesJSON:(NSString *)sourceRangesJSON
+ {
+   auto emitter = std::static_pointer_cast<EnrichedMarkdownEventEmitter const>(_eventEmitter);
+   if (emitter)
+@@ -1462,6 +1466,7 @@ - (void)emitContextMenuItemPress:(NSString *)itemText
+         .selectedText = std::string(selectedText.UTF8String),
+         .selectionStart = (int)selectionStart,
+         .selectionEnd = (int)selectionEnd,
++        .sourceRangesJSON = std::string(sourceRangesJSON.UTF8String ?: ""),
+     });
+ }
+
+@@ -1522,7 +1527,8 @@ - (UIMenu *)textView:(UITextView *)textView
+           [strongSelf emitContextMenuItemPress:itemText
+                                   selectedText:selectedText
+                                 selectionStart:selectionStart
+-                                  selectionEnd:selectionEnd];
++                                  selectionEnd:selectionEnd
++                              sourceRangesJSON:ENRMQuoteRanges(ENRMGetAttributedText(textView), NSMakeRange(selectionStart, selectionEnd - selectionStart))];
+       };
+   NSMutableArray<UIAction *> *customActions =
+       ENRMBuildContextMenuActions(_contextMenuItemTexts, _contextMenuItemIcons, textView, range, handler);
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+index 6f6445d..d320f60 100644
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+@@ -1,4 +1,3 @@
+-#import "ENRMQuoteRanges.h"
+ #import "EnrichedMarkdownText.h"
+ #import "CodeBlockBackground.h"
+ #import "ContextMenuUtils.h"
+@@ -829,25 +828,6 @@ - (void)prepareForRecycle
+   return EnrichedMarkdownText.class;
+ }
+
+-// The ancestor message context may own only non-interactive rendered body.
+-// Use the renderer's own TextKit hit testing so links/code/spoilers keep their input.
+-#if !TARGET_OS_OSX
+-- (NSNumber *)zoenMessageContextBodyAtPoint:(NSValue *)value
+-{
+-  if (![value isKindOfClass:[NSValue class]] || strcmp(value.objCType, @encode(CGPoint)) != 0 ||
+-      !_textView || _textView.editable || _textView.selectable || _textView.hidden) {
+-    return @NO;
+-  }
+-  CGPoint point = value.CGPointValue;
+-  if (!CGRectContainsPoint(self.bounds, point))
+-    return @NO;
+-  CGPoint textPoint = [self convertPoint:point toView:_textView];
+-  if (!CGRectContainsPoint(_textView.bounds, textPoint))
+-    return @NO;
+-  return @(!isPointOnInteractiveElement(_textView, textPoint, YES, YES));
+-}
+-#endif
+-
+ - (facebook::react::SharedTouchEventEmitter)touchEventEmitterAtPoint:(CGPoint)point
+ {
+   if (_textView) {
+@@ -908,7 +888,6 @@ - (void)emitContextMenuItemPress:(NSString *)itemText
+         .selectedText = std::string(selectedText.UTF8String),
+         .selectionStart = (int)selectionStart,
+         .selectionEnd = (int)selectionEnd,
+-        .sourceRangesJSON = std::string(ENRMQuoteRanges(_textView.attributedText, NSMakeRange(selectionStart, selectionEnd - selectionStart)).UTF8String),
+     });
+ }
+
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
+index 3fb5681..0ff3cd8 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
+@@ -90,6 +90,7 @@ void EnrichedMarkdownEventEmitter::onContextMenuItemPress(OnContextMenuItemPress
+ payload.setProperty(runtime, "selectedText", event.selectedText);
+ payload.setProperty(runtime, "selectionStart", event.selectionStart);
+ payload.setProperty(runtime, "selectionEnd", event.selectionEnd);
++payload.setProperty(runtime, "sourceRangesJSON", event.sourceRangesJSON);
+     return payload;
+   });
+ }
+@@ -422,7 +423,6 @@ void EnrichedMarkdownTextEventEmitter::onContextMenuItemPress(OnContextMenuItemP
+ payload.setProperty(runtime, "selectedText", event.selectedText);
+ payload.setProperty(runtime, "selectionStart", event.selectionStart);
+ payload.setProperty(runtime, "selectionEnd", event.selectionEnd);
+-payload.setProperty(runtime, "sourceRangesJSON", event.sourceRangesJSON);
+     return payload;
+   });
+ }
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
+index d138dbe..e3ba402 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
+@@ -57,6 +57,7 @@ class EnrichedMarkdownEventEmitter : public ViewEventEmitter {
+     std::string selectedText;
+     int selectionStart;
+     int selectionEnd;
++    std::string sourceRangesJSON;
+     };
+   void onLinkPress(OnLinkPress value) const;
+
+@@ -326,7 +327,6 @@ class EnrichedMarkdownTextEventEmitter : public ViewEventEmitter {
+     std::string selectedText;
+     int selectionStart;
+     int selectionEnd;
+-    std::string sourceRangesJSON;
+     };
+   void onLinkPress(OnLinkPress value) const;
+
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMMessageContextAdmission.h b/node_modules/react-native-enriched-markdown/ios/utils/ENRMMessageContextAdmission.h
+new file mode 100644
+index 0000000..f063fe3
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMMessageContextAdmission.h
+@@ -0,0 +1,22 @@
++#pragma once
++#import "ENRMUIKit.h"
++#import "LinkTapUtils.h"
++
++#if !TARGET_OS_OSX
++// Shared by the single and segmented renderers. The renderer's own native text
++// and interactive-point classifier remain the authority, including custom links.
++static inline NSNumber *ENRMMessageContextBodyAtPoint(UIView *renderer, UITextView *text, NSValue *value)
++{
++  if (![value isKindOfClass:[NSValue class]] || strcmp(value.objCType, @encode(CGPoint)) != 0 ||
++      !text || text.editable || text.selectable || text.hidden) {
++    return @NO;
++  }
++  CGPoint point = value.CGPointValue;
++  if (!CGRectContainsPoint(renderer.bounds, point))
++    return @NO;
++  CGPoint textPoint = [renderer convertPoint:point toView:text];
++  if (!CGRectContainsPoint(text.bounds, textPoint))
++    return @NO;
++  return @(!isPointOnInteractiveElement(text, textPoint, YES, YES));
++}
++#endif
+diff --git a/node_modules/react-native-enriched-markdown/ios/views/EnrichedMarkdownInternalText.m b/node_modules/react-native-enriched-markdown/ios/views/EnrichedMarkdownInternalText.m
+index 93eef7a..64be858 100644
+--- a/node_modules/react-native-enriched-markdown/ios/views/EnrichedMarkdownInternalText.m
++++ b/node_modules/react-native-enriched-markdown/ios/views/EnrichedMarkdownInternalText.m
+@@ -1,4 +1,5 @@
+ #import "EnrichedMarkdownInternalText.h"
++#import "../utils/ENRMMessageContextAdmission.h"
+ #import "ENRMAccessibilityLabels.h"
+ #import "ENRMContextMenuTextView+macOS.h"
+ #import "ENRMSpoilerOverlayManager.h"
+@@ -32,6 +33,13 @@ - (instancetype)initWithConfig:(StyleConfig *)config
+   return self;
+ }
+
++#if !TARGET_OS_OSX
++- (NSNumber *)zoenMessageContextBodyAtPoint:(NSValue *)value
++{
++  return ENRMMessageContextBodyAtPoint(self, _textView, value);
++}
++#endif
++
+ - (void)setupTextView
+ {
+ #if !TARGET_OS_OSX
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts
+index ccfb65a..af39590 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts
+@@ -54,5 +54,6 @@ export interface OnContextMenuItemPressEvent {
+     selectedText: string;
+     selectionStart: number;
+     selectionEnd: number;
++  sourceRangesJSON?: string;
+ }
+ //# sourceMappingURL=events.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+index f045690..79a0388 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+@@ -320,6 +320,7 @@ export interface OnContextMenuItemPressEvent {
+   selectedText: string;
+   selectionStart: CodegenTypes.Int32;
+   selectionEnd: CodegenTypes.Int32;
++  sourceRangesJSON: string;
+ }
+
+ export interface AccessibilityLabelsListProps {
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+index 4a94101..2a9c6ff 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+@@ -321,7 +321,6 @@ export interface OnContextMenuItemPressEvent {
+   selectedText: string;
+   selectionStart: CodegenTypes.Int32;
+   selectionEnd: CodegenTypes.Int32;
+-  sourceRangesJSON: string;
+ }
+
+ export interface AccessibilityLabelsListProps {
+diff --git a/node_modules/react-native-enriched-markdown/src/types/events.ts b/node_modules/react-native-enriched-markdown/src/types/events.ts
+index 67110b6..1f8ad61 100644
+--- a/node_modules/react-native-enriched-markdown/src/types/events.ts
++++ b/node_modules/react-native-enriched-markdown/src/types/events.ts
+@@ -62,4 +62,5 @@ export interface OnContextMenuItemPressEvent {
+   selectedText: string;
+   selectionStart: number;
+   selectionEnd: number;
++  sourceRangesJSON?: string;
+ }

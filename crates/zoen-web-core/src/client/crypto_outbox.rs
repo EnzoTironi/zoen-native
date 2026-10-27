@@ -120,6 +120,7 @@ impl<S: Signer> Client<S> {
                     .map(|event| event.hash.clone())
                     .unwrap_or(to);
                 Some(types::ReplyRef {
+                    quote: None,
                     artifact: None,
                     to,
                     thread,

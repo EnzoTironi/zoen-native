@@ -61,6 +61,7 @@ test('native details switches keep canonical flags, coalesce events and retire o
       op: 'set_chat_prefs',
       space_id: 'space',
       pinned: true,
+      preserve_mute: true,
       muted: true,
       archived: true,
     },

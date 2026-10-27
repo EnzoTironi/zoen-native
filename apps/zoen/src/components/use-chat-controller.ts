@@ -493,9 +493,9 @@ export function useChatController() {
     spaceId: id,
     entries: page?.entries ?? [],
     disabled: searchState.active,
-    onReply: (entry) => {
+    onReply: (entry, selection) => {
       cancelInitialEnd();
-      updateDraft({ type: 'reply', entry });
+      updateDraft({ type: 'reply', entry, selection });
       input.current?.focus();
     },
     onEdit: (entry) => {
