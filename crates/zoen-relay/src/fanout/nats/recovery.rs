@@ -7,6 +7,7 @@ use protocol::{SealedKind, Sequenced};
 
 mod assertions;
 mod fixture;
+mod saved_messages;
 // Reuse the existing real-socket observer. Its downstream-loss selector is never armed.
 #[path = "../../../../zoen-cli/tests/common/final_event_proxy.rs"]
 mod wire;
