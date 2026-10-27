@@ -5,11 +5,11 @@ import { useClient } from '../core/provider';
 import { accountScope, accountScopeKey } from '../core/account-scope';
 import { MutedChatsSession, createMutedChatsPort, emptyMutedChats } from './muted-chats';
 
-export function useMutedChats() {
+export function useMutedChats(spaceId?: string) {
   const client = useClient();
   const { store } = client;
   const port = useMemo(() => createMutedChatsPort(store), [store]);
-  const session = useMemo(() => new MutedChatsSession(port), [port]);
+  const session = useMemo(() => new MutedChatsSession(port, spaceId), [port, spaceId]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const scopeKey = accountScopeKey(accountScope(store, client));
   useFocusEffect(

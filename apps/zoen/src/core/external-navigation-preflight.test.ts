@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { ClientStore } from './store.ts';
 import type { Command, CommandResult, CoreDriver, CoreEvent, Snapshot } from './types.ts';
+import { allowLocalNotification } from '../notifications/local-admission.ts';
 import { validLocalNotification } from '../notifications/links.ts';
 import { NotificationJobs } from '../notifications/jobs.ts';
 import { backgroundPresentationJobs } from '../notifications/presentation.ts';
@@ -200,6 +201,7 @@ for (const platform of ['ios', 'android'])
       },
       './coordinator': { PushCoordinator: Coordinator },
       './links': { validLocalNotification },
+      './local-admission': { allowLocalNotification },
       './native-adapter': { nativeNotificationPlatform },
       './configuration': { pushPlatform },
       './presentation': { backgroundPresentationJobs },

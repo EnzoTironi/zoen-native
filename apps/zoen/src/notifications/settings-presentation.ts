@@ -1,7 +1,10 @@
 import type { notifications } from '../i18n/catalogs/notifications.ts';
 import type { PushState } from './coordinator.ts';
 
-type NotificationCopy = Exclude<keyof typeof notifications.en, 'reenableNamedChat'>;
+type Copy = typeof notifications.en;
+type NotificationCopy = {
+  [Key in keyof Copy]: Copy[Key] extends `${string}%{${string}` ? never : Key;
+}[keyof Copy];
 type NotificationAction = 'request' | 'refresh' | 'settings';
 
 /** Permission and registration are separate facts; neither verifies delivery. */
