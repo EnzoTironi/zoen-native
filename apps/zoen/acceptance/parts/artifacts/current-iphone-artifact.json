@@ -1,56 +1,104 @@
 {
-  "checkpoint": "718",
-  "commit": "b7ab2265bc68fc6ec29465d99e41cdc03b818415",
-  "coreCommit": "eb62cdaf911a945c25a3e9b26e336e2a39bf1d60",
-  "frontendQualificationCommit": "930cae47cf31150f1c5d1f257a30d924e47e2009",
-  "integrationChecks": "Original full check failed on a dialog TypeScript contract and remains preserved. Causal 930cae47 types/lint/format and 2758 tests passed; b38951f0 discovery 10/10 and b7ab2265 final 20/20 focused results remain separate, without a repeated full-check claim.",
+  "checkpoint": "732",
+  "commit": "9f724c1e44cd3e6e1a5c210055fa121239570932",
+  "coreCommit": "c4b8f7ceef6e2eef2e64079d7ac6d5302a134ed2",
+  "frontendQualificationCommit": "c4b8f7ceef6e2eef2e64079d7ac6d5302a134ed2",
+  "integrationChecks": "Full frontend check on F c4b8f7ce passed 2794/2794, types/lint/format. Later scoped checks retain their own sources: forward presentation28 and final native-button adapters38, types/lint/format; no repeated full-check claim on732.",
   "configuration": "Release arm64 iOS Simulator; normal Xcode signature, no Metro",
   "deviceUdid": "E439FAD5-4E39-4224-ABFD-215D0ECCFC68",
-  "archivePath": "/Users/enzotironi/.codex/builds/zoen-telegram-conversation-v718/final-js/attempt-01/sealed/Zoen.app",
-  "executableSha256": "d775993305f33c1e93af44011a598bd6e0437029a030bc8445a2e51729c8a17a",
-  "bundleSha256": "78efa9c81ff6be803b19257e6834d600de11f664c35d57b210181a98ec117931",
-  "preservingInstall": true,
-  "installedFilesVerified": 426,
+  "archivePath": "/Users/enzotironi/.codex/builds/zoen-conversation-v732/native-consumer/app-release-attempt01/sealed/Zoen.app",
+  "executableSha256": "817f574d4853eb5dc29ed78d014b77044db4e596bb9dfefc326343000ce8a04b",
+  "bundleSha256": "932bb4b96cafc0efdaaf31a6aa999210dd332955f2cc4a418b2a45aa933ab723",
   "strictSignatureVerified": true,
   "physicalDeviceAccepted": false,
   "fullAppParityAccepted": false,
   "sourceRelabeled": false,
-  "status": "PARTIAL: final product 718 restored in place from actual b7ab2265, no diagnostic source. QA 718 qualifies bounded code-copy/paste, own-message context and full-aspect photo review/back/cancel. Its carousel collapse effect was absent; later coordinate probes are diagnostic evidence on separate artifacts, not product acceptance. Restore confirms artifact/identity/Home portrait only, not a new journey.",
-  "buildVerification": "/Users/enzotironi/.codex/builds/zoen-telegram-conversation-v718/handoff.json",
-  "installedVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/product718-final-restore/install-receipt.json",
-  "runtimeAcceptance": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v718/receipt.json",
-  "backend": "Core/UniFFI 707 reused from actual eb62; retained local relay remains attributed to its own eb62 deployment. Newly merged #632 Core/MLS changes were not rebuilt into 718. No authenticated-platform/public-backend acceptance follows.",
-  "pending": [
-    "Qualify complete Telegram iOS conversation/agent journeys, including carousel detent after keyboard dismissal and independent-recipient media",
-    "Build and qualify a coherent native artifact containing the merged #632 Core changes",
-    "Physical iPhone, real providers, background/push/calls and public-backend release",
-    "Apps/shared-creation development and QA remain paused by Enzo; all final capabilities and historical evidence remain required"
-  ],
-  "historicalEvidence": "Previous 707 record preserved at 477ac2f393b346a9dd2caab786c3f053382a4dcf:apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json; older pointer at 48eb6fd9 retains its own record. Earlier 707/708/CORE637/v85 and diagnostic 722 receipts keep their original sources and limits; none are requalified as 718.",
-  "restoreVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/product718-final-restore/receipt.json",
-  "qaBoundary": {
-    "source": "b7ab2265bc68fc6ec29465d99e41cdc03b818415",
-    "scopedPasses": [
-      "exact native code-copy/paste without modal",
-      "own-message context menu and cancel",
-      "one photo full-aspect review/back/cancel; no media send"
-    ],
-    "originalNegative": "QA 718 one requested carousel pan left cards expanded; cause unqualified in that receipt.",
-    "diagnosticFollowup": {
-      "receipts": [
-        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/rail-native-v722/receipt.json",
-        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/rail-coordinates-v722/receipt.json"
-      ],
-      "scope": "Separate diagnostic sources f0fe5943/c72d18dd observed actual translations; -104pt collapsed the rail, while -45.67pt returned expanded per rule. No causal or product acceptance; original negative preserved."
+  "status": "PARTIAL: signed Release732 installed once; scoped native forwarding controls fill their allocated columns and stack visibly at accessibility-extra-large. One Cancel preserved both exact drafts, with no Send. Text size restored; Home/Portrait intentionally left open. This does not qualify forwarding delivery, full journeys or physical iPhone.",
+  "buildVerification": "/Users/enzotironi/.codex/builds/zoen-conversation-v732/native-consumer/handoff.json",
+  "backend": "Core/UniFFI genuinely compiled from c4b8f7ce (F), including #632 and durable 724 controls/canonical forwarding; reused after complete native input-closure equality, not relabeled as 732. Prepared lifecycle CLI 4ff0ca77 is not confirmed executed by QA beyond help. Canonical reads/media-byte checks used actual G2 CLI f0a01c1f, binary f51ffd55678120dd8bf68b24567b2840fad4c8656d4bf10f2fe5d02f339bb0a0. Relay 4057a0af/schema40 retains deployment provenance. No public-backend or authenticated-platform acceptance.",
+  "runtimeComposition": {
+    "appFrontendSource": "9f724c1e44cd3e6e1a5c210055fa121239570932",
+    "coreSource": "c4b8f7ceef6e2eef2e64079d7ac6d5302a134ed2",
+    "relay": {
+      "actualSource": "4057a0afa2d862db1d6e3e7e691a6439fcd606e3",
+      "package": {
+        "path": "/Users/enzotironi/.codex/builds/zoen-agent-invite-replay-v726/relay-package.json",
+        "sha256": "d2de05b5fa83ad5ad0695524da463db486e57acecd1c8e032ee97bded84d433f"
+      }
     },
-    "sendBoundary": "One synthetic message/send attempt retained. Original 718 UI remained Enviando; later diagnostic UI showed Enviada without another Send. Independent canonical server acceptance was not read in those QA receipts.",
-    "restoreBoundary": "One product 718 reinstall, 426 files and strict signature; identity/Home portrait confirmed. Product deliberately left open at restore time, with QA session/runner/loggers stopped. This historical observation is not current process-state verification.",
-    "newMlsBackend632Included": false,
-    "physicalDeviceAccepted": false,
-    "wholeJourneyAccepted": false
+    "schema": 40,
+    "preparedLifecycleCli": {
+      "actualSource": "4ff0ca77b7da637340fb884235eda071462b56dc",
+      "handoff": {
+        "path": "/Users/enzotironi/.codex/builds/zoen-agent-runtime-controls-v726/handoff.json",
+        "sha256": "23655e8fbc747112f79e71f6152e6529811f11f09e588b593c3c20e6c8a6e79c"
+      },
+      "package": {
+        "path": "/Users/enzotironi/.codex/builds/zoen-agent-runtime-controls-v726/cli-package.json",
+        "sha256": "71f0dd033e197b84305746d30097d39bc6dd07015404325fad4cbf97ee2f68fc",
+        "binary": "/Users/enzotironi/.codex/builds/zoen-agent-runtime-controls-v726/cli-package/zoen",
+        "binarySHA256": "e1eccec97df839c1aeddd6f24550f5478674da28a80788733a148659d24be561",
+        "codesignStrict": true,
+        "portableHelpExit": 0
+      },
+      "role": "Prepared lifecycle CLI; QA727 receipt confirms help only, no fixture operation. Not the CLI used for canonical/media-byte checks."
+    },
+    "qaCanonicalReadCli": {
+      "actualSource": "f0a01c1f8e6a51ba7a3756fdc68701419ceeded2",
+      "binary": "/Users/enzotironi/.codex/builds/zoen-agent-invite-replay-v726/cli-package/zoen",
+      "binarySHA256": "f51ffd55678120dd8bf68b24567b2840fad4c8656d4bf10f2fe5d02f339bb0a0",
+      "package": {
+        "path": "/Users/enzotironi/.codex/builds/zoen-agent-invite-replay-v726/cli-package.json",
+        "sha256": "f335b22db95d1a1b132a8cff5f49f996eb98a8afaf3bcc78c01a15d07b3ae9cb"
+      },
+      "role": "Actual G2 CLI used by sole QA for canonical reads/media-byte checks; lifecycle 4ff execution is not claimed."
+    }
   },
+  "pending": [
+    "Complete independent-person conversation/media and agent journeys, including recovery and receipts",
+    "Physical iPhone, real providers, background/push/calls and public production release",
+    "Apps/shared creation remain paused by Enzo; final scope and historical evidence preserved"
+  ],
+  "historicalEvidence": "App718/Core707 and all earlier observations, original negatives, diagnostic722 and restore evidence remain historical at the immutable historicalPointer. Later F724/727/730 retain their original sealed handoffs; no result is relabeled732.",
   "historicalPointer": {
-    "commit": "477ac2f393b346a9dd2caab786c3f053382a4dcf",
-    "url": "https://github.com/EnzoTironi/zoen-native/blob/477ac2f393b346a9dd2caab786c3f053382a4dcf/apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json"
-  }
+    "commit": "9f724c1e44cd3e6e1a5c210055fa121239570932",
+    "url": "https://github.com/EnzoTironi/zoen-native/blob/9f724c1e44cd3e6e1a5c210055fa121239570932/apps/zoen/acceptance/parts/artifacts/current-iphone-artifact.json"
+  },
+  "qaBoundary": {
+    "source": "9f724c1e44cd3e6e1a5c210055fa121239570932",
+    "newMlsBackend632Included": true,
+    "physicalDeviceAccepted": false,
+    "wholeJourneyAccepted": false,
+    "scope": "Forwarding native action width and one Cancel only; prior cohorts retain their own runtime evidence.",
+    "scopedPasses": [
+      "Native large controls 125.3/200.7pt fill 338pt inner width with 12pt gap",
+      "Accessibility-extra-large controls both 338pt wide / 62pt high, stacked and visible",
+      "One Cancel returned to chooser and preserved both exact source/destination drafts; Send=0",
+      "Text size restored to large with exact readback; Home/Portrait intentionally open and driver/private runner closed"
+    ],
+    "receipt": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v732/receipt.json",
+    "broaderAgentCaseStillPending": true,
+    "globalAccepted": false,
+    "twoPass": false
+  },
+  "installedVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v732/receipt.json",
+  "runtimeAcceptance": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v732/receipt.json",
+  "restoreVerification": "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v732/cleanup.json",
+  "priorScopedProgress": [
+    {
+      "appSource": "c4b8f7ceef6e2eef2e64079d7ac6d5302a134ed2",
+      "evidence": [
+        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v724/journey.json",
+        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v724/media-forward-byte-proof.json"
+      ],
+      "scope": "F724 text and media forwarding each recorded one explicit Forward Send and one resulting canonical message. Cold review recovered; both drafts retained. Forwarded image matches original 1268382 bytes, SHA256 5864d328a5b09805637c971e4a6e8802a184b01d7d1cfe80ff1a61e2783f46f1. This is scoped prior-cohort proof, not a 732 retest or independent-recipient/full-journey acceptance."
+    },
+    {
+      "appSource": "51a58c19faa45049ba45e15abb75af1b234d0a46",
+      "evidence": [
+        "/Users/enzotironi/.codex/worktrees/iphone-qa-345/zoen-native/output/iphone-qa-345/conversation-v727/receipt.json"
+      ],
+      "scope": "727 global search empty/results and first-result one-tap target passed; all three prior drafts exact after upgrade. Lifecycle/unknown-ACK/voice not executed; case remains incomplete. Not a 732 retest."
+    }
+  ]
 }
