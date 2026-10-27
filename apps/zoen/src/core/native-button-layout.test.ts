@@ -22,6 +22,7 @@ runInNewContext(code, {
     if (name.startsWith('@babel/runtime/')) return require(name);
     if (name === 'react') return React;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name === './native-button-label') return { FullWidthButtonLabel: 'FullWidthButtonLabel' };
     if (name === '@expo/ui') return { Host: 'Host', Button: 'Button', Text: 'NativeText' };
     if (name === 'expo-symbols') return { SymbolView: 'SymbolView' };
     if (name === 'expo-image') return { Image: 'Image' };

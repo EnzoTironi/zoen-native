@@ -42,10 +42,11 @@ async function compile(path: string) {
     })
   ).outputFiles[0]!.text;
 }
-const [previewCode, mediaCode, routeCode] = await Promise.all([
+const [previewCode, mediaCode, routeCode, panelCode] = await Promise.all([
   compile('../components/forward-message-preview.tsx'),
   compile('../media/MediaAttachment.tsx'),
   compile('../app/forward/[space]/[message].tsx'),
+  compile('../components/forward-review-panel.tsx'),
 ]);
 function load(code: string, ports: Record<string, unknown>) {
   const module = { exports: {} as Record<string, any> };
@@ -60,6 +61,15 @@ function load(code: string, ports: Record<string, unknown>) {
     },
   });
   return module.exports;
+}
+function testIds(value: React.ReactNode): string[] {
+  const ids: string[] = [];
+  React.Children.forEach(value, (child) => {
+    if (!React.isValidElement<{ testID?: string; children?: React.ReactNode }>(child)) return;
+    if (child.props.testID) ids.push(child.props.testID);
+    ids.push(...testIds(child.props.children));
+  });
+  return ids;
 }
 const entry = (card: unknown = null, voice: unknown = null): TimelineEntry =>
   ({
@@ -172,7 +182,14 @@ for (const kind of ['text', 'photo', 'video', 'file', 'voice'] as const) {
   });
 }
 
-for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted', 'demo'] as const)
+for (const mode of [
+  'cancel',
+  'success',
+  'unknownAck',
+  'coldAccepted',
+  'demo',
+  'largeType',
+] as const)
   test(`compiled forwarding route: ${mode} preserves keyboard/media and canonical operation semantics`, async () => {
     const root = createReactTestRoot();
     const views = new Map<string, any>();
@@ -257,7 +274,7 @@ for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted', 'demo'] a
         views.set(props.testID ?? name, props);
         return children ? React.createElement(React.Fragment, null, props.children) : null;
       };
-    const route = load(routeCode, {
+    const ports: Record<string, unknown> = {
       react: React,
       'react/jsx-runtime': jsxRuntime,
       'react-native': {
@@ -267,6 +284,11 @@ for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted', 'demo'] a
         ScrollView: host('Scroll', true),
         Pressable: host('Pressable'),
         Keyboard: { dismiss: () => events.push('dismiss') },
+        StyleSheet: { hairlineWidth: 0.5 },
+        useWindowDimensions: () => ({
+          width: mode === 'largeType' ? 320 : 402,
+          fontScale: mode === 'largeType' ? 1.8 : 1,
+        }),
       },
       'expo-router': {
         Stack: { Screen: () => null },
@@ -294,8 +316,31 @@ for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted', 'demo'] a
         NativeButton: host('Button'),
         EmptyState: host('Empty', true),
       },
-      '../../../components/forward-message-preview': { ForwardMessagePreview: host('Preview') },
+    };
+    ports['../../../components/forward-review-panel'] = load(panelCode, {
+      react: React,
+      'react/jsx-runtime': jsxRuntime,
+      'react-native': ports['react-native'],
+      'react-native-keyboard-controller': { KeyboardAvoidingView: host('Avoiding', true) },
+      '../theme': {
+        useTheme: () => ({
+          presentation: {
+            list: {
+              text: '#111',
+              secondary: '#777',
+              block: '#fff',
+              accent: '#08f',
+              separator: '#ddd',
+            },
+          },
+        }),
+      },
+      '../i18n/index.ts': ports['../../../i18n/index.ts'],
+      '../profile/profile-avatar': ports['../../../profile/profile-avatar'],
+      './primitives': ports['../../../components/primitives'],
+      './forward-message-preview': { ForwardMessagePreview: host('Preview') },
     });
+    const route = load(routeCode, ports);
     try {
       await root.render(React.createElement(route.default));
       if (mode === 'demo') {
@@ -310,7 +355,7 @@ for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted', 'demo'] a
         assert.deepEqual(events, ['status', 'ack']);
         assert.equal(canonical, null);
       } else {
-        await root.act(() => views.get('Search').onChangeText('Target'));
+        await root.act(() => views.get('forward-search').onChangeText('Target'));
         const list = views.get('List');
         assert.equal(list.keyboardShouldPersistTaps, 'handled');
         assert.equal(list.keyboardDismissMode, 'interactive');
@@ -320,7 +365,19 @@ for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted', 'demo'] a
         assert.deepEqual(preview.entry, message);
         assert.equal(preview.entry.kind.Message.card.item_id, 'original-photo');
         assert.equal(preview.spaceId, 'source');
+        assert.equal(
+          preview.contentWidth,
+          mode === 'largeType' ? 256 : 338,
+          'the renderer is constrained to the inset preview, not the screen width',
+        );
         assert.equal(preview.isCurrent(), true);
+        const scrolling = views.get('forward-message-preview-scroll');
+        assert.ok(scrolling, 'long content has its own scroll owner');
+        const scrollingIds = testIds(scrolling.children);
+        assert.equal(scrollingIds.includes('forward-message-send'), false);
+        assert.equal(scrollingIds.includes('forward-message-cancel'), false);
+        assert.ok(views.has('forward-message-send') && views.has('forward-message-cancel'));
+
         assert.equal(views.get('forward-message-review').style.paddingBottom, 34);
         if (mode === 'cancel') {
           await root.act(() => views.get('forward-message-cancel').onPress());
@@ -330,7 +387,7 @@ for (const mode of ['cancel', 'success', 'unknownAck', 'coldAccepted', 'demo'] a
           await root.act(() => views.get('forward-message-send').onPress());
           assert.deepEqual(
             events,
-            mode === 'success'
+            mode === 'success' || mode === 'largeType'
               ? ['status', 'dismiss', 'status', 'review', 'send', 'ack', 'back']
               : ['status', 'dismiss', 'status', 'review', 'send', 'status', 'back'],
           );

@@ -174,6 +174,7 @@ async function fixture() {
     // field-identity.test.ts qualifies useId with the actual React lifecycle.
     react: { useId: () => 'joined-input-field' },
     'expo-symbols': { SymbolView: 'SymbolView' },
+    './native-button-label': { FullWidthButtonLabel: () => null },
     '@expo/ui': { Host: 'Host', Button: 'Button' },
     'expo-image': { Image: 'Image' },
     '../theme/telegram': {},
