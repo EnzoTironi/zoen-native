@@ -178,7 +178,7 @@ test('Saved Messages retains inbox actions and routes an unready room through re
     assert.ok(row.accessibilityLabel.includes(f.t('settings.savedMessages')));
     await f.act(() => row.onPress());
     assert.deepEqual(f.routes.at(-1), '/saved-messages');
-    assert.ok(f.has(`inbox-swipe-${f.core.chat.id}`));
+    await f.reveal(f.core.chat.id, 'leading');
     assert.deepEqual(f.errors, []);
   } finally {
     await f.close();
