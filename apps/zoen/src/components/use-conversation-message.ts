@@ -13,6 +13,7 @@ import {
   type TextLayoutEvent,
 } from 'react-native';
 import type { ItemDetail } from '../core/generated/ItemDetail';
+import { useQuoteLayoutTransition } from './quote-layout-context';
 import { useRenderedMessageText, type RenderedMessageText } from './use-rendered-message-text';
 import { useSemanticMessagePreview } from './use-semantic-message-preview';
 import { messageMayContainMarkdown } from '../core/message-markdown';
@@ -94,6 +95,7 @@ export function useConversationMessage({
   accessibilityText: sharedAccessibilityText,
 }: ConversationMessageProps) {
   const { colors, presentation: p, reducedMotion } = useTheme();
+  const quoteLayout = useQuoteLayoutTransition();
   const revealAnchor = useConversationRevealAnchor(entry.id);
   const { width, scale, fontScale } = useWindowDimensions();
   const pixel = 1 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
@@ -363,7 +365,7 @@ export function useConversationMessage({
   };
   // Native media owns its touch stream; a Pressable ancestor can still receive
   // AVKit taps even when the row pan is correctly fenced by a native gesture.
-  const Bubble = attachment ? View : Pressable;
+  const Bubble = attachment ? (quoteLayout?.View ?? View) : (quoteLayout?.Pressable ?? Pressable);
   const bubbleInteraction = attachment
     ? { accessible: false }
     : {
