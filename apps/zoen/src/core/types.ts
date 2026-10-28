@@ -1,3 +1,4 @@
+import type { MessageInfo } from './generated/MessageInfo';
 import type { ForwardBatchReview } from './generated/ForwardBatchReview';
 import type { ReplySelection } from './generated/ReplySelection';
 import type { SpaceSummary } from './generated/SpaceSummary';
@@ -125,6 +126,7 @@ type Results = {
   snapshot: Snapshot;
   timeline: TimelinePage;
   send_message: TimelineEntry;
+  message_info: MessageInfo;
   forward_batch_status: ForwardBatchReview | null;
   forward_batch_review: ForwardBatchReview;
   confirm_forward_batch: ForwardBatchReview;

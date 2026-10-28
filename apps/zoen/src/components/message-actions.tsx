@@ -72,6 +72,14 @@ export function MessageActions(props: MessageActionsProps) {
                 onPress={() => run(props.onForward)}
               />
             ) : null}
+            {props.onInfo ? (
+              <NativeButton
+                secondary
+                label={t('messageInfo.title')}
+                disabled={props.pending}
+                onPress={() => run(props.onInfo)}
+              />
+            ) : null}
             {props.onSelect ? (
               <NativeButton
                 secondary

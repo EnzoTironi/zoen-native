@@ -1,3 +1,4 @@
+import { messageInfoNavigation } from './message-info-navigation.fixtures.ts';
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -50,6 +51,7 @@ export const externalPorts = new Set([
   './dialogs',
   './message-actions',
   './reaction-details',
+  './message-info-navigation',
 ]);
 export const bundled = await build({
   stdin: { contents: compiled, resolveDir: dirname(sourcePath), loader: 'js' },
@@ -316,6 +318,9 @@ export function fixture() {
     './message-actions': { MessageActions: () => null },
     './reaction-details': { ReactionDetails: () => null },
   };
+  modules['./message-info-navigation'] = messageInfoNavigation(
+    (modules['expo-router'] as { router: unknown }).router,
+  );
   // Execute the installed Expo hook: each call owns its own React effect and
   // navigation listeners. A single fixture callback silently overwrote earlier hooks.
   const focusModule = { exports: {} as { useFocusEffect: (callback: Effect) => void } };

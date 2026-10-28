@@ -19,6 +19,7 @@ mod handle;
 mod integrity;
 mod member_candidates;
 mod member_dispatch;
+mod message_info_dispatch;
 mod wire;
 
 use serde::{Deserialize, Serialize};
@@ -77,6 +78,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
         .with_large_int("string")
         .with_out_dir(path);
     Command::export_all(&config)?;
+    crate::MessageInfo::export_all(&config)?;
     crate::app_current_share::AppShareContext::export_all(&config)?;
     crate::app_current_share::AppShareResult::export_all(&config)?;
     crate::app_edit_requests::AppEditRequestResult::export_all(&config)?;

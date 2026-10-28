@@ -2,6 +2,7 @@
 //! Identity rows are never deleted; values only rise. A Sync captures an initial
 //! maximum identity, then yields every pre-cut row with at least its pre-cut mark.
 //! Later raises/inserts may appear. This is not a globally atomic snapshot.
+mod read_time;
 use crate::metrics::Metrics;
 use relay_admission::receipts::{raise, Watermark, PAGE_ROWS};
 use sqlx::PgPool;
@@ -32,6 +33,7 @@ struct Pending {
 }
 pub struct Receipts {
     pending: Mutex<Pending>,
+    read_times: Mutex<read_time::Pending>,
     flushing: tokio::sync::Mutex<()>,
     max_rows: usize,
     max_key_bytes: usize,
@@ -46,6 +48,7 @@ impl Receipts {
     pub fn with_capacity(max_rows: usize, max_key_bytes: usize) -> Self {
         Self {
             pending: Mutex::default(),
+            read_times: Mutex::default(),
             flushing: tokio::sync::Mutex::default(),
             max_rows,
             max_key_bytes,
@@ -216,6 +219,7 @@ impl Receipts {
                 .receipts_flushed
                 .fetch_add(chunk.len() as u64, std::sync::atomic::Ordering::Relaxed);
         }
+        self.flush_read_times(pool).await?;
         Ok(batch.len())
     }
 }

@@ -232,6 +232,9 @@ impl Session {
                 .await;
                 return false;
             };
+            if !self.replay_read_times(space, &page.rows).await {
+                return false;
+            }
             for (from, delivered, read) in page.rows {
                 for kind in [
                     protocol::EphemeralKind::Delivered { seq: delivered },
