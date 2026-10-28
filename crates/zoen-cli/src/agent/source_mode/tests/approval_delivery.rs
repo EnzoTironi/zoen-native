@@ -62,25 +62,49 @@ fn known(f: &Fixture, cx: &Ctx) -> Result<TurnOutcome, Box<dyn std::error::Error
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn failed_approval_write_recovers_once_after_restart_without_repeating_inference(
 ) -> TestResult {
+    approval_delivery(false).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_history_search_survives_failed_delivery_and_restarts_with_one_answer(
+) -> TestResult {
+    approval_delivery(true).await
+}
+
+async fn approval_delivery(history: bool) -> TestResult {
     let mut f = Fixture::new("http://127.0.0.1:1")?;
-    let item = f
-        .client
-        .page_import_markdown(
-            f.space.clone(),
-            "approval-fixture.md".into(),
-            "Read only after owner approval.".into(),
-        )?
-        .id;
+    let item = if history {
+        None
+    } else {
+        Some(
+            f.client
+                .page_import_markdown(
+                    f.space.clone(),
+                    "approval-fixture.md".into(),
+                    "Read only after owner approval.".into(),
+                )?
+                .id,
+        )
+    };
     f.confirm_publications()?;
     // The owner inbox already exists; the injected failure targets the next
     // publication (RequestOpened), not account setup or model reservation.
     f.client.start_direct(f.owner.clone())?;
-    let call = ToolCall {
-        id: "reviewed-read".into(),
-        name: client_core::agent_page_tools::model_name("read_page", &item)
-            .ok_or("read tool missing")?,
-        arguments: json!({"artifactId":item}),
-        requires_review: true,
+    let call = if let Some(item) = &item {
+        ToolCall {
+            id: "reviewed-read".into(),
+            name: client_core::agent_page_tools::model_name("read_page", item)
+                .ok_or("read tool missing")?,
+            arguments: json!({"artifactId":item}),
+            requires_review: true,
+        }
+    } else {
+        ToolCall {
+            id: "reviewed-history".into(),
+            name: crate::agent::history_search::TOOL.into(),
+            arguments: json!({"query":"Other source", "limit":1}),
+            requires_review: true,
+        }
     };
     let calls = Arc::new(AtomicUsize::new(0));
     let database = f.path.join("agent.sqlite");
@@ -183,22 +207,24 @@ async fn failed_approval_write_recovers_once_after_restart_without_repeating_inf
     assert_eq!(run(&f, &cx).await?, crate::agent::turn::Outcome::Handled);
     assert_eq!(reply_ids(&f)?, replies);
     assert_eq!(calls.load(Ordering::SeqCst), 2);
-    assert_eq!(
-        f.client.page(item)?.version,
-        1,
-        "read-only review never edits"
-    );
+    if let Some(item) = item {
+        assert_eq!(
+            f.client.page(item)?.version,
+            1,
+            "read-only review never edits"
+        );
+    }
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unsupported_review_stays_recoverable_without_inference_or_effects() -> TestResult {
+async fn invalid_review_stays_recoverable_without_inference_or_effects() -> TestResult {
     let mut f = Fixture::new("http://127.0.0.1:1")?;
     let calls = Arc::new(AtomicUsize::new(0));
     let call = ToolCall {
         id: "held-history-read".into(),
         name: crate::agent::history_search::TOOL.into(),
-        arguments: json!({"query":"Other source", "limit":1}),
+        arguments: json!({"query":"Other source", "limit":21}),
         requires_review: true,
     };
     for _ in 0..4 {

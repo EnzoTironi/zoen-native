@@ -371,13 +371,17 @@ fn actual_partial_write_failure_keeps_the_old_key_and_cleans_the_temporary() {
     let home = Home::new();
     let vault = home.vault();
     vault.write_bytes("agent_root", b"old").unwrap();
+    // macOS strips DYLD_* when launching the protected system shell. Restore
+    // the test runner's loader path after that boundary, before exec; keep the
+    // actual file-size limit and partial-write assertions unchanged.
     let result = Command::new("/bin/sh")
             .arg("-c")
-            .arg("ulimit -f 2 || exit 97; trap '' XFSZ; exec \"$1\" file_vault_interrupted_child --nocapture --test-threads=1")
+            .arg("ulimit -f 2 || exit 97; trap '' XFSZ; if [ -n \"$ZOEN_TEST_LOADER_PATH\" ]; then export DYLD_LIBRARY_PATH=\"$ZOEN_TEST_LOADER_PATH\"; fi; exec \"$1\" file_vault_interrupted_child --nocapture --test-threads=1")
             .arg("file-vault-limited-write")
             .arg(std::env::current_exe().unwrap())
             .env("ZOEN_TEST_FILE_VAULT_HOME", &home.0)
             .env("ZOEN_TEST_FILE_VAULT_MODE", "limited-write")
+            .env("ZOEN_TEST_LOADER_PATH", std::env::var_os("DYLD_LIBRARY_PATH").unwrap_or_default())
             .current_dir(&home.0)
             .output().unwrap();
     assert!(

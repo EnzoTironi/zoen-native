@@ -6,6 +6,7 @@ import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
 import type { DecideOutcome } from '../core/generated/DecideOutcome';
 import {
   requestDecisionCommand,
+  conversationSearchReview,
   toolApprovalExpired,
   toolApprovalValid,
   type RequestCardDecision,
@@ -96,6 +97,7 @@ export function RequestCard({
     [siteReviewKey],
   );
   const imageRequest = tool?.canonical_tool === 'generate_image';
+  const conversationRequest = tool != null && conversationSearchReview(tool);
   const image = imageRequest && imageToolReviewValid(tool.image) ? tool.image : null;
   const toolValid = tool == null || toolApprovalValid(tool);
   // The session's existing deadline observation invalidates this presentation
@@ -105,13 +107,14 @@ export function RequestCard({
     [tool, expiryRevision],
   );
   const toolExpired = toolExpiry.expired;
-  const itemId = imageRequest
-    ? null
-    : tool == null
-      ? request.item_id
-      : toolValid
-        ? tool.artifact_id
-        : null;
+  const itemId =
+    imageRequest || conversationRequest
+      ? null
+      : tool == null
+        ? request.item_id
+        : toolValid
+          ? tool.artifact_id
+          : null;
   const historicalToolApproval = tool != null && toolValid && request.status === 'Approved';
   const pending = request.status === 'Pending' || request.status === 'Stale';
   const canDecide =
@@ -250,15 +253,19 @@ export function RequestCard({
       ) : null}
       {tool != null && toolValid && !imageRequest ? (
         <View style={{ gap: 6 }}>
-          <Text selectable style={{ color: colors.text, fontWeight: '600', lineHeight: 22 }}>
-            {t('agents.toolArtifactVersion', {
-              title: tool.artifact_title,
-              version: tool.version,
-            })}
-          </Text>
-          <Text selectable style={{ color: colors.secondary, lineHeight: 21 }}>
-            {t('agents.requestAction', { action: tool.operation })}
-          </Text>
+          {!conversationRequest ? (
+            <>
+              <Text selectable style={{ color: colors.text, fontWeight: '600', lineHeight: 22 }}>
+                {t('agents.toolArtifactVersion', {
+                  title: tool.artifact_title,
+                  version: tool.version,
+                })}
+              </Text>
+              <Text selectable style={{ color: colors.secondary, lineHeight: 21 }}>
+                {t('agents.requestAction', { action: tool.operation })}
+              </Text>
+            </>
+          ) : null}
           {toolValid ? (
             <Text selectable style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
               {t('agents.toolApprovalExpires', {

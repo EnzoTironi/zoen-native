@@ -67,13 +67,16 @@ impl Client {
         {
             return Err(denied());
         }
-        let (device, owner, space, source) = if old.schema == 5 {
-            e.site_proposal_authority(old)?
-        } else if old.schema == 3 {
-            e.creation_proposal_authority(old)?
-        } else {
-            e.agent_binary_authority(&old.artifact, &old.source, &old.serving, false)?
-        };
+        let (device, owner, space, source) =
+            if old.schema == crate::agent_conversation_tools::SCHEMA {
+                e.agent_source_authority(&r.space, &old.source, &old.serving, false)?
+            } else if old.schema == 5 {
+                e.site_proposal_authority(old)?
+            } else if old.schema == 3 {
+                e.creation_proposal_authority(old)?
+            } else {
+                e.agent_binary_authority(&old.artifact, &old.source, &old.serving, false)?
+            };
         if device != old.device
             || owner != old.owner
             || space != r.space

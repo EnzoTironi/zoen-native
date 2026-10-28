@@ -4,6 +4,7 @@ import {
   requestDecisionCommand,
   toolApprovalExpired,
   toolApprovalValid,
+  conversationSearchReview,
 } from './tool-request-decision.ts';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
 import type { ToolApprovalDto } from './generated/ToolApprovalDto';
@@ -17,6 +18,43 @@ const approval: ToolApprovalDto = {
   operation: 'slide.notes',
   expires_ms: String(now + 60_000),
 };
+
+test('conversation review has no artifact version and retains exact once-only decisions', () => {
+  const search: ToolApprovalDto = {
+    ...approval,
+    artifact_id: '',
+    artifact_title: 'Trip',
+    version: 0,
+    preview_kind: 'conversation',
+    canonical_tool: 'search_conversation_history',
+  };
+  assert.equal(conversationSearchReview(search), true);
+  assert.equal(toolApprovalValid(search), true);
+  assert.deepEqual(requestDecisionCommand(request('Pending', search), 'ApproveOnce', now), {
+    op: 'decide_tool_request',
+    request_id: 'synthetic-request',
+    observed_content_hash: search.content_hash,
+    decision: 'ApproveOnce',
+  });
+  assert.equal(requestDecisionCommand(request('Pending', search), 'AlwaysApprove', now), null);
+  assert.equal(
+    requestDecisionCommand(
+      request('Pending', { ...search, expires_ms: String(now) }),
+      'ApproveOnce',
+      now,
+    ),
+    null,
+  );
+  for (const malformed of [
+    { ...search, canonical_tool: 'read_page' },
+    { ...search, preview_kind: 'site' },
+    { ...search, artifact_id: 'borrowed-artifact' },
+    { ...search, version: 1 },
+  ]) {
+    assert.equal(toolApprovalValid(malformed), false);
+    assert.equal(requestDecisionCommand(request('Pending', malformed), 'ApproveOnce', now), null);
+  }
+});
 function request(
   status: AgentRequestDto['status'] = 'Pending',
   tool: ToolApprovalDto | null = approval,
