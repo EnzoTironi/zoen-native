@@ -146,6 +146,8 @@ mod sql_tests {
             "zoen_read_time_{}",
             &event_log::Signer::generate()?.id()[..16]
         );
+        let space = types::new_id("sp")?;
+        let peer = event_log::Signer::generate()?.id();
         let options = admin
             .parse::<sqlx::postgres::PgConnectOptions>()?
             .database(&name);
@@ -169,19 +171,19 @@ mod sql_tests {
                 reported_at_ms: 1234,
             };
             let live = Receipts::default();
-            assert!(live.raise("space", "peer", 0, 9));
-            assert!(live.raise_time("space", "peer", &report));
+            assert!(live.raise(&space, &peer, 0, 9));
+            assert!(live.raise_time(&space, &peer, &report));
             live.flush(&pool, &crate::metrics::Metrics::default())
                 .await?;
             let reopened = Receipts::default();
-            let peers = vec!["peer".into()];
+            let peers = vec![peer.clone()];
             assert_eq!(
-                reopened.read_times(&pool, "space", &peers).await?,
-                vec![("peer".into(), report.clone())]
+                reopened.read_times(&pool, &space, &peers).await?,
+                vec![(peer.clone(), report.clone())]
             );
             assert!(reopened.raise_time(
-                "space",
-                "peer",
+                &space,
+                &peer,
                 &ReadTime {
                     reported_at_ms: 9999,
                     ..report.clone()
@@ -191,7 +193,7 @@ mod sql_tests {
                 .flush(&pool, &crate::metrics::Metrics::default())
                 .await?;
             assert_eq!(
-                reopened.read_times(&pool, "space", &peers).await?[0]
+                reopened.read_times(&pool, &space, &peers).await?[0]
                     .1
                     .reported_at_ms,
                 1234
@@ -201,14 +203,11 @@ mod sql_tests {
             )
             .execute(&pool)
             .await?;
-            assert!(reopened
-                .read_times(&pool, "space", &peers)
-                .await?
-                .is_empty());
-            assert_eq!(
-                reopened.page(&pool, "space", "", "peer").await?.rows,
-                vec![("peer".into(), 9, 9)]
-            );
+            assert!(reopened.read_times(&pool, &space, &peers).await?.is_empty());
+            // First page has an empty cursor and this sole identity as its inclusive ceiling.
+            let page = reopened.page(&pool, &space, "", &peer).await?;
+            assert_eq!(page.rows, vec![(peer.clone(), 9, 9)]);
+            assert!(page.next.is_none());
             Ok::<(), Box<dyn std::error::Error>>(())
         })
         .catch_unwind()
