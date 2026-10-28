@@ -2,16 +2,15 @@ use super::*;
 use client_core::TimelineEntry;
 use std::{path::PathBuf, sync::Arc};
 
-fn human() -> Result<
-    (
-        Arc<Client>,
-        Arc<crate::deckcraft::tests::Vault>,
-        PathBuf,
-        String,
-        TimelineEntry,
-    ),
-    Box<dyn std::error::Error>,
-> {
+struct Human {
+    client: Arc<Client>,
+    vault: Arc<crate::deckcraft::tests::Vault>,
+    directory: PathBuf,
+    space: String,
+    message: TimelineEntry,
+}
+
+fn human() -> Result<Human, Box<dyn std::error::Error>> {
     let directory = std::env::temp_dir().join(types::new_id("cli-message-info")?);
     std::fs::create_dir(&directory)?;
     let client = Client::open(
@@ -82,13 +81,25 @@ fn human() -> Result<
         .into_iter()
         .find(|message| message.id == posted.client_id)
         .ok_or("missing signed human message")?;
-    Ok((client, vault, directory, space, message))
+    Ok(Human {
+        client,
+        vault,
+        directory,
+        space,
+        message,
+    })
 }
 
 #[tokio::test]
 async fn canonical_metadata_uses_current_human_owner_and_exact_message_without_mutation(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (client, _vault, directory, space, message) = human()?;
+    let Human {
+        client,
+        vault: _vault,
+        directory,
+        space,
+        message,
+    } = human()?;
     let account = client.account().ok_or("missing human account")?;
     let before = client.verify_log(space.clone()).events;
     let value: serde_json::Value =
@@ -117,7 +128,13 @@ async fn canonical_metadata_uses_current_human_owner_and_exact_message_without_m
 async fn read_reports_actual_mark_failure_while_peek_still_reads_the_same_timeline(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use super::super::read::{read as timeline, Options};
-    let (client, vault, directory, space, _) = human()?;
+    let Human {
+        client,
+        vault,
+        directory,
+        space,
+        ..
+    } = human()?;
     client.mark_read(space.clone())?;
     drop(client);
     let database = store::Store::open(&directory.join("human.sqlite").to_string_lossy())?;
