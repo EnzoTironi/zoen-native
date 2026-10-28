@@ -29,6 +29,7 @@ export function ChatHeader(props: ChatHeaderProps) {
     <Stack.Screen
       options={{
         ...navigationGlassAppearance,
+        orientation: 'portrait',
         title: props.selection ? String(props.selection.count) : props.title,
         headerBackVisible: !props.selection,
         unstable_headerLeftItems: props.selection ? () => [] : undefined,
