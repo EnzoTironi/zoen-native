@@ -1,3 +1,4 @@
+import type { ForwardBatchReview } from './generated/ForwardBatchReview';
 import type { ReplySelection } from './generated/ReplySelection';
 import type { SpaceSummary } from './generated/SpaceSummary';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
@@ -124,6 +125,11 @@ type Results = {
   snapshot: Snapshot;
   timeline: TimelinePage;
   send_message: TimelineEntry;
+  forward_batch_status: ForwardBatchReview | null;
+  forward_batch_review: ForwardBatchReview;
+  confirm_forward_batch: ForwardBatchReview;
+  finish_forward_batch: ForwardBatchReview;
+  abandon_forward_batch: ForwardBatchReview;
   forward_review: ForwardReview;
   forward_status: ForwardReview | null;
   confirm_forward: ForwardReview;

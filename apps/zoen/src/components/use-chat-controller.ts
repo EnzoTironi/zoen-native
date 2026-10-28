@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../components/dialogs';
 import { useKeyboardMotion } from '../components/keyboard-motion';
 import { useMessageActions } from '../components/use-message-actions';
+import { useMessageSelection } from './use-message-selection';
 import { useChatNativeMetrics } from './use-chat-native-metrics';
 import { useConversationRail } from './use-conversation-rail';
 import { ConversationReveal } from '../core/conversation-reveal';
@@ -95,21 +96,24 @@ export function useChatController() {
         : timelines[id],
     [searchThread, timelines, id],
   );
+  const selection = useMessageSelection(id, page?.entries ?? [], searchState.active);
   const [revealedActivity, setRevealedActivity] = useState<{ scope: string; id: string } | null>(
     null,
   );
-  const rows = useMemo(
+  const rows = useMemo<ConversationTimelineRow[]>(
     () =>
-      projectConversationTimeline(
-        page?.entries ?? [],
-        items,
-        id,
-        selectedSearchId ??
-          (revealedActivity?.scope === `${id}:${owner}` ? revealedActivity.id : null) ??
-          jump,
-        supportsMediaMosaic,
-      ),
-    [page, items, id, owner, selectedSearchId, revealedActivity, jump],
+      selection.active
+        ? (page?.entries ?? []).map((entry) => ({ key: entry.id, entry }))
+        : projectConversationTimeline(
+            page?.entries ?? [],
+            items,
+            id,
+            selectedSearchId ??
+              (revealedActivity?.scope === `${id}:${owner}` ? revealedActivity.id : null) ??
+              jump,
+            supportsMediaMosaic,
+          ),
+    [page, items, id, owner, selectedSearchId, revealedActivity, jump, selection.active],
   );
   const visibleEntries = useMemo(() => rows.map((row) => row.entry), [rows]);
   const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
@@ -494,7 +498,11 @@ export function useChatController() {
   const actions = useMessageActions({
     spaceId: id,
     entries: page?.entries ?? [],
-    disabled: searchState.active,
+    disabled: searchState.active || selection.active,
+    onSelect: (entry) => {
+      cancelInitialEnd();
+      selection.toggle(entry);
+    },
     onReply: (entry, selection) => {
       cancelInitialEnd();
       updateDraft({ type: 'reply', entry, selection });
@@ -511,6 +519,7 @@ export function useChatController() {
     chat,
     id,
     activityLabel,
+    selection,
     nativeScrollTag,
     bindNativeTimeline,
     searchState,

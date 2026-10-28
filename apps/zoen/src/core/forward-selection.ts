@@ -141,7 +141,8 @@ export class ForwardSelectionSession {
         skippedIds: [...value.skipped_message_ids],
         messages: value.messages.map((item) => ({
           targetId: item.target_space,
-          message: structuredClone(item.message),
+          // Driver DTOs are JSON values; avoid a structuredClone runtime requirement on Hermes.
+          message: JSON.parse(JSON.stringify(item.message)) as typeof item.message,
           operationId: item.operation_id,
           sourceRevision: item.source_revision,
           acceptedMessageId: item.accepted_message_id,

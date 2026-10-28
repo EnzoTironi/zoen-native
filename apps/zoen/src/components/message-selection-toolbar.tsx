@@ -13,7 +13,6 @@ export function MessageSelectionToolbar({
   canForward,
 }: {
   count: number;
-  onCancel?: () => void;
   onCopy: () => void;
   onForward: () => void;
   canCopy: boolean;
