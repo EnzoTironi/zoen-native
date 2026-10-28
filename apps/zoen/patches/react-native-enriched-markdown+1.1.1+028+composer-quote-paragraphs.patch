@@ -1,0 +1,108 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerVariants.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerVariants.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerVariants.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerVariants.mm
+@@ -34,6 +34,11 @@
+   return coverage;
+ }
+ 
++BOOL ENRMComposerInlineEquivalent(NSString *text, NSArray<ENRMFormattingRange *> *a, NSArray<ENRMFormattingRange *> *b)
++{
++  return [ENRMComposerCoverage(text, a) isEqual:ENRMComposerCoverage(text, b)];
++}
++
+ NSString *ENRMRepresentableComposerInline(NSString *text, NSArray<ENRMFormattingRange *> *ranges)
+ {
+   ENRMInputParser *parser = [ENRMInputParser new];
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerRanges.h
+@@ -10,6 +10,7 @@
+ // Only an admitted raw replacement or Code removal introduces this provenance.
+ // Imported opaque Markdown remains untouched and Code emits its raw payload.
+ void ENRMRetainComposerLiteralText(ENRMFormattingStore *store, NSString *text, NSRange inserted);
++BOOL ENRMComposerInlineEquivalent(NSString *text, NSArray<ENRMFormattingRange *> *a, NSArray<ENRMFormattingRange *> *b);
+ BOOL ENRMComposerHasCrossedEmphasis(NSArray<ENRMFormattingRange *> *ranges);
+ NSString *ENRMEncodeComposerInline(NSString *text, NSArray<ENRMFormattingRange *> *ranges, NSInteger variant);
+ NSString *_Nullable ENRMRepresentableComposerInline(NSString *text, NSArray<ENRMFormattingRange *> *ranges);
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMMarkdownSerializer+Composer.mm
+@@ -133,12 +133,33 @@
+     inlineText = ENRMEncodeComposerInline(text, ranges, 0);
+   }
+   NSMutableArray<NSString *> *lines = [[inlineText componentsSeparatedByString:@"\n"] mutableCopy];
++  if (blocks.count) {
++    // Inline delimiters cannot cross a Markdown block boundary. Preserve their
++    // visible per-character coverage by closing/reopening inside each paragraph.
++    [lines removeAllObjects];
++    NSUInteger offset = 0;
++    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
++      NSMutableArray *local = [NSMutableArray new];
++      NSRange paragraph = NSMakeRange(offset, line.length);
++      for (ENRMFormattingRange *range in ranges) {
++        NSRange part = NSIntersectionRange(range.range, paragraph);
++        if (part.length) [local addObject:[ENRMFormattingRange rangeWithType:range.type
++          range:NSMakeRange(part.location - offset, part.length) url:range.url]];
++      }
++      [lines addObject:[self serializeComposerText:line ranges:local blockRanges:@[]]];
++      offset += line.length + 1;
++    }
++  }
++  NSMutableIndexSet *quoteLines = [NSMutableIndexSet new];
+   for (ENRMBlockRange *block in blocks) {
+     if (block.range.location > text.length || block.range.length > text.length - block.range.location) continue;
+     NSUInteger first = [[text substringToIndex:block.range.location] componentsSeparatedByString:@"\n"].count - 1;
+     NSUInteger count = [[text substringWithRange:block.range] componentsSeparatedByString:@"\n"].count;
+     NSString *prefix = @"";
+-    if (block.type == ENRMInputBlockTypeQuote) prefix = @"> ";
++    if (block.type == ENRMInputBlockTypeQuote) {
++      prefix = @"> ";
++      [quoteLines addIndexesInRange:NSMakeRange(first, MIN(count, lines.count - first))];
++    }
+     else if (ENRMHeadingLevelForBlockType(block.type))
+       prefix = [[@"" stringByPaddingToLength:ENRMHeadingLevelForBlockType(block.type) withString:@"#" startingAtIndex:0] stringByAppendingString:@" "];
+     else if (block.type == ENRMInputBlockTypeUnorderedListItem) prefix = @"- ";
+@@ -147,6 +168,13 @@
+     for (NSUInteger i = first; i < MIN(lines.count, first + count); i++)
+       lines[i] = [prefix stringByAppendingString:lines[i]];
+   }
++  // CommonMark otherwise treats the next unmarked paragraph as a lazy quote
++  // continuation. One structural blank line ends the quote; the composer parser
++  // removes exactly that separator, retaining the user's own line breaks.
++  [quoteLines enumerateIndexesWithOptions:NSEnumerationReverse usingBlock:^(NSUInteger line, BOOL *stop) {
++    if (line + 1 < lines.count && ![quoteLines containsIndex:line + 1])
++      lines[line] = [lines[line] stringByAppendingString:@"\n"];
++  }];
+   return [lines componentsJoinedByString:@"\n"];
+ }
+ @end
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.mm
+@@ -94,5 +94,6 @@
+   NSString *candidate = [ENRMMarkdownSerializer serializeComposerText:text ranges:ranges blockRanges:store.allRanges];
+   ENRMParseResult *parsed = [[ENRMInputParser new] parseComposerMarkdown:candidate];
+   return [parsed.plainText isEqualToString:text] &&
++    ENRMComposerInlineEquivalent(text, ranges, parsed.formattingRanges) &&
+     [ENRMComposerBlockCoverage(text, store.allRanges) isEqual:ENRMComposerBlockCoverage(text, parsed.blockRanges)];
+ }
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
+@@ -692,6 +692,16 @@
+     }
+   }];
+   [syntaxIndexes removeIndexes:newlineIndexes];
++  // A quote-ending blank line is structural Markdown, not an extra native
++  // paragraph. Canonical export always adds one, even before user blank lines.
++  if (composer) for (ENRMBlockRange *block in rawBlockRanges) {
++    if (block.type != ENRMInputBlockTypeQuote || block.level != 1 ||
++        [opaqueIndexes intersectsIndexesInRange:block.range]) continue;
++    NSRange extent = [markdown lineRangeForRange:block.range];
++    NSUInteger separator = NSMaxRange(extent);
++    if (separator < rawLength && [markdown characterAtIndex:separator] == '\n')
++      [syntaxIndexes addIndex:separator];
++  }
+ 
+   NSMutableString *plainText = [NSMutableString stringWithCapacity:rawLength];
+   __block std::vector<NSUInteger> rawToPlainMap(rawLength + 1, 0);
