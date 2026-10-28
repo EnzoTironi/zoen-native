@@ -40,13 +40,13 @@ enum ZoenComposerSizing {
     } else {
       guard editor.text == expectedText else { return nil }
     }
-    // RN's real multiline editor appends its placeholder to the accessible
-    // label while empty. A labeled tagged container keeps the base label.
+    // ENRM forwards Fabric's label to its actual editor without adding the
+    // placeholder. RN's plain multiline editor appends it while empty.
     let rootLabel = root.accessibilityLabel
     if let rootLabel, !rootLabel.isEmpty {
       guard rootLabel == expectedLabel else { return nil }
     } else {
-      let editorLabel = expectedText.isEmpty && !expectedPlaceholder.isEmpty
+      let editorLabel = !canonicalInput && expectedText.isEmpty && !expectedPlaceholder.isEmpty
         ? "\(expectedLabel) \(expectedPlaceholder)" : expectedLabel
       guard editor.accessibilityLabel == editorLabel else { return nil }
     }

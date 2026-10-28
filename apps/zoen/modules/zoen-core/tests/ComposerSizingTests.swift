@@ -59,9 +59,11 @@ final class ComposerSizingTests: XCTestCase {
     root.canonicalText = ""
     root.baseFontSize = 51
     root.fittingHeight = 61
-    root.accessibilityLabel = "Message"
     controller.view.addSubview(root)
     let editor = UITextView(frame: CGRect(x: 12, y: 9, width: 240, height: 21))
+    // Fabric forwards the label to ENRM's accessibilityElement (UITextView).
+    // Its non-accessible host has no label, and it never appends the placeholder.
+    editor.accessibilityLabel = "Message"
     editor.textContainerInset = .zero
     editor.font = .systemFont(ofSize: 16)
     editor.typingAttributes = [.font: UIFont.systemFont(ofSize: 51)]
@@ -73,6 +75,11 @@ final class ComposerSizingTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(measure()?["height"]), 80, accuracy: 0.5)
     XCTAssertEqual(editor.text, "")
     XCTAssertEqual(editor.selectedRange, NSRange(location: 0, length: 0))
+    editor.accessibilityLabel = "Message Message"
+    XCTAssertNil(measure(), "The rich editor does not use RN's placeholder-suffixed label")
+    editor.accessibilityLabel = "Another field"
+    XCTAssertNil(measure(), "A stale accessibility identity must not measure another field")
+    editor.accessibilityLabel = "Message"
     for height: NSNumber? in [nil, 0, -1, NSNumber(value: Double.nan), NSNumber(value: Double.infinity)] {
       root.fittingHeight = height
       XCTAssertNil(measure(), "Missing/invalid native geometry cannot fall back to the wrong font")
