@@ -1,5 +1,8 @@
 //! Whole operations on the existing Client; no additional state owner.
-use super::*;
+use super::{
+    is_post, Client, Event, EventBody, InnerEvent, Payload, PendingEnvelope, Role, Sealed,
+    SealedKind, SignedContent, Signer, Update, SUITE_ID,
+};
 
 impl<S: Signer> Client<S> {
     pub(super) fn sign_content(
@@ -37,7 +40,7 @@ impl<S: Signer> Client<S> {
     pub(super) fn clear_event(
         &self,
         space: &str,
-        body: EventBody,
+        body: &EventBody,
         now_ms: i64,
     ) -> Result<PendingEnvelope, String> {
         let content = SignedContent {
@@ -49,7 +52,7 @@ impl<S: Signer> Client<S> {
             at_ms: now_ms,
             seen: self.head(space).as_ref().map(Into::into),
             payload: Some(Payload::Body(
-                event_log::content::encode_body(&body).map_err(|error| error.to_string())?,
+                event_log::content::encode_body(body).map_err(|error| error.to_string())?,
             )),
         }
         .encode();
@@ -87,6 +90,10 @@ impl<S: Signer> Client<S> {
         Ok(pending)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error if the message cannot be admitted, signed or encrypted,
+    /// or if the resulting client update fails.
     pub fn queue_message(
         &mut self,
         space: &str,
@@ -98,6 +105,10 @@ impl<S: Signer> Client<S> {
 
     /// A message, optionally an inline reply (`thread == false`) or a thread reply to
     /// `reply`, or forwarded. Thread replies always point at the root, like native.
+    ///
+    /// # Errors
+    /// Returns an error for invalid message or reply content, missing space
+    /// authority or encryption state, or failed signing, encryption or update.
     pub fn queue_post(
         &mut self,
         space: &str,
@@ -111,14 +122,13 @@ impl<S: Signer> Client<S> {
                 let target = self
                     .posted(space, &to)
                     .ok_or("That message is no longer available.")?;
-                let to = match target {
+                let to = match target.reply {
                     Some(root) if thread && root.thread => root.to,
                     _ => to,
                 };
                 let to = self
                     .resolve_post(space, &to)
-                    .map(|event| event.hash.clone())
-                    .unwrap_or(to);
+                    .map_or(to, |event| event.hash.clone());
                 Some(types::ReplyRef {
                     quote: None,
                     artifact: None,
@@ -133,7 +143,7 @@ impl<S: Signer> Client<S> {
         }
         self.queue_domain_body(
             space,
-            EventBody::MessagePosted {
+            &EventBody::MessagePosted {
                 message: types::new_secret_id("msg").map_err(|error| error.to_string())?,
                 text: text.into(),
                 attaches: None,
@@ -147,6 +157,10 @@ impl<S: Signer> Client<S> {
         self.update(Vec::new())
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for an invalid annotation or unavailable target, missing
+    /// space authority or encryption state, or failed signing, encryption or update.
     pub fn queue_annotation(
         &mut self,
         space: &str,
@@ -214,13 +228,17 @@ impl<S: Signer> Client<S> {
         }
         self.queue_domain_body(
             space,
-            EventBody::MessageAnnotated { target, note },
+            &EventBody::MessageAnnotated { target, note },
             now_ms,
             Vec::new(),
         )?;
         self.update(Vec::new())
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for an invalid invite, missing device or key material,
+    /// or failed membership proposal, signing, encryption or client update.
     pub fn queue_join(
         &mut self,
         space: &str,
@@ -236,7 +254,7 @@ impl<S: Signer> Client<S> {
         }
         let mut pending = self.clear_event(
             space,
-            EventBody::MemberAdded {
+            &EventBody::MemberAdded {
                 identity: self.account.identity.clone(),
                 role,
             },

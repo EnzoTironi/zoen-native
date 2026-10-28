@@ -1,6 +1,6 @@
-//! An attachment's only durable content is the existing outbox plus local_chunks.
+//! An attachment's only durable content is the existing outbox plus `local_chunks`.
 //! Only active producer sequences retain retry receipts. Restore never revives a lease.
-use super::*;
+use super::{BTreeMap, BTreeSet, Client, Deserialize, EventBody, Serialize, Signer, Update};
 use sha2::{Digest, Sha256};
 mod framing;
 use framing::{unpack, unpack_batch};
@@ -16,6 +16,16 @@ pub(super) struct Producer {
     pending: BTreeMap<u64, Option<Receipt>>,
 }
 impl Producer {
+    fn issued(&self, mutation: &str) -> Result<(u64, Option<Receipt>), String> {
+        let sequence = self.sequence(mutation)?;
+        let receipt = self
+            .pending
+            .get(&sequence)
+            .ok_or("This attachment sequence has retired.")?
+            .clone();
+        Ok((sequence, receipt))
+    }
+
     pub(super) fn new() -> Result<Self, String> {
         Ok(Self {
             id: types::new_secret_id("attachment").map_err(|error| error.to_string())?,
@@ -111,9 +121,91 @@ fn descriptor(doc: &types::FileDoc) -> serde_json::Value {
     ])
 }
 
+fn validate_batch(request: &BatchRequest) -> Result<(), String> {
+    if !identifier(&request.space_id)
+        || request.reply_to.as_ref().is_some_and(|id| !identifier(id))
+        || request.thread && request.reply_to.is_none()
+        || !request.options.validate_count(request.items.len())
+        || request
+            .items
+            .iter()
+            .any(|item| !valid_item(&item.mutation_id, &item.caption))
+        || request
+            .items
+            .iter()
+            .map(|item| &item.mutation_id)
+            .collect::<BTreeSet<_>>()
+            .len()
+            != request.items.len()
+    {
+        return Err("Invalid attachment batch intent.".into());
+    }
+    Ok(())
+}
+
 impl<S: Signer> Client<S> {
+    fn attachment_reply(
+        &self,
+        space: &str,
+        reply_to: Option<&str>,
+        thread: bool,
+    ) -> Result<Option<types::ReplyRef>, String> {
+        Ok(match reply_to {
+            Some(to) => {
+                let target = self
+                    .posted(space, to)
+                    .ok_or("That message is no longer available.")?;
+                let reference = match target.reply {
+                    Some(root) if thread && root.thread => root.to,
+                    _ => to.to_owned(),
+                };
+                let event = self
+                    .resolve_post(space, &reference)
+                    .ok_or("That message is no longer available.")?;
+                Some(types::ReplyRef {
+                    quote: None,
+                    artifact: None,
+                    to: event.hash.clone(),
+                    thread,
+                })
+            }
+            None => None,
+        })
+    }
+
+    fn batch_fingerprint(
+        &self,
+        request: &BatchRequest,
+        files: &[UnpackedAttachment],
+    ) -> Result<String, String> {
+        let intent = serde_json::json!([
+            "zoen.attachment.batch.v1",
+            self.account.identity,
+            request.space_id,
+            request.reply_to,
+            request.thread,
+            request.options,
+            request
+                .items
+                .iter()
+                .zip(files)
+                .map(|(item, (doc, _))| {
+                    serde_json::json!([item.mutation_id, item.caption, descriptor(doc)])
+                })
+                .collect::<Vec<_>>(),
+        ]);
+        let fingerprint = hex::encode(Sha256::digest(
+            serde_json::to_vec(&intent).map_err(|error| error.to_string())?,
+        ));
+        Ok(fingerprint)
+    }
+
     /// Ephemeral admission only. No producer token or sequence can be restored from
     /// caller input, saved snapshots, or an old activation's pending callback.
+    ///
+    /// # Errors
+    /// Returns an error for malformed requests, retired producer or mutation identities,
+    /// sequence exhaustion, or acknowledgement before acceptance.
     pub fn attachment_producer(&mut self, request: &str) -> Result<String, String> {
         if request.len() > 1024 {
             return Err("Invalid attachment producer request.".into());
@@ -152,6 +244,10 @@ impl<S: Signer> Client<S> {
     /// Called only after explicit Send. Both signed events and all ciphertext are
     /// retained before the host can upload or publish anything. A fresh encryption
     /// of the same retry is allowed, but cannot replace the accepted ciphertext.
+    ///
+    /// # Errors
+    /// Returns an error for invalid intent or framing, retired mutation identities,
+    /// missing write authority, conflicting retries, or signing, encryption or update failures.
     pub fn queue_attachment(
         &mut self,
         request: &str,
@@ -171,13 +267,7 @@ impl<S: Signer> Client<S> {
         {
             return Err("Invalid attachment intent.".into());
         }
-        let sequence = self.attachment_producer.sequence(&request.mutation_id)?;
-        let receipt = self
-            .attachment_producer
-            .pending
-            .get(&sequence)
-            .ok_or("This attachment sequence has retired.")?
-            .clone();
+        let (sequence, receipt) = self.attachment_producer.issued(&request.mutation_id)?;
         self.document_writer(&request.space_id)?;
         let (doc, chunks) = unpack(framed)?;
         if !request.options.is_default() && doc.is_voice() {
@@ -213,27 +303,11 @@ impl<S: Signer> Client<S> {
             }
             return Ok((self.update(Vec::new())?, receipt.item, receipt.message));
         }
-        let reply = match &request.reply_to {
-            Some(to) => {
-                let target = self
-                    .posted(&request.space_id, to)
-                    .ok_or("That message is no longer available.")?;
-                let reference = match target {
-                    Some(root) if request.thread && root.thread => root.to,
-                    _ => to.clone(),
-                };
-                let event = self
-                    .resolve_post(&request.space_id, &reference)
-                    .ok_or("That message is no longer available.")?;
-                Some(types::ReplyRef {
-                    quote: None,
-                    artifact: None,
-                    to: event.hash.clone(),
-                    thread: request.thread,
-                })
-            }
-            None => None,
-        };
+        let reply = self.attachment_reply(
+            &request.space_id,
+            request.reply_to.as_deref(),
+            request.thread,
+        )?;
         let item = types::new_secret_id("it").map_err(|error| error.to_string())?;
         let uploads = chunks.keys().cloned().collect::<Vec<_>>();
         let identities = self.queue_domain_batch_uploads(
@@ -282,6 +356,10 @@ impl<S: Signer> Client<S> {
 
     /// One immutable intent, one atomic outbox batch, and one shared upload barrier.
     /// No event or retained ciphertext changes until all entries have been validated.
+    ///
+    /// # Errors
+    /// Returns an error for invalid or duplicate intents, invalid framing, missing
+    /// write authority, retired mutations, conflicting retries, or signing and update failures.
     pub fn queue_attachment_batch(
         &mut self,
         request: &str,
@@ -293,62 +371,18 @@ impl<S: Signer> Client<S> {
         }
         let request: BatchRequest =
             serde_json::from_str(request).map_err(|_| "Invalid attachment batch request.")?;
-        if !identifier(&request.space_id)
-            || request.reply_to.as_ref().is_some_and(|id| !identifier(id))
-            || request.thread && request.reply_to.is_none()
-            || !request.options.validate_count(request.items.len())
-            || request
-                .items
-                .iter()
-                .any(|item| !valid_item(&item.mutation_id, &item.caption))
-            || request
-                .items
-                .iter()
-                .map(|item| &item.mutation_id)
-                .collect::<BTreeSet<_>>()
-                .len()
-                != request.items.len()
-        {
-            return Err("Invalid attachment batch intent.".into());
-        }
+        validate_batch(&request)?;
         self.document_writer(&request.space_id)?;
         let issued = request
             .items
             .iter()
-            .map(|item| {
-                let sequence = self.attachment_producer.sequence(&item.mutation_id)?;
-                let receipt = self
-                    .attachment_producer
-                    .pending
-                    .get(&sequence)
-                    .ok_or("This attachment sequence has retired.")?
-                    .clone();
-                Ok((sequence, receipt))
-            })
+            .map(|item| self.attachment_producer.issued(&item.mutation_id))
             .collect::<Result<Vec<_>, String>>()?;
         let files = unpack_batch(framed, request.items.len())?;
         if !request.options.is_default() && files.iter().any(|(doc, _)| doc.is_voice()) {
             return Err("Voice notes cannot use attachment presentation options.".into());
         }
-        let intent = serde_json::json!([
-            "zoen.attachment.batch.v1",
-            self.account.identity,
-            request.space_id,
-            request.reply_to,
-            request.thread,
-            request.options,
-            request
-                .items
-                .iter()
-                .zip(&files)
-                .map(|(item, (doc, _))| {
-                    serde_json::json!([item.mutation_id, item.caption, descriptor(doc)])
-                })
-                .collect::<Vec<_>>(),
-        ]);
-        let fingerprint = hex::encode(Sha256::digest(
-            serde_json::to_vec(&intent).map_err(|error| error.to_string())?,
-        ));
+        let fingerprint = self.batch_fingerprint(&request, &files)?;
         if issued.iter().any(|(_, receipt)| receipt.is_some()) {
             let replay = issued.iter().map(|(_, receipt)| {
                 let receipt = receipt.as_ref().ok_or("This attachment batch was only partly accepted.")?;
@@ -359,27 +393,11 @@ impl<S: Signer> Client<S> {
             }).collect::<Result<Vec<_>, String>>()?;
             return Ok((self.update(Vec::new())?, replay));
         }
-        let reply = match &request.reply_to {
-            Some(to) => {
-                let target = self
-                    .posted(&request.space_id, to)
-                    .ok_or("That message is no longer available.")?;
-                let reference = match target {
-                    Some(root) if request.thread && root.thread => root.to,
-                    _ => to.clone(),
-                };
-                let event = self
-                    .resolve_post(&request.space_id, &reference)
-                    .ok_or("That message is no longer available.")?;
-                Some(types::ReplyRef {
-                    quote: None,
-                    artifact: None,
-                    to: event.hash.clone(),
-                    thread: request.thread,
-                })
-            }
-            None => None,
-        };
+        let reply = self.attachment_reply(
+            &request.space_id,
+            request.reply_to.as_deref(),
+            request.thread,
+        )?;
         let ordered = request
             .items
             .iter()

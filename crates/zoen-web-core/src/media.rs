@@ -31,25 +31,29 @@ pub struct Sealed {
     pub uploads: Vec<Upload>,
 }
 
-fn chunk_secret(file_key: &[u8; 32], chunk_sha: &[u8]) -> ([u8; 32], [u8; 24]) {
+fn chunk_secret(file_key: &[u8; 32], chunk_sha: &[u8]) -> Result<([u8; 32], [u8; 24]), String> {
     let hk = Hkdf::<Sha256>::new(Some(chunk_sha), file_key);
     let mut okm = [0u8; 56];
     hk.expand(b"zoen-file-chunk/1", &mut okm)
-        .expect("56 bytes is a valid HKDF length");
+        .map_err(|_| "chunk key derivation failed")?;
     let mut key = [0u8; 32];
     let mut nonce = [0u8; 24];
     key.copy_from_slice(&okm[..32]);
     nonce.copy_from_slice(&okm[32..]);
-    (key, nonce)
+    Ok((key, nonce))
 }
 
-fn seal_chunk(file_key: &[u8; 32], plain: &[u8], uploads: &mut Vec<Upload>) -> ChunkRef {
+fn seal_chunk(
+    file_key: &[u8; 32],
+    plain: &[u8],
+    uploads: &mut Vec<Upload>,
+) -> Result<ChunkRef, String> {
     let sha = Sha256::digest(plain);
-    let (key, nonce) = chunk_secret(file_key, &sha);
-    let cipher = XChaCha20Poly1305::new_from_slice(&key).expect("32-byte key");
+    let (key, nonce) = chunk_secret(file_key, &sha)?;
+    let cipher = XChaCha20Poly1305::new(&key.into());
     let ct = cipher
         .encrypt(&XNonce::from(nonce), plain)
-        .expect("encrypt");
+        .map_err(|_| "chunk encryption failed")?;
     let mut sealed = Vec::with_capacity(24 + ct.len());
     sealed.extend_from_slice(&nonce);
     sealed.extend_from_slice(&ct);
@@ -60,12 +64,12 @@ fn seal_chunk(file_key: &[u8; 32], plain: &[u8], uploads: &mut Vec<Upload>) -> C
             sealed,
         });
     }
-    ChunkRef {
+    Ok(ChunkRef {
         sha256: hex::encode(sha),
         bytes: plain.len() as u64,
         blob,
         key: hex::encode(key),
-    }
+    })
 }
 
 /// One page payload, with the same authenticated chunk format as native pages.
@@ -76,12 +80,16 @@ pub(crate) fn seal_page(bytes: &[u8]) -> Result<(ChunkRef, Upload), String> {
     let mut key = [0; 32];
     getrandom::getrandom(&mut key).map_err(|error| error.to_string())?;
     let mut uploads = Vec::new();
-    let reference = seal_chunk(&key, bytes, &mut uploads);
+    let reference = seal_chunk(&key, bytes, &mut uploads)?;
     Ok((reference, uploads.remove(0)))
 }
 
 /// Seals a file for a relay-synced chat. The caller uploads every `Upload`, then queues
 /// the `ItemCreated` carrying `doc`.
+///
+/// # Errors
+/// Returns an error for empty or oversized files, invalid names or MIME types,
+/// unavailable system randomness, or failed chunk key derivation or encryption.
 pub fn seal_file(
     name: &str,
     mime: &str,
@@ -110,10 +118,11 @@ pub fn seal_file(
                 &mut uploads,
             )
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     let thumb = thumb
         .filter(|t| !t.is_empty() && t.len() <= MAX_THUMBNAIL_BYTES)
-        .map(|t| seal_chunk(&file_key, t, &mut uploads));
+        .map(|t| seal_chunk(&file_key, t, &mut uploads))
+        .transpose()?;
     Ok(Sealed {
         doc: FileDoc {
             app_origin: None,
@@ -131,7 +140,7 @@ pub fn seal_file(
 }
 
 /// Reuse already-signed immutable chunks when their plaintext is unchanged.
-/// Every fresh chunk still uses the same Rust encryption and FileDoc format.
+/// Every fresh chunk still uses the same Rust encryption and `FileDoc` format.
 pub(crate) fn seal_file_reusing(
     name: &str,
     mime: &str,
@@ -208,6 +217,10 @@ pub(crate) fn validate_owned_file(file: &FileDoc, max_bytes: usize) -> Result<()
 }
 
 /// Opens one downloaded chunk only if it is exactly what the event promised.
+///
+/// # Errors
+/// Returns an error for a ciphertext hash mismatch, truncated ciphertext, invalid
+/// key or nonce, failed authentication, or a plaintext hash mismatch.
 pub fn open_chunk(chunk: &ChunkRef, sealed: &[u8]) -> Result<Vec<u8>, String> {
     if hex::encode(Sha256::digest(sealed)) != chunk.blob || sealed.len() < 24 + 16 {
         return Err("The file changed on the way.".into());
@@ -228,27 +241,34 @@ pub fn open_chunk(chunk: &ChunkRef, sealed: &[u8]) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     #[test]
-    fn sealed_chunks_open_and_tampering_is_refused() {
-        let bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
-        let s = seal_file("foto.jpg", "image/jpeg", &bytes, Some(b"thumb")).unwrap();
+    fn sealed_chunks_open_and_tampering_is_refused() -> Result<(), Box<dyn std::error::Error>> {
+        let bytes: Vec<u8> = (0..3_000_000u32)
+            .map(|i| u8::try_from(i * 7 % 251))
+            .collect::<Result<_, _>>()?;
+        let s = seal_file("foto.jpg", "image/jpeg", &bytes, Some(b"thumb"))?;
         assert_eq!(s.doc.bytes, bytes.len() as u64);
         let mut joined = Vec::new();
         for c in &s.doc.chunks {
-            let up = s.uploads.iter().find(|u| u.blob == c.blob).unwrap();
-            joined.extend(open_chunk(c, &up.sealed).unwrap());
+            let up = s
+                .uploads
+                .iter()
+                .find(|u| u.blob == c.blob)
+                .ok_or("fixture chunk upload missing")?;
+            joined.extend(open_chunk(c, &up.sealed)?);
         }
         assert_eq!(joined, bytes);
-        let t = s.doc.thumb.as_ref().unwrap();
+        let t = s.doc.thumb.as_ref().ok_or("fixture thumbnail missing")?;
         let mut bad = s
             .uploads
             .iter()
             .find(|u| u.blob == t.blob)
-            .unwrap()
+            .ok_or("fixture thumbnail upload missing")?
             .sealed
             .clone();
-        assert_eq!(open_chunk(t, &bad).unwrap(), b"thumb");
-        *bad.last_mut().unwrap() ^= 1;
+        assert_eq!(open_chunk(t, &bad)?, b"thumb");
+        *bad.last_mut().ok_or("fixture thumbnail ciphertext empty")? ^= 1;
         assert!(open_chunk(t, &bad).is_err());
         assert!(seal_file("a/b", "image/png", b"x", None).is_err());
+        Ok(())
     }
 }

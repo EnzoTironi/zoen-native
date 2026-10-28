@@ -80,10 +80,10 @@ impl<S: Signer> Client<S> {
         if let Some(reason) = self.saved.integrity_errors.get(space) {
             return Err(reason.clone());
         }
-        if !self
+        if self
             .roster(space)
             .get(&self.account.identity)
-            .is_some_and(|role| *role != Role::Reader)
+            .is_none_or(|role| *role == Role::Reader)
         {
             return Err("Só membros com permissão de escrita podem editar este arquivo.".into());
         }
@@ -99,7 +99,7 @@ impl<S: Signer> Client<S> {
     pub(in crate::client) fn queue_domain_body(
         &mut self,
         space: &str,
-        body: EventBody,
+        body: &EventBody,
         now: i64,
         uploads: Vec<String>,
     ) -> Result<(), String> {
@@ -124,7 +124,7 @@ impl<S: Signer> Client<S> {
             .checked_add(1)
             .ok_or("O diário de envio está cheio.")?;
         pending.order = Some(self.saved.outbox_sequence);
-        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.saved.outbox.insert(event.client_id, pending);
         Ok(())
     }
 
@@ -156,7 +156,7 @@ impl<S: Signer> Client<S> {
             .ok_or("O diário de envio está cheio.")?;
         let mut prepared = Vec::with_capacity(bodies.len());
         for (index, body) in bodies.into_iter().enumerate() {
-            let mut pending = self.clear_event(space, body, now)?;
+            let mut pending = self.clear_event(space, &body, now)?;
             let event = pending
                 .envelope()?
                 .plain_event()
@@ -257,7 +257,7 @@ impl<S: Signer> Client<S> {
         })
     }
 
-    pub(super) fn page_context(&self, item: &Item, frontiers: Vec<u8>) -> Result<String, String> {
+    pub(super) fn page_context(item: &Item, frontiers: Vec<u8>) -> Result<String, String> {
         let bytes = serde_json::to_vec(&Context {
             item: item.id.clone(),
             space: item.space.clone(),
@@ -275,9 +275,8 @@ impl<S: Signer> Client<S> {
         historical: bool,
     ) -> Result<Value, String> {
         let can_edit = !historical && read.ready && self.document_writer(&item.space).is_ok();
-        let content = match &item.current().content {
-            ItemContent::Page(page) => page,
-            _ => return Err("Esta versão não é uma página.".into()),
+        let ItemContent::Page(content) = &item.current().content else {
+            return Err("Esta versão não é uma página.".into());
         };
         Ok(json!({
             "item_id": item.id, "space_id": item.space, "title": content.title, "path": content.path,
@@ -286,7 +285,7 @@ impl<S: Signer> Client<S> {
             "pending_sync": !historical && item.versions.iter().any(|version| version.pending),
             "save_error": read.error.clone().or_else(|| item.versions.iter().find_map(|version| version.failure.clone())),
             "can_edit": can_edit, "content_hash": read.live.content_hash().map_err(|error| error.to_string())?,
-            "edit_context": if can_edit { self.page_context(item, read.live.frontiers().encode())? } else { String::new() },
+            "edit_context": if can_edit { Self::page_context(item, read.live.frontiers().encode())? } else { String::new() },
             "blocks": read.live.blocks().iter().map(Block::from).collect::<Vec<_>>()
         }))
     }
@@ -336,10 +335,16 @@ impl<S: Signer> Client<S> {
     }
 
     /// Upload barriers survive reload. A document event cannot publish before its blob.
+    ///
+    /// # Errors
+    /// Returns an error if the pending upload descriptors cannot be serialized.
     pub fn document_uploads(&self) -> Result<String, String> {
         serde_json::to_string(&self.pending_document_uploads()).map_err(error)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error if a blob is unavailable locally or the client update fails.
     pub fn document_uploaded(&mut self, blobs: &[String]) -> Result<Update, String> {
         for blob in blobs {
             if !self.saved.local_chunks.contains_key(blob) {
@@ -353,6 +358,10 @@ impl<S: Signer> Client<S> {
         self.update(Vec::new())
     }
 
+    ///
+    /// # Errors
+    /// Returns an error if the payload exceeds the page limit, differs from the
+    /// signed length or hash, or the client update fails.
     pub fn document_cache_blob(
         &mut self,
         reference: ChunkRef,

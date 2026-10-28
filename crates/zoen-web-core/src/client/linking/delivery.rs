@@ -1,12 +1,15 @@
 //! Implementation within the existing browser client authority.
-use super::*;
+use super::{
+    json, Client, ClientFrame, DeviceMsg, EventBody, Op, Peer, Privacy, Reply, Sending, Signer,
+    Value, DEVICE_REQUEST, PAGE_LIMIT,
+};
 
 impl<S: Signer> Client<S> {
     pub(in crate::client) fn linking_reply(
         &mut self,
         id: u64,
         result: &Result<Reply, String>,
-    ) -> Result<bool, String> {
+    ) -> bool {
         if let Some(link) = self
             .saved
             .linking
@@ -23,7 +26,7 @@ impl<S: Signer> Client<S> {
                 Err(error) => link.failure = Some(error.clone()),
                 _ => link.failure = Some("O servidor não confirmou o vínculo.".into()),
             }
-            return Ok(true);
+            return true;
         }
         if let Some(sending) = self
             .saved
@@ -41,9 +44,9 @@ impl<S: Signer> Client<S> {
                 Err(error) => sending.failure = Some(error.clone()),
                 _ => sending.failure = Some("O servidor não confirmou o histórico.".into()),
             }
-            return Ok(true);
+            return true;
         }
-        Ok(false)
+        false
     }
 
     pub(super) fn prepare_outgoing_history(&mut self, device: &str) -> Result<(), String> {
@@ -90,7 +93,8 @@ impl<S: Signer> Client<S> {
         if events.len() > 100_000 {
             return Err("Histórico grande demais para este navegador.".into());
         }
-        let messages = events.len() as u32;
+        let messages =
+            u32::try_from(events.len()).map_err(|_| "history message count exceeds limit")?;
         let plain = zeroize::Zeroizing::new(
             serde_json::to_vec(&device_link::Bundle { events })
                 .map_err(|_| "Histórico inválido.")?,
@@ -105,9 +109,12 @@ impl<S: Signer> Client<S> {
         let chunks = plain
             .chunks(1 << 20)
             .enumerate()
-            .map(|(index, part)| device_link::seal_chunk(&key, index as u32, part))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
+            .map(|(index, part)| {
+                let index = u32::try_from(index)
+                    .map_err(|_| "history chunk index exceeds limit".to_owned())?;
+                device_link::seal_chunk(&key, index, part).map_err(|error| error.to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let manifest = device_link::HistoryBox {
             transfer: transfer.clone(),
             key: hex::encode(key.as_ref()),
@@ -251,6 +258,11 @@ impl<S: Signer> Client<S> {
                 sending.hint_sent = true;
             }
         }
+        self.link_new_device_spaces()?;
+        self.request_older_frames(frames)?;
+        Ok(())
+    }
+    fn link_new_device_spaces(&mut self) -> Result<(), String> {
         let mut joins = Vec::new();
         for device in self
             .saved
@@ -276,7 +288,7 @@ impl<S: Signer> Client<S> {
         for (space, device) in joins {
             self.enqueue_control(
                 &space,
-                EventBody::DeviceJoining {
+                &EventBody::DeviceJoining {
                     device: device.clone(),
                 },
                 self.view_now_ms,
@@ -288,6 +300,9 @@ impl<S: Signer> Client<S> {
                 .or_default()
                 .insert(space);
         }
+        Ok(())
+    }
+    fn request_older_frames(&mut self, frames: &mut Vec<Vec<u8>>) -> Result<(), String> {
         for (space, pending) in &self.saved.linking.pages {
             if self
                 .saved
@@ -314,7 +329,8 @@ impl<S: Signer> Client<S> {
                 req: pending.req.clone(),
                 space: space.clone(),
                 before: pending.before,
-                limit: PAGE_LIMIT as u32,
+                limit: u32::try_from(PAGE_LIMIT)
+                    .map_err(|_| "history page limit exceeds wire limit")?,
             }) {
                 frames.push(
                     ClientFrame::Req {

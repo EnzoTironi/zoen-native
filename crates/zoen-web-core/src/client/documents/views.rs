@@ -1,5 +1,7 @@
 //! Item and persona display projections over accepted document versions.
-use super::*;
+use super::{
+    json, plan_value, t, total, ChunkRef, Client, Item, ItemContent, ItemKind, Signer, Value,
+};
 
 impl<S: Signer> Client<S> {
     pub(in crate::client) fn persona_value(&self, id: &str) -> Value {
@@ -19,11 +21,11 @@ impl<S: Signer> Client<S> {
         let owner = profile.and_then(|profile| profile.owner.as_ref());
         let owner_profile = owner.and_then(|id| self.saved.profiles.get(id));
         let photo = self.fields_of(id).and_then(|(_, fields)| fields.photo);
-        json!({ "id": id, "kind": profile.map(|profile| profile.kind).unwrap_or(types::IdentityKind::Person),
-            "name": name, "handle": profile.map(|profile| profile.handle.as_str()).unwrap_or(if id==self.account.identity {&self.account.handle}else{""}),
+        json!({ "id": id, "kind": profile.map_or(types::IdentityKind::Person, |profile| profile.kind),
+            "name": name, "handle": profile.map_or(if id==self.account.identity {&self.account.handle}else{""}, |profile| profile.handle.as_str()),
             "initials": name.split_whitespace().take(2).filter_map(|part| part.chars().next()).collect::<String>().to_uppercase(),
-            "tint_hex": profile.map(|profile| profile.tint_hex.as_str()).unwrap_or("#8E8E93"),
-            "glyph": profile.and_then(|profile| profile.glyph.as_ref()), "bio": profile.map(|profile| profile.bio.as_str()).unwrap_or(""),
+            "tint_hex": profile.map_or("#8E8E93", |profile| profile.tint_hex.as_str()),
+            "glyph": profile.and_then(|profile| profile.glyph.as_ref()), "bio": profile.map_or("", |profile| profile.bio.as_str()),
             "owner_id": owner, "owner_name": owner_profile.map(|profile| &profile.name),
             "owner_tint_hex": owner_profile.map(|profile| &profile.tint_hex),
             "photo_sha256": photo.as_ref().map(|photo| &photo.sha256), "photo_mime": photo.as_ref().map(|photo| &photo.mime),
@@ -42,7 +44,7 @@ impl<S: Signer> Client<S> {
             if version == 0 || version as usize > item.versions.len() {
                 return Err("Versão indisponível.".into());
             }
-            selected.versions.truncate(version as usize);
+            selected.versions.truncate(version as usize)?;
         }
         let current = selected.current();
         let mut plan = None;
@@ -53,12 +55,11 @@ impl<S: Signer> Client<S> {
         if item.kind == ItemKind::Plan {
             let read = self.plan_read(&selected)?;
             downloads.extend(read.downloads.clone());
-            title = read.document.title.clone();
+            title.clone_from(&read.document.title);
             plan = Some(plan_value(&read.document)?);
         }
         match &current.content {
             ItemContent::Text { text: value } => text = Some(value.clone()),
-            ItemContent::Plan(_) => {}
             ItemContent::Page(content) if item.kind == ItemKind::Page => {
                 let read = self.read_page(&selected, at.is_none())?;
                 downloads.extend(read.downloads.clone());
@@ -66,15 +67,15 @@ impl<S: Signer> Client<S> {
                     read.live
                         .blocks()
                         .iter()
-                        .map(|block| block.plain_text())
+                        .map(::documents::Block::plain_text)
                         .collect::<Vec<_>>()
                         .join("\n"),
                 );
-                path = content.path.clone();
+                path.clone_from(&content.path);
             }
             ItemContent::Page(_) if item.kind == ItemKind::Plan => {}
             ItemContent::File(document) => {
-                path = document.path.clone();
+                path.clone_from(&document.path);
                 file = Some(json!({
                     "name": document.name, "path": document.path, "mime": document.mime,
                     "bytes": document.bytes.to_string(), "sha256": document.sha256,
@@ -97,7 +98,7 @@ impl<S: Signer> Client<S> {
         Ok(json!({ "id": item.id, "space_id": item.space,
             "space_title": self.metadata(&item.space).map(|metadata| metadata.0).unwrap_or_default(),
             "kind_id": kind_id, "kind_label": kind_label, "title": title, "origin": item.origin,
-            "created_by": self.persona_value(&item.versions[0].event.author), "plan": plan, "text": text,
+            "created_by": self.persona_value(&item.versions.first().event.author), "plan": plan, "text": text,
             "version": selected.versions.len(), "versions": item.versions.iter().enumerate().rev().map(|(index, version)| json!({
                 "number": index + 1, "author": self.persona_value(&version.event.author),
                 "at_ms": version.event.at_ms.to_string(), "note": version.note, "is_undo": version.is_undo,

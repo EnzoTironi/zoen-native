@@ -7,28 +7,25 @@ pub(super) fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect(
     let space = log.space().to_owned();
     let last = log.next_seq() - 1;
     client.logs.insert(space.clone(), log);
-    let first = client.mark_read(&space).unwrap(); // Simulate a durable save, then losing the outgoing frame.
-    assert_eq!(receipt_marks(&first.frames), vec![("read", last)]);
+    let first = client.mark_read(&space)?; // Simulate a durable save, then losing the outgoing frame.
+    assert_eq!(receipt_marks(&first.frames)?, vec![("read", last)]);
     assert_eq!(
-        receipt_marks(&client.mark_read(&space).unwrap().frames),
+        receipt_marks(&client.mark_read(&space)?.frames)?,
         vec![("read", last)]
     );
     let mut restored = Client::new(
         client.account.clone(),
         client.signer.clone(),
         &first.snapshot,
-    )
-    .unwrap();
+    )?;
     for _ in 0..2 {
-        restored.bootstrap().unwrap();
-        let update = restored
-            .receive(&ServerFrame::SyncDone.encode(), 100)
-            .unwrap();
+        restored.bootstrap()?;
+        let update = restored.receive(&ServerFrame::SyncDone.encode(), 100)?;
         assert_eq!(
-            receipt_marks(&update.frames),
+            receipt_marks(&update.frames)?,
             vec![("delivered", last), ("read", last)]
         );
-        assert!(restored.delivered().is_empty());
+        assert_eq!(restored.delivered(), Vec::<Vec<u8>>::new());
     }
     Ok(())
 }
@@ -53,25 +50,22 @@ pub(super) fn actual_public_receive_emits_delivery_and_mark_read_replays_after_s
         50,
     )?;
     let seq = log.next_seq() - 1;
-    let received = client.receive(&wire, 51).unwrap();
-    assert!(receipt_marks(&received.frames).contains(&("delivered", seq)));
-    let read = client.mark_read(&space).unwrap();
-    assert_eq!(receipt_marks(&read.frames), vec![("read", seq)]);
+    let received = client.receive(&wire, 51)?;
+    assert!(receipt_marks(&received.frames)?.contains(&("delivered", seq)));
+    let read = client.mark_read(&space)?;
+    assert_eq!(receipt_marks(&read.frames)?, vec![("read", seq)]);
     let mut restored = Client::new(
         client.account.clone(),
         client.signer.clone(),
         &read.snapshot,
-    )
-    .unwrap();
-    restored.bootstrap().unwrap();
-    let replay = restored
-        .receive(&ServerFrame::SyncDone.encode(), 60)
-        .unwrap();
+    )?;
+    restored.bootstrap()?;
+    let replay = restored.receive(&ServerFrame::SyncDone.encode(), 60)?;
     assert_eq!(
-        receipt_marks(&replay.frames),
+        receipt_marks(&replay.frames)?,
         vec![("delivered", seq), ("read", seq)]
     );
-    assert!(restored.delivered().is_empty());
+    assert_eq!(restored.delivered(), Vec::<Vec<u8>>::new());
     Ok(())
 }
 
@@ -93,7 +87,7 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
             },
             60,
         )?;
-        client.receive(&added, 61).unwrap();
+        client.receive(&added, 61)?;
         let incoming = |kind| {
             ServerFrame::Ephemeral {
                 space: space.clone(),
@@ -102,9 +96,7 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
             }
             .encode()
         };
-        client
-            .receive(&incoming(protocol::EphemeralKind::Read { seq: 7 }), 62)
-            .unwrap();
+        client.receive(&incoming(protocol::EphemeralKind::Read { seq: 7 }), 62)?;
         assert_eq!(client.saved.receipts[&space][&peer.identity], (7, 7));
         let subject = if remove_reader {
             owner.identity.clone()
@@ -120,12 +112,12 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
             },
             63,
         )?;
-        client.receive(&removed, 64).unwrap();
+        client.receive(&removed, 64)?;
         for kind in [
             protocol::EphemeralKind::Delivered { seq: u64::MAX },
             protocol::EphemeralKind::Read { seq: u64::MAX },
         ] {
-            let update = client.receive(&incoming(kind), 65).unwrap();
+            let update = client.receive(&incoming(kind), 65)?;
             assert_eq!(client.saved.receipts[&space][&peer.identity], (7, 7));
             assert!(client.deferred_receipts.is_empty());
             // Historical authorized marks persist through serialized reload.
@@ -133,8 +125,7 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
                 client.account.clone(),
                 client.signer.clone(),
                 &update.snapshot,
-            )
-            .unwrap();
+            )?;
             assert_eq!(restored.saved.receipts[&space][&peer.identity], (7, 7));
         }
         let rejoined = clear(
@@ -146,15 +137,11 @@ pub(super) fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_auth
             },
             66,
         )?;
-        client.receive(&rejoined, 67).unwrap();
+        client.receive(&rejoined, 67)?;
         assert_eq!(client.saved.receipts[&space][&peer.identity], (7, 7));
-        client
-            .receive(&incoming(protocol::EphemeralKind::Read { seq: 11 }), 68)
-            .unwrap();
+        client.receive(&incoming(protocol::EphemeralKind::Read { seq: 11 }), 68)?;
         assert_eq!(client.saved.receipts[&space][&peer.identity], (11, 11));
-        client
-            .receive(&incoming(protocol::EphemeralKind::Delivered { seq: 1 }), 69)
-            .unwrap();
+        client.receive(&incoming(protocol::EphemeralKind::Delivered { seq: 1 }), 69)?;
         assert_eq!(client.saved.receipts[&space][&peer.identity], (11, 11));
     }
     Ok(())
@@ -171,7 +158,7 @@ pub(super) fn actual_early_receipt_waits_for_confirmed_signed_membership_and_con
         kind: protocol::EphemeralKind::Read { seq: 25 },
     }
     .encode();
-    let update = client.receive(&early, 70).unwrap();
+    let update = client.receive(&early, 70)?;
     assert!(!client
         .saved
         .receipts
@@ -182,8 +169,7 @@ pub(super) fn actual_early_receipt_waits_for_confirmed_signed_membership_and_con
         client.account.clone(),
         client.signer.clone(),
         &update.snapshot,
-    )
-    .unwrap();
+    )?;
     assert!(
         restored.deferred_receipts.is_empty(),
         "Unvalidated pairs never enter durable snapshot"
@@ -197,21 +183,19 @@ pub(super) fn actual_early_receipt_waits_for_confirmed_signed_membership_and_con
         },
         71,
     )?;
-    client.receive(&added, 72).unwrap();
+    client.receive(&added, 72)?;
     assert_eq!(client.saved.receipts[&space][&peer], (25, 25));
     assert!(client.deferred_receipts.is_empty());
     for n in 0..1024 {
-        client
-            .receive(
-                &ServerFrame::Ephemeral {
-                    space: space.clone(),
-                    from: format!("{n:064x}"),
-                    kind: protocol::EphemeralKind::Delivered { seq: 1 },
-                }
-                .encode(),
-                73,
-            )
-            .unwrap();
+        client.receive(
+            &ServerFrame::Ephemeral {
+                space: space.clone(),
+                from: format!("{n:064x}"),
+                kind: protocol::EphemeralKind::Delivered { seq: 1 },
+            }
+            .encode(),
+            73,
+        )?;
     }
     let overflow = ServerFrame::Ephemeral {
         space: space.clone(),
@@ -220,10 +204,13 @@ pub(super) fn actual_early_receipt_waits_for_confirmed_signed_membership_and_con
     }
     .encode();
     assert_eq!(
-        client.receive(&overflow, 74).err().unwrap(),
+        client
+            .receive(&overflow, 74)
+            .err()
+            .ok_or("missing authenticated test err value")?,
         "receipt catch-up buffer exceeded"
     );
-    client.bootstrap().unwrap();
+    client.bootstrap()?;
     assert!(client.deferred_receipts.is_empty());
     assert_eq!(client.saved.receipts[&space][&peer], (25, 25));
     Ok(())
@@ -233,31 +220,31 @@ pub(super) fn browser_closed_chat_posts_queue_offline_and_never_publish_plaintex
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut client, author, mut log) = document_fixture()?;
     client.synced = false;
-    let queued = client
-        .queue_message(log.space(), "Uma mensagem offline", 10)
-        .unwrap();
+    let queued = client.queue_message(log.space(), "Uma mensagem offline", 10)?;
     assert_eq!(
-        client.conversations()[0].messages.last().unwrap().text,
+        client.conversations()[0]
+            .messages
+            .last()
+            .ok_or("missing authenticated test last value")?
+            .text,
         "Uma mensagem offline"
     );
-    assert!(!queued
-        .frames
-        .iter()
-        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
+    assert!(!queued.frames.iter().any(|frame| matches!(
+        ClientFrame::decode(frame).map_err(|error| error.to_string()),
+        Ok(ClientFrame::Publish { .. })
+    )));
     let upgraded = clear(&mut log, &author, EventBody::SpaceEncrypted, 11)?;
-    client.receive(&upgraded, 12).unwrap();
-    let resumed = client.receive(&ServerFrame::SyncDone.encode(), 13).unwrap();
-    assert!(!resumed.frames.iter().any(|frame|matches!(ClientFrame::decode(frame),Ok(ClientFrame::Publish{env}) if env.plain_event().is_some_and(|event|matches!(event.body,EventBody::MessagePosted{..})))));
+    client.receive(&upgraded, 12)?;
+    let resumed = client.receive(&ServerFrame::SyncDone.encode(), 13)?;
+    assert!(!resumed.frames.iter().any(|frame|matches!(ClientFrame::decode(frame).map_err(|error| error.to_string()),Ok(ClientFrame::Publish{env}) if env.plain_event().is_some_and(|event|matches!(event.body,EventBody::MessagePosted{..})))));
     Ok(())
 }
 
 pub(super) fn browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut client, _, mut log) = document_fixture()?;
-    let file = crate::media::seal_file("report.txt", "text/plain", b"report", None)
-        .unwrap()
-        .doc;
-    let (update, item, message) = client.queue_file_record(log.space(), file, 10).unwrap();
+    let file = crate::media::seal_file("report.txt", "text/plain", b"report", None)?.doc;
+    let (update, item, message) = client.queue_file_record(log.space(), file, 10)?;
     let before = client.conversations();
     assert_eq!(before[0].messages.len(), 1);
     assert_eq!(before[0].messages[0].id, message);
@@ -266,10 +253,11 @@ pub(super) fn browser_file_cards_keep_the_native_message_identity_for_deletion_a
         Some(item.as_str())
     );
     confirm_documents(&mut client, &mut log, update, 11)?;
-    let posted = client.conversations()[0].messages[0].entry.clone().unwrap();
-    let deleted = client
-        .queue_annotation(log.space(), &posted, types::Annotation::Delete, 12)
-        .unwrap();
+    let posted = client.conversations()[0].messages[0]
+        .entry
+        .clone()
+        .ok_or("missing authenticated test cloned value")?;
+    let deleted = client.queue_annotation(log.space(), &posted, types::Annotation::Delete, 12)?;
     confirm_documents(&mut client, &mut log, deleted, 13)?;
     let after = client.conversations();
     assert!(after[0].messages[0].deleted);

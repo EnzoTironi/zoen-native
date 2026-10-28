@@ -1,5 +1,8 @@
 //! Browser profile publication using the existing journal.
-use super::*;
+use super::{
+    profile, BTreeSet, Client, ClientFrame, DeviceSigned, EventBody, Op, ProfileKey, SealedProfile,
+    Signer, Upload, AGREEMENT_LOOKUP, AGREEMENT_PUBLISH, BATCH,
+};
 
 impl<S: Signer> Client<S> {
     pub(in crate::client) fn profile_deadline(&self) -> Option<i64> {
@@ -23,7 +26,10 @@ impl<S: Signer> Client<S> {
             return Ok(());
         }
         if !self.profile_net.publish {
-            let public = self.agreement_key().expect("checked").public_hex();
+            let public = self
+                .agreement_key()
+                .ok_or("profile agreement key missing after validation")?
+                .public_hex();
             if self.saved.profile.published_agreement != public {
                 let signed = self.signed_profile_statement(&profile::agreement_message(
                     &self.account.identity,
@@ -82,7 +88,12 @@ impl<S: Signer> Client<S> {
                 });
             }
             let request = self.next_retained_request_id()?;
-            let upload = self.saved.profile.upload.as_ref().expect("prepared");
+            let upload = self
+                .saved
+                .profile
+                .upload
+                .as_ref()
+                .ok_or("profile upload missing after preparation")?;
             frames.push(
                 ClientFrame::Req {
                     id: request,
@@ -107,6 +118,10 @@ impl<S: Signer> Client<S> {
             self.profile_net.upload_deadline = self.view_now_ms.saturating_add(15_000);
         }
         self.share_profile_key()?;
+        self.profile_lookup_frames(frames)
+    }
+
+    fn profile_lookup_frames(&mut self, frames: &mut Vec<Vec<u8>>) -> Result<(), String> {
         if !self.profile_net.agreement.is_empty()
             && self.profile_net.agreement_deadline <= self.view_now_ms
         {
@@ -192,7 +207,7 @@ impl<S: Signer> Client<S> {
         let key = ProfileKey::from_hex(&row.key).ok_or("Chave de perfil inválida.")?;
         let version = row.key_version;
         let me = &self.account.identity;
-        let mut shared = BTreeSet::new();
+        let mut recipients = BTreeSet::new();
         let pending = self
             .saved
             .outbox
@@ -214,12 +229,12 @@ impl<S: Signer> Client<S> {
         for event in self
             .logs
             .values()
-            .flat_map(|log| log.events())
+            .flat_map(event_log::SpaceLog::events)
             .chain(pending.iter())
         {
             if let EventBody::ProfileKeyShared { version: v, shares } = &event.body {
                 if event.author == *me && *v == version {
-                    shared.extend(shares.iter().map(|share| share.to.clone()));
+                    recipients.extend(shares.iter().map(|share| share.to.clone()));
                 }
             }
         }
@@ -232,7 +247,7 @@ impl<S: Signer> Client<S> {
             let mut shares = Vec::new();
             for id in roster.keys() {
                 if id == me
-                    || shared.contains(id)
+                    || recipients.contains(id)
                     || self.saved.profile.blocked.contains(id)
                     || self
                         .saved
@@ -256,7 +271,7 @@ impl<S: Signer> Client<S> {
                         ephemeral: sealed.ephemeral,
                         sealed: sealed.sealed,
                     });
-                    shared.insert(id.clone());
+                    recipients.insert(id.clone());
                 }
             }
             for shares in shares.chunks(200) {
@@ -270,7 +285,7 @@ impl<S: Signer> Client<S> {
             }
         }
         for (space, body) in bodies {
-            let pending = self.clear_event(&space, body, self.view_now_ms)?;
+            let pending = self.clear_event(&space, &body, self.view_now_ms)?;
             let id = pending.envelope()?.client_id().to_string();
             self.saved.outbox.insert(id, pending);
         }

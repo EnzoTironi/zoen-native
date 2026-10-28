@@ -1,5 +1,119 @@
 //! Whole operations on the existing Client; no additional state owner.
-use super::*;
+use super::{
+    documents, is_post, BTreeMap, BTreeSet, ChatPreferencesView, Client, ConversationProfile,
+    ConversationView, Event, EventBody, Folded, MessageView, Quote, Reaction, ReactionParticipant,
+    Signer, SpaceKind,
+};
+
+type AuthorAliases<'a> = BTreeMap<&'a str, (&'a str, &'a str)>;
+
+fn folded_annotations(events: &[Event]) -> (AuthorAliases<'_>, BTreeMap<String, Folded>) {
+    let mut authors: AuthorAliases<'_> = events
+        .iter()
+        .filter(|e| is_post(&e.body))
+        .map(|e| (e.hash.as_str(), (e.author.as_str(), e.hash.as_str())))
+        .collect();
+    for event in events.iter().filter(|e| is_post(&e.body)) {
+        authors
+            .entry(event.client_id.as_str())
+            .or_insert((event.author.as_str(), event.hash.as_str()));
+    }
+    let mut folded: BTreeMap<String, Folded> = BTreeMap::new();
+    for event in events {
+        let EventBody::MessageAnnotated { target, note } = &event.body else {
+            continue;
+        };
+        let Some((author, hash)) = authors.get(target.as_str()) else {
+            continue;
+        };
+        if note.author_only() && *author != event.author {
+            continue;
+        }
+        let f = folded.entry((*hash).to_owned()).or_default();
+        match note {
+            types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
+            types::Annotation::Delete => {
+                f.deleted = true;
+                f.text = None;
+                f.reactions.clear();
+            }
+            types::Annotation::React { emoji }
+                if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 =>
+            {
+                f.reactions.insert(event.author.clone(), emoji.clone());
+            }
+            types::Annotation::Unreact => {
+                f.reactions.remove(&event.author);
+            }
+            _ => {}
+        }
+    }
+    (authors, folded)
+}
+
+fn fold_references(messages: &mut [MessageView], authors: &AuthorAliases<'_>) {
+    // Native references may use client ids. Normalize before folding replies,
+    // preserving real hash targets if an alias collides.
+    for message in messages.iter_mut() {
+        if let Some(quote) = &mut message.quote {
+            if let Some((_, hash)) = authors.get(quote.id.as_str()) {
+                quote.id = (*hash).into();
+            }
+        }
+        if let Some(thread) = &mut message.thread {
+            if let Some((_, hash)) = authors.get(thread.as_str()) {
+                *thread = (*hash).into();
+            }
+        }
+    }
+    // Quotes and thread summaries resolve against the folded views.
+    let by_entry: BTreeMap<String, (String, String, i64, String)> = messages
+        .iter()
+        .filter_map(|m| {
+            m.entry.clone().map(|e| {
+                (
+                    e,
+                    (
+                        m.name.clone(),
+                        if m.deleted {
+                            String::new()
+                        } else {
+                            m.text.clone()
+                        },
+                        m.at_ms,
+                        m.author.clone(),
+                    ),
+                )
+            })
+        })
+        .collect();
+    let mut threads: BTreeMap<String, (usize, Vec<String>, i64)> = BTreeMap::new();
+    for m in messages.iter() {
+        if let Some(root) = &m.thread {
+            let t = threads.entry(root.clone()).or_default();
+            t.0 += 1;
+            t.2 = t.2.max(m.at_ms);
+            if !t.1.contains(&m.name) {
+                t.1.push(m.name.clone());
+            }
+        }
+    }
+    for m in messages.iter_mut() {
+        if let Some(Quote { id, name, text }) = &mut m.quote {
+            if let Some((n, t, _, _)) = by_entry.get(id) {
+                name.clone_from(n);
+                text.clone_from(t);
+            }
+        }
+        if let Some(entry) = &m.entry {
+            if let Some((count, who, last)) = threads.get(entry) {
+                m.replies = *count;
+                m.repliers = who.iter().take(3).cloned().collect();
+                m.last_reply_ms = Some(*last);
+            }
+        }
+    }
+}
 
 impl<S: Signer> Client<S> {
     // Shared ownership-checked manifest fold for cards and attachment posts.
@@ -103,41 +217,22 @@ impl<S: Signer> Client<S> {
             // A direct chat is named after the other person, like every messenger.
             let title = match roster.keys().find(|m| *m != me) {
                 Some(other) if kind == SpaceKind::Direct => self.saved.profiles.get(other)
-                    .map(|p| if p.name.is_empty() { format!("@{}", p.handle) } else { p.name.clone() })
-                    .unwrap_or_else(|| if title.is_empty() { "Conversa".into() } else { title.clone() }),
+                    .map_or_else(|| if title.is_empty() { "Conversa".into() } else { title.clone() }, |p| if p.name.is_empty() { format!("@{}", p.handle) } else { p.name.clone() }),
                 _ => title,
             };
             // Fold annotations over their targets. Readers enforce authorship.
-            let mut authors: BTreeMap<&str, (&str, &str)> = events.iter().filter(|e| is_post(&e.body))
-                .map(|e| (e.hash.as_str(), (e.author.as_str(), e.hash.as_str()))).collect();
-            for event in events.iter().filter(|e| is_post(&e.body)) {
-                authors.entry(event.client_id.as_str()).or_insert((event.author.as_str(), event.hash.as_str()));
-            }
-            let mut folded: BTreeMap<String, Folded> = BTreeMap::new();
-            for event in events {
-                let EventBody::MessageAnnotated { target, note } = &event.body else { continue };
-                let Some((author, hash)) = authors.get(target.as_str()) else { continue };
-                if note.author_only() && *author != event.author { continue; }
-                let f = folded.entry((*hash).to_owned()).or_default();
-                match note {
-                    types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
-                    types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
-                    types::Annotation::React { emoji } if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 => { f.reactions.insert(event.author.clone(), emoji.clone()); }
-                    types::Annotation::Unreact => { f.reactions.remove(&event.author); }
-                    _ => {}
-                }
-            }
+            let (authors, folded) = folded_annotations(events);
             let receipts = self.saved.receipts.get(space);
             let others: Vec<&String> = roster.keys().filter(|m| *m != me).collect();
             let watermark = |pick: fn(&(u64, u64)) -> u64| -> u64 {
-                others.iter().map(|m| receipts.and_then(|r| r.get(*m)).map(pick).unwrap_or(0)).min().unwrap_or(0)
+                others.iter().map(|m| receipts.and_then(|r| r.get(*m)).map_or(0, pick)).min().unwrap_or(0)
             };
             let (all_delivered, all_read) = (watermark(|r| r.0.max(r.1)), watermark(|r| r.1));
-            let my_read = receipts.and_then(|r| r.get(me)).map(|r| r.1).unwrap_or(0);
+            let my_read = receipts.and_then(|r| r.get(me)).map_or(0, |r| r.1);
             let mut messages = events.iter().filter_map(|event| {
                 let mut view = self.message_view_with_media(event, "confirmed", None, &item_edits, &accepted_media)?;
                 view.entry = Some(event.hash.clone());
-                view.seq = Some(event.seq);
+                view.seq = Some(super::MessageSequence(event.seq));
                 if let EventBody::ItemCreated { item, .. } = &event.body {
                     if let Some((_, versions)) = files.get(item.as_str()) {
                         view.file = versions.last().map(|doc| (*doc).clone());
@@ -151,13 +246,13 @@ impl<S: Signer> Client<S> {
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
                     if f.deleted { view.text.clear(); view.media = None; view.file = None; view.file_item_id = None; view.file_version = None; view.card = None; }
-                    if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
+                    if let Some(text) = &f.text { view.text.clone_from(text); view.edited = true; }
                     let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
                         let name = if who == me { self.account.name.clone() } else {
-                            self.saved.profiles.get(who).map(|profile| {
+                            self.saved.profiles.get(who).map_or_else(|| "Alguém".into(), |profile| {
                                 if profile.name.is_empty() { format!("@{}", profile.handle) } else { profile.name.clone() }
-                            }).unwrap_or_else(|| "Alguém".into())
+                            })
                         };
                         groups.entry(emoji.as_str()).or_default().push(ReactionParticipant { identity: who.clone(), name });
                     }
@@ -173,38 +268,9 @@ impl<S: Signer> Client<S> {
                 if inner.space != *space { return None; }
                 self.message_view_with_media(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone(), &item_edits, &accepted_media)
             }));
-            // Native references may use client ids. Normalize before folding replies,
-            // preserving real hash targets if an alias collides.
-            for message in &mut messages {
-                if let Some(quote) = &mut message.quote {
-                    if let Some((_, hash)) = authors.get(quote.id.as_str()) { quote.id = (*hash).into(); }
-                }
-                if let Some(thread) = &mut message.thread {
-                    if let Some((_, hash)) = authors.get(thread.as_str()) { *thread = (*hash).into(); }
-                }
-            }
-            // Quotes and thread summaries resolve against the folded views.
-            let by_entry: BTreeMap<String, (String, String, i64, String)> = messages.iter().filter_map(|m| m.entry.clone().map(|e| (e, (m.name.clone(), if m.deleted { String::new() } else { m.text.clone() }, m.at_ms, m.author.clone())))).collect();
-            let mut threads: BTreeMap<String, (usize, Vec<String>, i64)> = BTreeMap::new();
-            for m in &messages {
-                if let Some(root) = &m.thread {
-                    let t = threads.entry(root.clone()).or_default();
-                    t.0 += 1; t.2 = t.2.max(m.at_ms);
-                    if !t.1.contains(&m.name) { t.1.push(m.name.clone()); }
-                }
-            }
-            for m in &mut messages {
-                if let Some(Quote { id, name, text }) = &mut m.quote {
-                    if let Some((n, t, _, _)) = by_entry.get(id) { *name = n.clone(); *text = t.clone(); }
-                }
-                if let Some(entry) = &m.entry {
-                    if let Some((count, who, last)) = threads.get(entry) {
-                        m.replies = *count; m.repliers = who.iter().take(3).cloned().collect(); m.last_reply_ms = Some(*last);
-                    }
-                }
-            }
+            fold_references(&mut messages, &authors);
             let mention = format!("@{}", self.account.name.to_lowercase());
-            let incoming = messages.iter().filter(|m| m.author != *me && !m.deleted && m.seq.is_some_and(|s| s > my_read) && (my_read > 0 || m.seq.is_some()));
+            let incoming = messages.iter().filter(|m| m.author != *me && !m.deleted && m.seq.is_some_and(|s| s.0 > my_read) && (my_read > 0 || m.seq.is_some()));
             let (unread, mentions) = incoming.fold((0, 0), |(u, n), m| (u + 1, n + usize::from(!self.account.name.is_empty() && m.text.to_lowercase().contains(&mention))));
             let waiting = self.document_writer(space).err();
             let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
@@ -221,7 +287,7 @@ impl<S: Signer> Client<S> {
                 unreadable, unread, mentions, members: roster.len(), roster, messages })
         }).collect::<Vec<_>>();
         conversations.extend(self.creating_views().into_iter().map(|mut view| {
-            view.integrity_error = item_projection_error.clone();
+            view.integrity_error.clone_from(&item_projection_error);
             view
         }));
         conversations
@@ -233,10 +299,10 @@ impl<S: Signer> Client<S> {
         let mut preferences = BTreeMap::new();
         for (space, log) in &self.logs {
             if !matches!(self.metadata(space), Some((_, SpaceKind::Personal, _)))
-                || !log
+                || log
                     .events()
                     .first()
-                    .is_some_and(|event| event.author == self.account.identity)
+                    .is_none_or(|event| event.author != self.account.identity)
             {
                 continue;
             }

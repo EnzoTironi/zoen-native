@@ -29,20 +29,20 @@ pub(super) fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_und
         },
         10,
     )?;
-    client.receive(&made, 11).unwrap();
+    client.receive(&made, 11)?;
     let read = doc(
         &mut client,
-        serde_json::json!({"op":"plan_page","item_id":"it_plan"}),
+        &serde_json::json!({"op":"plan_page","item_id":"it_plan"}),
         12,
-    )
+    )?
     .result;
     assert_eq!(read["total_cents"], "9007199254740993");
     assert_eq!(read["legacy_edit_admitted"], true);
     let detail = doc(
         &mut client,
-        serde_json::json!({"op":"item","item_id":"it_plan"}),
+        &serde_json::json!({"op":"item","item_id":"it_plan"}),
         13,
-    )
+    )?
     .result;
     assert_eq!(
         detail["plan"]["sections"][0]["lines"][0]["cost_cents"],
@@ -50,9 +50,9 @@ pub(super) fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_und
     );
     let toggle = doc(
         &mut client,
-        serde_json::json!({"op":"toggle_plan_line","item_id":"it_plan","line_id":"ln_exact","observed_hash":read["content_hash"]}),
+        &serde_json::json!({"op":"toggle_plan_line","item_id":"it_plan","line_id":"ln_exact","observed_hash":read["content_hash"]}),
         14,
-    );
+    )?;
     assert_eq!(
         toggle.result["item"]["plan"]["sections"][0]["lines"][0]["done"],
         true
@@ -60,9 +60,9 @@ pub(super) fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_und
     assert!(client.document_request(&serde_json::json!({"op":"toggle_plan_line","item_id":"it_plan","line_id":"ln_exact","observed_hash":read["content_hash"]}).to_string(),15).is_err());
     let undo = doc(
         &mut client,
-        serde_json::json!({"op":"undo","token":toggle.result["undo"]}),
+        &serde_json::json!({"op":"undo","token":toggle.result["undo"]}),
         16,
-    );
+    )?;
     assert_eq!(
         undo.result["plan"]["sections"][0]["lines"][0]["done"],
         false
@@ -92,31 +92,41 @@ pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_histo
         },
         4,
     )?;
-    let original = log.events().last().unwrap().clone();
-    let original_bytes = serde_json::to_vec(&original).unwrap();
-    client.receive(&historical, 5).unwrap();
+    let original = log
+        .events()
+        .last()
+        .ok_or("missing authenticated test last value")?
+        .clone();
+    let original_bytes = serde_json::to_vec(&original)?;
+    client.receive(&historical, 5)?;
 
     for (locale, expected, now) in [
         ("en-US", "App added to this Space.", 10),
         ("pt-BR", "App adicionado a este Espaço.", 20),
     ] {
-        let installed = client
-            .app_request(
-                &serde_json::json!({
-                    "op": "install_app", "space_id": log.space(), "app_id": "list",
-                    "args_json": serde_json::json!({"title": locale}).to_string(),
-                })
-                .to_string(),
-                now,
-                locale,
-            )
-            .unwrap();
-        let item = installed.result["id"].as_str().unwrap().to_owned();
-        let update = installed.update.unwrap();
+        let installed = client.app_request(
+            &serde_json::json!({
+                "op": "install_app", "space_id": log.space(), "app_id": "list",
+                "args_json": serde_json::json!({"title": locale}).to_string(),
+            })
+            .to_string(),
+            now,
+            locale,
+        )?;
+        let item = installed.result["id"]
+            .as_str()
+            .ok_or("missing authenticated test as_str value")?
+            .to_owned();
+        let update = installed
+            .update
+            .ok_or("missing authenticated test update")?;
         let published = update
             .frames
             .iter()
-            .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+            .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string()))
+            .collect::<std::result::Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter_map(|frame| match frame {
                 ClientFrame::Publish { env } => env.plain_event(),
                 _ => None,
             })
@@ -128,18 +138,16 @@ pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_histo
             EventBody::MessagePosted { text, attaches: Some(attached), .. }
                 if text == expected && attached == &item));
         confirm_documents(&mut client, &mut log, update, now + 1)?;
-        let snapshot = client.update(Vec::new()).unwrap().snapshot;
-        client = Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
-        client.bootstrap().unwrap();
-        client
-            .receive(&ServerFrame::SyncDone.encode(), now + 2)
-            .unwrap();
+        let snapshot = client.update(Vec::new())?.snapshot;
+        client = Client::new(client.account.clone(), client.signer.clone(), &snapshot)?;
+        client.bootstrap()?;
+        client.receive(&ServerFrame::SyncDone.encode(), now + 2)?;
         let preserved = client.logs[log.space()]
             .events()
             .iter()
             .find(|event| event.hash == original.hash)
-            .unwrap();
-        assert_eq!(serde_json::to_vec(preserved).unwrap(), original_bytes);
+            .ok_or("missing authenticated test find value")?;
+        assert_eq!(serde_json::to_vec(preserved)?, original_bytes);
         let conversation = client.conversations().remove(0);
         assert!(conversation
             .messages
@@ -160,14 +168,20 @@ pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_histo
 pub(super) fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut client, _, mut log) = document_fixture()?;
-    let made=client.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"pet","args_json":"{\"name\":\"Jumento\"}"}).to_string(),10,"pt-BR").unwrap();
-    let item = made.result["id"].as_str().unwrap().to_owned();
+    let made=client.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"pet","args_json":"{\"name\":\"Jumento\"}"}).to_string(),10,"pt-BR")?;
+    let item = made.result["id"]
+        .as_str()
+        .ok_or("missing authenticated test as_str value")?
+        .to_owned();
     assert_eq!(made.result["app"]["trust"], "Act");
-    let update = made.update.unwrap();
+    let update = made.update.ok_or("missing authenticated test update")?;
     let published = update
         .frames
         .iter()
-        .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+        .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string()))
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter_map(|frame| match frame {
             ClientFrame::Publish { env } => env.plain_event(),
             _ => None,
         })
@@ -181,209 +195,216 @@ pub(super) fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmat
         .messages
         .iter()
         .find_map(|message| message.card.as_ref())
-        .unwrap();
+        .ok_or("missing authenticated test find_map value")?;
     assert_eq!(card["item_id"], item);
     assert_eq!(card["app"]["app_id"], "pet");
     confirm_documents(&mut client, &mut log, update, 11)?;
-    let read=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_get_state","args_json":"{}","confirmed":false}).to_string(),12,"pt-BR").unwrap();
+    let read=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_get_state","args_json":"{}","confirmed":false}).to_string(),12,"pt-BR")?;
     assert_eq!(read.result["status"], "Done");
     assert!(read.update.is_none());
-    let fed=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_feed","args_json":"{}","confirmed":false}).to_string(),13,"pt-BR").unwrap();
+    let fed=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_feed","args_json":"{}","confirmed":false}).to_string(),13,"pt-BR")?;
     assert_eq!(fed.result["status"], "Done");
     assert_eq!(fed.result["item"]["version"], 2);
     let count = client.saved.outbox.len();
-    let needs=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_release","args_json":"{}","confirmed":false}).to_string(),14,"pt-BR").unwrap();
+    let needs=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_release","args_json":"{}","confirmed":false}).to_string(),14,"pt-BR")?;
     assert_eq!(needs.result["status"], "NeedsConfirmation");
     assert!(needs.update.is_none());
     assert_eq!(client.saved.outbox.len(), count);
-    let released=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_release","args_json":"{}","confirmed":true}).to_string(),15,"pt-BR").unwrap();
+    let released=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_release","args_json":"{}","confirmed":true}).to_string(),15,"pt-BR")?;
     assert_eq!(released.result["status"], "Done");
     assert_eq!(released.result["item"]["version"], 3);
-    let resource = client
-        .app_request(
-            &serde_json::json!({"op":"app_resource","uri":"ui://builtin/pet"}).to_string(),
-            16,
-            "pt-BR",
-        )
-        .unwrap();
+    let resource = client.app_request(
+        &serde_json::json!({"op":"app_resource","uri":"ui://builtin/pet"}).to_string(),
+        16,
+        "pt-BR",
+    )?;
     assert_eq!(
         resource.result["text"],
-        miniapps::spec("pet").unwrap().html.unwrap()
+        miniapps::spec("pet")
+            .ok_or("missing authenticated test spec value")?
+            .html
+            .ok_or("authenticated app resource missing")?
     );
-    let specs = client
-        .app_request(r#"{"op":"app_specs"}"#, 17, "pt-BR")
-        .unwrap();
+    let specs = client.app_request(r#"{"op":"app_specs"}"#, 17, "pt-BR")?;
     assert_eq!(
-        specs.result.as_array().unwrap().len(),
+        specs
+            .result
+            .as_array()
+            .ok_or("missing authenticated test as_array value")?
+            .len(),
         miniapps::specs().len()
     );
     Ok(())
 }
 
-pub(super) fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore(
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
+struct CheckedTask {
+    client: Client<HostSigner>,
+    id: String,
+    published_markdown: serde_json::Value,
+    snapshot: String,
+}
+
+fn checked_task_fixture() -> Result<CheckedTask, Box<dyn std::error::Error>> {
     let (mut client, _, mut log) = document_fixture()?;
     let made = doc(
         &mut client,
-        serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"checkbox.md","markdown":"# Checkbox\n\nOriginal café\n\n- [ ] Revisar documento\n"}),
+        &serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"checkbox.md","markdown":"# Checkbox\n\nOriginal café\n\n- [ ] Revisar documento\n"}),
         10,
-    );
-    let id = made.result["id"].as_str().unwrap().to_owned();
-    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11)?;
+    )?;
+    let id = made.result["id"]
+        .as_str()
+        .ok_or("missing authenticated test as_str value")?
+        .to_owned();
+    confirm_documents(
+        &mut client,
+        &mut log,
+        made.update.ok_or("missing authenticated test update")?,
+        11,
+    )?;
     let read = doc(
         &mut client,
-        serde_json::json!({"op":"page","item_id":id}),
+        &serde_json::json!({"op":"page","item_id":id}),
         12,
-    )
+    )?
     .result;
     assert_eq!(read["unsaved"], false);
     let published_markdown = doc(
         &mut client,
-        serde_json::json!({"op":"page_markdown","item_id":id}),
+        &serde_json::json!({"op":"page_markdown","item_id":id}),
         12,
-    )
+    )?
     .result;
     let mut task = read["blocks"]
         .as_array()
-        .unwrap()
+        .ok_or("missing authenticated test as_array value")?
         .iter()
         .find(|block| block["kind"] == "task")
-        .unwrap()
+        .ok_or("missing authenticated test find value")?
         .clone();
     assert_eq!(task["checked"], false);
     task["checked"] = true.into();
     let order = read["blocks"]
         .as_array()
-        .unwrap()
+        .ok_or("missing authenticated test as_array value")?
         .iter()
         .map(|block| block["id"].clone())
         .collect::<Vec<_>>();
     let applied = doc(
         &mut client,
-        serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"check-task","edit_context":read["edit_context"],"order":order,"changed":[task]}),
+        &serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"check-task","edit_context":read["edit_context"],"order":order,"changed":[task]}),
         13,
+    )?;
+
+    assert_checked_draft(&applied.result["page"])?;
+    let snapshot = applied
+        .update
+        .ok_or("missing authenticated test update")?
+        .snapshot;
+    Ok(CheckedTask {
+        client,
+        id,
+        published_markdown,
+        snapshot,
+    })
+}
+
+fn assert_checked_draft(value: &serde_json::Value) -> Result<(), String> {
+    assert_eq!(
+        value["unsaved"], true,
+        "accepted toggle must create a visible local draft"
     );
-    let assert_checked_draft = |value: &serde_json::Value| {
-        assert_eq!(
-            value["unsaved"], true,
-            "accepted toggle must create a visible local draft"
-        );
-        let task = value["blocks"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|block| block["kind"] == "task")
-            .unwrap();
-        assert_eq!(task["checked"], true, "accepted toggle must remain checked");
-    };
-    assert_checked_draft(&applied.result["page"]);
-    let snapshot = applied.update.unwrap().snapshot;
-    let read_again = doc(
-        &mut client,
-        serde_json::json!({"op":"page","item_id":id}),
-        14,
-    )
-    .result;
-    assert_checked_draft(&read_again);
-    let exported = doc(
-        &mut client,
-        serde_json::json!({"op":"page_markdown","item_id":id}),
-        15,
-    )
-    .result;
-    assert!(exported.as_str().unwrap().contains("[x] Revisar documento"));
-    let mut reopened =
-        Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
-    let restored = doc(
-        &mut reopened,
-        serde_json::json!({"op":"page","item_id":id}),
-        16,
-    )
-    .result;
-    assert_checked_draft(&restored);
-    let exported = doc(
-        &mut reopened,
-        serde_json::json!({"op":"page_markdown","item_id":id}),
-        17,
-    )
-    .result;
-    assert!(exported.as_str().unwrap().contains("[x] Revisar documento"));
-    let mut unchecked = restored["blocks"]
+    let task = value["blocks"]
         .as_array()
-        .unwrap()
+        .ok_or("missing authenticated test as_array value")?
         .iter()
         .find(|block| block["kind"] == "task")
-        .unwrap()
+        .ok_or("missing authenticated test find value")?;
+    assert_eq!(task["checked"], true, "accepted toggle must remain checked");
+
+    Ok(())
+}
+fn assert_clean(value: &serde_json::Value) -> Result<(), String> {
+    assert_eq!(
+        value["unsaved"], false,
+        "returning to published content clears the draft difference"
+    );
+    assert_eq!(
+        value["blocks"]
+            .as_array()
+            .ok_or("missing authenticated test as_array value")?
+            .iter()
+            .find(|block| block["kind"] == "task")
+            .ok_or("missing authenticated test find value")?["checked"],
+        false
+    );
+
+    Ok(())
+}
+
+pub(super) fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let CheckedTask {
+        mut client,
+        id,
+        published_markdown,
+        snapshot,
+    } = checked_task_fixture()?;
+    let read_again = doc(
+        &mut client,
+        &serde_json::json!({"op":"page","item_id":id}),
+        14,
+    )?
+    .result;
+    assert_checked_draft(&read_again)?;
+    let exported = doc(
+        &mut client,
+        &serde_json::json!({"op":"page_markdown","item_id":id}),
+        15,
+    )?
+    .result;
+    assert!(exported
+        .as_str()
+        .ok_or("missing authenticated test as_str value")?
+        .contains("[x] Revisar documento"));
+    let mut reopened = Client::new(client.account.clone(), client.signer.clone(), &snapshot)?;
+    let restored = doc(
+        &mut reopened,
+        &serde_json::json!({"op":"page","item_id":id}),
+        16,
+    )?
+    .result;
+    assert_checked_draft(&restored)?;
+    let exported = doc(
+        &mut reopened,
+        &serde_json::json!({"op":"page_markdown","item_id":id}),
+        17,
+    )?
+    .result;
+    assert!(exported
+        .as_str()
+        .ok_or("missing authenticated test as_str value")?
+        .contains("[x] Revisar documento"));
+    let mut unchecked = restored["blocks"]
+        .as_array()
+        .ok_or("missing authenticated test as_array value")?
+        .iter()
+        .find(|block| block["kind"] == "task")
+        .ok_or("missing authenticated test find value")?
         .clone();
     unchecked["checked"] = false.into();
     let restored_order = restored["blocks"]
         .as_array()
-        .unwrap()
+        .ok_or("missing authenticated test as_array value")?
         .iter()
         .map(|block| block["id"].clone())
         .collect::<Vec<_>>();
     let reverted = doc(
         &mut reopened,
-        serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"uncheck-task","edit_context":restored["edit_context"],"order":restored_order,"changed":[unchecked]}),
+        &serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"uncheck-task","edit_context":restored["edit_context"],"order":restored_order,"changed":[unchecked]}),
         18,
-    );
-    let assert_clean = |value: &serde_json::Value| {
-        assert_eq!(
-            value["unsaved"], false,
-            "returning to published content clears the draft difference"
-        );
-        assert_eq!(
-            value["blocks"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|block| block["kind"] == "task")
-                .unwrap()["checked"],
-            false
-        );
-    };
-    assert_clean(&reverted.result["page"]);
-    let clean_snapshot = reverted.update.unwrap().snapshot;
-    assert_clean(
-        &doc(
-            &mut reopened,
-            serde_json::json!({"op":"page","item_id":id}),
-            19,
-        )
-        .result,
-    );
-    assert_eq!(
-        doc(
-            &mut reopened,
-            serde_json::json!({"op":"page_markdown","item_id":id}),
-            20
-        )
-        .result,
-        published_markdown
-    );
-    let mut clean_reopened = Client::new(
-        reopened.account.clone(),
-        reopened.signer.clone(),
-        &clean_snapshot,
-    )
-    .unwrap();
-    assert_clean(
-        &doc(
-            &mut clean_reopened,
-            serde_json::json!({"op":"page","item_id":id}),
-            21,
-        )
-        .result,
-    );
-    assert_eq!(
-        doc(
-            &mut clean_reopened,
-            serde_json::json!({"op":"page_markdown","item_id":id}),
-            22
-        )
-        .result,
-        published_markdown
-    );
+    )?;
+
+    assert_clean_task_reload(&mut reopened, &id, reverted, &published_markdown)?;
     Ok(())
 }
 
@@ -396,8 +417,7 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
         "application/vnd.excalidraw+json",
         bytes,
         None,
-    )
-    .unwrap();
+    )?;
     let document = types::AppDoc {
         view: None,
         app: "excalidraw".into(),
@@ -417,7 +437,7 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
         },
         10,
     )?;
-    client.receive(&created, 11).unwrap();
+    client.receive(&created, 11)?;
     let posted = clear(
         &mut log,
         &author,
@@ -431,36 +451,84 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
         },
         12,
     )?;
-    client.receive(&posted, 13).unwrap();
+    client.receive(&posted, 13)?;
     let response = doc(
         &mut client,
-        serde_json::json!({"op":"file_manifest","item_id":"it_drawing","version":1}),
+        &serde_json::json!({"op":"file_manifest","item_id":"it_drawing","version":1}),
         14,
-    );
-    assert_eq!(
-        response.result["doc"],
-        serde_json::to_value(&sealed.doc).unwrap()
-    );
+    )?;
+    assert_eq!(response.result["doc"], serde_json::to_value(&sealed.doc)?);
     let conversation = client.conversations();
-    let message = conversation[0].messages.last().unwrap();
+    let message = conversation[0]
+        .messages
+        .last()
+        .ok_or("missing authenticated test last value")?;
     assert!(message.file.is_none());
     assert_eq!(
-        message.card.as_ref().unwrap()["app"]["app_id"],
+        message
+            .card
+            .as_ref()
+            .ok_or("missing authenticated test as_ref value")?["app"]["app_id"],
         "excalidraw"
     );
-    let snapshot = client.update(Vec::new()).unwrap().snapshot;
-    let mut restored =
-        Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+    let snapshot = client.update(Vec::new())?.snapshot;
+    let mut restored = Client::new(client.account.clone(), client.signer.clone(), &snapshot)?;
     let history = doc(
         &mut restored,
-        serde_json::json!({"op":"file_manifest","item_id":"it_drawing","version":1}),
+        &serde_json::json!({"op":"file_manifest","item_id":"it_drawing","version":1}),
         15,
-    );
+    )?;
     assert_eq!(history.result["doc"], response.result["doc"]);
-    let installed=restored.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"excalidraw","args_json":"{}"}).to_string(),16,"en").unwrap();
+    let installed=restored.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"excalidraw","args_json":"{}"}).to_string(),16,"en")?;
     assert_eq!(installed.result["kind_id"], "app");
     let before = restored.saved.outbox.len();
     assert!(restored.app_request(&serde_json::json!({"op":"app_call_tool","item_id":"it_drawing","tool":"app_document_read","args_json":"{}","confirmed":false}).to_string(),17,"en").is_err());
     assert_eq!(restored.saved.outbox.len(), before);
+    Ok(())
+}
+
+fn assert_clean_task_reload(
+    reopened: &mut Client<HostSigner>,
+    id: &str,
+    reverted: DocumentResponse,
+    published_markdown: &serde_json::Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_clean(&reverted.result["page"])?;
+    let clean_snapshot = reverted
+        .update
+        .ok_or("missing authenticated test update")?
+        .snapshot;
+    assert_clean(&doc(reopened, &serde_json::json!({"op":"page","item_id":id}), 19)?.result)?;
+    assert_eq!(
+        doc(
+            reopened,
+            &serde_json::json!({"op":"page_markdown","item_id":id}),
+            20
+        )?
+        .result,
+        *published_markdown
+    );
+    let mut clean_reopened = Client::new(
+        reopened.account.clone(),
+        reopened.signer.clone(),
+        &clean_snapshot,
+    )?;
+    assert_clean(
+        &doc(
+            &mut clean_reopened,
+            &serde_json::json!({"op":"page","item_id":id}),
+            21,
+        )?
+        .result,
+    )?;
+    assert_eq!(
+        doc(
+            &mut clean_reopened,
+            &serde_json::json!({"op":"page_markdown","item_id":id}),
+            22
+        )?
+        .result,
+        *published_markdown
+    );
     Ok(())
 }

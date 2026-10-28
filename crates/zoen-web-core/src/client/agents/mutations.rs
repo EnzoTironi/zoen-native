@@ -1,8 +1,12 @@
 //! Implementation within the existing browser client authority.
-use super::*;
+use super::{
+    json, standing_allow_permitted, standing_key, writer, BTreeMap, BTreeSet, Capability, Client,
+    Event, EventBody, Grant, GrantScope, ItemContent, ItemKind, OpenMlsProvider, Policy,
+    Projection, RequestDecision, RequestRead, RequestResolution, RequestScope, Signer, Value,
+};
 
 impl<S: Signer> Client<S> {
-    /// Disposable virtual ItemCreated at each authenticated proposal receipt position.
+    /// Disposable virtual `ItemCreated` at each authenticated proposal receipt position.
     /// Its content bytes remain the original receipt; this is never a signed event.
     pub(in crate::client) fn approved_request_items(
         &self,
@@ -83,7 +87,7 @@ impl<S: Signer> Client<S> {
         };
         self.queue_domain_body(
             &app.space,
-            EventBody::GrantIssued { grant },
+            &EventBody::GrantIssued { grant },
             now,
             Vec::new(),
         )?;
@@ -104,7 +108,7 @@ impl<S: Signer> Client<S> {
             .map_err(|_| "MLS storage lock failed")?
             .clone();
         for (space, body) in bodies {
-            if let Err(error) = self.queue_domain_body(&space, body, now, Vec::new()) {
+            if let Err(error) = self.queue_domain_body(&space, &body, now, Vec::new()) {
                 self.saved.outbox = outbox;
                 *self
                     .provider
@@ -148,29 +152,8 @@ impl<S: Signer> Client<S> {
             return Err("Esta ação sempre exige uma decisão individual.".into());
         }
         if let Some(previous) = original.approved {
-            let receipt = original
-                .receipt
-                .as_ref()
-                .ok_or("Este pedido já foi decidido.")?;
-            let same_standing = receipt.standing_grant.as_ref().is_some_and(|given| {
-                self.agent_standing(
-                    &state,
-                    &original.request.agent,
-                    &original.space,
-                    &original.request.action,
-                    now,
-                )
-                .is_some_and(|(current, allow)| current.grant.id == given.id && allow == approve)
-            });
-            if previous != approve || standing && !same_standing {
-                return Err(
-                    "Este pedido já recebeu outra decisão, ou sua permissão permanente mudou."
-                        .into(),
-                );
-            }
-            return Ok(
-                json!({"request":self.agent_request_value(&state, original, now)?,"message":receipt.message,"standing_grant_id":receipt.standing_grant.as_ref().map(|grant|&grant.id),"also_resolved":0}),
-            );
+            return self
+                .existing_request_decision(&state, original, previous, approve, standing, now);
         }
         let mut covered = vec![original.clone()];
         if standing {
@@ -194,90 +177,21 @@ impl<S: Signer> Client<S> {
         let mut message = String::new();
         let mut claimed_items: BTreeSet<_> = state.items.keys().cloned().collect();
         for read in covered {
-            if approve {
-                let current = self.agent_request_current(&state, &read.request, &read.space)?;
-                if current != RequestScope::Current {
-                    if read.request.id != id {
-                        continue;
-                    }
-                    return Err(if current == RequestScope::Waiting {
-                        "O conteúdo confirmado ainda está chegando."
-                    } else {
-                        "O conteúdo ou a autorização mudou. Peça uma nova proposta."
-                    }
-                    .into());
-                }
-                if !standing_allow_permitted(&read.request.action, &Policy::default()) && standing {
-                    continue;
-                }
-                if let Some(proposal) = &read.request.proposal {
-                    if !claimed_items.insert(proposal.item.clone()) {
-                        continue;
-                    }
-                }
-                if let Some(item) = &read.request.item {
-                    if state
-                        .items
-                        .get(item)
-                        .is_some_and(|item| item.kind == ItemKind::Plan)
-                    {
-                        let read_plan = self.document_request(
-                            &json!({"op":"plan_page","item_id":item}).to_string(),
-                            now,
-                        )?;
-                        if read_plan.result["legacy_edit_admitted"] != true {
-                            return Err(
-                                "Este plano não admite esta operação; peça uma nova proposta."
-                                    .into(),
-                            );
-                        }
-                    }
-                }
+            if approve
+                && !self.approve_current_request(
+                    &state,
+                    &read,
+                    id,
+                    standing,
+                    &mut claimed_items,
+                    now,
+                )?
+            {
+                continue;
             }
-            let text = if approve {
-                read.request
-                    .proposal
-                    .as_ref()
-                    .map(|proposal| proposal.message.clone())
-                    .unwrap_or_else(|| {
-                        format!(
-                            "Aprovado: {}. Aguardando a execução da ferramenta.",
-                            read.request.title
-                        )
-                    })
-            } else {
-                format!("Ok, não vou {}.", read.request.title)
-            };
-            let receipt = RequestResolution {
-                tool_decision: None,
-                message: text.clone(),
-                created_item: if approve {
-                    read.request
-                        .proposal
-                        .as_ref()
-                        .map(|proposal| proposal.item.clone())
-                } else {
-                    None
-                },
-                ai_cost_cents: read
-                    .request
-                    .proposal
-                    .as_ref()
-                    .map_or(0, |proposal| proposal.ai_cost_cents),
-                standing_grant: (standing && read.request.id == id).then(|| Grant {
-                    id: format!("gr_standing_{}", read.request.id),
-                    grantor: self.account.identity.clone(),
-                    grantee: Some(read.request.agent.clone()),
-                    scope: GrantScope::Space(read.space.clone()),
-                    capability: Capability::Standing {
-                        action: standing_key(&read.request.action).into(),
-                        allow: approve,
-                    },
-                    expires_at_ms: None,
-                }),
-            };
+            let receipt = self.request_resolution(&read, id, approve, standing);
             if read.request.id == id {
-                message = text;
+                message.clone_from(&receipt.message);
             } else {
                 also += 1;
             }
@@ -300,5 +214,135 @@ impl<S: Signer> Client<S> {
         Ok(
             json!({"request": self.agent_request_value(&next, read, now)?, "message": message, "standing_grant_id": read.receipt.as_ref().and_then(|receipt| receipt.standing_grant.as_ref()).map(|grant| &grant.id), "also_resolved":also}),
         )
+    }
+    fn existing_request_decision(
+        &self,
+        state: &Projection,
+        original: &RequestRead,
+        previous: bool,
+        approve: bool,
+        standing: bool,
+        now: i64,
+    ) -> Result<Value, String> {
+        let receipt = original
+            .receipt
+            .as_ref()
+            .ok_or("Este pedido já foi decidido.")?;
+        let same_standing = receipt.standing_grant.as_ref().is_some_and(|given| {
+            self.agent_standing(
+                state,
+                &original.request.agent,
+                &original.space,
+                &original.request.action,
+                now,
+            )
+            .is_some_and(|(current, allow)| current.grant.id == given.id && allow == approve)
+        });
+        if previous != approve || standing && !same_standing {
+            return Err(
+                "Este pedido já recebeu outra decisão, ou sua permissão permanente mudou.".into(),
+            );
+        }
+        Ok(
+            json!({"request":self.agent_request_value(state, original, now)?,"message":receipt.message,"standing_grant_id":receipt.standing_grant.as_ref().map(|grant|&grant.id),"also_resolved":0}),
+        )
+    }
+
+    fn approve_current_request(
+        &mut self,
+        state: &Projection,
+        read: &RequestRead,
+        id: &str,
+        standing: bool,
+        claimed_items: &mut BTreeSet<String>,
+        now: i64,
+    ) -> Result<bool, String> {
+        let current = self.agent_request_current(state, &read.request, &read.space)?;
+        if current != RequestScope::Current {
+            if read.request.id != id {
+                return Ok(false);
+            }
+            return Err(if current == RequestScope::Waiting {
+                "O conteúdo confirmado ainda está chegando."
+            } else {
+                "O conteúdo ou a autorização mudou. Peça uma nova proposta."
+            }
+            .into());
+        }
+        if !standing_allow_permitted(&read.request.action, &Policy::default()) && standing {
+            return Ok(false);
+        }
+        if let Some(proposal) = &read.request.proposal {
+            if !claimed_items.insert(proposal.item.clone()) {
+                return Ok(false);
+            }
+        }
+        if let Some(item) = &read.request.item {
+            if state
+                .items
+                .get(item)
+                .is_some_and(|item| item.kind == ItemKind::Plan)
+            {
+                let read_plan = self
+                    .document_request(&json!({"op":"plan_page","item_id":item}).to_string(), now)?;
+                if read_plan.result["legacy_edit_admitted"] != true {
+                    return Err(
+                        "Este plano não admite esta operação; peça uma nova proposta.".into(),
+                    );
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    fn request_resolution(
+        &self,
+        read: &RequestRead,
+        id: &str,
+        approve: bool,
+        standing: bool,
+    ) -> RequestResolution {
+        let text = if approve {
+            read.request.proposal.as_ref().map_or_else(
+                || {
+                    format!(
+                        "Aprovado: {}. Aguardando a execução da ferramenta.",
+                        read.request.title
+                    )
+                },
+                |proposal| proposal.message.clone(),
+            )
+        } else {
+            format!("Ok, não vou {}.", read.request.title)
+        };
+        let receipt = RequestResolution {
+            tool_decision: None,
+            message: text,
+            created_item: if approve {
+                read.request
+                    .proposal
+                    .as_ref()
+                    .map(|proposal| proposal.item.clone())
+            } else {
+                None
+            },
+            ai_cost_cents: read
+                .request
+                .proposal
+                .as_ref()
+                .map_or(0, |proposal| proposal.ai_cost_cents),
+            standing_grant: (standing && read.request.id == id).then(|| Grant {
+                id: format!("gr_standing_{}", read.request.id),
+                grantor: self.account.identity.clone(),
+                grantee: Some(read.request.agent.clone()),
+                scope: GrantScope::Space(read.space.clone()),
+                capability: Capability::Standing {
+                    action: standing_key(&read.request.action).into(),
+                    allow: approve,
+                },
+                expires_at_ms: None,
+            }),
+        };
+        receipt
     }
 }
