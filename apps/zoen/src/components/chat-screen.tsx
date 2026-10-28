@@ -1,3 +1,5 @@
+import { QuoteMotionView } from './quote-layout-context';
+import { QuoteLayoutTransition } from './quote-layout-transition';
 import { FlashList } from '@shopify/flash-list';
 import { Pressable, Text, View } from 'react-native';
 import { launchConversationAssistant } from '../assistant/launch';
@@ -306,113 +308,125 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
           !page ? (
             <Loading />
           ) : (
-            <FlashList
-              style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
-              key={initialEnd.scope}
-              ref={list}
-              testID="conversation-timeline"
-              renderScrollComponent={ScrollComponent}
-              onLoad={() => {
-                bindNativeTimeline();
-                setLoadedSpace(timelineKey);
-                initialEnd.onLoad();
-              }}
-              onContentSizeChange={(width, height) => {
-                initialEnd.onContentSizeChange(width, height);
-                searchReveal.onContentSize(width, height);
-              }}
-              onCommitLayoutEffect={() => {
-                initialEnd.onCommitLayoutEffect();
-                searchReveal.onCommit(visibleEntries);
-                // Preserve the native keyboard scroller when search changes the
-                // timeline, and address its new indices only after SDK commit.
-                if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
-              }}
-              onScrollBeginDrag={() => {
-                cancelInitialEnd();
-                searchReveal.cancel();
-              }}
-              extraData={selection.ids}
-              data={rows}
-              keyExtractor={(row) => row.key}
-              keyboardDismissMode="interactive"
-              keyboardShouldPersistTaps="handled"
-              contentInsetAdjustmentBehavior="never"
-              ListHeaderComponent={<ConversationRailSpacer motion={rail} />}
-              ListFooterComponent={composerSpacer}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingTop: Math.max(0, headerHeight - timelineTopInset) + noticeHeight + 8,
-                paddingBottom: 12,
-              }}
-              maintainVisibleContentPosition={{
-                startRenderingFromBottom: true,
-                autoscrollToBottomThreshold: 0.12,
-              }}
-              onStartReached={() => {
-                if (!searchThread && page.has_more)
-                  void store.loadTimeline(id, true).catch(() => {});
-              }}
-              onStartReachedThreshold={0.1}
-              ListEmptyComponent={
-                <EmptyState
-                  title={
-                    chat.kind === 'saved'
-                      ? t('settings.savedMessages')
-                      : t('chat.theStartOfSomethingGood')
+            <QuoteLayoutTransition key={initialEnd.scope} list={list} onBegin={cancelInitialEnd}>
+              {(quoteTransitionActive, quoteCommit, quoteCancel, quoteReading) => (
+                <FlashList
+                  style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
+                  key={initialEnd.scope}
+                  ref={list}
+                  testID="conversation-timeline"
+                  renderScrollComponent={ScrollComponent}
+                  CellRendererComponent={
+                    process.env.EXPO_OS === 'ios' ? QuoteMotionView : undefined
                   }
-                  detail={t(
-                    chat.kind === 'saved'
-                      ? 'settings.savedMessagesEmpty'
-                      : 'chat.writeTheFirstMessageInThisChat',
+                  onLoad={() => {
+                    bindNativeTimeline();
+                    setLoadedSpace(timelineKey);
+                    initialEnd.onLoad();
+                  }}
+                  onContentSizeChange={(width, height) => {
+                    initialEnd.onContentSizeChange(width, height);
+                    searchReveal.onContentSize(width, height);
+                  }}
+                  onCommitLayoutEffect={() => {
+                    quoteCommit();
+                    initialEnd.onCommitLayoutEffect();
+                    searchReveal.onCommit(visibleEntries);
+                    // Preserve the native keyboard scroller when search changes the
+                    // timeline, and address its new indices only after SDK commit.
+                    if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
+                  }}
+                  onScrollBeginDrag={() => {
+                    quoteCancel();
+                    cancelInitialEnd();
+                    searchReveal.cancel();
+                  }}
+                  extraData={selection.ids}
+                  data={rows}
+                  keyExtractor={(row) => row.key}
+                  keyboardDismissMode="interactive"
+                  keyboardShouldPersistTaps="handled"
+                  contentInsetAdjustmentBehavior="never"
+                  ListHeaderComponent={<ConversationRailSpacer motion={rail} />}
+                  ListFooterComponent={composerSpacer}
+                  contentContainerStyle={{
+                    paddingHorizontal: 16,
+                    paddingTop: Math.max(0, headerHeight - timelineTopInset) + noticeHeight + 8,
+                    paddingBottom: 12,
+                  }}
+                  maintainVisibleContentPosition={{
+                    disabled: quoteTransitionActive,
+                    startRenderingFromBottom: true,
+                    autoscrollToBottomThreshold: quoteReading ? undefined : 0.12,
+                  }}
+                  onStartReached={() => {
+                    if (!searchThread && page.has_more)
+                      void store.loadTimeline(id, true).catch(() => {});
+                  }}
+                  onStartReachedThreshold={0.1}
+                  ListEmptyComponent={
+                    <EmptyState
+                      title={
+                        chat.kind === 'saved'
+                          ? t('settings.savedMessages')
+                          : t('chat.theStartOfSomethingGood')
+                      }
+                      detail={t(
+                        chat.kind === 'saved'
+                          ? 'settings.savedMessagesEmpty'
+                          : 'chat.writeTheFirstMessageInThisChat',
+                      )}
+                    />
+                  }
+                  renderItem={({ item: { entry, activity, album }, index }) => (
+                    <ConversationMessage
+                      selection={
+                        selection.active
+                          ? {
+                              selected: selection.ids.has(entry.id),
+                              disabled: selection.limitReached && !selection.ids.has(entry.id),
+                              onToggle: selection.toggle,
+                            }
+                          : undefined
+                      }
+                      spaceId={id}
+                      entry={entry}
+                      activity={activity}
+                      album={album}
+                      previous={rows[index - 1]?.entry}
+                      next={rows[index + 1]?.entry}
+                      groupChat={chat.kind === 'Group' || chat.kind === 'Community'}
+                      item={items.find((item) => item.id === messageCard(entry)?.item_id)}
+                      highlighted={entry.id === selectedSearchId}
+                      revealQuery={searchState.query}
+                      onRevealLayout={
+                        entry.id === selectedSearchId ? onSearchContentLayout : undefined
+                      }
+                      disabled={searchState.active || selection.active}
+                      reactionPending={actions.busy}
+                      onReply={actions.reply}
+                      onThread={actions.thread}
+                      onAuthor={actions.profile}
+                      onMenu={actions.open}
+                      onReact={(message, emoji) => {
+                        void actions.react(message, emoji);
+                      }}
+                      onQuote={(messageId) => {
+                        void reveal(messageId)
+                          .then((target) => setScrollTarget(target))
+                          .catch(
+                            () =>
+                              void inform(
+                                t('chat.theMessageCouldNotBeOpened'),
+                                t('chat.tryAgainInAMoment'),
+                              ),
+                          );
+                      }}
+                    />
                   )}
                 />
-              }
-              renderItem={({ item: { entry, activity, album }, index }) => (
-                <ConversationMessage
-                  selection={
-                    selection.active
-                      ? {
-                          selected: selection.ids.has(entry.id),
-                          disabled: selection.limitReached && !selection.ids.has(entry.id),
-                          onToggle: selection.toggle,
-                        }
-                      : undefined
-                  }
-                  spaceId={id}
-                  entry={entry}
-                  activity={activity}
-                  album={album}
-                  previous={rows[index - 1]?.entry}
-                  next={rows[index + 1]?.entry}
-                  groupChat={chat.kind === 'Group' || chat.kind === 'Community'}
-                  item={items.find((item) => item.id === messageCard(entry)?.item_id)}
-                  highlighted={entry.id === selectedSearchId}
-                  revealQuery={searchState.query}
-                  onRevealLayout={entry.id === selectedSearchId ? onSearchContentLayout : undefined}
-                  disabled={searchState.active || selection.active}
-                  reactionPending={actions.busy}
-                  onReply={actions.reply}
-                  onThread={actions.thread}
-                  onAuthor={actions.profile}
-                  onMenu={actions.open}
-                  onReact={(message, emoji) => {
-                    void actions.react(message, emoji);
-                  }}
-                  onQuote={(messageId) => {
-                    void reveal(messageId)
-                      .then((target) => setScrollTarget(target))
-                      .catch(
-                        () =>
-                          void inform(
-                            t('chat.theMessageCouldNotBeOpened'),
-                            t('chat.tryAgainInAMoment'),
-                          ),
-                      );
-                  }}
-                />
               )}
-            />
+            </QuoteLayoutTransition>
           )
         }
       </ConversationViewport>

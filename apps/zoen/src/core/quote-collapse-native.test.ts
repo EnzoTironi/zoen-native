@@ -138,3 +138,48 @@ test(
     }
   },
 );
+
+test(
+  'actual native motion owner projects one progress and serializes the committed presentation render',
+  { skip: process.platform !== 'darwin', timeout: 90000 },
+  () => {
+    const app = fileURLToPath(new URL('../../', import.meta.url));
+    const directory = mkdtempSync(join(tmpdir(), 'zoen-quote-motion-owner-'));
+    try {
+      const pkg = preparePackage(app, directory);
+      const source = readFileSync(join(pkg, 'ios/utils/ENRMQuoteReadingAnchor.m'), 'utf8');
+      writeFileSync(
+        join(directory, 'quote-owner.inc'),
+        [body(source, '- (CGRect)frameForSegment:'), body(source, '- (void)advanceProgress:')].join(
+          '\n',
+        ),
+      );
+      const binary = join(directory, 'quote-motion');
+      execFileSync('xcrun', [
+        '--sdk',
+        'macosx',
+        'clang',
+        '-fobjc-arc',
+        '-fblocks',
+        '-I' + directory,
+        '-I' + join(pkg, 'ios/utils'),
+        '-I' + join(pkg, 'ios/parser'),
+        join(app, 'modules/zoen-core/tests/MessageQuotes/QuoteMotionTests.m'),
+        join(pkg, 'ios/utils/ENRMQuotePresentation.mm'),
+        join(pkg, 'ios/utils/ENRMAsyncRenderCoordinator.m'),
+        join(pkg, 'ios/parser/MarkdownASTNode.m'),
+        '-lc++',
+        '-framework',
+        'AppKit',
+        '-o',
+        binary,
+      ]);
+      assert.match(
+        execFileSync(binary, { encoding: 'utf8' }),
+        /Quote motion owner and committed rendering PASS/,
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
