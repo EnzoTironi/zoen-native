@@ -154,6 +154,7 @@ function renderScreen(
   home: ReturnType<Awaited<ReturnType<typeof fixture>>['home']>,
   timelineOverride?: TimelineEntry[],
   mosaic = false,
+  onInitialEndCancel: () => void = () => {},
 ) {
   const timeline = timelineOverride ?? entries(name === 'Thread');
   const snapshot = {
@@ -176,7 +177,7 @@ function renderScreen(
   }
   class LayoutPort {
     scope = 'chat:alice-phone';
-    cancel = noop;
+    cancel = onInitialEndCancel;
   }
   const components = (names: string[]) => Object.fromEntries(names.map((key) => [key, key]));
   function port(path: string): unknown {
@@ -244,8 +245,8 @@ function renderScreen(
       return { conversationScope };
     if (path.endsWith('/core/initial-timeline-end')) return { InitialTimelineEnd: LayoutPort };
     if (path === './navigation-container') return { navigationMetricsAvailable: false };
-    if (path === './quote-layout-context') return { QuoteMotionView: 'QuoteMotionView' };
-    if (path === './quote-layout-transition')
+    if (path.endsWith('/quote-layout-context')) return { QuoteMotionView: 'QuoteMotionView' };
+    if (path.endsWith('/quote-layout-transition'))
       return { QuoteLayoutTransition: 'QuoteLayoutTransition' };
     if (path === './use-chat-native-metrics')
       return { useChatNativeMetrics: () => ({ navigationMetrics: {}, observe: undefined }) };
@@ -448,4 +449,30 @@ test('actual Chat and Thread pass every complete signed album to the shared rend
       }
     }
   }
+});
+
+for (const screen of ['Chat'] as const)
+  test(`${screen} hands initial-end ownership to an explicit quote interaction`, async () => {
+    const f = await fixture();
+    let cancelled = 0;
+    const quote = nodes(
+      renderScreen(screen, f.home(), undefined, false, () => {
+        cancelled++;
+      }),
+    ).find((node) => node.type === 'QuoteLayoutTransition');
+    assert.ok(quote);
+    assert.equal(typeof quote.props.onBegin, 'function');
+    quote.props.onBegin();
+    assert.equal(cancelled, 1);
+  });
+
+test('Thread uses the same scoped quote motion and reading policy as the main conversation', async () => {
+  const f = await fixture();
+  const rendered = nodes(renderScreen('Thread', f.home()));
+  assert.ok(rendered.find((node) => node.type === 'QuoteLayoutTransition'));
+  const list = rendered.find((node) => node.type === 'FlashList');
+  assert.ok(list);
+  assert.equal(list.props.CellRendererComponent, 'QuoteMotionView');
+  assert.equal(typeof list.props.onCommitLayoutEffect, 'function');
+  assert.equal(typeof list.props.onScrollBeginDrag, 'function');
 });

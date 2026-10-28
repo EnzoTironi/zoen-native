@@ -94,8 +94,10 @@ function MotionMarkdown({
 /** Existing Reanimated layout engine owns the clock; no entrance or per-row clock. */
 export function QuoteLayoutTransition({
   list,
+  onBegin,
   children,
 }: {
+  onBegin?: () => void;
   list: RefObject<{ prepareForLayoutAnimationRender(): void } | null>;
   children: (
     active: boolean,
@@ -131,6 +133,7 @@ export function QuoteLayoutTransition({
     (generation: number) => {
       if (process.env.EXPO_OS !== 'ios') return;
       const current = ++sequence.current;
+      onBegin?.();
       list.current?.prepareForLayoutAnimationRender();
       setPhase(reducedMotion ? 'reading' : 'transition');
       runOnUI(() => {
@@ -139,7 +142,7 @@ export function QuoteLayoutTransition({
         progress.set(reducedMotion ? 1 : 0);
       })();
     },
-    [list, reducedMotion, target, progress],
+    [list, onBegin, reducedMotion, target, progress],
   );
   // FlashList invokes this after measuring and committing its canonical row
   // positions. The UI queue starts motion after those actual target commits.

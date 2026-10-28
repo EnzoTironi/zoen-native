@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import * as React from 'react';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { quoteMotionCurve } from './quote-motion.ts';
+import { InitialTimelineEnd } from './initial-timeline-end.ts';
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
 const ports = new Set([
@@ -75,6 +76,38 @@ test('actual FlashList commit starts one shared quote transition, with retargeti
     reduced = false,
     prepared = 0;
   const timings: any[] = [];
+  const frames = new Set<() => void>();
+  let endScrolls = 0;
+  const initialEnd = new InitialTimelineEnd(
+    'quote-chat',
+    {
+      current: () => true,
+      frame: (work) => {
+        frames.add(work);
+        return () => {
+          frames.delete(work);
+        };
+      },
+      scroll: () => {
+        endScrolls++;
+        return true;
+      },
+    },
+    { anchorUntilInteraction: true },
+  );
+  const flushEnd = () => {
+    for (const work of [...frames]) {
+      frames.delete(work);
+      work();
+    }
+  };
+  initialEnd.focus();
+  initialEnd.onLoad();
+  initialEnd.onViewportLayout(650);
+  initialEnd.onFooterLayout(86);
+  initialEnd.onContentSizeChange(400, 1200);
+  flushEnd();
+  assert.equal(endScrolls, 1, 'opening still reaches the initial end');
   const shared: any[] = [];
   function Host(props: any) {
     if (props.index !== undefined) cells.set(props.index, props);
@@ -178,6 +211,7 @@ test('actual FlashList commit starts one shared quote transition, with retargeti
     root.render(
       React.createElement(QuoteLayoutTransition, {
         list,
+        onBegin: initialEnd.cancel,
         // oxlint-disable-next-line react/no-children-prop -- actual render-prop API under test
         children: (active: boolean, commit: () => void, cancel: () => void, reading: boolean) =>
           React.createElement(
@@ -215,6 +249,14 @@ test('actual FlashList commit starts one shared quote transition, with retargeti
     const generation = quote.quoteCollapse.generation;
     await root.act(() => quote.onBlockquoteToggle({ nativeEvent: { index: 0, generation } }));
     assert.equal(prepared, 1);
+    initialEnd.onContentSizeChange(400, 3000);
+    initialEnd.onCommitLayoutEffect();
+    flushEnd();
+    assert.equal(
+      endScrolls,
+      1,
+      'quote intent retires initial-end follow before enlarged layout commits',
+    );
     assert.equal(policy.active, true);
     assert.equal(policy.reading, true);
     assert.equal(timings.length, 0, 'tap/React render cannot start the clock');

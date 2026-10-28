@@ -308,7 +308,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
           !page ? (
             <Loading />
           ) : (
-            <QuoteLayoutTransition key={initialEnd.scope} list={list}>
+            <QuoteLayoutTransition key={initialEnd.scope} list={list} onBegin={cancelInitialEnd}>
               {(quoteTransitionActive, quoteCommit, quoteCancel, quoteReading) => (
                 <FlashList
                   style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
