@@ -19,8 +19,20 @@ impl Session {
         if !members.iter().any(|(m, _)| *m == self.identity) {
             return true;
         }
+        let kind = match kind {
+            protocol::EphemeralKind::ReadTime(ref time) if !time.valid() => return true,
+            protocol::EphemeralKind::ReadTime(time)
+                if members.len() > protocol::read_time::MAX_MEMBERS =>
+            {
+                protocol::EphemeralKind::Read {
+                    seq: time.through_seq,
+                }
+            }
+            other => other,
+        };
         let receipt = match kind {
             protocol::EphemeralKind::Read { seq } => Some((0, seq)),
+            protocol::EphemeralKind::ReadTime(ref time) => Some((0, time.through_seq)),
             protocol::EphemeralKind::Delivered { seq } => Some((seq, 0)),
             _ => None,
         };
@@ -34,6 +46,16 @@ impl Session {
                 self.send(ServerFrame::error(
                     ErrorCode::Unavailable,
                     "receipt backlog full; reconnect to replay",
+                ))
+                .await;
+                return false;
+            }
+        }
+        if let protocol::EphemeralKind::ReadTime(ref time) = kind {
+            if !self.st.receipts.raise_time(&space, &self.identity, time) {
+                self.send(ServerFrame::error(
+                    ErrorCode::Unavailable,
+                    "read time backlog full; reconnect to replay",
                 ))
                 .await;
                 return false;

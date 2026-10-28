@@ -1,11 +1,11 @@
-//! Application commands.
 use super::{
     page_size, Deserialize, PageBlockDto, RequestDecision, ToolRequestDecision, TrustLevelDto,
     UndoToken,
 };
-use crate::owner_policy::OwnerPolicyScope;
 use crate::{
     app_resources::{Install, Update},
+    forwarding::*,
+    owner_policy::OwnerPolicyScope,
     sites::{SiteReview, SiteScope},
 };
 
@@ -13,6 +13,9 @@ use crate::{
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    MessageInfo {
+        scope: crate::MessageInfoScope,
+    },
     AppCurrentShareContext {
         scope: crate::app_current_share::AppShareScope,
     },
@@ -239,38 +242,38 @@ pub(super) enum Command {
         emoji: Option<String>,
     },
     ForwardBatchStatus {
-        source: crate::ForwardBatchSource,
+        source: ForwardBatchSource,
     },
     ForwardBatchReview {
-        scope: crate::ForwardBatchScope,
+        scope: ForwardBatchScope,
     },
     ConfirmForwardBatch {
-        source: crate::ForwardBatchSource,
+        source: ForwardBatchSource,
         batch_id: String,
         review_revision: String,
     },
     AbandonForwardBatch {
-        source: crate::ForwardBatchSource,
+        source: ForwardBatchSource,
         batch_id: String,
         review_revision: String,
     },
     FinishForwardBatch {
-        source: crate::ForwardBatchSource,
+        source: ForwardBatchSource,
         batch_id: String,
     },
     ForwardReview {
-        scope: crate::ForwardScope,
+        scope: ForwardScope,
     },
     ForwardStatus {
-        source: crate::ForwardSource,
+        source: ForwardSource,
     },
     ConfirmForward {
-        scope: crate::ForwardScope,
+        scope: ForwardScope,
         operation_id: String,
         source_revision: String,
     },
     DismissForward {
-        scope: crate::ForwardScope,
+        scope: ForwardScope,
         operation_id: String,
         accepted_message_id: Option<String>,
     },

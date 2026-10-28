@@ -48,6 +48,7 @@ export function ExtractedMessageActions({
     > = [
       ['reply', t('chat.reply'), props.onReply],
       ['thread', t('chat.openReplies'), props.onThread],
+      ['info', t('messageInfo.title'), props.onInfo],
       ['forward', t('chat.forward'), !entry.deleted ? props.onForward : undefined],
       ['selectMessages', t('chat.selectMessages'), !entry.deleted ? props.onSelect : undefined],
       ['select', t('chat.selectText'), request.textSelection ? props.onSelectText : undefined],
@@ -105,6 +106,7 @@ export function ExtractedMessageActions({
         const run = {
           reply: props.onReply,
           thread: props.onThread,
+          info: props.onInfo,
           forward: props.onForward,
           copy: props.onCopy,
           select: props.onSelectText,

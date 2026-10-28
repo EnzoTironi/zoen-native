@@ -11,6 +11,7 @@ import { agentDefinition } from './catalogs/agent-definition.ts';
 import { auth } from './catalogs/auth.ts';
 import { authProviders } from './catalogs/authProviders.ts';
 import { inboxActions } from './catalogs/inbox-actions.ts';
+import { messageInfo } from './catalogs/message-info.ts';
 import { chat } from './catalogs/chat.ts';
 import { community } from './catalogs/community.ts';
 import { common } from './catalogs/common.ts';
@@ -61,6 +62,7 @@ const catalogs = {
   auth,
   authProviders,
   chat,
+  messageInfo,
   inboxActions,
   common,
   composerKeyboard,

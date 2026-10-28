@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
+import { messageInfoNavigation } from './message-info-navigation.fixtures.ts';
 import * as messageCopyText from './message-copy-text.ts';
 const code = (
   await build({
@@ -172,6 +173,7 @@ function fixture() {
       useMessageQuoteSelection: () => ({ open() {}, panel: null }),
     },
     './message-copy': copy.exports,
+    './message-info-navigation': messageInfoNavigation({ push() {} }),
     './message-actions': { MessageActions: 'MessageActions' },
     './reaction-details': { ReactionDetails: 'ReactionDetails' },
   };

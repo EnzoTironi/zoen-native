@@ -148,6 +148,16 @@ function Navigation() {
                     sheetGrabberVisible: true,
                   }}
                 />
+                <Stack.Screen
+                  name="message-info/[space]/[message]"
+                  options={{
+                    title: t('messageInfo.title'),
+                    presentation: 'formSheet',
+                    headerTransparent: false,
+                    sheetAllowedDetents: [0.65, 1],
+                    sheetGrabberVisible: true,
+                  }}
+                />
                 <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
               </Stack>
             </SessionGate>
