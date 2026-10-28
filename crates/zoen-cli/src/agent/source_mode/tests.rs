@@ -8,6 +8,7 @@ mod known_result;
 mod known_tools;
 mod lifecycle;
 mod owner_controls;
+mod owner_note_recovery;
 mod publication_recovery;
 mod reconnect;
 mod relay;
