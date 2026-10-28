@@ -15,6 +15,7 @@ const compiled = await Promise.all(
     '../components/navigation-glass.tsx',
     '../components/chats-actions.ios.tsx',
     '../calls/header-action.ios.tsx',
+    '../components/message-selection-toolbar.tsx',
   ].map(async (name) => {
     const source = new URL(name, import.meta.url);
     const output = await build({
@@ -100,7 +101,7 @@ function fixture(
       },
     },
     'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => glass },
-    '@expo/ui': { Host: 'Host' },
+    '@expo/ui': { Host: 'Host', Button: 'Button' },
     '@expo/ui/swift-ui': { Button: 'Button', HStack: 'HStack', Menu: 'Menu' },
     '@expo/ui/swift-ui/modifiers': Object.fromEntries(
       ['buttonStyle', 'font', 'foregroundStyle', 'frame', 'labelStyle', 'tint'].map((name) => [
@@ -122,7 +123,7 @@ function fixture(
         presentation: telegramPresentation('night'),
       }),
     },
-    './primitives': { Icon: 'Icon' },
+    './primitives': { Icon: 'Icon', IconButton: 'IconButton' },
     './navigation-container': { NavigationContainer: 'View' },
     './chat-title': { ChatTitle: 'ChatTitle' },
     './navigation-appearance': { navigationGlassAppearance },
@@ -146,6 +147,7 @@ function fixture(
   ports['./navigation-glass'] = material;
   const action = load(compiled[5]!);
   ports['../calls/header-action.ios'] = action;
+  ports['./message-selection-toolbar'] = load(compiled[6]!);
   const header = load(compiled[0]!);
   const title = load(compiled[1]!);
   const chats = load(compiled[4]!);
@@ -384,4 +386,31 @@ test('Saved Messages opens its media and never exposes calls or group details', 
     { pathname: '/shared-media/[id]', params: { id: 'space-one' } },
     { pathname: '/shared-media/[id]', params: { id: 'space-one' } },
   ]);
+});
+
+test('selection owns native count and Cancel, then restores the original conversation controls', () => {
+  const f = fixture();
+  let cancelled = 0;
+  const props = f.props as typeof f.props & { selection?: { count: number; onCancel: () => void } };
+  props.selection = { count: 3, onCancel: () => cancelled++ };
+  const selected = f.header().props.options;
+  assert.equal(selected.headerBackVisible, false);
+  assert.equal(selected.unstable_headerLeftItems().length, 0);
+  const title = selected.headerTitle();
+  const rendered = title.type(title.props);
+  assert.equal(rendered.props.children, 3);
+  assert.equal(rendered.props.accessibilityLabel, 'chat.selectedMessages');
+  rendered.props.onAccessibilityAction({ nativeEvent: { actionName: 'cancel' } });
+  const items = selected.unstable_headerRightItems();
+  assert.equal(items.length, 1);
+  assert.equal(items[0].type, 'button');
+  assert.equal(items[0].label, 'chat.cancel');
+  items[0].onPress();
+  assert.equal(cancelled, 2);
+  delete props.selection;
+  const restored = f.header().props.options;
+  assert.equal(restored.headerBackVisible, true);
+  assert.equal(restored.unstable_headerLeftItems, undefined);
+  assert.equal(restored.unstable_headerRightItems()[0].type, 'custom');
+  assert.equal(restored.title, props.title);
 });

@@ -7,6 +7,7 @@ import { CallHeaderAction } from '../calls/header-action.ios';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import { ConversationAvatar } from '../saved-messages/conversation-avatar';
 import { useTheme } from '../theme';
+import { MessageSelectionHeader } from './message-selection-toolbar';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
 import { Icon } from './primitives';
 import { NavigationGlass } from './navigation-glass';
@@ -28,25 +29,33 @@ export function ChatHeader(props: ChatHeaderProps) {
     <Stack.Screen
       options={{
         ...navigationGlassAppearance,
-        title: props.title,
+        title: props.selection ? String(props.selection.count) : props.title,
+        headerBackVisible: !props.selection,
+        unstable_headerLeftItems: props.selection ? () => [] : undefined,
         headerShown: true,
         headerBackButtonDisplayMode: 'minimal',
         headerBackground: undefined,
-        headerTitle: () => (
-          <NavigationContainer
-            scrollViewTag={props.scrollViewTag ?? 0}
-            metrics={props.navigationMetrics}
-          >
-            <ChatTitle {...props} availableWidth={Math.max(88, width - (canCall ? 264 : 176))} />
-          </NavigationContainer>
-        ),
-        unstable_headerRightItems: () => [
-          {
-            type: 'custom',
-            hidesSharedBackground: true,
-            element: <ChatHeaderActions {...props} canCall={canCall} />,
-          },
-        ],
+        headerTitle: () =>
+          props.selection ? (
+            <MessageSelectionHeader {...props.selection} />
+          ) : (
+            <NavigationContainer
+              scrollViewTag={props.scrollViewTag ?? 0}
+              metrics={props.navigationMetrics}
+            >
+              <ChatTitle {...props} availableWidth={Math.max(88, width - (canCall ? 264 : 176))} />
+            </NavigationContainer>
+          ),
+        unstable_headerRightItems: () =>
+          props.selection
+            ? [{ type: 'button', label: t('chat.cancel'), onPress: props.selection.onCancel }]
+            : [
+                {
+                  type: 'custom',
+                  hidesSharedBackground: true,
+                  element: <ChatHeaderActions {...props} canCall={canCall} />,
+                },
+              ],
       }}
     />
   );

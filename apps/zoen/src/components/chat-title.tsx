@@ -18,6 +18,7 @@ export type ChatHeaderProps = {
   counterpart?: Persona | null;
   activityLabel?: string | null;
   search?: { active: boolean; onToggle: () => void };
+  selection?: { count: number; onCancel: () => void };
 };
 
 export function ChatTitle({
