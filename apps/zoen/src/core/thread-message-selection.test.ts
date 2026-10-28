@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
 import { build } from 'esbuild';
+import * as homeAccess from '../home/access.ts';
 import { hookHost } from './message-selection-react.fixtures.ts';
 import type { TimelineEntry } from './types';
 
@@ -34,6 +35,22 @@ function find(value: unknown, type: string): Element | undefined {
 function fixture(active = true) {
   const host = hookHost();
   const calls: string[] = [];
+  const routes: unknown[] = [];
+  const state = {
+    phase: 'ready',
+    mode: 'account',
+    erasePending: false,
+    snapshot: {
+      me: { id: 'alice' },
+      account: {
+        identity_id: 'alice',
+        device_id: 'phone',
+        unlocked: true,
+        setup_pending: false,
+      },
+      conversations: [{ id: 'source', members: [{ id: 'alice' }] }],
+    },
+  };
   const entries = ['original', 'reply'].map(
     (id) => ({ id, kind: { Message: { text: id, card: null } } }) as TimelineEntry,
   );
@@ -76,7 +93,7 @@ function fixture(active = true) {
         };
       if (name === 'expo-router')
         return {
-          router: { push() {} },
+          router: { push: (route: unknown) => routes.push(JSON.parse(JSON.stringify(route))) },
           Stack: { Screen: 'Screen' },
           useFocusEffect: host.useFocusEffect,
           useLocalSearchParams: () => ({ space: 'space', root: 'root-message' }),
@@ -92,11 +109,12 @@ function fixture(active = true) {
       if (name.endsWith('/core/provider'))
         return {
           useClient: () => ({
-            store: { sessionEpoch: 1, setTyping() {} },
+            store: { sessionEpoch: 1, setTyping() {}, getSnapshot: () => state },
             snapshot: { conversations: [{ id: 'space', kind: 'Group' }] },
             mode: 'account',
           }),
         };
+      if (name.endsWith('/home/access')) return homeAccess;
       if (name.endsWith('/message-audio-provider')) return { useMessageAudioFocus() {} };
       if (name.endsWith('/quote-layout-transition'))
         return { QuoteLayoutTransition: 'QuoteLayoutTransition' };
@@ -166,7 +184,7 @@ function fixture(active = true) {
   );
   const list = find(transitioned, 'FlashList');
   assert.ok(list, 'Thread viewport must retain its actual list');
-  return { calls, entries, selection, tree, viewport, list, hookArgs, actionArgs };
+  return { calls, routes, state, entries, selection, tree, viewport, list, hookArgs, actionArgs };
 }
 
 test('thread binds selection to its root and expands every original entry into toggle-only rows', () => {
@@ -229,4 +247,26 @@ test('ordinary thread keeps existing album projection, composer and message acti
   };
   assert.equal(options.title, 'chat.replies');
   assert.equal(options.headerBackVisible, true);
+});
+
+test('thread quote navigation checks current source membership and session at the tap boundary', () => {
+  const f = fixture(false);
+  const rows = f.list.props.data as unknown[];
+  const rendered = (f.list.props.renderItem as (value: unknown) => unknown)({
+    item: rows[0],
+    index: 0,
+  });
+  const message = find(rendered, 'Message')!;
+  const open = message.props.onQuote as (messageId: string, sourceSpace: string) => void;
+  open('source-message', 'source');
+  assert.deepEqual(f.routes, [
+    { pathname: '/chat/[id]', params: { id: 'source', jump: 'source-message' } },
+  ]);
+  f.state.snapshot.conversations[0]!.members = [];
+  open('source-message', 'source');
+  assert.equal(f.routes.length, 1, 'A rendered quote must not retain revoked source access');
+  f.state.snapshot.conversations[0]!.members = [{ id: 'alice' }];
+  f.state.snapshot.account.unlocked = false;
+  open('source-message', 'source');
+  assert.equal(f.routes.length, 1, 'Locking the account must prevent origin navigation');
 });
