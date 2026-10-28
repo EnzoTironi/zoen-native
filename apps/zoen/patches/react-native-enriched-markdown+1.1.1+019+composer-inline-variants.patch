@@ -1,0 +1,55 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerVariants.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerVariants.mm
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerVariants.mm
+@@ -0,0 +1,50 @@
++#import "ENRMComposerRanges.h"
++#import "ENRMInputParser.h"
++
++BOOL ENRMComposerHasCrossedEmphasis(NSArray<ENRMFormattingRange *> *ranges)
++{
++  for (ENRMFormattingRange *a in ranges) {
++    for (ENRMFormattingRange *b in ranges) {
++      BOOL ambiguous = (a.type == ENRMInputStyleTypeStrong && b.type == ENRMInputStyleTypeEmphasis) ||
++        (a.type == ENRMInputStyleTypeEmphasis && b.type == ENRMInputStyleTypeStrong);
++      if (ambiguous && a.range.length <= NSUIntegerMax - a.range.location &&
++          b.range.length <= NSUIntegerMax - b.range.location && a.range.location < b.range.location &&
++          b.range.location < NSMaxRange(a.range) && NSMaxRange(a.range) < NSMaxRange(b.range)) return YES;
++    }
++  }
++  return NO;
++}
++
++static NSArray<NSSet<NSString *> *> *ENRMComposerCoverage(NSString *text, NSArray<ENRMFormattingRange *> *ranges)
++{
++  NSMutableArray<NSMutableSet<NSString *> *> *coverage = [NSMutableArray new];
++  for (NSUInteger i = 0; i < text.length; i++) [coverage addObject:[NSMutableSet new]];
++  for (ENRMFormattingRange *range in ranges) {
++    // LiteralEscape is source provenance, never a visible format. In Code its
++    // payload is raw, so the next parse correctly needs no escape metadata.
++    if (range.type == ENRMInputStyleTypeLiteralEscape || range.range.location > text.length ||
++        range.range.length > text.length - range.range.location) continue;
++    NSString *mark = [NSString stringWithFormat:@"%ld:%@", (long)range.type, range.url ?: @""];
++    for (NSUInteger i = range.range.location; i < NSMaxRange(range.range); i++) {
++      // Inline marks do not attach to structural CR/LF; Code is split per line.
++      unichar c = [text characterAtIndex:i];
++      if (c != '\n' && c != '\r') [coverage[i] addObject:mark];
++    }
++  }
++  return coverage;
++}
++
++NSString *ENRMRepresentableComposerInline(NSString *text, NSArray<ENRMFormattingRange *> *ranges)
++{
++  ENRMInputParser *parser = [ENRMInputParser new];
++  NSArray *expected = ENRMComposerCoverage(text, ranges);
++  // Exactly four strategies, independent of the number of marks: stars;
++  // underscores on reopened emphasis; on interrupted emphasis; or both.
++  for (NSInteger variant = 0; variant < 4; variant++) {
++    NSString *candidate = ENRMEncodeComposerInline(text, ranges, variant);
++    ENRMParseResult *parsed = [parser parseComposerMarkdown:candidate];
++    if ([parsed.plainText isEqualToString:text] &&
++        [ENRMComposerCoverage(parsed.plainText, parsed.formattingRanges) isEqual:expected]) return candidate;
++  }
++  return nil;
++}

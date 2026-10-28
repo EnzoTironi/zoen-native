@@ -52,6 +52,21 @@ function YouContent() {
         <SettingsRows
           testID="profile-settings-rows"
           rows={[
+            ...(mode === 'account'
+              ? [
+                  {
+                    id: 'settings-saved-messages',
+                    iconColor: '#007AFF',
+                    title: t('settings.savedMessages'),
+                    icon: {
+                      ios: 'bookmark.fill' as const,
+                      android: 'bookmark' as const,
+                      web: 'bookmark' as const,
+                    },
+                    onPress: () => router.push('/saved-messages'),
+                  },
+                ]
+              : []),
             {
               id: 'settings-edit-profile',
               iconColor: '#007AFF',

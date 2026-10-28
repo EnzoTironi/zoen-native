@@ -41,6 +41,7 @@ mod managed;
 mod online;
 mod publishing;
 mod requests;
+mod saved_messages;
 mod syncing;
 mod turn;
 
@@ -74,6 +75,7 @@ struct Session {
     first_sync_done: bool,
     claim_receipts: bool,
     complete_reads: bool,
+    saved_messages: bool,
     read_snapshot: Option<crate::read_snapshots::Snapshot>,
     managed_binding: Option<protocol::runtime_binding::Request>,
 }
@@ -161,6 +163,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         registered,
         claim_receipts,
         complete_reads,
+        saved_messages,
     }) = handshake(&st, &tx, &mut stream, &ip).await
     else {
         return finish(writer, tx).await;
@@ -228,6 +231,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         first_sync_done: false,
         claim_receipts,
         complete_reads,
+        saved_messages,
         read_snapshot: None,
         managed_binding: None,
     };

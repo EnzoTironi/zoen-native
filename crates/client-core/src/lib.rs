@@ -35,6 +35,7 @@ pub use miniapps::deckcraft::agent_tools as deckcraft_agent_tools;
 mod agent_notes;
 pub mod image_tasks;
 pub mod owner_policy;
+mod saved_messages;
 pub use agent_binary_documents::{
     AgentBinaryTurn, AgentToolApprovalInput, ApprovedToolTurn, AGENT_BINARY_DOCUMENT_LIMIT,
 };
@@ -620,17 +621,8 @@ impl Client {
 // Keep UniFFI module_path! identical to the existing crate-root exports.
 include!("client_conversations.rs");
 
-/// Formats cents as Brazilian reais ("R$ 1.348", "R$ 12,40").
-#[uniffi::export]
-pub fn format_brl(cents: i64) -> String {
-    engine::brl(cents)
-}
-
-/// Formats the existing plan/grant domain's BRL cents for the chosen locale.
-#[uniffi::export]
-pub fn format_money(cents: i64, locale: String) -> String {
-    i18n::money_in(i18n::Lang::from_tag(&locale), cents)
-}
+// Retain crate-root UniFFI names for native formatting helpers.
+include!("client_formatting.rs");
 
 /// Versão do núcleo (para a tela Sobre).
 #[uniffi::export]

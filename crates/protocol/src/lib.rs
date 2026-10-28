@@ -38,6 +38,7 @@ pub mod experiments;
 pub mod links;
 pub mod push;
 pub mod runtime_binding;
+pub mod saved_messages;
 pub mod sites;
 pub mod turn;
 pub mod wire;
@@ -79,6 +80,7 @@ pub const PROTOCOL: &str = "zoen-sync/2";
 pub const AGENT_OWNER_PROOF: &str = "agent_owner_proof_v1";
 pub const CAPABILITIES: &[&str] = &[
     "blobs",
+    saved_messages::CAPABILITY,
     "invites",
     "presence",
     "profiles",

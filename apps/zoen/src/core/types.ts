@@ -1,4 +1,5 @@
 import type { ReplySelection } from './generated/ReplySelection';
+import type { SpaceSummary } from './generated/SpaceSummary';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
 import type { PageInputPort } from '../documents/page-input';
 import type { LogEventsPage } from './generated/LogEventsPage';
@@ -94,6 +95,7 @@ export type CoreEvent =
   | { kind: 'error'; message?: string };
 type Results = {
   chat_layout: ChatLayoutResult;
+  saved_messages: SpaceSummary;
   space_member_context: SpaceMemberContext;
   remove_member_reviewed: SpaceMemberContext;
   set_member_role_reviewed: SpaceMemberContext;

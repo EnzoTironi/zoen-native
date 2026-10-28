@@ -1,3 +1,4 @@
+import { conversationTitle } from '../saved-messages/presentation';
 // Telegram-iOS f1dd7a2 ChatListItem: leading Read/Pin, trailing Mute/Archive.
 // FlashList owns virtualization; SwiftUI .swipeActions requires its own native container.
 import { useEffect, useRef } from 'react';
@@ -38,21 +39,24 @@ export function InboxChatRow({
   };
   const content = (
     <Pressable
-      testID={`inbox-chat-${chat.id}`}
+      testID={chat.kind === 'saved' ? 'saved-messages-chat' : `inbox-chat-${chat.id}`}
       accessibilityRole="button"
       accessibilityLabel={
         chat.unread
           ? t('chat.conversationUnreadLabel', {
-              title: chat.title,
+              title: conversationTitle(chat),
               count: chat.unread,
               preview: chat.last_preview,
             })
           : chat.manual_unread
             ? t('inboxActions.manuallyUnreadLabel', {
-                title: chat.title,
+                title: conversationTitle(chat),
                 preview: chat.last_preview,
               })
-            : t('chat.conversationLabel', { title: chat.title, preview: chat.last_preview })
+            : t('chat.conversationLabel', {
+                title: conversationTitle(chat),
+                preview: chat.last_preview,
+              })
       }
       accessibilityState={{ busy: pending }}
       accessibilityActions={actions.map((action) => ({ name: action.id, label: action.label }))}

@@ -17,6 +17,7 @@ declare class ZoenCoreModule extends NativeModule<{
 }> {
   readonly sitePreviewVersion?: number;
   readonly pageInputVersion?: number;
+  readonly composerFormattingVersion?: number;
   readonly staticLocationVersion?: number;
   searchLocations?(request: string): Promise<string>;
   cancelLocationSearch?(binding: string): Promise<void>;

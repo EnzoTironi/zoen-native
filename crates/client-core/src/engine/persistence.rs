@@ -226,6 +226,7 @@ impl Engine {
         at_ms: i64,
         body: EventBody,
     ) -> R<Event> {
+        self.saved_messages_admit(space, author, &body)?;
         if self.approval_replay_needed {
             self.reproject_approval_overlay()?;
         }

@@ -168,3 +168,19 @@ test('archive survives a store cold reopen and appears in Archived; its preview 
     await f.close();
   }
 });
+
+test('Saved Messages retains inbox actions and routes an unready room through recovery', async () => {
+  const f = await inboxUi('pt-BR');
+  try {
+    Object.assign(f.core.chat, { kind: 'saved', can_write: false, title: '' });
+    await f.reopen();
+    const row = f.control('saved-messages-chat');
+    assert.ok(row.accessibilityLabel.includes(f.t('settings.savedMessages')));
+    await f.act(() => row.onPress());
+    assert.deepEqual(f.routes.at(-1), '/saved-messages');
+    await f.reveal(f.core.chat.id, 'leading');
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});

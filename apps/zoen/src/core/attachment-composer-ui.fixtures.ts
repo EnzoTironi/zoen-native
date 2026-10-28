@@ -65,6 +65,8 @@ export async function compileField(platform: Platform) {
     'react-native-reanimated',
     '../../modules/zoen-core/src/ZoenCoreModule',
     '../media/attachment-keyboard-context',
+    './composer-rich-input',
+    'expo-crypto',
   ]);
   const fieldOutput = await build({
     stdin: { contents: compiledField, resolveDir: dirname(fieldPath), loader: 'js' },
@@ -99,6 +101,7 @@ export function fixture(
   fontScale = 1,
   liquidGlass = false,
   keyboardSession?: AttachmentKeyboardSession,
+  richInput = false,
 ) {
   type Slot = {
     value?: unknown;
@@ -175,7 +178,7 @@ export function fixture(
       effects = [];
       dirty = false;
       result = fieldModule.exports.ComposerTextField(props);
-      assert.equal(result.type, 'TextInput');
+      assert.equal(result.type, richInput ? 'ComposerRichInput' : 'TextInput');
       (result.props.ref as (node: unknown) => void)(nativeField);
       for (const commit of effects) commit();
       // RN delivers layout after the committed ref and layout effects.
@@ -213,7 +216,9 @@ export function fixture(
     onChange: (text: unknown) => calls.push(`caption:${text}`),
     onSend: () => calls.push('send-files'),
   };
+  let composerBindingSequence = 0;
   const ports: Record<string, unknown> = {
+    'expo-crypto': { randomUUID: () => `composer-binding-${++composerBindingSequence}` },
     react: {
       createRef: () => ({ current: null }),
       useRef: (value: unknown) => {
@@ -270,9 +275,11 @@ export function fixture(
           Array.isArray(style) ? Object.assign({}, ...style.map((part: any) => part || {})) : style,
       },
     },
+    './composer-rich-input': { ComposerRichInput: 'ComposerRichInput' },
     '../../modules/zoen-core/src/ZoenCoreModule': {
       __esModule: true,
       default: {
+        composerFormattingVersion: richInput ? 1 : undefined,
         measureComposer: async (
           tag: number,
           text: string,

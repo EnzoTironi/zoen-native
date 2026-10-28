@@ -128,6 +128,10 @@ impl Engine {
     }
 
     pub(super) fn ingest_plain(&mut self, e: Event) -> Ingest {
+        if let Err(error) = self.saved_messages_admit(&e.space, &e.author, &e.body) {
+            return Ingest::Invalid(error.to_string());
+        }
+
         let space = e.space.clone();
         let next = self
             .logs
@@ -162,13 +166,18 @@ impl Engine {
         }
         // The confirmed event, its catch-up scope and an own pending copy describe
         // one receipt. Never publish a confirmation whose bookkeeping failed.
+        let mut saved_superseded = Vec::new();
         let stored = (|| -> crate::engine::R<()> {
             let tx = self
                 .store
                 .conn()
                 .unchecked_transaction()
                 .map_err(store::StoreError::from)?;
+            saved_superseded = self.saved_messages_superseded(&e)?;
             self.store.append_event(&e)?;
+            for id in &saved_superseded {
+                self.store.outbox_remove(id)?;
+            }
             self.store.set_synced(&space)?;
             if own {
                 self.confirm_owner_policy_welcome(&e)?;
@@ -181,6 +190,10 @@ impl Engine {
             // Rollback precedes reload, so memory sees the same pending/history state.
             let _ = self.reload();
             return Ingest::Invalid(err.to_string());
+        }
+        for id in saved_superseded {
+            self.net.pending.remove(&id);
+            self.net.failed.remove(&id);
         }
         self.net.synced.insert(space.clone());
         if !self.space_order.contains(&space) {

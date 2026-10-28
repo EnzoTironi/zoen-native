@@ -404,6 +404,8 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
         module.exports.ProfileHeader ??
         module.exports.SharedMediaTile
       )(props);
+      // Space now dispatches through its real Saved-aware content boundary.
+      while (kind === 'space' && typeof tree?.type === 'function') tree = tree.type(tree.props);
       for (const run of effects) run();
     } while (dirty);
     return tree;
