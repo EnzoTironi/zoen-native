@@ -1,3 +1,4 @@
+import type { RenderedMessageText } from './use-rendered-message-text';
 import { MessageTextSelection } from './message-context-ports';
 import { t } from '../i18n/index.ts';
 import { memo, useMemo, use, type ReactNode } from 'react';
@@ -17,6 +18,7 @@ export type MessageMarkdownProps = {
   selectable?: boolean;
   onQuoteSelection?: (text: string, sourceRangesJSON?: string) => void;
   onLayout?: (event: LayoutChangeEvent) => void;
+  accessibilityText?: RenderedMessageText;
 };
 
 /** Same native Markdown engine as the document editor, within the message face. */
@@ -29,6 +31,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   selectable = false,
   onLayout,
   onQuoteSelection,
+  accessibilityText,
 }: MessageMarkdownProps) {
   const { colors, scheme } = useTheme();
   const selection = use(MessageTextSelection);
@@ -135,6 +138,8 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       testID={testID}
       onLayout={onLayout}
       markdown={text}
+      accessibilityRevision={accessibilityText?.revision}
+      onResolvedAccessibilityText={accessibilityText?.accept}
       flavor="github"
       markdownStyle={markdownStyle}
       containerStyle={{ minWidth: 0, maxWidth, flexShrink: 1 }}

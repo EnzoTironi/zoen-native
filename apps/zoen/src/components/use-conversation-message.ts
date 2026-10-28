@@ -13,6 +13,7 @@ import {
   type TextLayoutEvent,
 } from 'react-native';
 import type { ItemDetail } from '../core/generated/ItemDetail';
+import { useRenderedMessageText, type RenderedMessageText } from './use-rendered-message-text';
 import { messageMayContainMarkdown } from '../core/message-markdown';
 import {
   largeEmojiFontSize,
@@ -36,6 +37,7 @@ import { useConversationRevealAnchor } from './conversation-reveal-content-view'
 
 export type ConversationMessageProps = {
   spaceId: string;
+  accessibilityText?: RenderedMessageText;
   entry: TimelineEntry;
   previous?: TimelineEntry;
   next?: TimelineEntry;
@@ -88,6 +90,7 @@ export function useConversationMessage({
   onAuthor,
   onMenu,
   onQuote,
+  accessibilityText: sharedAccessibilityText,
 }: ConversationMessageProps) {
   const { colors, presentation: p, reducedMotion } = useTheme();
   const revealAnchor = useConversationRevealAnchor(entry.id);
@@ -167,6 +170,12 @@ export function useConversationMessage({
     !standaloneAppCard &&
     !emojiFont &&
     messageMayContainMarkdown(text, process.env.EXPO_OS === 'ios');
+  const accessibilityText = useRenderedMessageText(
+    JSON.stringify([spaceId, entry.id]),
+    text,
+    formattedText && process.env.EXPO_OS === 'ios',
+    sharedAccessibilityText,
+  );
   const availableWidth = Math.max(0, width - 32 - authorGutter);
   const mediaLimit = Math.min(availableWidth, Math.max(160, Math.min(294, availableWidth * 0.87)));
   const mediaWidth = appCard
@@ -292,7 +301,9 @@ export function useConversationMessage({
   // VoiceOver groups text bubbles, so their nested quote and metadata must also
   // be represented on the group. Native media keeps its independent controls.
   const accessibilityMessageLabel = [
-    `${entry.author.name}: ${text}`,
+    accessibilityText.text === undefined
+      ? entry.author.name
+      : `${entry.author.name}: ${accessibilityText.text}`,
     !entry.deleted && entry.reply_to
       ? `${t('chat.replyingTo', { name: entry.reply_to.author.name })}: ${entry.reply_to.text}`
       : null,
@@ -377,6 +388,7 @@ export function useConversationMessage({
     reducedMotion,
     bubble,
     accessibilityMessageLabel,
+    accessibilityText,
     formattedText,
     p,
     Math,

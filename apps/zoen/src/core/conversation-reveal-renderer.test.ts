@@ -7,6 +7,7 @@ import * as React from 'react';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import * as measurements from './conversation-reveal-measurement.ts';
 import * as presentation from './message-presentation.ts';
+import * as markdownPresentation from './message-markdown.ts';
 import * as messageTextPresentation from './presentation.ts';
 import { elements, entry, plainMessage, render } from './message-caption.fixtures.ts';
 import { resolveSkyTheme } from '../theme/sky.ts';
@@ -77,6 +78,7 @@ test('Compiler Timeline/context bind real native text measurements and retire la
     '../core/conversation-reveal-measurement': measurements,
     '../core/message-presentation': presentation,
     '../core/presentation': messageTextPresentation,
+    '../core/message-markdown': markdownPresentation,
     '../theme': {
       useTheme: () => ({ ...resolveSkyTheme('night', new Date(1000)), localDate: new Date(1000) }),
     },
@@ -92,6 +94,7 @@ test('Compiler Timeline/context bind real native text measurements and retire la
       return null;
     },
   };
+  ports['./use-rendered-message-text'] = load('../components/use-rendered-message-text.ts', ports);
   const timeline = load('../components/conversation-timeline-message.tsx', ports);
   assert.deepEqual(
     diagnostics,
