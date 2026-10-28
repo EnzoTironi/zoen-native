@@ -1,6 +1,7 @@
 import { FlashList } from '@shopify/flash-list';
 import { Pressable, Text, View } from 'react-native';
 import { launchConversationAssistant } from '../assistant/launch';
+import { MessageSelectionToolbar } from './message-selection-toolbar';
 import { ChatHeader } from '../components/chat-header';
 import { ConversationRail, ConversationRailSpacer } from '../components/conversation-rail';
 import { ConversationTimelineMessage as ConversationMessage } from '../components/conversation-timeline-message';
@@ -20,6 +21,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     chat,
     id,
     activityLabel,
+    selection,
     nativeScrollTag,
     bindNativeTimeline,
     searchState,
@@ -81,6 +83,9 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
       <ChatHeader
         id={id}
+        selection={
+          selection.active ? { count: selection.count, onCancel: selection.cancel } : undefined
+        }
         scrollViewTag={nativeScrollTag}
         navigationMetrics={navigationMetrics}
         title={conversationTitle(chat)}
@@ -119,108 +124,118 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
         onComposerLayout={onComposerLayout}
         composer={
           <>
-            <MessageComposer
-              context={
-                !searchState.active && (normalDraft.replyTo || editing)
-                  ? {
-                      entry: editing ?? reply ?? undefined,
-                      quote: editing ? undefined : normalDraft.replyQuote,
-                      onCancel: () => updateDraft({ type: 'cancel' }),
-                    }
-                  : undefined
-              }
-              spaceId={id}
-              suspended={searchState.active}
-              inputRef={input}
-              onFocus={cancelInitialEnd}
-              value={searchState.active ? searchState.query : composerText}
-              sending={sending}
-              editing={Boolean(editing) && !searchState.active}
-              allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
-              replyTo={normalDraft.replyTo}
-              draft={
-                searchState.active || editing
-                  ? undefined
-                  : {
-                      ready: normalDraft.ready,
-                      error: Boolean(normalDraft.error),
-                      rejected: normalDraft.rejected,
-                      onRetry: normalDraft.retry,
-                    }
-              }
-              onChangeText={(text) => {
-                if (searchState.active) {
-                  search.setQuery(text);
-                  store.setTyping(id, false);
-                } else if (editing) {
-                  updateDraft({ type: 'text', value: text });
-                  store.setTyping(id, false);
-                } else {
-                  updateDraft({ type: 'text', value: text });
-                  store.setTyping(id, Boolean(text.trim()));
+            {selection.active ? (
+              <MessageSelectionToolbar
+                count={selection.count}
+                onCopy={selection.copy}
+                onForward={selection.forward}
+                canCopy={selection.canCopy}
+                canForward={selection.canForward}
+              />
+            ) : (
+              <MessageComposer
+                context={
+                  !searchState.active && (normalDraft.replyTo || editing)
+                    ? {
+                        entry: editing ?? reply ?? undefined,
+                        quote: editing ? undefined : normalDraft.replyQuote,
+                        onCancel: () => updateDraft({ type: 'cancel' }),
+                      }
+                    : undefined
                 }
-              }}
-              onBlur={() => {
-                store.setTyping(id, false);
-                normalDraft.flush();
-              }}
-              onSend={() => {
-                if (!searchState.active) void send();
-              }}
-              search={
-                searchState.active
-                  ? {
-                      state: searchState,
-                      status: [
-                        !conversationQueryFits(searchState.query.trim())
-                          ? t('chat.searchQueryTooLong')
-                          : searchState.loading || searchRevealBusy
-                            ? t('chat.searchingMessages')
-                            : searchState.error ||
-                              searchRevealError ||
-                              (searchState.completed
-                                ? searchState.hits.length
-                                  ? t('chat.searchPosition', {
-                                      position: searchState.index + 1,
-                                      count: searchState.hits.length,
-                                      more: searchState.cursor ? '+' : '',
-                                    })
-                                  : t('chat.noResults')
-                                : t('chat.searchUsesTheHistoryAvailableOnThisDevice')),
-                        searchThread ? t('chat.searchThreadResult') : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · '),
-                      onClose: () => {
-                        setScrollTarget(null);
-                        search.close();
-                        input.current?.focus();
-                      },
-                      onMove: (direction) => {
-                        void search.move(direction);
-                      },
-                      onSearch: () => {
-                        void search.search();
-                      },
-                      onAsk: () => {
-                        const current = search.getSnapshot();
-                        if (
-                          search.isCurrent() &&
-                          current.completed &&
-                          !current.loading &&
-                          !current.error &&
-                          !current.hits.length &&
-                          !current.cursor &&
-                          current.query.trim() &&
-                          conversationQueryFits(current.query.trim())
-                        )
-                          launchConversationAssistant(id, current.query.trim(), store);
-                      },
-                    }
-                  : undefined
-              }
-              onMediaSent={normalDraft.mediaAccepted}
-            />
+                spaceId={id}
+                suspended={searchState.active}
+                inputRef={input}
+                onFocus={cancelInitialEnd}
+                value={searchState.active ? searchState.query : composerText}
+                sending={sending}
+                editing={Boolean(editing) && !searchState.active}
+                allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
+                replyTo={normalDraft.replyTo}
+                draft={
+                  searchState.active || editing
+                    ? undefined
+                    : {
+                        ready: normalDraft.ready,
+                        error: Boolean(normalDraft.error),
+                        rejected: normalDraft.rejected,
+                        onRetry: normalDraft.retry,
+                      }
+                }
+                onChangeText={(text) => {
+                  if (searchState.active) {
+                    search.setQuery(text);
+                    store.setTyping(id, false);
+                  } else if (editing) {
+                    updateDraft({ type: 'text', value: text });
+                    store.setTyping(id, false);
+                  } else {
+                    updateDraft({ type: 'text', value: text });
+                    store.setTyping(id, Boolean(text.trim()));
+                  }
+                }}
+                onBlur={() => {
+                  store.setTyping(id, false);
+                  normalDraft.flush();
+                }}
+                onSend={() => {
+                  if (!searchState.active) void send();
+                }}
+                search={
+                  searchState.active
+                    ? {
+                        state: searchState,
+                        status: [
+                          !conversationQueryFits(searchState.query.trim())
+                            ? t('chat.searchQueryTooLong')
+                            : searchState.loading || searchRevealBusy
+                              ? t('chat.searchingMessages')
+                              : searchState.error ||
+                                searchRevealError ||
+                                (searchState.completed
+                                  ? searchState.hits.length
+                                    ? t('chat.searchPosition', {
+                                        position: searchState.index + 1,
+                                        count: searchState.hits.length,
+                                        more: searchState.cursor ? '+' : '',
+                                      })
+                                    : t('chat.noResults')
+                                  : t('chat.searchUsesTheHistoryAvailableOnThisDevice')),
+                          searchThread ? t('chat.searchThreadResult') : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · '),
+                        onClose: () => {
+                          setScrollTarget(null);
+                          search.close();
+                          input.current?.focus();
+                        },
+                        onMove: (direction) => {
+                          void search.move(direction);
+                        },
+                        onSearch: () => {
+                          void search.search();
+                        },
+                        onAsk: () => {
+                          const current = search.getSnapshot();
+                          if (
+                            search.isCurrent() &&
+                            current.completed &&
+                            !current.loading &&
+                            !current.error &&
+                            !current.hits.length &&
+                            !current.cursor &&
+                            current.query.trim() &&
+                            conversationQueryFits(current.query.trim())
+                          )
+                            launchConversationAssistant(id, current.query.trim(), store);
+                        },
+                      }
+                    : undefined
+                }
+                onMediaSent={normalDraft.mediaAccepted}
+              />
+            )}
           </>
         }
         overlay={
@@ -317,6 +332,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                 cancelInitialEnd();
                 searchReveal.cancel();
               }}
+              extraData={selection.ids}
               data={rows}
               keyExtractor={(row) => row.key}
               keyboardDismissMode="interactive"
@@ -354,6 +370,15 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
               }
               renderItem={({ item: { entry, activity, album }, index }) => (
                 <ConversationMessage
+                  selection={
+                    selection.active
+                      ? {
+                          selected: selection.ids.has(entry.id),
+                          disabled: selection.limitReached && !selection.ids.has(entry.id),
+                          onToggle: selection.toggle,
+                        }
+                      : undefined
+                  }
                   spaceId={id}
                   entry={entry}
                   activity={activity}
@@ -365,7 +390,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                   highlighted={entry.id === selectedSearchId}
                   revealQuery={searchState.query}
                   onRevealLayout={entry.id === selectedSearchId ? onSearchContentLayout : undefined}
-                  disabled={searchState.active}
+                  disabled={searchState.active || selection.active}
                   reactionPending={actions.busy}
                   onReply={actions.reply}
                   onThread={actions.thread}

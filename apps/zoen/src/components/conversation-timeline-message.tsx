@@ -1,6 +1,11 @@
 import type { MiniappTimelineActivity } from '../core/conversation-timeline';
-import { messageHasStandaloneAppCard, sameMessageDay } from '../core/message-presentation';
-import { Text, View } from 'react-native';
+import {
+  messageCanInteract,
+  messageHasStandaloneAppCard,
+  sameMessageDay,
+} from '../core/message-presentation';
+import { Pressable, Text, View } from 'react-native';
+import { messageText } from '../core/presentation';
 import { t, formatLocale } from '../i18n';
 import { useTheme } from '../theme';
 import { MiniappTimelineActivityView } from '../miniapps/timeline-activity';
@@ -11,12 +16,18 @@ import type { ConversationContentLayout } from '../core/conversation-reveal-cont
 import { ConversationRevealContentView } from './conversation-reveal-content-view';
 
 export function ConversationTimelineMessage({
+  selection,
   activity,
   album,
   onRevealLayout,
   revealQuery = '',
   ...message
 }: ConversationMessageProps & {
+  selection?: {
+    selected: boolean;
+    disabled?: boolean;
+    onToggle: (entry: ConversationMessageProps['entry']) => void;
+  };
   activity?: MiniappTimelineActivity;
   album?: MediaAlbum;
   onRevealLayout?: (id: string, layout: ConversationContentLayout) => void;
@@ -52,6 +63,51 @@ export function ConversationTimelineMessage({
     <ConversationAlbumMessage {...message} album={album} />
   ) : (
     <ConversationMessage {...message} />
+  );
+  const selectable = selection && messageCanInteract(message.entry);
+  const selectionContent = selectable ? (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selection.selected, disabled: selection.disabled }}
+      accessibilityHint={selection.disabled ? t('chat.messageSelectionLimit') : undefined}
+      disabled={selection.disabled}
+      accessibilityLabel={[
+        t('chat.selectMessages'),
+        message.entry.author.name,
+        messageText(message.entry),
+      ]
+        .filter(Boolean)
+        .join(', ')}
+      onPress={() => selection.onToggle(message.entry)}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+    >
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          borderWidth: 1.5,
+          borderColor: p.chat.service.text,
+          backgroundColor: selection.selected ? p.chat.service.text : 'transparent',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {selection.selected ? (
+          <Text style={{ color: p.chat.service.background, fontSize: 15 }}>✓</Text>
+        ) : null}
+      </View>
+      <View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={{ flex: 1 }}
+      >
+        {content}
+      </View>
+    </Pressable>
+  ) : (
+    content
   );
   return (
     <View>
@@ -91,10 +147,10 @@ export function ConversationTimelineMessage({
           )}
           onLayout={onRevealLayout}
         >
-          {content}
+          {selectionContent}
         </ConversationRevealContentView>
       ) : (
-        content
+        selectionContent
       )}
     </View>
   );

@@ -72,6 +72,14 @@ export function MessageActions(props: MessageActionsProps) {
                 onPress={() => run(props.onForward)}
               />
             ) : null}
+            {props.onSelect ? (
+              <NativeButton
+                secondary
+                label={t('chat.selectMessages')}
+                disabled={props.pending}
+                onPress={() => run(props.onSelect)}
+              />
+            ) : null}
             {props.onCopy ? (
               <NativeButton
                 secondary

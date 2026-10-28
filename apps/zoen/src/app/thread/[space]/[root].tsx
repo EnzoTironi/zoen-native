@@ -20,6 +20,12 @@ import { EmptyState, Loading, NativeButton } from '../../../components/primitive
 import { useTheme } from '../../../theme';
 import { useHome } from '../../../home/provider';
 import { MessageComposer } from '../../../components/message-composer';
+import { useMessageSelection } from '../../../components/use-message-selection';
+import {
+  MessageSelectionToolbar,
+  MessageSelectionHeader,
+  MessageSelectionCancel,
+} from '../../../components/message-selection-toolbar';
 import {
   ConversationContainer,
   ConversationViewport,
@@ -56,9 +62,13 @@ export default function Thread() {
     error,
     retry,
   } = useCoreQuery({ op: 'thread', space_id: space, root_id: root });
-  const rows = useMemo(
-    () => projectConversationTimeline(entries ?? [], items, space, root, supportsMediaMosaic),
-    [entries, items, space, root],
+  const selection = useMessageSelection(space, entries ?? [], false, root);
+  const rows = useMemo<ConversationTimelineRow[]>(
+    () =>
+      selection.active
+        ? (entries ?? []).map((entry) => ({ key: entry.id, entry }))
+        : projectConversationTimeline(entries ?? [], items, space, root, supportsMediaMosaic),
+    [entries, items, space, root, selection.active],
   );
   const { colors } = useTheme();
   const normalDraft = useMessageDraft(space, root);
@@ -70,6 +80,8 @@ export default function Thread() {
     spaceId: space,
     threadRootId: root,
     entries: entries ?? [],
+    disabled: selection.active,
+    onSelect: selection.toggle,
     onReply: (entry, selection) => {
       updateDraft({ type: 'reply', entry, selection });
       input.current?.focus();
@@ -81,6 +93,7 @@ export default function Thread() {
     onThread: () => input.current?.focus(),
   });
   async function send() {
+    if (selection.active) return;
     const attempt = normalDraft.capture();
     if (!attempt) return;
     const text = attempt.text;
@@ -111,7 +124,22 @@ export default function Thread() {
     <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
       <Stack.Screen
         options={{
-          title: t('chat.replies'),
+          title: selection.active ? String(selection.count) : t('chat.replies'),
+          headerBackVisible: !selection.active,
+          headerTitle: selection.active
+            ? () => <MessageSelectionHeader count={selection.count} onCancel={selection.cancel} />
+            : undefined,
+          headerLeft: selection.active && process.env.EXPO_OS !== 'ios' ? () => null : undefined,
+          headerRight:
+            selection.active && process.env.EXPO_OS !== 'ios'
+              ? () => <MessageSelectionCancel onCancel={selection.cancel} />
+              : undefined,
+          unstable_headerLeftItems:
+            selection.active && process.env.EXPO_OS === 'ios' ? () => [] : undefined,
+          unstable_headerRightItems:
+            selection.active && process.env.EXPO_OS === 'ios'
+              ? () => [{ type: 'button', label: t('chat.cancel'), onPress: selection.cancel }]
+              : undefined,
           scrollEdgeEffects: { top: 'automatic', bottom: 'hidden' },
         }}
       />
@@ -127,48 +155,58 @@ export default function Thread() {
                 {failure ?? error ?? notice}
               </Text>
             ) : null}
-            <MessageComposer
-              context={
-                normalDraft.replyTo || editing
-                  ? {
-                      entry: editing ?? reply ?? undefined,
-                      quote: editing ? undefined : normalDraft.replyQuote,
-                      onCancel: () => updateDraft({ type: 'cancel' }),
-                    }
-                  : undefined
-              }
-              threadRootId={root}
-              spaceId={space}
-              inputRef={input}
-              replyTo={normalDraft.replyTo ?? root}
-              thread
-              editing={Boolean(editing)}
-              allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
-              value={editing ? editDraft : draft}
-              draft={
-                editing
-                  ? undefined
-                  : {
-                      ready: normalDraft.ready,
-                      error: Boolean(normalDraft.error),
-                      rejected: normalDraft.rejected,
-                      onRetry: normalDraft.retry,
-                    }
-              }
-              sending={busy}
-              onChangeText={(text) => {
-                updateDraft({ type: 'text', value: text });
-                store.setTyping(space, !editing && Boolean(text.trim()));
-              }}
-              onBlur={() => {
-                store.setTyping(space, false);
-                normalDraft.flush();
-              }}
-              onSend={() => {
-                void send();
-              }}
-              onMediaSent={normalDraft.mediaAccepted}
-            />
+            {selection.active ? (
+              <MessageSelectionToolbar
+                count={selection.count}
+                onCopy={selection.copy}
+                onForward={selection.forward}
+                canCopy={selection.canCopy}
+                canForward={selection.canForward}
+              />
+            ) : (
+              <MessageComposer
+                context={
+                  normalDraft.replyTo || editing
+                    ? {
+                        entry: editing ?? reply ?? undefined,
+                        quote: editing ? undefined : normalDraft.replyQuote,
+                        onCancel: () => updateDraft({ type: 'cancel' }),
+                      }
+                    : undefined
+                }
+                threadRootId={root}
+                spaceId={space}
+                inputRef={input}
+                replyTo={normalDraft.replyTo ?? root}
+                thread
+                editing={Boolean(editing)}
+                allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
+                value={editing ? editDraft : draft}
+                draft={
+                  editing
+                    ? undefined
+                    : {
+                        ready: normalDraft.ready,
+                        error: Boolean(normalDraft.error),
+                        rejected: normalDraft.rejected,
+                        onRetry: normalDraft.retry,
+                      }
+                }
+                sending={busy}
+                onChangeText={(text) => {
+                  updateDraft({ type: 'text', value: text });
+                  store.setTyping(space, !editing && Boolean(text.trim()));
+                }}
+                onBlur={() => {
+                  store.setTyping(space, false);
+                  normalDraft.flush();
+                }}
+                onSend={() => {
+                  void send();
+                }}
+                onMediaSent={normalDraft.mediaAccepted}
+              />
+            )}
           </>
         }
       >
@@ -185,6 +223,7 @@ export default function Thread() {
               ref={list}
               testID="conversation-timeline"
               renderScrollComponent={ScrollComponent}
+              extraData={selection.ids}
               data={rows}
               keyExtractor={(row) => row.key}
               keyboardDismissMode="interactive"
@@ -203,6 +242,16 @@ export default function Thread() {
               renderItem={({ item: { entry, activity, album }, index }) => (
                 <View>
                   <ConversationMessage
+                    selection={
+                      selection.active
+                        ? {
+                            selected: selection.ids.has(entry.id),
+                            disabled: selection.limitReached && !selection.ids.has(entry.id),
+                            onToggle: selection.toggle,
+                          }
+                        : undefined
+                    }
+                    disabled={selection.active}
                     spaceId={space}
                     entry={entry}
                     activity={activity}
