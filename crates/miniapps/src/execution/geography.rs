@@ -1,6 +1,7 @@
 //! Built-in geography tool actions.
 
-use super::*;
+use super::{haversine_km, json, push_log, t, thousands, tr, Applied, Value};
+use num_traits::ToPrimitive;
 
 pub(super) fn maptap_guess(
     args: &Value,
@@ -10,7 +11,8 @@ pub(super) fn maptap_guess(
 ) -> Result<Applied, String> {
     let round = args["round"]
         .as_u64()
-        .ok_or_else(|| t("qual rodada?", "which round?"))? as usize;
+        .and_then(|round| usize::try_from(round).ok())
+        .ok_or_else(|| t("qual rodada?", "which round?"))?;
     let (lat, lon) = (
         args["lat"].as_f64().ok_or("latitude?")?,
         args["lon"].as_f64().ok_or("longitude?")?,
@@ -31,7 +33,14 @@ pub(super) fn maptap_guess(
         place["lat"].as_f64().unwrap_or(0.0),
         place["lon"].as_f64().unwrap_or(0.0),
     );
-    let points = (5000.0 * (-km / 1500.0).exp()).round() as i64;
+    let points = (5000.0 * (-km / 1500.0).exp())
+        .round()
+        .to_i64()
+        .ok_or_else(|| t("pontuação inválida", "invalid score"))?;
+    let rounded_km = km
+        .round()
+        .to_i64()
+        .ok_or_else(|| t("distância inválida", "invalid distance"))?;
     if st["guesses"][actor].is_null() {
         st["guesses"][actor] = json!({});
         st["order"]
@@ -45,19 +54,17 @@ pub(super) fn maptap_guess(
     let mut a;
     let n = st["guesses"][actor]
         .as_object()
-        .map(|m| m.len())
-        .unwrap_or(0);
+        .map_or(0, serde_json::Map::len);
     let total: i64 = st["guesses"][actor]
         .as_object()
-        .map(|m| m.values().filter_map(|g| g["points"].as_i64()).sum())
-        .unwrap_or(0);
+        .map_or(0, |m| m.values().filter_map(|g| g["points"].as_i64()).sum());
     push_log(
         &mut st,
         actor,
         &tr!(
             "chutou {pname} a {} km",
             "guessed {pname} {} km off",
-            km.round() as i64
+            rounded_km
         ),
         now,
     );
@@ -67,12 +74,12 @@ pub(super) fn maptap_guess(
             "{actor} · MapTap rodada {} · {} km",
             "{actor} · MapTap round {} · {} km",
             round + 1,
-            km.round() as i64
+            rounded_km
         ),
         tr!(
             "{} km de {pname} · {points} pts",
             "{} km from {pname} · {points} pts",
-            km.round() as i64
+            rounded_km
         ),
     );
     if n == 5 {

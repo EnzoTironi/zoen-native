@@ -1,6 +1,9 @@
 //! Agenda availability.
 
-use super::*;
+use super::{
+    has_open, hm, json, parse_tz, push_event, resolve_events, t, tr, Datelike, Timelike, Tz, Value,
+    DAY, DEFAULT_HORIZON_DAYS, DEFAULT_TZ, MINUTE,
+};
 
 // ── reading ──
 
@@ -28,7 +31,7 @@ pub(super) fn busy(st: &Value, now: i64) -> Vec<Value> {
             )
         })
         .collect();
-    out.sort();
+    out.sort_unstable();
     out.into_iter()
         .map(|(a, b)| json!({ "startMs": a, "endMs": b }))
         .collect()
@@ -98,9 +101,9 @@ pub(super) fn within_hours(st: &Value, start: i64, end: i64) -> Result<(), Strin
         return Err(t("horário inválido", "invalid time"));
     };
     let day = ls.weekday().num_days_from_sunday().to_string();
-    let from = (ls.hour() * 60 + ls.minute()) as i64;
+    let from = i64::from(ls.hour() * 60 + ls.minute());
     let to = if le.date_naive() == ls.date_naive() {
-        (le.hour() * 60 + le.minute()) as i64
+        i64::from(le.hour() * 60 + le.minute())
     } else if le.date_naive() == ls.date_naive().succ_opt().unwrap_or(ls.date_naive())
         && le.hour() == 0
         && le.minute() == 0

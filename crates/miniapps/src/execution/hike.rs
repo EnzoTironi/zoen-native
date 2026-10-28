@@ -1,6 +1,6 @@
 //! Built-in hike tool actions.
 
-use super::*;
+use super::{clock, hike_name, json, push_log, s, st_day, t, tr, Applied, Value, HIKE_TRAILS};
 
 pub(super) fn hike_vote(
     args: &Value,
@@ -53,13 +53,9 @@ pub(super) fn hike_decide(mut st: Value, actor: &str, now: i64) -> Result<Applie
     let trails = st["trails"].as_array().cloned().unwrap_or_default();
     let best = trails
         .iter()
-        .max_by_key(|t| t["votes"].as_array().map(|a| a.len()).unwrap_or(0))
+        .max_by_key(|t| t["votes"].as_array().map_or(0, Vec::len))
         .ok_or_else(|| t("sem trilhas", "no trails"))?;
-    if best["votes"]
-        .as_array()
-        .map(|a| a.is_empty())
-        .unwrap_or(true)
-    {
+    if best["votes"].as_array().is_none_or(Vec::is_empty) {
         return Err(t("ninguém votou ainda", "nobody has voted yet"));
     }
     let id = best["id"].as_str().unwrap_or("").to_string();

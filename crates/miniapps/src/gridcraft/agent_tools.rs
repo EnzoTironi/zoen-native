@@ -13,7 +13,7 @@ pub fn tools() -> Vec<Definition> {
         Definition {
             name: "gridcraft_cell_set".into(),
             description: "Set one cell in an existing sheet using its exact observed version/hash. Supports one reversible cell.set command, not paths, URLs or arbitrary code.".into(),
-            parameters: json!({"type":"object","properties":{"artifactId":artifact,"version":{"type":"integer","minimum":1,"maximum":4294967294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},"sheet":{"type":"string","minLength":1,"maxLength":200},"cell":{"type":"string","minLength":2,"maxLength":8},"input":{"type":"string","maxLength":16384}},"required":["artifactId","version","sha256","sheet","cell","input"],"additionalProperties":false}),
+            parameters: json!({"type":"object","properties":{"artifactId":artifact,"version":{"type":"integer","minimum":1,"maximum":4_294_967_294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},"sheet":{"type":"string","minLength":1,"maxLength":200},"cell":{"type":"string","minLength":2,"maxLength":8},"input":{"type":"string","maxLength":16384}},"required":["artifactId","version","sha256","sheet","cell","input"],"additionalProperties":false}),
         },
     ]
 }
