@@ -7,6 +7,7 @@ import test from 'node:test';
 import { build } from 'esbuild';
 import { dirname } from 'node:path';
 import { HomeController, projectHomeItems } from '../home/preferences.ts';
+import * as homeAccess from '../home/access.ts';
 import {
   projectConversationTimeline,
   type ConversationTimelineRow,
@@ -48,7 +49,9 @@ const compiled = Object.fromEntries(
             name: 'actual-chat-owner-and-view',
             setup(builder) {
               builder.onResolve({ filter: /./ }, ({ path }) =>
-                /\/(?:chat-screen|use-chat-controller|use-conversation-search)$/.test(path)
+                /\/(?:chat-screen|use-chat-controller|use-conversation-search|use-reply-destination-focus)$/.test(
+                  path,
+                )
                   ? undefined
                   : { path, external: true },
               );
@@ -305,6 +308,7 @@ function renderScreen(
         }),
       };
     if (path.endsWith('/home/menus')) return { HomeCardMenu: 'HomeCardMenu' };
+    if (path.endsWith('/home/access')) return homeAccess;
     if (path === './deck-version-selection') return { selectedDeckHead };
     if (path === './state-view') return { MiniappState: 'MiniappState' };
     if (path === './view-host') return { MiniappView: 'MiniappView' };
