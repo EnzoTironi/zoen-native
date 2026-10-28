@@ -173,6 +173,8 @@ export function renderAlbumMessagePart(context: MessageFace) {
             >
               {formattedText ? (
                 <MessageMarkdown
+                  revision={entry.text_revision}
+                  expandedForReveal={Boolean(context.revealAnchor)}
                   testID={`message-caption-${entry.id}`}
                   text={fileCaption!}
                   color={ink}
@@ -181,6 +183,8 @@ export function renderAlbumMessagePart(context: MessageFace) {
                 />
               ) : (
                 <MessageTextSelectionLeaf
+                  revision={entry.text_revision}
+                  expandedForReveal={Boolean(context.revealAnchor)}
                   text={fileCaption!}
                   color={ink}
                   fontSize={p.typography.message.fontSize}

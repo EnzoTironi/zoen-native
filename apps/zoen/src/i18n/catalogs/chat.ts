@@ -1,9 +1,11 @@
 import { defineFeature } from '../catalog.ts';
+import { quoteCollapse } from './quote-collapse.ts';
 import { messageSelection } from './message-selection.ts';
 
 export const chat = defineFeature(
   {
     ...messageSelection.en,
+    ...quoteCollapse.en,
     selectText: 'Select text',
     quoteSelection: 'Quote',
     quoteTextReplyOnly: 'Remove the quote to attach media.',
@@ -224,6 +226,7 @@ export const chat = defineFeature(
   },
   {
     ...messageSelection['pt-BR'],
+    ...quoteCollapse['pt-BR'],
     selectText: 'Selecionar texto',
     quoteSelection: 'Citar',
     quoteTextReplyOnly: 'Remova a citação para anexar mídia.',
