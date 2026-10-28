@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { messageMayContainMarkdown } from './message-markdown.ts';
+import { assertComposerQuoteRoundTrips } from './composer-quote-paragraphs.fixtures.ts';
 
 test(
   'actual MD4C parser, native stores and serializer retain composer Markdown through edits',
@@ -31,6 +32,11 @@ test(
       }
       const patches = [
         ['ENRMInputParser.mm', 'parseComposerMarkdown:', '010+composer-parser'],
+        [
+          'ENRMMarkdownSerializer+Composer.mm',
+          'NSMutableIndexSet *quoteLines',
+          '028+composer-quote-paragraphs',
+        ],
         ['ENRMMarkdownSerializer+Composer.mm', 'serializeComposerText:', '012+composer-formatting'],
         [
           'ENRMComposerRanges.mm',
@@ -136,6 +142,9 @@ test(
         ranges: { type: number; start: number; length: number }[];
         selection: number[];
         available: boolean;
+        reparsedPlain: string;
+        reparsedRanges: Result['ranges'];
+        reparsedBlocks: number[][];
       };
       const run = (markdown: string, options: Record<string, unknown> = {}): Result =>
         JSON.parse(
@@ -144,8 +153,6 @@ test(
             encoding: 'utf8',
           }),
         );
-      // Follow actual typed text through the canonical serializer, the message
-      // candidate gate and the maintained viewer parser (not a JS unescaper).
       for (const literal of [
         'QA753: nota em Mensagens Salvas.',
         'café 🦊: 2 + 2 = 4. Pontuação!',
@@ -245,6 +252,8 @@ test(
       assert.equal(run('ab', { code: [0, 2] }).markdown, '`ab`');
       assert.equal(run('a\nb', { code: [0, 3] }).markdown, '`a`\n`b`');
       assert.equal(run('a\nb', { quote: [0, 3] }).markdown, '> a\n> b');
+      assertComposerQuoteRoundTrips(run);
+
       const crossed = run('**ab**cd', { code: [1, 2], selection: [1, 2] });
       assert.equal(crossed.plain, 'abcd');
       assert.equal(crossed.markdown, '**a`b`**`c`d');
@@ -330,8 +339,6 @@ test(
         });
         assert.equal(undoEdit.markdown, '**café** 🦊');
       }
-      // Plausible long draft under the same native fixture deadline. Strategy
-      // count remains four; it never branches once per formatting range.
       const longText = 'café 🦊 abcdefghij '.repeat(40);
       const longToggles = Array.from({ length: 40 }, (_, i) => [
         { type: 0, start: i * 19, length: 10 },
