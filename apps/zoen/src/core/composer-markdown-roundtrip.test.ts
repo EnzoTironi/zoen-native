@@ -43,6 +43,11 @@ test(
           '019+composer-inline-variants',
         ],
         [
+          'ENRMInputParser.mm',
+          'size_t cursor=textStart - (escaped ? 1 : 0);',
+          '023+composer-escaped-inline-import',
+        ],
+        [
           'ENRMComposerAvailability.mm',
           'ENRMComposerCanToggle',
           '021+composer-format-availability',
@@ -175,6 +180,27 @@ test(
         assert.equal(run(first.markdown).plain, plain);
         assert.deepEqual(run(first.markdown).types, first.types);
       }
+      for (const [markdown, plain] of [
+        [String.raw`[\*link\*](https://example.org/a_(b))`, '*link*'],
+        [String.raw`**\*literal\***`, '*literal*'],
+        [String.raw`_\!café 🦊_`, '!café 🦊'],
+        [String.raw`prefix [\[link\]](https://example.org) tail`, 'prefix [link] tail'],
+        [String.raw`[\\literal\*](https://example.org/a_(b_(c)))`, String.raw`\literal*`],
+        [String.raw`café 🦊 [\!label](https://example.org/a_(b))`, 'café 🦊 !label'],
+      ]) {
+        const imported = run(markdown!);
+        assert.equal(imported.plain, plain, JSON.stringify({ source: markdown, ...imported }));
+        assert.equal(imported.viewerPlain, plain);
+        assert.equal(run(imported.markdown).plain, plain);
+        assert.deepEqual(run(imported.markdown).types, imported.types);
+        assert.equal(run(imported.markdown).markdown, imported.markdown);
+        const edited = run(markdown!, { edit: { start: 0, delete: 0, text: '😀 ' } });
+        assert.equal(edited.plain, '😀 ' + plain);
+        assert.equal(run(edited.markdown).plain, edited.plain);
+        const undone = run(markdown!, { edit: { start: 0, delete: 0, text: '😀 ' }, undo: true });
+        assert.equal(undone.plain, plain);
+        assert.equal(undone.markdown, imported.markdown);
+      }
       assert.deepEqual(run('_ênfase_').types, [1], 'underscore is emphasis, never false underline');
       assert.deepEqual(
         run('_ênfase_', { generic: true }).types,
@@ -182,6 +208,8 @@ test(
         'generic article parser remains unchanged',
       );
       const opaque = [
+        // Existing nested-label fallback stays exact instead of inventing rich marks.
+        String.raw`[**\*café 🦊\***](https://example.org/a_(b))`,
         '| __a__ | b |\n| --- | --- |\n| \\| | y |',
         '- [x] __task__',
         '![__alt__](https://example.org/a.png)',
