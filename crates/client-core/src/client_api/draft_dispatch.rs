@@ -2,76 +2,43 @@
 use super::{encode, invalid, Client, Command, CoreError};
 impl Client {
     pub(super) fn dispatch_draft(&self, command: Command) -> Result<String, CoreError> {
-        use Command::{MessageDraft, ReviewReplySelection, SaveMessageDraft, SendMessageDraft};
         match command {
-            ReviewReplySelection {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-                selection,
+            Command::ReviewSharedReply {
+                scope,
+                source_space_id,
+                message_id,
+                expected_source_revision,
             } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
+                let quote =
+                    self.lock()
+                        .review_shared_reply(&scope, &source_space_id, &message_id)?;
+                if quote.revision != expected_source_revision {
+                    return Err(CoreError::Stale {
+                        reason: crate::i18n::t(
+                            "a mensagem original mudou",
+                            "the original message changed",
+                        ),
+                    });
+                }
+                encode(&quote)
+            }
+            Command::ReviewReplySelection { scope, selection } => {
                 encode(&self.lock().review_reply_selection(&scope, selection)?)
             }
-            MessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().message_draft(&scope)?)
-            }
-            SaveMessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
+            Command::MessageDraft { scope } => encode(&self.lock().message_draft(&scope)?),
+            Command::SaveMessageDraft {
+                scope,
                 expected_revision,
-                text,
-                reply_to,
-                reply_quote,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().save_message_draft_selected(
-                    &scope,
-                    &expected_revision,
-                    text,
-                    reply_to,
-                    reply_quote,
-                )?)
-            }
-            SendMessageDraft {
-                expected_identity_id,
-                expected_device_id,
-                space_id,
-                thread_root_id,
+                content,
+            } => encode(&self.lock().save_message_draft_content(
+                &scope,
+                &expected_revision,
+                content,
+            )?),
+            Command::SendMessageDraft {
+                scope,
                 expected_revision,
-            } => {
-                let scope = crate::message_drafts::DraftScope {
-                    expected_identity_id,
-                    expected_device_id,
-                    space_id,
-                    thread_root_id,
-                };
-                encode(&self.lock().send_message_draft(&scope, &expected_revision)?)
-            }
+            } => encode(&self.lock().send_message_draft(&scope, &expected_revision)?),
             _ => Err(invalid("Invalid draft command.")),
         }
     }

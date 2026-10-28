@@ -60,15 +60,19 @@
   {
     "id": "TG-messaging-reply-in-another-chat",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "partial",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
+      "crates/client-core/src/replies/external.rs",
+      "crates/client-core/src/message_drafts/tests/shared_replies.rs",
+      "apps/zoen/src/app/reply/[space]/[message].tsx",
+      "apps/zoen/src/core/shared-reply.test.ts",
+      "apps/zoen/src/core/shared-reply-render.test.ts"
     ],
-    "gap": "Escolher outro destino mantendo citação e acesso à origem; encaminhar não equivale a responder.",
+    "gap": "Resposta de texto entre conversas prepara rascunho durável, preserva texto do destino e exige Enviar. Citação compartilhada não concede acesso à origem. Restam mídia, seleção parcial entre conversas, opções completas de resposta Telegram e aceite manual iPhone por Enzo.",
     "issues": [
-      172
+      172,
+      705
     ]
   },
   {

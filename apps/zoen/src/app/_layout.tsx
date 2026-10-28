@@ -87,6 +87,14 @@ function Navigation() {
                 <Stack.Screen name="(tabs)" options={{ title: '' }} />
                 <Stack.Screen name="chat/[id]" options={{ title: '' }} />
                 <Stack.Screen
+                  name="reply/[space]/[message]"
+                  options={{
+                    presentation: 'formSheet',
+                    sheetGrabberVisible: true,
+                    sheetAllowedDetents: [1],
+                  }}
+                />
+                <Stack.Screen
                   name="account-budget"
                   options={{
                     presentation: process.env.EXPO_OS === 'web' ? 'modal' : 'formSheet',

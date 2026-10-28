@@ -1,3 +1,4 @@
+import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { ReplySelection } from './generated/ReplySelection';
 import type { TimelineEntry } from './types';
 
@@ -16,6 +17,7 @@ export type NormalDraftSnapshot = Readonly<{
   text: string;
   reply_to: string | null;
   reply_quote?: ReplySelection | null;
+  shared_reply?: SharedReplyDraft | null;
 }>;
 export type NormalDraftPort = {
   load(scope: NormalDraftScope): Promise<NormalDraftSnapshot>;
@@ -25,6 +27,7 @@ export type NormalDraftPort = {
     text: string,
     replyTo: string | null,
     replyQuote?: ReplySelection | null,
+    sharedReply?: SharedReplyDraft | null,
   ): Promise<NormalDraftSnapshot>;
   send(
     scope: NormalDraftScope,
@@ -44,6 +47,7 @@ export type NormalDraftState = Readonly<{
   text: string;
   replyTo: string | null;
   replyQuote: ReplySelection | null;
+  sharedReply: SharedReplyDraft | null;
   textRevision: number;
   replyRevision: number;
   persistedRevision: string;
@@ -53,7 +57,7 @@ export type NormalDraftState = Readonly<{
   sending: boolean;
   error: NormalDraftFailure | null;
 }>;
-type Content = { text: string; reply_to: string | null; reply_quote?: ReplySelection | null };
+type Content = Pick<NormalDraftSnapshot, 'text' | 'reply_to' | 'reply_quote' | 'shared_reply'>;
 type SendIntent = Content & {
   textRevision: number;
   replyRevision: number;
@@ -72,11 +76,13 @@ const emptySnapshot = (): NormalDraftSnapshot => ({ revision: '0', text: '', rep
 const sameContent = (a: Content, b: Content) =>
   a.text === b.text &&
   a.reply_to === b.reply_to &&
-  JSON.stringify(a.reply_quote ?? null) === JSON.stringify(b.reply_quote ?? null);
+  JSON.stringify(a.reply_quote ?? null) === JSON.stringify(b.reply_quote ?? null) &&
+  JSON.stringify(a.shared_reply ?? null) === JSON.stringify(b.shared_reply ?? null);
 const content = (state: NormalDraftState): Content => ({
   text: state.text,
   reply_to: state.replyTo,
   ...(state.replyQuote ? { reply_quote: state.replyQuote } : {}),
+  ...(state.sharedReply ? { shared_reply: state.sharedReply } : {}),
 });
 const keyFor = (scope: NormalDraftScope) =>
   JSON.stringify([
@@ -101,6 +107,7 @@ function checked(value: NormalDraftSnapshot): NormalDraftSnapshot {
     text: value.text,
     reply_to: value.reply_to,
     ...(value.reply_quote ? { reply_quote: value.reply_quote } : {}),
+    ...(value.shared_reply ? { shared_reply: value.shared_reply } : {}),
   };
 }
 
@@ -136,6 +143,7 @@ export class NormalMessageDrafts {
         text: '',
         replyTo: null,
         replyQuote: null,
+        sharedReply: null,
         textRevision: 0,
         replyRevision: 0,
         persistedRevision: '0',
@@ -191,6 +199,7 @@ export class NormalMessageDrafts {
           text: value.text,
           replyTo: value.reply_to,
           replyQuote: value.reply_quote ?? null,
+          sharedReply: value.shared_reply ?? null,
           persistedRevision: value.revision,
           error: null,
         });
@@ -237,6 +246,27 @@ export class NormalMessageDrafts {
     this.publish(record, {
       replyTo,
       replyQuote: frozenQuote,
+      sharedReply: null,
+      replyRevision: record.state.replyRevision + 1,
+    });
+    this.schedule(record);
+    return true;
+  }
+
+  setSharedReply(scope: NormalDraftScope, quote: SharedReplyDraft): boolean {
+    const record = this.record(scope);
+    if (
+      this.retirement ||
+      !record.state.loaded ||
+      record.intent ||
+      scope.threadRootId ||
+      quote.space_id === scope.spaceId
+    )
+      return false;
+    this.publish(record, {
+      replyTo: null,
+      replyQuote: null,
+      sharedReply: Object.freeze({ ...quote }),
       replyRevision: record.state.replyRevision + 1,
     });
     this.schedule(record);
@@ -297,6 +327,7 @@ export class NormalMessageDrafts {
           target.text,
           target.reply_to,
           target.reply_quote ?? null,
+          target.shared_reply ?? null,
         ),
       );
       this.requireDraining();
@@ -417,6 +448,8 @@ export class NormalMessageDrafts {
             record.state.replyRevision === intent.replyRevision ? null : record.state.replyTo,
           replyQuote:
             record.state.replyRevision === intent.replyRevision ? null : record.state.replyQuote,
+          sharedReply:
+            record.state.replyRevision === intent.replyRevision ? null : record.state.sharedReply,
           persistedRevision: record.persisted.revision,
           error: null,
         });
@@ -470,6 +503,7 @@ export class NormalMessageDrafts {
           text: '',
           replyTo: null,
           replyQuote: null,
+          sharedReply: null,
           persistedRevision: '0',
           loaded: false,
           loading: false,

@@ -73,7 +73,7 @@ export type ConversationMessageProps = {
     nativeSource?: MessageContextRequest,
   ) => void;
   onReact: (entry: TimelineEntry, emoji: string | null) => void;
-  onQuote: (id: string) => void;
+  onQuote: (id: string, sourceSpace?: string) => void;
 };
 export function useConversationMessage({
   spaceId,
@@ -121,12 +121,17 @@ export function useConversationMessage({
     ]),
     text: entry.reply_to?.selection?.text ?? entry.reply_to?.text ?? '',
     enabled: !entry.deleted && !!entry.reply_to,
-    literal: !!entry.reply_to?.selection,
+    literal: !!(entry.reply_to?.selection || entry.reply_to?.origin),
     target:
-      entry.reply_to && !entry.reply_to.selection
+      entry.reply_to && !entry.reply_to.selection && !entry.reply_to.origin
         ? { spaceId, messageId: entry.reply_to.id }
         : undefined,
   });
+  const openQuote = () => {
+    const quote = entry.reply_to;
+    if (!quote || entry.deleted || disabled || quote.origin?.available === false) return;
+    onQuote(quote.id, quote.origin?.space_id);
+  };
   const mine = entry.author.is_me;
   const card = messageCard(entry);
   const appCard = card?.kind_id === 'app' && !!card.app;
@@ -426,6 +431,7 @@ export function useConversationMessage({
     authorDisabled,
     openAuthor,
     onQuote,
+    openQuote,
     textMaxWidth,
     attachmentWidth,
     Bubble,

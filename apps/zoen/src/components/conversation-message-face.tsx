@@ -57,7 +57,7 @@ export function renderConversationMessage(context: MessageFace) {
     showAvatar,
     authorDisabled,
     openAuthor,
-    onQuote,
+    openQuote,
     textMaxWidth,
     attachmentWidth,
     Bubble,
@@ -138,7 +138,9 @@ export function renderConversationMessage(context: MessageFace) {
             onActions={() => open('actions')}
             actionsAccessibilityLabel={t('chat.messageActions', { name: entry.author.name })}
             onQuote={
-              !entry.deleted && entry.reply_to ? () => onQuote(entry.reply_to!.id) : undefined
+              !entry.deleted && entry.reply_to && entry.reply_to.origin?.available !== false
+                ? openQuote
+                : undefined
             }
           >
             <View style={{ width: '100%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
@@ -214,10 +216,16 @@ export function renderConversationMessage(context: MessageFace) {
                   {!entry.deleted && entry.reply_to ? (
                     <MessageContextControl controlKey={`quote:${entry.id}`}>
                       <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={t('chat.goToQuotedMessage')}
-                        disabled={disabled}
-                        onPress={() => onQuote(entry.reply_to!.id)}
+                        accessibilityRole={
+                          entry.reply_to.origin?.available === false ? 'text' : 'button'
+                        }
+                        accessibilityLabel={
+                          entry.reply_to.origin?.available === false
+                            ? undefined
+                            : t('chat.goToQuotedMessage')
+                        }
+                        disabled={disabled || entry.reply_to.origin?.available === false}
+                        onPress={openQuote}
                         style={{
                           borderLeftWidth: 3,
                           borderLeftColor: face.accent,

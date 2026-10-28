@@ -264,6 +264,10 @@ pub struct ReplyQuote {
     #[uniffi(default = None)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "client-types", ts(optional))]
+    pub origin: Option<crate::replies::external::ReplyOrigin>,
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
     pub selection: Option<crate::ReplySelection>,
     pub id: String,
     pub author: Persona,

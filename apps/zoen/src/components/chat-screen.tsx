@@ -1,3 +1,5 @@
+import { homeSpacesFor } from '../home/access';
+import { router } from 'expo-router';
 import { QuoteMotionView } from './quote-layout-context';
 import { QuoteLayoutTransition } from './quote-layout-transition';
 import { FlashList } from '@shopify/flash-list';
@@ -137,10 +139,26 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
             ) : (
               <MessageComposer
                 context={
-                  !searchState.active && (normalDraft.replyTo || editing)
+                  !searchState.active && (normalDraft.replyTo || normalDraft.sharedReply || editing)
                     ? {
                         entry: editing ?? reply ?? undefined,
                         quote: editing ? undefined : normalDraft.replyQuote,
+                        shared: editing ? undefined : normalDraft.sharedReply,
+                        onMove:
+                          !editing &&
+                          !normalDraft.replyQuote &&
+                          reply &&
+                          store.driver.durableMessageDrafts
+                            ? () =>
+                                router.push({
+                                  pathname: '/reply/[space]/[message]',
+                                  params: {
+                                    space: id,
+                                    message: reply.id,
+                                    revision: reply.text_revision ?? reply.id,
+                                  },
+                                })
+                            : undefined,
                         onCancel: () => updateDraft({ type: 'cancel' }),
                       }
                     : undefined
@@ -411,7 +429,15 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                       onReact={(message, emoji) => {
                         void actions.react(message, emoji);
                       }}
-                      onQuote={(messageId) => {
+                      onQuote={(messageId, sourceSpace) => {
+                        if (sourceSpace) {
+                          if (homeSpacesFor(store.getSnapshot()).has(sourceSpace))
+                            router.push({
+                              pathname: '/chat/[id]',
+                              params: { id: sourceSpace, jump: messageId },
+                            });
+                          return;
+                        }
                         void reveal(messageId)
                           .then((target) => setScrollTarget(target))
                           .catch(

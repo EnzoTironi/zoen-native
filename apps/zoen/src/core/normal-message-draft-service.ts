@@ -1,3 +1,4 @@
+import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { ReplySelection } from './generated/ReplySelection';
 import { homeOwnerFor, homeSpacesFor } from '../home/access.ts';
 import { NormalMessageDrafts, type NormalDraftScope } from './normal-message-drafts.ts';
@@ -9,6 +10,7 @@ type DraftValue = {
   text: string;
   reply_to: string | null;
   reply_quote?: ReplySelection | null;
+  shared_reply?: SharedReplyDraft | null;
 };
 export type NormalDraftChannel = Readonly<{
   scope: NormalDraftScope;
@@ -98,7 +100,7 @@ export class NormalMessageDraftService {
         native(scope)
           ? this.store.driver.request({ op: 'message_draft', ...target(scope) })
           : read(scope),
-      save: async (scope, expectedRevision, text, replyTo, replyQuote) => {
+      save: async (scope, expectedRevision, text, replyTo, replyQuote, sharedReply) => {
         if (native(scope))
           return this.store.driver.request({
             op: 'save_message_draft',
@@ -107,8 +109,10 @@ export class NormalMessageDraftService {
             text,
             reply_to: replyTo,
             reply_quote: replyQuote ?? null,
+            shared_reply: sharedReply ?? undefined,
           });
-        if (replyQuote) throw new Error('Quoted replies require the signed-in native account.');
+        if (replyQuote || sharedReply)
+          throw new Error('Quoted replies require the signed-in native account.');
         const current = read(scope);
         if (current.revision !== expectedRevision) throw new Error('Draft changed.');
         if (current.text === text && current.reply_to === replyTo) return current;

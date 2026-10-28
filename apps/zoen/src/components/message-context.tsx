@@ -1,6 +1,7 @@
+import type { SharedReplyDraft } from '../core/generated/SharedReplyDraft';
 import type { ReplySelection } from '../core/generated/ReplySelection';
 import Animated, { Easing, FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { telegramAudio } from '../core/telegram-audio-presentation';
 import { t } from '../i18n/index.ts';
 import { messageText } from '../core/presentation';
@@ -14,22 +15,28 @@ export function MessageContext({
   entry,
   editing = false,
   quote,
+  shared,
+  onMove,
   onCancel,
 }: {
   entry?: TimelineEntry;
   editing?: boolean;
   quote?: ReplySelection | null;
+  shared?: SharedReplyDraft | null;
+  onMove?: () => void;
   onCancel?: () => void;
 }) {
   const { presentation: p, reducedMotion } = useTheme();
   const literalSelection = editing ? null : quote;
-  const source = literalSelection
-    ? literalSelection.text
-    : entry
-      ? entry.voice
-        ? t('media.voiceMessage')
-        : messageText(entry)
-      : t('chat.messageUnavailable');
+  const source = shared
+    ? shared.text
+    : literalSelection
+      ? literalSelection.text
+      : entry
+        ? entry.voice
+          ? t('media.voiceMessage')
+          : messageText(entry)
+        : t('chat.messageUnavailable');
   const preview = useSemanticMessagePreview({
     owner: JSON.stringify([
       editing,
@@ -37,9 +44,12 @@ export function MessageContext({
       entry?.text_revision,
       quote?.source_id,
       quote?.revision,
+      shared?.message_id,
+      shared?.revision,
     ]),
     text: source,
     literal: Boolean(
+      shared ||
       literalSelection ||
       !entry ||
       entry.voice ||
@@ -97,7 +107,7 @@ export function MessageContext({
         }}
       />
       <Animated.View
-        key={`${editing ? 'edit' : 'reply'}:${entry?.id ?? 'missing'}`}
+        key={`${editing ? 'edit' : 'reply'}:${shared?.message_id ?? entry?.id ?? 'missing'}`}
         entering={
           reducedMotion
             ? undefined
@@ -110,22 +120,31 @@ export function MessageContext({
         }
         style={{ flex: 1, alignSelf: 'stretch', paddingLeft: 10, paddingTop: 7 }}
       >
-        <Text
-          numberOfLines={1}
-          style={{ color: p.chat.input.action, fontSize: 15, lineHeight: 18, fontWeight: '500' }}
+        <Pressable
+          disabled={!onMove}
+          onPress={onMove}
+          accessibilityRole={onMove ? 'button' : undefined}
+          accessibilityLabel={onMove ? t('chat.replyInAnotherChat') : undefined}
         >
-          {editing
-            ? t('chat.editMessage')
-            : entry
-              ? t('chat.replyingTo', { name: entry.author.name })
-              : t('chat.replyingToMessage')}
-        </Text>
-        <Text
-          numberOfLines={1}
-          style={{ color: p.chat.input.placeholder, fontSize: 15, lineHeight: 18 }}
-        >
-          {preview.text ?? '…'}
-        </Text>
+          <Text
+            numberOfLines={1}
+            style={{ color: p.chat.input.action, fontSize: 15, lineHeight: 18, fontWeight: '500' }}
+          >
+            {editing
+              ? t('chat.editMessage')
+              : shared
+                ? t('chat.replyingTo', { name: shared.author_name })
+                : entry
+                  ? t('chat.replyingTo', { name: entry.author.name })
+                  : t('chat.replyingToMessage')}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={{ color: p.chat.input.placeholder, fontSize: 15, lineHeight: 18 }}
+          >
+            {preview.text ?? '…'}
+          </Text>
+        </Pressable>
       </Animated.View>
       {onCancel ? (
         <View style={{ position: 'absolute', right: -8, top: 2 }}>

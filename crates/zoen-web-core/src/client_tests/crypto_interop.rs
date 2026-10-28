@@ -216,6 +216,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
         (
             "",
             Some(types::ReplyRef {
+                shared: None,
                 quote: None,
                 artifact: None,
                 to: "root".into(),
@@ -227,6 +228,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
         (
             "",
             Some(types::ReplyRef {
+                shared: None,
                 quote: None,
                 artifact: None,
                 to: "root".into(),
@@ -289,6 +291,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
         .doc;
     voice.voice = Some(types::VoiceMeta {
         reply: Some(types::ReplyRef {
+            shared: None,
             quote: None,
             artifact: None,
             to: target,

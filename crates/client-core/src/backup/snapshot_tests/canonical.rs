@@ -90,6 +90,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
         for i in 0..MESSAGES {
             let id = format!("{space}-message-{i:02}");
             let reply = matches!(i, 1 | 2).then(|| ReplyRef {
+                shared: None,
                 quote: None,
                 to: format!("{space}-message-00"),
                 thread: i == 2,

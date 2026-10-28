@@ -2,6 +2,7 @@
 use crate::{
     engine::{Engine, EntryBody, R},
     i18n::t,
+    replies::external::SharedReplyDraft,
     CoreError, TimelineEntry,
 };
 use hkdf::Hkdf;
@@ -28,6 +29,9 @@ pub struct MessageDraftDto {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "client-types", ts(optional))]
     pub reply_quote: Option<crate::ReplySelection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub shared_reply: Option<SharedReplyDraft>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -55,17 +59,30 @@ impl Default for Record {
                 text: String::new(),
                 reply_to: None,
                 reply_quote: None,
+                shared_reply: None,
             },
             last_accepted: None,
         }
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub(crate) struct DraftScope {
     pub expected_identity_id: String,
     pub expected_device_id: String,
     pub space_id: String,
     pub thread_root_id: Option<String>,
+}
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub(crate) struct DraftContent {
+    pub text: String,
+    pub reply_to: Option<String>,
+    #[serde(default)]
+    pub reply_quote: Option<crate::ReplySelection>,
+    #[serde(default)]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub shared_reply: Option<SharedReplyDraft>,
 }
 struct StorageScope {
     id: String,
@@ -190,6 +207,7 @@ impl Engine {
         text: &str,
         reply: Option<&str>,
         quote: Option<&crate::ReplySelection>,
+        shared: Option<&SharedReplyDraft>,
     ) -> R<()> {
         if text.len() > crate::client_api::MAX_REQUEST_BYTES {
             return Err(invalid());
@@ -201,6 +219,9 @@ impl Engine {
         }
         if let Some(quote) = quote {
             message["reply_quote"] = serde_json::to_value(quote).map_err(|_| invalid())?;
+        }
+        if let Some(shared) = shared {
+            message["shared_reply"] = serde_json::to_value(shared).map_err(|_| invalid())?;
         }
         if scope.thread_root_id.is_some() {
             message["thread"] = true.into();
@@ -246,6 +267,7 @@ impl Engine {
             &record.draft.text,
             record.draft.reply_to.as_deref(),
             record.draft.reply_quote.as_ref(),
+            record.draft.shared_reply.as_ref(),
         )
         .map_err(|_| storage_error())?;
         Ok(record)
@@ -285,6 +307,7 @@ impl Engine {
     ) -> R<MessageDraftDto> {
         self.save_message_draft_selected(scope, expected, text, reply_to, None)
     }
+    #[cfg(test)]
     pub(crate) fn save_message_draft_selected(
         &self,
         scope: &DraftScope,
@@ -293,18 +316,69 @@ impl Engine {
         reply_to: Option<String>,
         reply_quote: Option<crate::ReplySelection>,
     ) -> R<MessageDraftDto> {
+        self.save_message_draft_content(
+            scope,
+            expected,
+            DraftContent {
+                text,
+                reply_to,
+                reply_quote,
+                shared_reply: None,
+            },
+        )
+    }
+    fn validate_draft_reply(
+        &self,
+        scope: &DraftScope,
+        to: Option<&str>,
+        quote: Option<&crate::ReplySelection>,
+        shared: Option<&SharedReplyDraft>,
+    ) -> R<()> {
+        if let Some(shared) = shared {
+            if to.is_some() || quote.is_some() {
+                return Err(invalid());
+            }
+            self.validate_shared_reply(scope, shared)
+        } else {
+            self.draft_target(scope, to)?;
+            self.validate_reply_selection(&scope.space_id, to, quote)
+        }
+    }
+    pub(crate) fn save_message_draft_content(
+        &self,
+        scope: &DraftScope,
+        expected: &str,
+        content: DraftContent,
+    ) -> R<MessageDraftDto> {
+        let DraftContent {
+            text,
+            reply_to,
+            reply_quote,
+            shared_reply,
+        } = content;
         let storage = self.draft_storage_scope(scope)?;
         let mut record = self.load_message_draft(scope, &storage)?;
         if !valid_revision(expected) || record.draft.revision != expected {
             return Err(stale());
         }
-        Self::draft_text_budget(scope, &text, reply_to.as_deref(), reply_quote.as_ref())?;
-        self.draft_target(scope, reply_to.as_deref())?;
-        self.validate_reply_selection(&scope.space_id, reply_to.as_deref(), reply_quote.as_ref())?;
+        Self::draft_text_budget(
+            scope,
+            &text,
+            reply_to.as_deref(),
+            reply_quote.as_ref(),
+            shared_reply.as_ref(),
+        )?;
+        self.validate_draft_reply(
+            scope,
+            reply_to.as_deref(),
+            reply_quote.as_ref(),
+            shared_reply.as_ref(),
+        )?;
         if (!text.is_empty() || reply_to.is_some())
             && record.draft.text == text
             && record.draft.reply_to == reply_to
             && record.draft.reply_quote == reply_quote
+            && record.draft.shared_reply == shared_reply
         {
             return Ok(record.draft);
         }
@@ -313,6 +387,7 @@ impl Engine {
             text,
             reply_to,
             reply_quote,
+            shared_reply,
         };
         self.persist_message_draft(&storage, &record)?;
         Ok(record.draft)
@@ -349,15 +424,13 @@ impl Engine {
         // these memory-only checks can prove definitive refusal. Owner, storage,
         // CAS and response-encoding errors must never acquire this meaning.
         if self
-            .draft_target(scope, record.draft.reply_to.as_deref())
+            .validate_draft_reply(
+                scope,
+                record.draft.reply_to.as_deref(),
+                record.draft.reply_quote.as_ref(),
+                record.draft.shared_reply.as_ref(),
+            )
             .is_err()
-            || self
-                .validate_reply_selection(
-                    &scope.space_id,
-                    record.draft.reply_to.as_deref(),
-                    record.draft.reply_quote.as_ref(),
-                )
-                .is_err()
         {
             return Err(CoreError::DraftRejected {
                 reason: t(
@@ -383,21 +456,25 @@ impl Engine {
             });
         }
         self.atomic_agent_action(|engine| {
-            let entry = match record
-                .draft
-                .reply_to
-                .as_deref()
-                .or(scope.thread_root_id.as_deref())
-            {
-                Some(to) => engine.reply_selected(
-                    &scope.space_id,
-                    &scope.expected_identity_id,
-                    &record.draft.text,
-                    to,
-                    scope.thread_root_id.is_some(),
-                    record.draft.reply_quote.as_ref(),
-                )?,
-                None => engine.send_message(&scope.space_id, &record.draft.text)?,
+            let entry = if let Some(shared) = &record.draft.shared_reply {
+                engine.send_shared_reply(scope, &record.draft.text, shared)?
+            } else {
+                match record
+                    .draft
+                    .reply_to
+                    .as_deref()
+                    .or(scope.thread_root_id.as_deref())
+                {
+                    Some(to) => engine.reply_selected(
+                        &scope.space_id,
+                        &scope.expected_identity_id,
+                        &record.draft.text,
+                        to,
+                        scope.thread_root_id.is_some(),
+                        record.draft.reply_quote.as_ref(),
+                    )?,
+                    None => engine.send_message(&scope.space_id, &record.draft.text)?,
+                }
             };
             let cleared = Record {
                 draft: MessageDraftDto {
@@ -405,6 +482,7 @@ impl Engine {
                     text: String::new(),
                     reply_to: None,
                     reply_quote: None,
+                    shared_reply: None,
                 },
                 last_accepted: Some(Receipt {
                     input_revision: expected.into(),
