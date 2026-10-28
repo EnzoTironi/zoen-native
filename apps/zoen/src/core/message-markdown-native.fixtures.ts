@@ -24,6 +24,7 @@ export function preparePackage(app: string, directory: string) {
     '021+composer-format-availability',
     '022+composer-native-accessibility',
     '023+composer-escaped-inline-import',
+    '024+composer-link-accessibility',
   ].map((stage) => join(app, `patches/react-native-enriched-markdown+1.1.1+${stage}.patch`));
   const paths = new Set(
     patches.flatMap((patch) =>
@@ -92,6 +93,10 @@ export function preparePackage(app: string, directory: string) {
     () =>
       readFileSync(join(pkg, 'ios/input/ENRMInputParser.mm'), 'utf8').includes(
         'size_t cursor=textStart - (escaped ? 1 : 0);',
+      ),
+    () =>
+      readFileSync(join(pkg, 'ios/input/ENRMInputLinkPrompt.mm'), 'utf8').includes(
+        'enriched-markdown-link-url',
       ),
   ];
   for (const [index, patch] of patches.entries())
