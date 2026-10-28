@@ -9,6 +9,7 @@ from qa_device_candidate import CandidateError, candidate_command
 
 
 BLOCKED = {"fill", "type"}
+DESTRUCTIVE_DEPLOYMENT = {"reinstall", "uninstall"}
 USAGE = "Usage: python3 scripts/qa-device.py <verb> [arguments/options]"
 
 
@@ -18,6 +19,16 @@ def main(argv=None):
         print(USAGE, file=sys.stderr)
         print("Put the command verb first; leading options are refused before dispatch.",
               file=sys.stderr)
+        return 2
+    if arguments[0] in DESTRUCTIVE_DEPLOYMENT:
+        print(
+            "QA command refused before dispatch: reinstall and uninstall erase the "
+            "app's local data. For a new build, use install <app> <binary> through "
+            "this wrapper; install updates the existing app without uninstalling it.\n"
+            "Do not retry through the raw driver, batch, or another interface. "
+            "Preserve the current account and drafts. See docs/dev/iphone-qa-driver.md.",
+            file=sys.stderr,
+        )
         return 2
     try:
         candidate = candidate_command(arguments)
