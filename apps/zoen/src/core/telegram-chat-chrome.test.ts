@@ -396,7 +396,9 @@ test('selection owns native count and Cancel, then restores the original convers
   const selected = f.header().props.options;
   assert.equal(selected.headerBackVisible, false);
   assert.equal(selected.unstable_headerLeftItems().length, 0);
-  const title = selected.headerTitle();
+  const container = selected.headerTitle();
+  assert.equal(container.props.scrollViewTag, props.scrollViewTag);
+  const title = container.props.children;
   const rendered = title.type(title.props);
   assert.equal(rendered.props.children, 3);
   assert.equal(rendered.props.accessibilityLabel, 'chat.selectedMessages');

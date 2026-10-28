@@ -37,7 +37,12 @@ export function ChatHeader(props: ChatHeaderProps) {
         headerBackground: undefined,
         headerTitle: () =>
           props.selection ? (
-            <MessageSelectionHeader {...props.selection} />
+            <NavigationContainer
+              scrollViewTag={props.scrollViewTag ?? 0}
+              metrics={props.navigationMetrics}
+            >
+              <MessageSelectionHeader {...props.selection} />
+            </NavigationContainer>
           ) : (
             <NavigationContainer
               scrollViewTag={props.scrollViewTag ?? 0}
