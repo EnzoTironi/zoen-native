@@ -48,11 +48,11 @@ pub(in crate::plan) fn validate(
             let changes = expected_doc.export_json_in_id_span(IdSpan::new(peer, start, end));
             let expected = atoms(&JsonSchema {
                 schema_version: 1,
-                start_version: Default::default(),
+                start_version: loro::Frontiers::default(),
                 peers: None,
                 changes,
             })?;
-            if expected.len() != (end - start) as usize {
+            if expected.len() != usize::try_from(end - start).map_err(error)? {
                 return Err(conflict(peer));
             }
             for (id, witness) in expected {
@@ -79,7 +79,7 @@ fn validate_mark_pairs(page: &Page, incoming: &Atoms) -> Result<()> {
             .export_json_in_id_span(IdSpan::new(peer, counter, end));
         atoms(&JsonSchema {
             schema_version: 1,
-            start_version: Default::default(),
+            start_version: loro::Frontiers::default(),
             peers: None,
             changes,
         })?
@@ -150,7 +150,7 @@ fn validate_lamports(page: &Page, seed: &CanonicalPlanSeed, incoming: &Atoms) ->
                     .ok_or(PlanError::MissingDependencies)?;
                 let value = change
                     .lamport
-                    .checked_add((counter - change.id.counter) as u32)
+                    .checked_add(u32::try_from(counter - change.id.counter).map_err(error)?)
                     .ok_or_else(|| error("plan Lamport overflow"))?;
                 known.insert(id, value);
                 value

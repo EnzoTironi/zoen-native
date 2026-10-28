@@ -13,7 +13,7 @@ fn versioned_roundtrip_is_explicit_and_never_falls_back_to_binary() {
         PlanUpdate::from_json(&bytes).unwrap().to_json().unwrap(),
         bytes
     );
-    let duplicate = String::from_utf8(bytes.clone()).unwrap().replacen(
+    let duplicate = String::from_utf8(bytes).unwrap().replacen(
         "\"version\":1",
         "\"version\":2,\"version\":1",
         1,
@@ -69,7 +69,7 @@ fn bounded_codec_refuses_expansion_and_counter_arithmetic_before_import() {
             container: node.text.id(),
             content: JsonOpContent::Text(JsonTextOp::Delete {
                 pos: 0,
-                len: MAX_PLAN_ATOMS as i32 + 1,
+                len: i32::try_from(MAX_PLAN_ATOMS).unwrap() + 1,
                 start_id: ID::new(0, 0),
             }),
         }],
