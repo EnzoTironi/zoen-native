@@ -308,3 +308,38 @@ test('foreground without route blur requires a fresh role before re-enabling cre
     await f.close();
   }
 });
+
+for (const phase of ['picker', 'file-read'] as const)
+  test(`unrelated canonical refresh preserves the selected local file during ${phase}`, async () => {
+    const f = await pageCreationFixture();
+    try {
+      const pending = phase === 'picker' ? f.holdPicker() : f.holdFileRead();
+      await f.pick();
+      await f.refresh();
+      await f.root.act(() => pending.resolve());
+      assert.equal(f.messages().includes('selected.md'), true);
+      assert.equal(f.button('documents.importAndSharePage').disabled, false);
+      assert.equal(f.created.length, 0, 'local selection never publishes a document');
+      assert.equal(f.deleted, 1);
+    } finally {
+      await f.close();
+    }
+  });
+
+test('a permission change followed by restoration still retires the old file picker', async () => {
+  const f = await pageCreationFixture();
+  try {
+    const pending = f.holdPicker();
+    await f.pick();
+    f.roles.set(f.room.id, 'reader');
+    await f.refresh();
+    f.roles.set(f.room.id, 'member');
+    await f.refresh();
+    await f.root.act(() => pending.resolve());
+    assert.equal(f.messages().includes('selected.md'), false);
+    assert.equal(f.created.length, 0);
+    assert.equal(f.deleted, 1);
+  } finally {
+    await f.close();
+  }
+});

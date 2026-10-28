@@ -133,7 +133,7 @@ export const conversationCode = (
         setup(builder) {
           transformMessageModules(builder, 'ios');
           builder.onResolve({ filter: /./ }, ({ path }) =>
-            /^(?:\.\/conversation-message-(?:face|details)|\.\/use-conversation-message)$/.test(
+            /^(?:\.\/conversation-message-(?:face|details)|\.\/use-conversation-message|\.\/use-rendered-message-text)$/.test(
               path,
             )
               ? undefined
@@ -198,6 +198,9 @@ export function albumMetadata(delivery: TimelineEntry['delivery']) {
     },
     './conversation-reveal-content-view': { useConversationRevealAnchor: () => null },
     './message-receipt': { MessageReceipt: 'Receipt', messageDeliveryLabel: () => delivery },
+    './use-semantic-message-preview': {
+      useSemanticMessagePreview: ({ text }: { text: string }) => ({ text }),
+    },
     './primitives': { Icon: 'Icon' },
   };
   const module = { exports: {} as { ConversationMessage(props: unknown): Element } };

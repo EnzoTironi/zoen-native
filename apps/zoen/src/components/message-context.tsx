@@ -7,6 +7,7 @@ import { messageText } from '../core/presentation';
 import type { TimelineEntry } from '../core/types';
 import { useTheme } from '../theme';
 import { Icon, IconButton } from './primitives';
+import { useSemanticMessagePreview } from './use-semantic-message-preview';
 
 /** The quote belongs to the composer, so keyboard and quote always move together. */
 export function MessageContext({
@@ -21,6 +22,31 @@ export function MessageContext({
   onCancel?: () => void;
 }) {
   const { presentation: p, reducedMotion } = useTheme();
+  const literalSelection = editing ? null : quote;
+  const source = literalSelection
+    ? literalSelection.text
+    : entry
+      ? entry.voice
+        ? t('media.voiceMessage')
+        : messageText(entry)
+      : t('chat.messageUnavailable');
+  const preview = useSemanticMessagePreview({
+    owner: JSON.stringify([
+      editing,
+      entry?.id,
+      entry?.text_revision,
+      quote?.source_id,
+      quote?.revision,
+    ]),
+    text: source,
+    literal: Boolean(
+      literalSelection ||
+      !entry ||
+      entry.voice ||
+      !('Message' in entry.kind) ||
+      entry.kind.Message.text.length === 0,
+    ),
+  });
   return (
     <View
       testID={editing ? 'editing-message-context' : 'reply-message-context'}
@@ -98,13 +124,7 @@ export function MessageContext({
           numberOfLines={1}
           style={{ color: p.chat.input.placeholder, fontSize: 15, lineHeight: 18 }}
         >
-          {quote && !editing
-            ? quote.text
-            : entry
-              ? entry.voice
-                ? t('media.voiceMessage')
-                : messageText(entry)
-              : t('chat.messageUnavailable')}
+          {preview.text ?? '…'}
         </Text>
       </Animated.View>
       {onCancel ? (

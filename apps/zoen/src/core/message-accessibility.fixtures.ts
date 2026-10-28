@@ -48,6 +48,7 @@ export const nativePorts = new Set([
   './primitives',
   './service-message',
   './message-markdown',
+  './use-semantic-message-preview',
 ]);
 export async function compile(platform: 'ios' | 'web') {
   const output = await build({
@@ -273,6 +274,9 @@ export function fixture(initial = message(), disabled = false, platform: 'ios' |
         )),
     },
     'react/jsx-runtime': { jsx: element, jsxs: element },
+    './use-semantic-message-preview': {
+      useSemanticMessagePreview: ({ text }: { text: string }) => ({ text }),
+    },
     'expo-router': { useFocusEffect: (callback: Effect) => effect(callback, [callback], true) },
     'react-native': {
       AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },

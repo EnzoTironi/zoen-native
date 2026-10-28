@@ -73,6 +73,7 @@ const nativePorts = new Set([
   'react-native-enriched-markdown',
   '../theme',
   './message-context-ports',
+  './use-quote-collapse',
   'expo-clipboard',
   'expo-haptics',
   '../i18n/index.ts',
@@ -193,6 +194,7 @@ function fixture(
       if (name === '../i18n/index.ts') return localization;
       if (name === 'react-native-enriched-markdown')
         return { EnrichedMarkdownText: 'NativeMarkdownText' };
+      if (name === './use-quote-collapse') return { useQuoteCollapse: () => ({}) };
       if (name === './message-context-ports') return { MessageTextSelection: {} };
       if (name === '../theme') return { useTheme: () => ({ colors }) };
       throw new Error(`Unexpected native port ${name}`);

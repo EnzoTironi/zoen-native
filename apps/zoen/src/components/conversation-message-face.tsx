@@ -42,6 +42,8 @@ export function renderConversationMessage(context: MessageFace) {
     reducedMotion,
     bubble,
     accessibilityMessageLabel,
+    accessibilityText,
+    replyPreview,
     formattedText,
     p,
     Math,
@@ -246,7 +248,7 @@ export function renderConversationMessage(context: MessageFace) {
                             opacity: 0.75,
                           }}
                         >
-                          {entry.reply_to.text}
+                          {replyPreview.text ?? '…'}
                         </Text>
                       </Pressable>
                     </MessageContextControl>
@@ -274,9 +276,12 @@ export function renderConversationMessage(context: MessageFace) {
                         }}
                       >
                         <MessageMarkdown
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           testID={`message-body-${entry.id}`}
                           onLayout={revealAnchor?.onLayout}
                           text={text}
+                          accessibilityText={accessibilityText}
                           color={attachment && !appCard ? colors.text : ink}
                           fontSize={messageFontSize}
                           maxWidth={Math.max(
@@ -287,6 +292,8 @@ export function renderConversationMessage(context: MessageFace) {
                       </View>
                     ) : (
                       <MessageTextSelectionLeaf
+                        revision={entry.text_revision}
+                        expandedForReveal={Boolean(revealAnchor)}
                         text={text}
                         color={attachment && !appCard ? colors.text : ink}
                         fontSize={emojiFont ?? messageFontSize}
@@ -376,7 +383,10 @@ export function renderConversationMessage(context: MessageFace) {
                     >
                       {formattedText ? (
                         <MessageMarkdown
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           text={fileCaption}
+                          accessibilityText={accessibilityText}
                           onLayout={revealAnchor?.onLayout}
                           color={ink}
                           fontSize={p.typography.message.fontSize}
@@ -384,6 +394,8 @@ export function renderConversationMessage(context: MessageFace) {
                         />
                       ) : (
                         <MessageTextSelectionLeaf
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           text={fileCaption!}
                           color={ink}
                           fontSize={p.typography.message.fontSize}

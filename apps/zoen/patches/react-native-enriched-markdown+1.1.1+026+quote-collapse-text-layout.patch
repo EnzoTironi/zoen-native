@@ -1,0 +1,243 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.h b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.h
+new file mode 100644
+index 00000000..7afb8687
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.h
+@@ -0,0 +1,25 @@
++#pragma once
++#import <Foundation/Foundation.h>
++#import <CoreGraphics/CoreGraphics.h>
++@class MarkdownASTNode;
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++// Presentation metadata only. The AST's content, attributes used by Markdown
++// serialization, source maps and copy/selection text remain untouched.
++void ENRMConfigureQuoteNodes(MarkdownASTNode *root, BOOL enabled, NSSet<NSNumber *> *expanded);
++CGFloat ENRMQuotePreviewHeight(NSAttributedString *text, CGFloat width, CGFloat scale);
++CGFloat ENRMQuoteRestoreOffset(CGFloat offset, CGFloat currentY, CGFloat targetY, CGFloat minimum, CGFloat maximum);
++#ifdef __cplusplus
++}
++#endif
++
++#ifdef __cplusplus
++template <typename Config> static inline void ENRMApplyQuotePresentation(MarkdownASTNode *root, const Config &config) {
++  NSMutableSet<NSNumber *> *expanded = [NSMutableSet new];
++  for (auto index : config.expanded) if (index >= 0) [expanded addObject:@(index)];
++  ENRMConfigureQuoteNodes(root, config.enabled, expanded);
++}
++#endif
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.mm b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.mm
+new file mode 100644
+index 00000000..ab3b4035
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.mm
+@@ -0,0 +1,65 @@
++#import "ENRMQuotePresentation.h"
++#import "MarkdownASTNode.h"
++#import <TargetConditionals.h>
++#import <math.h>
++#if TARGET_OS_OSX
++#import <AppKit/AppKit.h>
++#else
++#import <UIKit/UIKit.h>
++#endif
++
++static void ENRMConfigureQuotes(MarkdownASTNode *node, BOOL enabled, NSSet<NSNumber *> *expanded,
++                               BOOL insideQuote, NSInteger *nextIndex) {
++  BOOL quote = node.type == MarkdownNodeTypeBlockquote;
++  if (quote) {
++    NSInteger index = (*nextIndex)++;
++    BOOL prose = node.children.count > 0;
++    for (MarkdownASTNode *child in node.children)
++      if (child.type != MarkdownNodeTypeParagraph && child.type != MarkdownNodeTypeBlankLine) prose = NO;
++    if (enabled && !insideQuote && prose) {
++      node.attributes[@"enrmQuoteIndex"] = @(index).stringValue;
++      node.attributes[@"enrmQuoteExpanded"] = [expanded containsObject:@(index)] ? @"1" : @"0";
++    } else {
++      [node.attributes removeObjectForKey:@"enrmQuoteIndex"];
++      [node.attributes removeObjectForKey:@"enrmQuoteExpanded"];
++    }
++  }
++  for (MarkdownASTNode *child in node.children)
++    ENRMConfigureQuotes(child, enabled, expanded, insideQuote || quote, nextIndex);
++}
++
++void ENRMConfigureQuoteNodes(MarkdownASTNode *root, BOOL enabled, NSSet<NSNumber *> *expanded) {
++  NSInteger index = 0;
++  ENRMConfigureQuotes(root, enabled, expanded, NO, &index);
++}
++
++CGFloat ENRMQuotePreviewHeight(NSAttributedString *text, CGFloat width, CGFloat scale) {
++  if (!text.length || width <= 0) return 0;
++#if TARGET_OS_OSX
++  NSTextContainer *container = [[NSTextContainer alloc] initWithContainerSize:NSMakeSize(width, CGFLOAT_MAX)];
++#else
++  NSTextContainer *container = [[NSTextContainer alloc] initWithSize:CGSizeMake(width, CGFLOAT_MAX)];
++#endif
++  container.lineFragmentPadding = 0;
++  NSLayoutManager *layout = [NSLayoutManager new];
++  layout.allowsNonContiguousLayout = NO;
++  layout.usesFontLeading = NO;
++  [layout addTextContainer:container];
++  NSTextStorage *storage = [[NSTextStorage alloc] initWithAttributedString:text];
++  [storage addLayoutManager:layout];
++  [layout ensureLayoutForTextContainer:container];
++  __block NSUInteger lines = 0;
++  __block CGFloat bottom = 0;
++  [layout enumerateLineFragmentsForGlyphRange:NSMakeRange(0, layout.numberOfGlyphs)
++    usingBlock:^(CGRect rect, CGRect used, NSTextContainer *value, NSRange glyphs, BOOL *stop) {
++      lines++;
++      if (lines == 3) bottom = CGRectGetMaxY(rect);
++      if (lines > 3) *stop = YES;
++    }];
++  return lines > 3 ? ceil(bottom * MAX(scale, 1)) / MAX(scale, 1) : 0;
++}
++
++CGFloat ENRMQuoteRestoreOffset(CGFloat offset, CGFloat currentY, CGFloat targetY, CGFloat minimum, CGFloat maximum) {
++  if (!isfinite(currentY) || !isfinite(targetY)) return offset;
++  return MIN(maximum, MAX(minimum, offset + currentY - targetY));
++}
+diff --git a/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.h b/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.h
+index b01ca5bf..c3dbaca7 100644
+--- a/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.h
++++ b/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.h
+@@ -33,6 +33,17 @@ typedef void (^ENRMBlockquoteLinkBlock)(NSString *url);
+ @interface ENRMBlockquoteContainerView : ENRMContainerNodeView
+ 
+ - (instancetype)initWithConfig:(StyleConfig *)config;
++#if !TARGET_OS_OSX
++@property (nonatomic, copy, nullable) void (^onQuoteToggle)(ENRMBlockquoteContainerView *quote);
++@property (nonatomic, copy) NSString *quoteExpandLabel;
++@property (nonatomic, copy) NSString *quoteCollapseLabel;
++@property (nonatomic, copy) NSString *quoteExpandedLabel;
++@property (nonatomic, copy) NSString *quoteCollapsedLabel;
++@property (nonatomic, readonly) UIView *quoteToggleAnchor;
++@property (nonatomic, readonly) id quoteReadingFocus;
++#endif
++@property (nonatomic, readonly) NSInteger quoteIndex;
++@property (nonatomic, readonly) BOOL quoteExpanded;
+ 
+ // Splits the node's children into segments and applies them to this container.
+ - (void)applyBlockquoteNode:(MarkdownASTNode *)node;
+diff --git a/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm b/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
+index ccb4cac0..abf24283 100644
+--- a/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
++++ b/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
+@@ -1,4 +1,6 @@
+ #import "ENRMBlockquoteContainerView.h"
++#import "ENRMQuotePresentation.h"
++#import <React/RCTUtils.h>
+ #import "ENRMAdmonitionIcons.h"
+ #import "ENRMCodeBlockContainerView.h"
+ #import "ENRMFeatureFlags.h"
+@@ -109,6 +111,11 @@ static UIEdgeInsets ENRMBlockquoteContentInsets(StyleConfig *config)
+ @property (nonatomic, copy, nullable) NSString *admonitionType;
+ @property (nonatomic, copy) NSString *cachedMarkdown;
+ @property (nonatomic, copy) NSString *cachedPlainText;
++@property (nonatomic, strong) NSAttributedString *quotePreviewText;
++@property (nonatomic, assign) BOOL quoteExpanded;
++#if !TARGET_OS_OSX
++@property (nonatomic, strong) UIButton *quoteToggleButton;
++#endif
+ @end
+ 
+ @implementation ENRMBlockquoteContainerView
+@@ -126,8 +133,13 @@ static UIEdgeInsets ENRMBlockquoteContentInsets(StyleConfig *config)
+     _dynamicProps = [[ENRMDynamicBlockProps alloc] init];
+     _cachedMarkdown = @"";
+     _cachedPlainText = @"";
++    _quoteIndex = NSNotFound;
+ #if !TARGET_OS_OSX
+     self.contentMode = UIViewContentModeRedraw;
++    _quoteToggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
++    [_quoteToggleButton addTarget:self action:@selector(toggleQuote:) forControlEvents:UIControlEventTouchUpInside];
++    _quoteToggleButton.hidden = YES;
++    [self addSubview:_quoteToggleButton];
+     UIContextMenuInteraction *contextMenu = [[UIContextMenuInteraction alloc] initWithDelegate:self];
+     [self addInteraction:contextMenu];
+ #endif
+@@ -142,8 +154,13 @@ static UIEdgeInsets ENRMBlockquoteContentInsets(StyleConfig *config)
+   self.contentInsets = ENRMBlockquoteContentInsetsForNode(self.config, self.admonitionType != nil);
+   self.cachedMarkdown = markdownFromBlockquoteNode(node);
+   self.cachedPlainText = plainTextFromASTNode(node);
++  NSString *index = node.attributes[@"enrmQuoteIndex"];
++  _quoteIndex = index ? index.integerValue : NSNotFound;
++  self.quoteExpanded = [node.attributes[@"enrmQuoteExpanded"] boolValue];
+   NSArray<ENRMRenderedSegment *> *rendered =
+       ENRMRenderBlockquoteChildren(node, self.config, self.allowFontScaling, self.lineBreakStrategy);
++  self.quotePreviewText = self.quoteIndex != NSNotFound && rendered.count == 1 && rendered.firstObject.kind == ENRMSegmentKindText
++      ? rendered.firstObject.textResult.attributedText : nil;
+   [self applySegments:rendered reset:NO];
+ #if !TARGET_OS_OSX
+   [self setNeedsDisplay];
+@@ -362,7 +379,10 @@ static UIEdgeInsets ENRMBlockquoteContentInsets(StyleConfig *config)
+ 
+ - (CGFloat)measureHeight:(CGFloat)maxWidth
+ {
+-  return [self computeContentHeightForWidth:MAX(maxWidth - self.contentInsets.left - self.contentInsets.right, 0)];
++  CGFloat inner = MAX(maxWidth - self.contentInsets.left - self.contentInsets.right, 0);
++  CGFloat full = [self computeContentHeightForWidth:inner];
++  CGFloat preview = ENRMQuotePreviewHeight(self.quotePreviewText, inner, RCTScreenScale());
++  return preview > 0 ? (self.quoteExpanded ? full : preview + self.contentInsets.top + self.contentInsets.bottom) + 44 : full;
+ }
+ 
+ + (CGFloat)measureHeightForBlockquoteNode:(MarkdownASTNode *)node
+@@ -381,8 +401,54 @@ static UIEdgeInsets ENRMBlockquoteContentInsets(StyleConfig *config)
+       rendered, config, innerWidth, /*allowTrailingMargin*/ NO, pointScaleFactor, ENRMWritingDirectionModeFirstStrong,
+       NSWritingDirectionNatural, allowFontScaling, lineBreakStrategy);
+ 
+-  return childrenHeight + insets.top + insets.bottom;
++  CGFloat preview = node.attributes[@"enrmQuoteIndex"] && rendered.count == 1 && rendered.firstObject.kind == ENRMSegmentKindText
++      ? ENRMQuotePreviewHeight(rendered.firstObject.textResult.attributedText, innerWidth, pointScaleFactor) : 0;
++  BOOL expanded = [node.attributes[@"enrmQuoteExpanded"] boolValue];
++  return (preview > 0 && !expanded ? preview : childrenHeight) + insets.top + insets.bottom + (preview > 0 ? 44 : 0);
++}
++
++#if !TARGET_OS_OSX
++- (UIView *)quoteToggleAnchor { return self.quoteToggleButton; }
++- (id)quoteReadingFocus {
++  if (self.quoteExpanded) for (UIView *child in self.subviews) {
++    if ([child isKindOfClass:EnrichedMarkdownInternalText.class]) {
++      [child layoutIfNeeded];
++      return [child accessibilityElementAtIndex:0] ?: self.quoteToggleButton;
++    }
++  }
++  return self.quoteToggleButton;
++}
++- (void)toggleQuote:(UIButton *)sender {
++  if (!sender.hidden && self.onQuoteToggle) self.onQuoteToggle(self);
++}
++- (void)layoutSubviews {
++  [super layoutSubviews];
++  CGFloat inner = MAX(self.bounds.size.width - self.contentInsets.left - self.contentInsets.right, 0);
++  CGFloat preview = ENRMQuotePreviewHeight(self.quotePreviewText, inner, RCTScreenScale());
++  BOOL longQuote = preview > 0;
++  self.quoteToggleButton.hidden = !longQuote;
++  // The renderer still owns the original attributed text and its source map.
++  // Only its viewport is clipped; selection mode disables collapse at the host.
++  for (UIView *child in self.subviews) {
++    if (child == self.quoteToggleButton) continue;
++    BOOL collapsed = longQuote && !self.quoteExpanded;
++    child.accessibilityElementsHidden = collapsed;
++    child.clipsToBounds = collapsed;
++    if (collapsed) {
++      CGRect frame = child.frame; frame.size.height = preview; child.frame = frame;
++    }
++  }
++  if (!longQuote) return;
++  UIButton *button = self.quoteToggleButton;
++  CGFloat x = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft ? 4 : MAX(0, self.bounds.size.width - 48);
++  button.frame = CGRectMake(x, self.bounds.size.height - 44, 44, 44);
++  button.tintColor = self.config.blockquoteBorderColor;
++  [button setImage:[UIImage systemImageNamed:self.quoteExpanded ? @"chevron.up" : @"chevron.down"] forState:UIControlStateNormal];
++  button.accessibilityLabel = self.quoteExpanded ? (self.quoteCollapseLabel.length ? self.quoteCollapseLabel : @"Collapse quote") : (self.quoteExpandLabel.length ? self.quoteExpandLabel : @"Expand quote");
++  button.accessibilityValue = self.quoteExpanded ? (self.quoteExpandedLabel.length ? self.quoteExpandedLabel : @"Expanded") : (self.quoteCollapsedLabel.length ? self.quoteCollapsedLabel : @"Collapsed");
++  [self bringSubviewToFront:button];
+ }
++#endif
+ 
+ - (void)drawRect:(CGRect)rect
+ {
