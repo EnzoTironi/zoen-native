@@ -2,6 +2,8 @@ import { defineFeature } from '../catalog.ts';
 
 export const chat = defineFeature(
   {
+    selectMessages: 'Select',
+    selectedMessages: { one: '%{count} message selected', other: '%{count} messages selected' },
     selectText: 'Select text',
     quoteSelection: 'Quote',
     quoteTextReplyOnly: 'Remove the quote to attach media.',
@@ -221,6 +223,11 @@ export const chat = defineFeature(
     agentLabel: 'Agent',
   },
   {
+    selectMessages: 'Selecionar',
+    selectedMessages: {
+      one: '%{count} mensagem selecionada',
+      other: '%{count} mensagens selecionadas',
+    },
     selectText: 'Selecionar texto',
     quoteSelection: 'Citar',
     quoteTextReplyOnly: 'Remova a citação para anexar mídia.',

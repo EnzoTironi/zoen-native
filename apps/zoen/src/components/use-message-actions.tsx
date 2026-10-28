@@ -2,7 +2,7 @@ import type { ReplySelection } from '../core/generated/ReplySelection';
 import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
+import { copyableMessageText, copyMessageText } from './message-copy';
 import { KeyboardController } from 'react-native-keyboard-controller';
 import type { TimelineEntry } from '../core/types';
 import { useClient } from '../core/provider';
@@ -13,7 +13,6 @@ import {
   messageCanRecoverMedia,
   messageCard,
 } from '../core/message-presentation';
-import { messageText } from '../core/presentation';
 import { shareMessageMedia } from '../media/share-message';
 import { t } from '../i18n/index.ts';
 import { homeSpacesFor } from '../home/access';
@@ -34,6 +33,7 @@ export function useMessageActions({
   onReply,
   onEdit,
   onThread,
+  onSelect,
   threadRootId = null,
 }: {
   spaceId: string;
@@ -43,6 +43,7 @@ export function useMessageActions({
   onReply: (entry: TimelineEntry, selection?: ReplySelection) => void;
   onEdit: (entry: TimelineEntry) => void;
   onThread?: (entry: TimelineEntry) => void;
+  onSelect?: (entry: TimelineEntry) => void;
 }) {
   const client = useClient();
   const { store, snapshot, mode } = client;
@@ -470,6 +471,14 @@ export function useMessageActions({
           }}
           onQuoteReview={quote.review}
           onQuote={quote.accept}
+          onSelect={
+            selected && !selected.deleted && onSelect
+              ? () => {
+                  const value = current(selected);
+                  if (value && !value.deleted) onSelect(value);
+                }
+              : undefined
+          }
           onSelectText={
             process.env.EXPO_OS === 'ios' &&
             mode === 'account' &&
@@ -493,13 +502,10 @@ export function useMessageActions({
               : undefined
           }
           onCopy={
-            selected &&
-            !selected.voice &&
-            (!messageCard(selected) || messageCard(selected)?.kind_id === 'file') &&
-            messageText(selected).trim()
+            selected && copyableMessageText(selected)
               ? () => {
-                  if (current(selected))
-                    void Clipboard.setStringAsync(messageText(selected)).catch(() => {});
+                  const value = current(selected);
+                  if (value) copyMessageText(value);
                 }
               : undefined
           }
