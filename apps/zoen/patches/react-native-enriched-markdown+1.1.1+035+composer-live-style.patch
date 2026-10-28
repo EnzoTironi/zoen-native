@@ -1,0 +1,37 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -96,6 +96,7 @@
+   int _heightUpdateCounter;
+   ENRMInputFormatter *_formatter;
+   ENRMInputFormatterStyle *_formatterStyle;
++  BOOL _needsFullStyleRefresh;
+   ENRMFormattingStore *_formattingStore;
+   ENRMBlockStore *_blockStore;
+   ENRMInputTypingAttributesController *_typingController;
+@@ -567,9 +568,10 @@
+ 
+     [self resetBaseTypingAttributes];
+ 
+-    if (_formattingStore.allRanges.count > 0) {
+-      [self applyFormatting];
+-    }
++    // Plain text has no formatting ranges, but still owns font and color runs.
++    // Keep invalidation pending if IME composition currently suppresses formatting.
++    _needsFullStyleRefresh = YES;
++    [self applyFormatting];
+ 
+     [self requestHeightUpdate];
+   } else if (writingDirectionChanged && _textView.textStorage.length > 0) {
+@@ -1114,6 +1116,11 @@
+   }
+   [_editSession enterPhase:ENRMEditPhaseFormatting];
+ 
++  if (_needsFullStyleRefresh) {
++    scope = NSMakeRange(0, ENRMGetPlainText(_textView).length);
++    _needsFullStyleRefresh = NO;
++  }
++
+   NSRange savedSelection = _textView.selectedRange;
+   if (_composer.binding.length)
+     [_formattingStore setRanges:ENRMNormalizeComposerRanges(ENRMGetPlainText(_textView), _formattingStore.allRanges)];
