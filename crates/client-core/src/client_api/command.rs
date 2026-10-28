@@ -269,11 +269,8 @@ pub(super) enum Command {
         space_id: String,
         message_id: String,
     },
-    UniversalSearch {
-        query: String,
-        kinds: Vec<String>,
-        limit: u32,
-    },
+    UniversalSearchPage(super::search::SearchPageInput),
+    UniversalSearch(super::search::SearchInput),
     RecentAttachments {
         scope: crate::MediaDraftScope,
         kind: crate::RecentAttachmentKind,
@@ -286,25 +283,13 @@ pub(super) enum Command {
         kind: crate::RecentAttachmentKind,
         reference: crate::RecentAttachmentReference,
     },
-    SetChatPrefs {
-        space_id: String,
-        pinned: bool,
-        archived: bool,
-        muted: bool,
-        #[serde(default)]
-        #[cfg_attr(feature = "client-types", ts(optional))]
-        preserve_mute: Option<bool>,
+    SetChatPrefs(super::chat_preferences_dispatch::ChatPrefsInput),
+    SetChatMute(super::chat_preferences_dispatch::ChatMuteInput),
+    SetChatMuted(super::chat_preferences_dispatch::ChatMutedInput),
+    ChatLayout {
+        input: crate::chat_layout::ChatLayoutInput,
     },
-    SetChatMute {
-        space_id: String,
-        mode: crate::ChatMuteMode,
-        expected_muted_until_ms: Option<String>,
-        expected_identity_id: String,
-        expected_device_id: String,
-    },
-    SetChatMuted {
-        space_id: String,
-        muted: bool,
+    SavedMessages {
         expected_identity_id: String,
         expected_device_id: String,
     },

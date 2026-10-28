@@ -1,0 +1,390 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.h
+@@ -16,6 +16,8 @@
+ @interface ENRMInputParser : NSObject
+ 
+ - (ENRMParseResult *)parseToPlainTextAndRanges:(NSString *)markdown;
++/// Composer-only Markdown semantics; generic article/checkpoint behavior is unchanged.
++- (ENRMParseResult *)parseComposerMarkdown:(NSString *)markdown;
+ 
+ @end
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
+@@ -3,6 +3,7 @@
+ #import "ENRMInputRemend.h"
+ #include "md4c.h"
+ #include <algorithm>
++#include <cstdint>
+ #include <string>
+ #include <vector>
+ 
+@@ -88,6 +89,9 @@
+   size_t contentStartByteOffset = kByteOffsetUnset;
+   size_t contentEndByteOffset = kByteOffsetUnset;
+   std::string linkURL;
++  size_t linkEnd = 0;
++  bool opaque = false;
++  size_t closeStart = 0, closeEnd = 0;
+ };
+ 
+ struct BlockInfo {
+@@ -98,6 +102,13 @@
+ };
+ 
+ struct ParseContext {
++  bool composer = false;
++  int tableDepth = 0, quoteDepth = 0;
++  size_t closingCursor = 0;
++  std::vector<size_t> imageStarts;
++  std::vector<bool> taskItems;
++  size_t opaqueStart = SIZE_MAX, opaqueEnd = 0;
++  std::vector<std::pair<size_t,size_t>> opaque;
+   const char *buffer;
+   size_t bufferLength;
+   size_t originalLength;
+@@ -156,9 +167,11 @@
+ 
+ static size_t closingDelimiterEndByte(const ParseContext &context, const InlineSpanInfo &span)
+ {
++  if (context.composer) return span.closeEnd;
+   size_t position = span.contentEndByteOffset;
+ 
+   if (span.type == ENRMInputStyleTypeLink) {
++    if (context.composer && span.linkEnd > position) position = span.linkEnd;
+     while (position < context.bufferLength && context.buffer[position] != ')') {
+       position++;
+     }
+@@ -182,6 +195,13 @@
+ {
+   auto *context = static_cast<ParseContext *>(userdata);
+ 
++  if (context->composer && blockType == MD_BLOCK_TABLE) {
++    context->tableDepth++; context->opaqueStart = SIZE_MAX; context->opaqueEnd = 0; return 0;
++  }
++  if (context->composer && blockType == MD_BLOCK_QUOTE) {
++    BlockInfo block; block.type = ENRMInputBlockTypeQuote; block.level = ++context->quoteDepth;
++    context->openBlockStack.push_back(block); return 0;
++  }
+   // List nesting is tracked by the container stack, not stored as its own
+   // block: the UL/OL container only frames the items that read it.
+   if (blockType == MD_BLOCK_UL || blockType == MD_BLOCK_OL) {
+@@ -193,6 +213,7 @@
+   // items only for *loose* lists, so a tight list has no paragraph to tag. The
+   // item's range is clipped back to its own first line when building results.
+   if (blockType == MD_BLOCK_LI) {
++    context->taskItems.push_back(context->composer && detail && static_cast<MD_BLOCK_LI_DETAIL *>(detail)->is_task);
+     BlockInfo blockInfo;
+     BOOL ordered = !context->listContainerStack.empty() && context->listContainerStack.back();
+     blockInfo.type = ordered ? ENRMInputBlockTypeOrderedListItem : ENRMInputBlockTypeUnorderedListItem;
+@@ -224,6 +245,16 @@
+ {
+   auto *context = static_cast<ParseContext *>(userdata);
+ 
++  if (context->composer && blockType == MD_BLOCK_TABLE) {
++    if (context->opaqueStart != SIZE_MAX) context->opaque.push_back({context->opaqueStart, context->opaqueEnd});
++    context->tableDepth--; return 0;
++  }
++  if (context->composer && blockType == MD_BLOCK_QUOTE) {
++    if (!context->openBlockStack.empty()) {
++      context->resolvedBlocks.push_back(context->openBlockStack.back()); context->openBlockStack.pop_back();
++    }
++    context->quoteDepth--; return 0;
++  }
+   if (blockType == MD_BLOCK_UL || blockType == MD_BLOCK_OL) {
+     if (!context->listContainerStack.empty()) {
+       context->listContainerStack.pop_back();
+@@ -234,6 +265,7 @@
+   // List items are tagged in onEnterBlock (not via isSupportedBlock); resolve
+   // them here the same way as supported blocks.
+   if (blockType == MD_BLOCK_LI) {
++    if (!context->taskItems.empty()) context->taskItems.pop_back();
+     if (!context->openBlockStack.empty()) {
+       context->resolvedBlocks.push_back(context->openBlockStack.back());
+       context->openBlockStack.pop_back();
+@@ -257,8 +289,13 @@
+ 
+ static int onEnterSpan(MD_SPANTYPE spanType, void *detail, void *userdata)
+ {
++  auto *composerContext = static_cast<ParseContext *>(userdata);
++  if (composerContext->composer && spanType == MD_SPAN_IMG) {
++    composerContext->imageStarts.push_back(composerContext->lastTextEnd); return 0;
++  }
+   ENRMInputStyleType styleType;
+-  if (!isSupportedSpan(spanType, styleType)) {
++  if (composerContext->composer && spanType == MD_SPAN_CODE) styleType = ENRMInputStyleTypeCode;
++  else if (!isSupportedSpan(spanType, styleType)) {
+     return 0;
+   }
+ 
+@@ -269,8 +306,18 @@
+ 
+   if (spanType == MD_SPAN_A && detail) {
+     auto *linkDetail = static_cast<MD_SPAN_A_DETAIL *>(detail);
++    spanInfo.opaque = context->composer && linkDetail->title.size > 0;
+     if (linkDetail->href.text && linkDetail->href.size > 0) {
+       spanInfo.linkURL = std::string(linkDetail->href.text, linkDetail->href.size);
++      if (context->composer) {
++        const auto base = reinterpret_cast<uintptr_t>(context->buffer);
++        for (auto attribute : {linkDetail->href, linkDetail->title}) {
++          const auto address = reinterpret_cast<uintptr_t>(attribute.text);
++          if (address >= base && address - base <= context->bufferLength && attribute.size <= context->bufferLength - (address - base))
++            spanInfo.linkEnd = std::max(spanInfo.linkEnd, address - base + attribute.size);
++        }
++        if (!spanInfo.linkEnd) spanInfo.opaque = true;
++      }
+     }
+   }
+ 
+@@ -280,8 +327,17 @@
+ 
+ static int onLeaveSpan(MD_SPANTYPE spanType, void *, void *userdata)
+ {
++  auto *composerContext = static_cast<ParseContext *>(userdata);
++  if (composerContext->composer && spanType == MD_SPAN_IMG) {
++    if (!composerContext->imageStarts.empty()) {
++      composerContext->opaque.push_back({composerContext->imageStarts.back(),composerContext->lastTextEnd});
++      composerContext->imageStarts.pop_back();
++    }
++    return 0;
++  }
+   ENRMInputStyleType styleType;
+-  if (!isSupportedSpan(spanType, styleType)) {
++  if (composerContext->composer && spanType == MD_SPAN_CODE) styleType = ENRMInputStyleTypeCode;
++  else if (!isSupportedSpan(spanType, styleType)) {
+     return 0;
+   }
+ 
+@@ -290,12 +346,34 @@
+     return 0;
+   }
+ 
++  if (context->composer && context->openStack.back().contentEndByteOffset != kByteOffsetUnset) {
++    auto &span=context->openStack.back();
++    size_t cursor=std::max(span.contentEndByteOffset,context->closingCursor);
++    span.closeStart=cursor;
++    if (span.type==ENRMInputStyleTypeLink) {
++      bool direct=span.contentEndByteOffset+1<context->bufferLength && context->buffer[span.contentEndByteOffset]==']' && context->buffer[span.contentEndByteOffset+1]=='(';
++      if (!direct || span.opaque) context->opaque.push_back({span.openingDelimiterByteOffset,span.contentEndByteOffset});
++      cursor=std::max(cursor,span.linkEnd);
++      while(cursor<context->bufferLength && context->buffer[cursor]!=')')cursor++;
++      if(cursor<context->bufferLength)cursor++;
++    } else if(span.type==ENRMInputStyleTypeCode) {
++      if(cursor<context->bufferLength && context->buffer[cursor]==' ')cursor++;
++      while(cursor<context->bufferLength && context->buffer[cursor]=='`')cursor++;
++      for(size_t i=span.contentStartByteOffset;i<span.contentEndByteOffset;i++)if(context->buffer[i]=='\n' || context->buffer[i]=='\r') {
++        context->opaque.push_back({span.openingDelimiterByteOffset,cursor});break;
++      }
++    } else {
++      size_t count=(span.type==ENRMInputStyleTypeStrong || span.type==ENRMInputStyleTypeStrikethrough || span.type==ENRMInputStyleTypeSpoiler) ? 2:1;
++      cursor=std::min(cursor+count,context->bufferLength);
++    }
++    span.closeEnd=cursor;context->closingCursor=cursor;
++  }
+   context->resolved.push_back(context->openStack.back());
+   context->openStack.pop_back();
+   return 0;
+ }
+ 
+-static int onText(MD_TEXTTYPE, const MD_CHAR *text, MD_SIZE size, void *userdata)
++static int onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, void *userdata)
+ {
+   if (!text || size == 0) {
+     return 0;
+@@ -317,11 +395,30 @@
+   size_t textStart = text - context->buffer;
+   size_t textEnd = textStart + size;
+   context->textStartOffsets.push_back(textStart);
++  if (context->composer && type == MD_TEXT_HTML) context->opaque.push_back({textStart,textEnd});
++  if (context->composer && context->tableDepth) {
++    context->opaqueStart = std::min(context->opaqueStart,textStart); context->opaqueEnd = textEnd;
++  }
+ 
+   if (textStart > 0 && context->buffer[textStart - 1] == '\\' && (textStart - 1) >= context->lastTextEnd) {
+     context->escapeByteOffsets.push_back(textStart - 1);
+   }
+ 
++  if (context->composer) {
++    if (std::any_of(context->taskItems.begin(),context->taskItems.end(),[](bool value){return value;}))context->opaque.push_back({textStart,textEnd});
++    size_t cursor=textStart;
++    for(auto span=context->openStack.rbegin();span!=context->openStack.rend();++span) {
++      if(span->contentStartByteOffset!=kByteOffsetUnset)break;
++      if(span->type==ENRMInputStyleTypeCode) {
++        if(cursor>0 && context->buffer[cursor-1]==' ')cursor--;
++        while(cursor>0 && context->buffer[cursor-1]=='`')cursor--;
++      } else {
++        size_t count=(span->type==ENRMInputStyleTypeStrong || span->type==ENRMInputStyleTypeStrikethrough || span->type==ENRMInputStyleTypeSpoiler) ? 2:1;
++        cursor=cursor>=count ? cursor-count:0;
++      }
++      span->openingDelimiterByteOffset=cursor;
++    }
++  }
+   for (auto &openSpan : context->openStack) {
+     if (openSpan.contentStartByteOffset == kByteOffsetUnset) {
+       openSpan.contentStartByteOffset = textStart;
+@@ -338,9 +435,10 @@
+   return 0;
+ }
+ 
+-static bool runMd4cParse(NSString *markdown, ParseContext &context)
+-{
+-  NSString *completed = ENRMInputRemendComplete(markdown);
++static bool runMd4cParse(NSString *markdown, ParseContext &context, bool composer = false)
++{
++  context.composer = composer;
++  NSString *completed = composer ? markdown : ENRMInputRemendComplete(markdown);
+   const char *completedUTF8 = [completed UTF8String];
+   size_t completedLength = strlen(completedUTF8);
+   size_t originalLength = [markdown lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+@@ -351,7 +449,7 @@
+ 
+   MD_PARSER parser = {
+       .abi_version = 0,
+-      .flags = MD_FLAG_NOHTML | MD_FLAG_UNDERLINE | MD_FLAG_STRIKETHROUGH | MD_FLAG_SPOILERS,
++      .flags = static_cast<unsigned>((composer ? (MD_FLAG_TABLES | MD_FLAG_TASKLISTS) : (MD_FLAG_NOHTML | MD_FLAG_UNDERLINE)) | MD_FLAG_STRIKETHROUGH | MD_FLAG_SPOILERS),
+       .enter_block = onEnterBlock,
+       .leave_block = onLeaveBlock,
+       .enter_span = onEnterSpan,
+@@ -393,7 +491,7 @@
+     NSRange openingRange = NSMakeRange(openStart, contentStart - openStart);
+ 
+     size_t closingEndByte = std::min(closingDelimiterEndByte(context, spanInfo), context.bufferLength);
+-    NSUInteger closingStart = mapByteOffset(byteMap, spanInfo.contentEndByteOffset, context.bufferLength);
++    NSUInteger closingStart = mapByteOffset(byteMap, context.composer ? spanInfo.closeStart : spanInfo.contentEndByteOffset, context.bufferLength);
+     NSUInteger closingEnd = mapByteOffset(byteMap, closingEndByte, context.bufferLength);
+     NSRange closingRange = NSMakeRange(closingStart, closingEnd - closingStart);
+ 
+@@ -483,7 +581,9 @@
+   return styledRangesFromContext(context, byteMap);
+ }
+ 
+-- (ENRMParseResult *)parseToPlainTextAndRanges:(NSString *)markdown
++- (ENRMParseResult *)parseToPlainTextAndRanges:(NSString *)markdown { return [self parseMarkdown:markdown composer:NO]; }
++- (ENRMParseResult *)parseComposerMarkdown:(NSString *)markdown { return [self parseMarkdown:markdown composer:YES]; }
++- (ENRMParseResult *)parseMarkdown:(NSString *)markdown composer:(BOOL)composer
+ {
+   ENRMParseResult *parseResult = [[ENRMParseResult alloc] init];
+ 
+@@ -500,10 +600,19 @@
+   NSArray<ENRMInputStyledRange *> *styledRanges = @[];
+   NSArray<ENRMBlockRange *> *rawBlockRanges = @[];
+   NSMutableIndexSet *escapeIndexes = [NSMutableIndexSet indexSet];
+-  if (runMd4cParse(markdown, context)) {
++  NSMutableIndexSet *opaqueIndexes = [NSMutableIndexSet indexSet];
++  if (runMd4cParse(markdown, context, composer)) {
+     auto byteMap = buildByteToUTF16Map(context.buffer, context.bufferLength);
++    if (composer) for (auto raw : context.opaque) {
++      NSUInteger start = mapByteOffset(byteMap,raw.first,context.bufferLength);
++      NSUInteger end = mapByteOffset(byteMap,raw.second,context.bufferLength);
++      NSRange lines = [markdown lineRangeForRange:NSMakeRange(start,end-start)];
++      [opaqueIndexes addIndexesInRange:lines];
++    }
+     styledRanges = styledRangesFromContext(context, byteMap);
+     rawBlockRanges = blockRangesFromContext(context, byteMap, markdown);
++    if(composer)for(ENRMBlockRange *block in rawBlockRanges)if(block.type==ENRMInputBlockTypeQuote && block.level>1)
++      [opaqueIndexes addIndexesInRange:[markdown lineRangeForRange:block.range]];
+     for (size_t escapeByte : context.escapeByteOffsets) {
+       NSUInteger escapeIndex = mapByteOffset(byteMap, escapeByte, context.bufferLength);
+       if (escapeIndex < markdown.length) {
+@@ -516,7 +625,7 @@
+ 
+   NSMutableIndexSet *syntaxIndexes = [NSMutableIndexSet indexSet];
+   for (ENRMInputStyledRange *styledRange in styledRanges) {
+-    if (!styledRange.isComplete)
++    if (!styledRange.isComplete || (composer && [opaqueIndexes intersectsIndexesInRange:styledRange.fullRange]))
+       continue;
+     for (NSValue *syntaxValue in styledRange.syntaxRanges) {
+       NSRange syntaxRange = [syntaxValue rangeValue];
+@@ -533,6 +642,22 @@
+   // Without this the marker survives and the serializer doubles it ("# # ").
+   for (ENRMBlockRange *rawBlock in rawBlockRanges) {
+     NSUInteger contentStart = rawBlock.range.location;
++    if (composer && [opaqueIndexes intersectsIndexesInRange:rawBlock.range]) continue;
++    if (composer && rawBlock.type == ENRMInputBlockTypeQuote) {
++      NSRange lines = [markdown lineRangeForRange:rawBlock.range];
++      NSUInteger line = lines.location;
++      while (line < NSMaxRange(lines)) {
++        NSRange extent = [markdown lineRangeForRange:NSMakeRange(line,0)];
++        NSUInteger marker = line;
++        while (marker < NSMaxRange(extent) && marker-line < 3 && [markdown characterAtIndex:marker] == ' ') marker++;
++        if (marker < NSMaxRange(extent) && [markdown characterAtIndex:marker] == '>') {
++          marker++; if (marker < NSMaxRange(extent) && [markdown characterAtIndex:marker] == ' ') marker++;
++          [syntaxIndexes addIndexesInRange:NSMakeRange(line,marker-line)];
++        }
++        line = NSMaxRange(extent);
++      }
++      continue;
++    }
+     if (contentStart == 0 || contentStart > rawLength) {
+       continue;
+     }
+@@ -549,6 +674,7 @@
+     }
+   }
+ 
++  [escapeIndexes removeIndexes:opaqueIndexes];
+   [syntaxIndexes addIndexes:escapeIndexes];
+ 
+   // Strip \n/\r from syntax ranges — newlines are structural content, not
+@@ -595,7 +721,7 @@
+   NSMutableArray<ENRMFormattingRange *> *formattingRanges = [NSMutableArray arrayWithCapacity:styledRanges.count];
+ 
+   for (ENRMInputStyledRange *styledRange in styledRanges) {
+-    if (!styledRange.isComplete)
++    if (!styledRange.isComplete || (composer && [opaqueIndexes intersectsIndexesInRange:styledRange.fullRange]))
+       continue;
+ 
+     NSUInteger contentStart = styledRange.contentRange.location;
+@@ -622,6 +748,7 @@
+   // onto the post-strip text and the block no longer covers the marker.
+   NSMutableArray<ENRMBlockRange *> *blockRanges = [NSMutableArray arrayWithCapacity:rawBlockRanges.count];
+   for (ENRMBlockRange *rawBlock in rawBlockRanges) {
++    if (composer && [opaqueIndexes intersectsIndexesInRange:rawBlock.range]) continue;
+     NSUInteger contentStart = rawBlock.range.location;
+     NSUInteger contentEnd = NSMaxRange(rawBlock.range);
+     if (contentStart > rawLength || contentEnd > rawLength)
+@@ -637,6 +764,10 @@
+                                                    level:rawBlock.level]];
+   }
+ 
++  if (composer) [escapeIndexes enumerateIndexesUsingBlock:^(NSUInteger raw, BOOL *stop) {
++    if (raw+1 < rawLength && ![syntaxIndexes containsIndex:raw+1])
++      [formattingRanges addObject:[ENRMFormattingRange rangeWithType:ENRMInputStyleTypeLiteralEscape range:NSMakeRange(rawToPlainMap[raw+1],1)]];
++  }];
+   parseResult.plainText = plainText;
+   parseResult.formattingRanges = formattingRanges;
+   parseResult.blockRanges = blockRanges;
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputStyledRange.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputStyledRange.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputStyledRange.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputStyledRange.h
+@@ -11,6 +11,8 @@
+   ENRMInputStyleTypeStrikethrough,
+   ENRMInputStyleTypeLink,
+   ENRMInputStyleTypeSpoiler,
++  ENRMInputStyleTypeCode,
++  ENRMInputStyleTypeLiteralEscape,
+ };
+ 
+ @interface ENRMInputStyledRange : NSObject
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputBlockType.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputBlockType.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputBlockType.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputBlockType.h
+@@ -21,6 +21,7 @@
+   ENRMInputBlockTypeHeading6 = 6,
+   ENRMInputBlockTypeUnorderedListItem = 7,
+   ENRMInputBlockTypeOrderedListItem = 8,
++  ENRMInputBlockTypeQuote = 9,
+ };
+ 
+ /// Whether the type is a list item (nesting depth rides in the range's level).
+@@ -69,7 +70,7 @@
+ /// reverting to a plain paragraph.
+ static inline BOOL ENRMBlockTypePersistsWhenEmpty(ENRMInputBlockType type)
+ {
+-  return (type >= ENRMInputBlockTypeHeading1 && type <= ENRMInputBlockTypeHeading6) || ENRMBlockTypeIsListItem(type);
++  return (type >= ENRMInputBlockTypeHeading1 && type <= ENRMInputBlockTypeHeading6) || ENRMBlockTypeIsListItem(type) || type == ENRMInputBlockTypeQuote;
+ }
+ 
+ /// NSAttributedString attribute carrying the ENRMInputBlockType (boxed NSNumber)

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { conversationTitle } from '../saved-messages/presentation.ts';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
@@ -23,9 +24,13 @@ const external = new Set([
   '../../../components/primitives',
   '../components/primitives',
   '../../../components/chats-actions',
-  '../../../profile/profile-avatar',
+  '../../../saved-messages/conversation-avatar',
+  '../../../saved-messages/presentation',
   '../../../components/message-receipt',
   '../../../miniapps/rail',
+  '../../../inbox/chat-row',
+  '../../../inbox/use-inbox-actions',
+  '../../../inbox/action-feedback',
 ]);
 const compiled = await build({
   entryPoints: [fileURLToPath(new URL('../app/(tabs)/(chats)/chats.tsx', import.meta.url))],
@@ -122,9 +127,16 @@ async function fixture() {
     '../../../components/primitives': primitives,
     '../components/primitives': primitives,
     '../../../components/chats-actions': { ChatsActions: 'ChatsActions' },
-    '../../../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
+    '../../../saved-messages/conversation-avatar': { ConversationAvatar: 'ConversationAvatar' },
+    '../../../saved-messages/presentation': { conversationTitle },
     '../../../components/message-receipt': { MessageReceipt: 'MessageReceipt' },
     '../../../miniapps/rail': { MiniappRail: 'MiniappRail' },
+    // Inbox lifecycle/gestures are exercised by the real compiled inbox suites.
+    '../../../inbox/chat-row': { InboxChatRow: 'InboxChatRow' },
+    '../../../inbox/action-feedback': { InboxActionFeedback: () => null },
+    '../../../inbox/use-inbox-actions': {
+      useInboxActions: () => ({ enabled: false, state: {}, session: {}, ticket: null }),
+    },
   };
   const module = { exports: {} as { default(): Element } };
   runInNewContext(compiled.outputFiles[0]!.text, {

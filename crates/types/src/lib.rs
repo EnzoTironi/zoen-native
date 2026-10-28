@@ -48,9 +48,11 @@ pub use authority::{
 };
 mod events;
 pub use events::{
-    BackgroundSpec, ChainLink, ChatPrefs, Event, EventBody, MediaRef, OwnerPolicyOutcome,
-    ProfileKeyShare, Seen, EVENT_FORMAT, GENESIS_PREV,
+    BackgroundSpec, ChainLink, ChatPrefs, ChatPrefsField, ChatPrefsOperation, Event, EventBody,
+    MediaRef, OwnerPolicyOutcome, ProfileKeyShare, Seen, EVENT_FORMAT, GENESIS_PREV,
 };
 
 #[cfg(test)]
 mod tests;
+
+pub mod saved_messages;

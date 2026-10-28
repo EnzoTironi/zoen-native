@@ -146,7 +146,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         updateBadge(
           after.conversations
             .filter((chat) => !chat.muted && !chat.archived)
-            .reduce((total, chat) => total + chat.unread, 0),
+            .reduce((total, chat) => total + Math.max(chat.unread, chat.manual_unread ? 1 : 0), 0),
         ),
       );
     });

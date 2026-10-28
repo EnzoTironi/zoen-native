@@ -31,8 +31,15 @@ enum ZoenComposerSizing {
       }
       pending.append(contentsOf: view.subviews)
     }
-    guard let editor, editor.window === window,
-          editor.text == expectedText else { return nil }
+    guard let editor, editor.window === window else { return nil }
+    let canonicalSelector = NSSelectorFromString("zoenComposerCanonicalText")
+    let canonicalInput = root.responds(to: canonicalSelector)
+    if canonicalInput {
+      guard let canonical = root.perform(canonicalSelector)?.takeUnretainedValue() as? String,
+            canonical == expectedText else { return nil }
+    } else {
+      guard editor.text == expectedText else { return nil }
+    }
     // RN's real multiline editor appends its placeholder to the accessible
     // label while empty. A labeled tagged container keeps the base label.
     let rootLabel = root.accessibilityLabel
@@ -43,22 +50,44 @@ enum ZoenComposerSizing {
         ? "\(expectedLabel) \(expectedPlaceholder)" : expectedLabel
       guard editor.accessibilityLabel == editorLabel else { return nil }
     }
-    let actualWidth = Double(editor.bounds.width)
+    let actualWidth = Double(canonicalInput ? root.bounds.width : editor.bounds.width)
     guard actualWidth.isFinite, actualWidth > 0,
-          abs(actualWidth - width) <= 1 else { return nil }
-    let attributedFont: UIFont? = if let attributed = editor.attributedText, attributed.length > 0 {
-      attributed.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+          abs(actualWidth - width) <= 1,
+          editor.bounds.width.isFinite, editor.bounds.width > 0 else { return nil }
+    var containerInsets: CGFloat = 0
+    if canonicalInput {
+      // ENRM uses RCTViewComponentView.contentView: Fabric puts padding on
+      // the host, outside its one UITextView. Measure its actual inner width
+      // and add only that real outer vertical geometry.
+      let frame = editor.convert(editor.bounds, to: root)
+      guard frame.minX >= -0.5, frame.minY >= -0.5,
+            frame.maxX <= root.bounds.maxX + 0.5,
+            frame.maxY <= root.bounds.maxY + 0.5 else { return nil }
+      containerInsets = max(0, root.bounds.height - frame.height)
+    }
+    let actualFontSize: Double
+    if canonicalInput {
+      // Heading/code runs intentionally differ from the body font. Validate
+      // the same native formatter's base size, not the first selected style.
+      let baseFontSelector = NSSelectorFromString("zoenComposerBaseFontSize")
+      guard root.responds(to: baseFontSelector),
+            let size = root.perform(baseFontSelector)?.takeUnretainedValue() as? NSNumber else { return nil }
+      actualFontSize = size.doubleValue
     } else {
-      nil
+      let attributedFont: UIFont? = if let attributed = editor.attributedText, attributed.length > 0 {
+        attributed.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+      } else {
+        nil
+      }
+      guard let font = attributedFont ?? editor.font ?? editor.typingAttributes[.font] as? UIFont else {
+        return nil
+      }
+      actualFontSize = Double(font.pointSize)
     }
-    guard let font = attributedFont ?? editor.font ?? editor.typingAttributes[.font] as? UIFont else {
-      return nil
-    }
-    let actualFontSize = Double(font.pointSize)
     guard actualFontSize.isFinite,
           abs(actualFontSize - expectedFontSize) <= 0.5 else { return nil }
-    // UITextView (including RN's override) accounts for its real paragraph
-    // attributes, wrapping, placeholder and insets. Do not add padding again.
+    // UITextView accounts for paragraph attributes and its own insets. Only
+    // ENRM's separate host padding remains outside that measurement.
     let fitting = editor.sizeThatFits(
       CGSize(width: editor.bounds.width, height: .greatestFiniteMagnitude)
     )
@@ -67,7 +96,7 @@ enum ZoenComposerSizing {
       "tag": Double(tag),
       "nonce": Double(nonce),
       "width": actualWidth,
-      "height": Double(fitting.height),
+      "height": Double(fitting.height + containerInsets),
       "fontSize": actualFontSize,
     ]
   }

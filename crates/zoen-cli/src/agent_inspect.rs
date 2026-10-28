@@ -286,6 +286,7 @@ pub(crate) async fn inspect(client: &Client, timeout_ms: u64) -> Result<String> 
             SpaceKindDto::Direct => "direct",
             SpaceKindDto::Group => "group",
             SpaceKindDto::Community => "community",
+            SpaceKindDto::Saved => "saved",
         };
         spaces.push(json!({
             "id": space.id, "kind": kind,

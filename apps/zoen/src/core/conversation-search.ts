@@ -13,6 +13,7 @@ export type ConversationSearchState = Readonly<{
 }>;
 export type ConversationSearchSource = {
   current(): boolean;
+  fitsQuery?(query: string): boolean;
   search(query: string, cursor: string | null): Promise<MessageSearchPage>;
 };
 const initial = (): ConversationSearchState => ({
@@ -41,9 +42,12 @@ export function conversationQueryFits(query: string): boolean {
 export class ConversationSearch {
   private state = initial();
   private generation = 0;
+  private firstPage: string | null = null;
+  private dirty = false;
   private listeners = new Set<() => void>();
   private readonly source: ConversationSearchSource;
-  constructor(source: ConversationSearchSource) {
+  constructor(source: ConversationSearchSource, query = '') {
+    this.state = { ...initial(), query };
     this.source = source;
   }
   isCurrent() {
@@ -62,14 +66,24 @@ export class ConversationSearch {
   }
   open() {
     this.publish({ active: true });
+    if (this.dirty) void this.refreshCanonical();
+  }
+  /** Keep the reviewed projection when returning, but retire all pending reads. */
+  suspend() {
+    this.generation++;
+    this.publish({ active: false, loading: false });
   }
   close() {
     this.generation++;
+    this.firstPage = null;
+    this.dirty = false;
     this.state = initial();
     for (const listener of this.listeners) listener();
   }
   setQuery(query: string) {
     this.generation++;
+    this.firstPage = null;
+    this.dirty = false;
     this.publish({
       query,
       hits: [],
@@ -80,11 +94,15 @@ export class ConversationSearch {
       error: null,
     });
   }
+  fitsQuery(query: string) {
+    return this.source.fitsQuery?.(query) ?? conversationQueryFits(query);
+  }
   async search() {
     const query = this.state.query.trim();
     const generation = ++this.generation;
-    if (!this.state.active || !query || !conversationQueryFits(query) || !this.source.current())
-      return;
+    if (!this.state.active || !query || !this.fitsQuery(query) || !this.source.current()) return;
+    this.dirty = false;
+    this.firstPage = null;
     this.publish({
       loading: true,
       completed: false,
@@ -97,6 +115,7 @@ export class ConversationSearch {
       const page = await this.source.search(query, null);
       if (!this.valid(generation)) return;
       const hits = uniqueHits(page.hits);
+      this.firstPage = pageKey(page);
       this.publish({
         hits,
         cursor: page.next_cursor,
@@ -108,17 +127,67 @@ export class ConversationSearch {
       if (this.valid(generation)) this.publish({ loading: false, error: failure(reason) });
     }
   }
+  /** Requalify against Core after a canonical event, including events received offscreen.
+   * Cursor bytes are compared opaquely: an unchanged clock/read preserves accepted pages;
+   * a changed index or first-page presentation replaces them from the fresh page. */
+  async refreshCanonical() {
+    this.dirty = true;
+    const generation = ++this.generation;
+    if (!this.isCurrent()) return;
+    const query = this.state.query.trim();
+    if (!query || !this.fitsQuery(query)) return;
+    this.publish({ loading: true, error: null });
+    try {
+      const page = await this.source.search(query, null);
+      if (!this.valid(generation)) return;
+      const key = pageKey(page),
+        unchanged = this.firstPage !== null && key === this.firstPage;
+      this.firstPage = key;
+      this.dirty = false;
+      this.publish({
+        ...(unchanged
+          ? {}
+          : {
+              hits: uniqueHits(page.hits),
+              cursor: page.next_cursor,
+              index: page.hits.length ? 0 : -1,
+            }),
+        loading: false,
+        completed: true,
+      });
+    } catch (reason) {
+      if (this.valid(generation)) {
+        this.firstPage = null;
+        this.publish({
+          hits: [],
+          cursor: null,
+          index: -1,
+          loading: false,
+          completed: false,
+          error: failure(reason),
+        });
+      }
+    }
+  }
   /** Search pages are newest first; older advances, newer moves back. */
   async move(direction: 'older' | 'newer') {
-    if (!this.source.current() || this.state.loading) return;
+    if (!this.isCurrent() || this.state.loading) return;
     const next = this.state.index + (direction === 'older' ? 1 : -1);
     if (next < 0) return;
     if (next < this.state.hits.length) {
       this.publish({ index: next });
       return;
     }
+    if (direction === 'older') await this.append(next);
+  }
+  /** List consumers load the next canonical page without moving their selection. */
+  async loadMore(observed: ConversationSearchState = this.state) {
+    if (observed !== this.state) return;
+    await this.append(this.state.index);
+  }
+  private async append(next: number) {
     const cursor = this.state.cursor;
-    if (!cursor || direction !== 'older') return;
+    if (!this.isCurrent() || this.state.loading || !cursor) return;
     const generation = ++this.generation;
     const query = this.state.query.trim();
     this.publish({ loading: true, error: null });
@@ -151,11 +220,16 @@ export class ConversationSearch {
 function uniqueHits(hits: readonly UniversalHit[]): UniversalHit[] {
   const seen = new Set<string>();
   return hits.filter((hit) => {
-    if (seen.has(hit.ref_id)) return false;
-    seen.add(hit.ref_id);
+    const key = JSON.stringify([hit.kind, hit.space_id, hit.ref_id]);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
 function failure(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
+}
+
+function pageKey(page: MessageSearchPage): string {
+  return JSON.stringify([page.hits, page.next_cursor]);
 }

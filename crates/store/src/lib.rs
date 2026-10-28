@@ -12,10 +12,13 @@ mod media;
 mod profiles;
 mod recent_attachments;
 mod search;
+mod universal_pages;
 pub use recent_attachments::RecentAttachmentIndexRow;
 #[cfg(test)]
 mod search_tests;
 mod sync;
+#[cfg(test)]
+mod universal_pages_tests;
 pub use image::MAX_MEMORY_IMAGE_BYTES;
 pub use profiles::ProfileKeyRow;
 pub use sync::{OutboxHead, PeerReceipt, Pending};

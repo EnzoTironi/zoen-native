@@ -3,6 +3,12 @@ import { defineFeature } from '../catalog.ts';
 export const settings = defineFeature(
   {
     you: 'You',
+    savedMessages: 'Saved Messages',
+    savedMessagesOpening: 'Opening Saved Messages…',
+    savedMessagesWaiting: 'Preparing this chat on your device. You can try again.',
+    savedMessagesFailed: 'Could not open Saved Messages. Check your connection and try again.',
+    savedMessagesAccountRequired: 'Open your unlocked account to use Saved Messages.',
+    savedMessagesEmpty: 'Keep messages, notes and files here.',
     settings: 'Settings',
     privacyAndSafety: 'Privacy and safety',
     blockedPeople: 'Blocked people',
@@ -107,6 +113,13 @@ export const settings = defineFeature(
   },
   {
     you: 'Você',
+    savedMessages: 'Mensagens salvas',
+    savedMessagesOpening: 'Abrindo mensagens salvas…',
+    savedMessagesWaiting: 'Preparando esta conversa no seu aparelho. Você pode tentar novamente.',
+    savedMessagesFailed:
+      'Não foi possível abrir as mensagens salvas. Confira sua conexão e tente novamente.',
+    savedMessagesAccountRequired: 'Abra sua conta desbloqueada para usar as mensagens salvas.',
+    savedMessagesEmpty: 'Guarde mensagens, notas e arquivos aqui.',
     settings: 'Configurações',
     privacyAndSafety: 'Privacidade e segurança',
     blockedPeople: 'Pessoas bloqueadas',

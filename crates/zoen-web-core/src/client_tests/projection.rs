@@ -14,6 +14,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
         3,
     )?;
     let prefs = types::ChatPrefs {
+        manual_unread: false,
         pinned: true,
         archived: true,
         muted_until_ms: Some(i64::MAX),
@@ -21,6 +22,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
     let body = || EventBody::ChatPrefsSet {
         space: chat.space().into(),
         prefs: prefs.clone(),
+        operation: None,
     };
     let mut personal = SpaceLog::new("sp_my_personal");
     clear(
@@ -40,6 +42,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
         EventBody::ChatPrefsSet {
             space: chat.space().into(),
             prefs: Default::default(),
+            operation: None,
         },
         6,
     )?;
@@ -61,6 +64,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
         EventBody::ChatPrefsSet {
             space: chat.space().into(),
             prefs: Default::default(),
+            operation: None,
         },
         8,
     )?;
@@ -109,6 +113,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
         EventBody::ChatPrefsSet {
             space: chat_id,
             prefs: Default::default(),
+            operation: None,
         },
         9,
     )?;

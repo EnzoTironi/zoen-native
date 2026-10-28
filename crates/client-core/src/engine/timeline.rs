@@ -40,11 +40,16 @@ impl Engine {
 
     pub(crate) fn space_summary_at(&self, id: &str, now: i64) -> R<SpaceSummary> {
         let s = self.space_state(id)?;
-        let kind = match s.kind {
-            SpaceKind::Direct => SpaceKindDto::Direct,
-            SpaceKind::Group => SpaceKindDto::Group,
-            SpaceKind::Community => SpaceKindDto::Community,
-            SpaceKind::Personal => return Err(not_found(&t("Espaço", "Space"))),
+        let saved = self.saved_messages_space(id);
+        let kind = if saved {
+            SpaceKindDto::Saved
+        } else {
+            match s.kind {
+                SpaceKind::Direct => SpaceKindDto::Direct,
+                SpaceKind::Group => SpaceKindDto::Group,
+                SpaceKind::Community => SpaceKindDto::Community,
+                SpaceKind::Personal => return Err(not_found(&t("Espaço", "Space"))),
+            }
         };
         let me = self.me.clone().unwrap_or_default();
         let members: Vec<Persona> = s.members.iter().map(|(m, _)| self.persona(m)).collect();
@@ -77,21 +82,29 @@ impl Engine {
         let prefs = self.state.chat_prefs.get(id).cloned().unwrap_or_default();
         let muted = prefs.muted_until_ms.is_some_and(|until| until > now);
         Ok(SpaceSummary {
+            manual_unread: prefs.manual_unread,
             pinned: prefs.pinned,
             archived: prefs.archived,
             muted,
             muted_until_ms: prefs.muted_until_ms.filter(|_| muted),
             id: s.id.clone(),
-            title: counterpart
-                .as_ref()
-                .map_or_else(|| s.title.clone(), |c| c.name.clone()),
+            title: if saved {
+                t("Mensagens salvas", "Saved Messages")
+            } else {
+                counterpart
+                    .as_ref()
+                    .map_or_else(|| s.title.clone(), |c| c.name.clone())
+            },
             kind,
             privacy: match s.privacy {
                 Privacy::EndToEnd => PrivacyDto::EndToEnd,
                 Privacy::Closed => PrivacyDto::Closed,
                 Privacy::Public => PrivacyDto::Public,
             },
-            can_write: s.integrity_error.is_none() && self.state.writer(id, &me),
+            can_write: s.integrity_error.is_none()
+                && self.state.writer(id, &me)
+                && (!saved
+                    || (self.saved_messages_canonical(id) && self.ready_epoch(id).is_some())),
             members,
             counterpart,
             last_preview,
@@ -124,14 +137,9 @@ impl Engine {
 
     /// Marks the chat read here and returns the watermark to tell the others (and my other
     /// devices), if it moved.
-    pub fn mark_read(&self, space: &str) -> R<Option<u64>> {
-        let s = self.space_state(space)?;
-        // Max, not last: my own pending messages sit at the end with no relay seq yet.
-        Ok(s.entries
-            .iter()
-            .map(|e| e.seq)
-            .max()
-            .filter(|seq| self.raise_read(space, *seq)))
+    pub fn mark_read(&mut self, space: &str) -> R<Option<u64>> {
+        self.space_state(space)?;
+        self.commit_chat_read(space, self.read_target_seq(space), None)
     }
 
     pub(crate) fn read_up_to(&self, space: &str) -> Option<u64> {
@@ -140,16 +148,6 @@ impl Engine {
             .ok()
             .flatten()
             .and_then(|v| v.parse().ok())
-    }
-
-    /// Raises (never lowers) this person's read watermark for a Space.
-    pub(crate) fn raise_read(&self, space: &str, seq: u64) -> bool {
-        if self.read_up_to(space).is_some_and(|r| r >= seq) {
-            return false;
-        }
-        self.store
-            .set_meta(&format!("read:{space}"), &seq.to_string())
-            .is_ok()
     }
 
     pub fn timeline(&self, space: &str) -> R<Vec<TimelineEntry>> {
@@ -374,6 +372,7 @@ impl Engine {
             EventBody::ChatPrefsSet {
                 space: space.to_string(),
                 prefs,
+                operation: None,
             },
         )?;
         Ok(())

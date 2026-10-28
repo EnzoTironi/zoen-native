@@ -15,9 +15,9 @@ impl Client {
             AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
             AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
             AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
-            AppCurrentShareContext, AppEditTargets, CallHistory, ConfirmForward, ControlAgent,
-            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
-            DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ConfirmForward,
+            ControlAgent, CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite,
+            DeleteMessage, DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
             ForwardMessage, ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace,
             MarkRead, Message, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
@@ -25,10 +25,10 @@ impl Client {
             PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
             RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
             RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
-            RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMute,
-            SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent,
-            Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy,
-            Thread, Timeline, UniversalSearch,
+            RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft,
+            SetChatMute, SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping,
+            ShareAppCurrent, Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect,
+            SubmitOwnerPolicy, Thread, Timeline, UniversalSearch, UniversalSearchPage,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -222,14 +222,29 @@ impl Client {
                     })?;
                 encode(&entry)
             }
-            UniversalSearch {
-                query,
-                kinds,
-                limit,
-            } => encode(&self.universal_search(query, kinds, limit.min(100))?),
-            command @ (SetChatPrefs { .. } | SetChatMuted { .. } | SetChatMute { .. }) => {
-                self.dispatch_chat_preferences(command)
+            UniversalSearchPage(input) => encode(&self.universal_search_page(
+                input.query,
+                input.kinds,
+                input.cursor,
+                input.limit,
+                input.expected_identity_id,
+                input.expected_device_id,
+            )?),
+            UniversalSearch(input) => {
+                encode(&self.universal_search(input.query, input.kinds, input.limit.min(100))?)
             }
+            command @ (SetChatPrefs(..)
+            | SetChatMuted(..)
+            | SetChatMute(..)
+            | ChatLayout { .. }) => self.dispatch_chat_preferences(command),
+            SavedMessages {
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &self
+                    .saved_messages(expected_identity_id, expected_device_id)
+                    .await?,
+            ),
             StartDirect { identity_id } => encode(&self.start_direct(identity_id)?),
             CreateGroup { title, member_ids } => encode(&self.create_group(title, member_ids)?),
             CreateCommunity { title } => encode(&self.create_community(title)?),

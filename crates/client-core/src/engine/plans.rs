@@ -85,7 +85,7 @@ impl Engine {
         )
     }
 
-    pub(super) fn personal_space(&self) -> Option<SpaceId> {
+    pub(crate) fn personal_space(&self) -> Option<SpaceId> {
         let me = self.me.as_deref()?;
         self.space_order
             .iter()

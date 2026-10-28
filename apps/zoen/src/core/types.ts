@@ -1,7 +1,9 @@
 import type { ReplySelection } from './generated/ReplySelection';
+import type { SpaceSummary } from './generated/SpaceSummary';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
 import type { PageInputPort } from '../documents/page-input';
 import type { LogEventsPage } from './generated/LogEventsPage';
+import type { ChatLayoutResult } from './generated/ChatLayoutResult';
 import type { Command } from './generated/Command';
 import type { Snapshot } from './generated/Snapshot';
 import type { TimelinePage } from './generated/TimelinePage';
@@ -48,6 +50,7 @@ import type { AgentDefinitionUpdateDto } from './generated/AgentDefinitionUpdate
 import type { AgentEnrollmentPreviewDto } from './generated/AgentEnrollmentPreviewDto';
 import type { AgentEnrollmentDeliveryDto } from './generated/AgentEnrollmentDeliveryDto';
 import type { AgentEnrollmentStatusDto } from './generated/AgentEnrollmentStatusDto';
+import type { UniversalSearchPage } from './generated/UniversalSearchPage';
 import type { UniversalResults } from './generated/UniversalResults';
 import type { PageBlockDto } from './generated/PageBlockDto';
 import type { MediaDriver } from '../media/types';
@@ -91,6 +94,8 @@ export type CoreEvent =
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
 type Results = {
+  chat_layout: ChatLayoutResult;
+  saved_messages: SpaceSummary;
   space_member_context: SpaceMemberContext;
   remove_member_reviewed: SpaceMemberContext;
   set_member_role_reviewed: SpaceMemberContext;
@@ -215,6 +220,7 @@ type Results = {
   blocked_people: string[];
   message: TimelineEntry;
   universal_search: UniversalResults;
+  universal_search_page: UniversalSearchPage;
   new_mutation_id: string;
   page_parse_markdown: PageBlockDto[];
   page_block_markdown: string;

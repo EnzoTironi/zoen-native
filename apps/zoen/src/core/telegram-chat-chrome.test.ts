@@ -114,6 +114,7 @@ function fixture(
     '../core/provider': { useClient: () => ({ snapshot: { conversations: [chat] } }) },
     '../components/dialogs': { useDialogs: () => ({ inform: async () => {} }) },
     '../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
+    '../saved-messages/conversation-avatar': { ConversationAvatar: 'ConversationAvatar' },
     '../theme': {
       useTheme: () => ({
         colors: { text: '#fff', secondary: '#aaa', accent: '#9f0' },
@@ -152,6 +153,7 @@ function fixture(
     id: 'space-one',
     scrollViewTag: 1234,
     title: 'A real conversation with a long name',
+    saved: false,
     counterpart: { id: 'person', kind: 'Person', tint_hex: '#123' },
     activityLabel: 'typing',
     search: { active: false, onToggle: () => searches++ },
@@ -364,4 +366,22 @@ test('voice/video share one native call menu and unavailable or non-private conv
     nodes(f.bar()).some((node) => node.props.space === f.props.id),
     false,
   );
+});
+
+test('Saved Messages opens its media and never exposes calls or group details', () => {
+  const f = fixture('ios', 402, 1, true, true);
+  f.chat.kind = 'saved';
+  f.props.saved = true;
+  const bar = nodes(f.bar());
+  assert.equal(
+    bar.some((node) => node.props.space === f.props.id),
+    false,
+  );
+  assert.ok(bar.some((node) => node.type === 'ConversationAvatar'));
+  bar.find((node) => node.props.testID === 'chat-details-avatar')!.props.onPress();
+  f.title().props.onPress();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.paths)), [
+    { pathname: '/shared-media/[id]', params: { id: 'space-one' } },
+    { pathname: '/shared-media/[id]', params: { id: 'space-one' } },
+  ]);
 });

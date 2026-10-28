@@ -244,7 +244,7 @@ impl<S: Signer> Client<S> {
                 if event.author != self.account.identity {
                     continue;
                 }
-                if let EventBody::ChatPrefsSet { space, prefs } = &event.body {
+                if let EventBody::ChatPrefsSet { space, prefs, .. } = &event.body {
                     preferences.insert(space.clone(), prefs.clone());
                 }
             }

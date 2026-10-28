@@ -80,6 +80,24 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     }
     let body = env.body();
     let author = env.author();
+    if types::saved_messages::reserved(env.space()) {
+        if !types::saved_messages::owned_by(env.space(), author) {
+            return Err(Reject::no("saved messages belongs to another identity"));
+        }
+        if matches!(&body, Some(EventBody::SpaceCreated { .. }))
+            && !body
+                .as_ref()
+                .is_some_and(|body| types::saved_messages::genesis(env.space(), author, body))
+        {
+            return Err(Reject::no("invalid saved messages genesis"));
+        }
+        if matches!(
+            &body,
+            Some(EventBody::MemberAdded { .. } | EventBody::MemberRemoved { .. })
+        ) {
+            return Err(Reject::no("saved messages has only its owner"));
+        }
+    }
     let effect = match (&f.head, body.clone()) {
         (None, Some(EventBody::SpaceCreated { kind, privacy, .. })) => {
             if kind == SpaceKind::Personal {
@@ -89,7 +107,7 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
         }
         (None, _) => return Err(Reject::no("unknown space")),
         (Some(_), Some(EventBody::SpaceCreated { .. })) => {
-            return Err(Reject::no("space already exists"))
+            return Err(Reject::no("space already exists"));
         }
         (Some(_), Some(EventBody::MemberAdded { identity, role })) => {
             admit_member_add(env, f, identity, role)?
@@ -349,3 +367,6 @@ fn check_causal_link(env: &Envelope, f: &Facts, effect: &Effect) -> Result<(), R
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod saved_messages_tests;
