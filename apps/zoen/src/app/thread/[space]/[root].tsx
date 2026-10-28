@@ -6,7 +6,7 @@ import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { Text, View, type TextInputInstance } from 'react-native';
+import { Text, type TextInputInstance } from 'react-native';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
 import { useMessageAudioFocus } from '../../../media/message-audio-provider';

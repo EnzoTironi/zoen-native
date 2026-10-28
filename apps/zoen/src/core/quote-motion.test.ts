@@ -96,7 +96,7 @@ test('actual FlashList commit starts one shared quote transition, with retargeti
     { anchorUntilInteraction: true },
   );
   const flushEnd = () => {
-    for (const work of [...frames]) {
+    for (const work of frames) {
       frames.delete(work);
       work();
     }
