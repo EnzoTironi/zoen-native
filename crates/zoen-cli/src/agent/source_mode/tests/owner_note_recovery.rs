@@ -164,7 +164,7 @@ async fn pretty_proposal_recovers_its_exact_confirmation_only_once() -> TestResu
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unavailable_owner_history_is_retry_without_inference_or_journal() -> TestResult {
+async fn wrong_owner_is_retry_without_inference_or_journal() -> TestResult {
     let f = Fixture::new("http://127.0.0.1:1")?;
     let calls = Arc::new(AtomicUsize::new(0));
     let mut cx = context(&f, &calls, false);
@@ -182,5 +182,36 @@ async fn unavailable_owner_history_is_retry_without_inference_or_journal() -> Te
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(!cx.journal.exists());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn missing_owner_profile_and_inbox_do_not_block_normal_turns_or_create_a_dm() -> TestResult {
+    for remove_profile in [false, true] {
+        let mut f = Fixture::new("http://127.0.0.1:1")?;
+        if remove_profile {
+            f.close();
+            let database = rusqlite::Connection::open(f.path.join("agent.sqlite"))?;
+            assert_eq!(
+                database.execute("DELETE FROM identities WHERE id = ?1", [&f.owner])?,
+                1
+            );
+            drop(database);
+            f.reopen();
+        }
+        let before = serde_json::to_value(f.client.spaces())?;
+        let pending = f.client.connection().pending;
+        assert!(f.client.agent_owner_timeline(&f.owner)?.is_none());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let cx = context(&f, &calls, false);
+        assert_eq!(
+            handle(&f, &cx).await,
+            super::super::super::turn::Outcome::Handled
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(serde_json::to_value(f.client.spaces())?, before);
+        assert_eq!(f.client.connection().pending, pending);
+        assert!(f.client.agent_owner_timeline(&f.owner)?.is_none());
+    }
     Ok(())
 }

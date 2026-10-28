@@ -185,8 +185,10 @@ pub(super) fn owner_note(
     space: &str,
     source: &TimelineEntry,
 ) -> Result<Option<serde_json::Value>, client_core::CoreError> {
-    let dm = e.start_direct(cx.owner.clone())?;
-    Ok(e.timeline(dm)?.iter().find_map(|message| {
+    let Some(timeline) = e.agent_owner_timeline(&cx.owner)? else {
+        return Ok(None);
+    };
+    Ok(timeline.iter().find_map(|message| {
         if message.author.id != cx.me {
             return None;
         }
