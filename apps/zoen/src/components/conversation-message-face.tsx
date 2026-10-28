@@ -42,6 +42,7 @@ export function renderConversationMessage(context: MessageFace) {
     reducedMotion,
     bubble,
     accessibilityMessageLabel,
+    accessibilityText,
     formattedText,
     p,
     Math,
@@ -279,6 +280,7 @@ export function renderConversationMessage(context: MessageFace) {
                           testID={`message-body-${entry.id}`}
                           onLayout={revealAnchor?.onLayout}
                           text={text}
+                          accessibilityText={accessibilityText}
                           color={attachment && !appCard ? colors.text : ink}
                           fontSize={messageFontSize}
                           maxWidth={Math.max(
@@ -383,6 +385,7 @@ export function renderConversationMessage(context: MessageFace) {
                           revision={entry.text_revision}
                           expandedForReveal={Boolean(revealAnchor)}
                           text={fileCaption}
+                          accessibilityText={accessibilityText}
                           onLayout={revealAnchor?.onLayout}
                           color={ink}
                           fontSize={p.typography.message.fontSize}

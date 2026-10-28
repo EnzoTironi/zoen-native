@@ -133,7 +133,7 @@ export const conversationCode = (
         setup(builder) {
           transformMessageModules(builder, 'ios');
           builder.onResolve({ filter: /./ }, ({ path }) =>
-            /^(?:\.\/conversation-message-(?:face|details)|\.\/use-conversation-message)$/.test(
+            /^(?:\.\/conversation-message-(?:face|details)|\.\/use-conversation-message|\.\/use-rendered-message-text)$/.test(
               path,
             )
               ? undefined
