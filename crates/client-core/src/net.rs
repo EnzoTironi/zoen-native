@@ -58,7 +58,8 @@ use cursor_repair::{CursorRepair, CursorRepairPolicy};
 /// Live fan-out can race a room's membership history during catch-up. Hold only a
 /// bounded set of unvalidated pairs on this socket, never in the durable cache.
 #[derive(Default)]
-pub(crate) struct DeferredReceipts(HashMap<(String, String), (u64, u64)>);
+pub(crate) struct DeferredReceipts(HashMap<(String, String), (u64, u64)>, DeferredReadTimes);
+type DeferredReadTimes = HashMap<(String, String, u64, u64), (protocol::read_time::ReadTime, i64)>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnState {

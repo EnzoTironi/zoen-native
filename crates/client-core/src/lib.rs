@@ -93,6 +93,8 @@ pub use recent_attachments::{
 pub mod chat_layout;
 mod chat_mute;
 pub use universal_pages::UniversalSearchPage;
+mod message_info;
+pub use message_info::{MessageInfo, MessageInfoScope};
 mod message_drafts;
 mod native_surfaces;
 pub use chat_mute::ChatMuteMode;

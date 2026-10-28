@@ -10,6 +10,7 @@ struct ZoenMessageContextConfiguration: Decodable {
       case "reply": "arrowshape.turn.up.left"
       case "thread": "bubble.left.and.bubble.right"
       case "select": "text.cursor"
+      case "info": "info.circle"
       case "selectMessages": "checkmark.circle"
       case "copy": "doc.on.doc"
       case "edit": "pencil"

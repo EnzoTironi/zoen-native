@@ -1,3 +1,4 @@
+use super::read_time_schema::PbReadTime;
 use super::Message;
 
 #[derive(Clone, PartialEq, Message)]
@@ -419,6 +420,9 @@ pub struct PbEphemeral {
     pub from: String,
     #[prost(oneof = "pb_ephemeral::Kind", tags = "3, 4, 5, 6, 7")]
     pub kind: Option<pb_ephemeral::Kind>,
+    /// Append-only optional field: old decoders retain the ordinary Read watermark.
+    #[prost(message, optional, tag = "8")]
+    pub read_time: Option<PbReadTime>,
 }
 
 pub mod pb_ephemeral {
