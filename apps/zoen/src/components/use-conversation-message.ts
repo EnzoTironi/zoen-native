@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import { useRenderedMessageText, type RenderedMessageText } from './use-rendered-message-text';
+import { useSemanticMessagePreview } from './use-semantic-message-preview';
 import { messageMayContainMarkdown } from '../core/message-markdown';
 import {
   largeEmojiFontSize,
@@ -108,6 +109,22 @@ export function useConversationMessage({
       measures.clear();
     };
   }, [entry.id]);
+  const replyPreview = useSemanticMessagePreview({
+    owner: JSON.stringify([
+      spaceId,
+      entry.id,
+      entry.text_revision,
+      entry.reply_to?.id,
+      entry.reply_to?.selection?.revision,
+    ]),
+    text: entry.reply_to?.selection?.text ?? entry.reply_to?.text ?? '',
+    enabled: !entry.deleted && !!entry.reply_to,
+    literal: !!entry.reply_to?.selection,
+    target:
+      entry.reply_to && !entry.reply_to.selection
+        ? { spaceId, messageId: entry.reply_to.id }
+        : undefined,
+  });
   const mine = entry.author.is_me;
   const card = messageCard(entry);
   const appCard = card?.kind_id === 'app' && !!card.app;
@@ -305,7 +322,9 @@ export function useConversationMessage({
       ? entry.author.name
       : `${entry.author.name}: ${accessibilityText.text}`,
     !entry.deleted && entry.reply_to
-      ? `${t('chat.replyingTo', { name: entry.reply_to.author.name })}: ${entry.reply_to.text}`
+      ? [t('chat.replyingTo', { name: entry.reply_to.author.name }), replyPreview.text]
+          .filter(Boolean)
+          .join(': ')
       : null,
     !entry.deleted && entry.forwarded ? t('chat.forwarded') : null,
     entry.edited ? t('chat.editedAt', { time }) : time,
@@ -389,6 +408,7 @@ export function useConversationMessage({
     bubble,
     accessibilityMessageLabel,
     accessibilityText,
+    replyPreview,
     formattedText,
     p,
     Math,

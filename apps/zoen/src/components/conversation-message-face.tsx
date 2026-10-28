@@ -43,6 +43,7 @@ export function renderConversationMessage(context: MessageFace) {
     bubble,
     accessibilityMessageLabel,
     accessibilityText,
+    replyPreview,
     formattedText,
     p,
     Math,
@@ -247,7 +248,7 @@ export function renderConversationMessage(context: MessageFace) {
                             opacity: 0.75,
                           }}
                         >
-                          {entry.reply_to.text}
+                          {replyPreview.text ?? '…'}
                         </Text>
                       </Pressable>
                     </MessageContextControl>

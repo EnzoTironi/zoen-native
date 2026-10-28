@@ -28,6 +28,8 @@ export function preparePackage(app: string, directory: string) {
     '025+quote-collapse-public-contract',
     '026+quote-collapse-text-layout',
     '027+quote-collapse-native-host',
+    '030+semantic-text-projection',
+    '031+semantic-projection-android-codegen',
   ].map((stage) => join(app, `patches/react-native-enriched-markdown+1.1.1+${stage}.patch`));
   const paths = new Set(
     patches.flatMap((patch) =>
@@ -108,6 +110,8 @@ export function preparePackage(app: string, directory: string) {
     () => existsSync(join(pkg, 'ios/utils/ENRMQuotePresentation.mm')),
     () =>
       readFileSync(join(pkg, 'ios/EnrichedMarkdown.mm'), 'utf8').includes('view.onQuoteToggle ='),
+    () => existsSync(join(pkg, 'ios/utils/ENRMPlainTextProjection.mm')),
+    () => existsSync(join(pkg, 'android/generated/jni/EnrichedMarkdownTextSpec-generated.cpp')),
   ];
   for (const [index, patch] of patches.entries())
     if (!markers[index]!())
