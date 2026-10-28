@@ -15,6 +15,7 @@ const USAGE: &str = "usage: zoen [--home DIR] <command>\n\n\
          member-role CHAT PERSON [member|reader|admin] [--json]   inspect or assign a reviewed role\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
          read CHAT [--json] [--peek] [--older]   --peek omits the read watermark; no --older\n\
+         message-info CHAT MESSAGE_ID     canonical sent/edit/read metadata (JSON)\n\
          agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
          agent-host [--for SECS] [--source ID]   source requires --for; no cursor advancement\n\
          agent-controls [--for SECS]     host authenticated owner controls only; no model or content work\n\
