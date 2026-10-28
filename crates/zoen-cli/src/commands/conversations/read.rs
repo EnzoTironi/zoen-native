@@ -96,7 +96,9 @@ pub(super) async fn read(client: &Client, space: &str, options: Options) -> Resu
                 .join("\n")
     };
     if !options.peek {
-        let _ = client.mark_read(space.into());
+        client
+            .mark_read(space.into())
+            .map_err(|error| error.to_string())?;
     }
     Ok(output)
 }

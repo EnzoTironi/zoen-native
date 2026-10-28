@@ -1,6 +1,7 @@
 //! Conversations commands use the same already-open Client.
 use super::*;
 mod member_role;
+mod message_info;
 mod read;
 
 pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
@@ -111,6 +112,23 @@ pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
                     "sent"
                 },
                 t.id
+            );
+        }
+        "message-info" => {
+            if cli.args.len() != 2
+                || cli
+                    .args
+                    .iter()
+                    .any(|value| value.is_empty() || value.starts_with("--"))
+            {
+                die("message-info expects CHAT MESSAGE_ID");
+            }
+            let space = chat(&e, &cli.args[0]);
+            println!(
+                "{}",
+                message_info::read(&e, &space, &cli.args[1])
+                    .await
+                    .unwrap_or_else(|error| die(error))
             );
         }
         "read" => {
