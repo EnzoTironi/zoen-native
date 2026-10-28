@@ -201,6 +201,7 @@ export function albumMetadata(delivery: TimelineEntry['delivery']) {
     './use-semantic-message-preview': {
       useSemanticMessagePreview: ({ text }: { text: string }) => ({ text }),
     },
+    './quote-layout-context': { useQuoteLayoutTransition: () => null },
     './primitives': { Icon: 'Icon' },
   };
   const module = { exports: {} as { ConversationMessage(props: unknown): Element } };

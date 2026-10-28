@@ -244,6 +244,9 @@ function renderScreen(
       return { conversationScope };
     if (path.endsWith('/core/initial-timeline-end')) return { InitialTimelineEnd: LayoutPort };
     if (path === './navigation-container') return { navigationMetricsAvailable: false };
+    if (path === './quote-layout-context') return { QuoteMotionView: 'QuoteMotionView' };
+    if (path === './quote-layout-transition')
+      return { QuoteLayoutTransition: 'QuoteLayoutTransition' };
     if (path === './use-chat-native-metrics')
       return { useChatNativeMetrics: () => ({ navigationMetrics: {}, observe: undefined }) };
     if (path === './use-conversation-rail')
@@ -332,9 +335,16 @@ function nodes(value: unknown): Element[] {
   if (!value || typeof value !== 'object' || !('props' in value)) return [];
   const node = value as Element;
   const children =
-    node.type === 'ConversationViewport' && typeof node.props.children === 'function'
-      ? node.props.children('ComposerSpacer', 'NativeScroll')
-      : node.props.children;
+    node.type === 'QuoteLayoutTransition' && typeof node.props.children === 'function'
+      ? node.props.children(
+          false,
+          () => {},
+          () => {},
+          false,
+        )
+      : node.type === 'ConversationViewport' && typeof node.props.children === 'function'
+        ? node.props.children('ComposerSpacer', 'NativeScroll')
+        : node.props.children;
   return [node, ...nodes(children), ...nodes(node.props.overlay)];
 }
 
