@@ -511,7 +511,10 @@ async fn checked(
                     "agent_host_source_approval_refused",
                     format_args!("tool approval refused: {error}"),
                 );
-                true
+                // The model result is already durable. Delivery failure must
+                // not retire it or advance the source cursor; retry that exact
+                // held call without another inference or unapproved execution.
+                false
             }
         },
         // A scoped draft stays at the signed source, not another conversation.
