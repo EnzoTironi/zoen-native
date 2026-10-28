@@ -1,0 +1,324 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+@@ -38,6 +38,7 @@
+ #import "LastElementUtils.h"
+ #import "LinkTapUtils.h"
+ #import "MarkdownASTNode.h"
++#import "MarkdownASTSerializer.h"
+ #import "MarkdownAccessibilityElementBuilder.h"
+ #import "MarkdownExtractor.h"
+ #import "MeasurementCache.h"
+@@ -100,6 +101,7 @@
+   ENRMMd4cFlags *_md4cFlags;
+   BOOL _isGFM;
+   NSString *_cachedMarkdown;
++  NSString *_accessibilityRevision;
+   NSString *_renderedMarkdown;
+   ENRMLatexErrorCoordinator *_latexErrorCoordinator;
+   NSMutableArray<RCTUIView *> *_segmentViews;
+@@ -753,6 +755,8 @@
+   ENRMWritingDirectionMode writingDirectionMode = _writingDirectionMode;
+   NSWritingDirection resolvedLayoutDirection = _resolvedLayoutDirection;
+ 
++  NSString *accessibilityRevision = [_accessibilityRevision copy];
++  __block NSString *accessibilityText = @"";
+   __block NSArray<ENRMRenderedSegment *> *renderedSegments = nil;
+   __block NSString *renderableMarkdown = nil;
+   __block BOOL endsInsideOpenCodeFence = NO;
+@@ -774,6 +778,7 @@
+           return NO;
+ 
+         ENRMApplyQuotePresentation(ast, quoteCollapse);
++        if (accessibilityRevision.length) accessibilityText = plainTextFromASTNode(ast);
+         renderedSegments = ENRMRenderSegmentsFromAST(ast, config, allowTrailingMargin, allowFontScaling,
+                                                      maxFontSizeMultiplier, lineBreakStrategy,
+                                                      /*blockquoteContent*/ NO);
+@@ -790,6 +795,7 @@
+         [self applyRenderedSegments:renderedSegments
+                    renderedMarkdown:renderableMarkdown
+             endsInsideOpenCodeFence:endsInsideOpenCodeFence];
++        [self emitResolvedAccessibilityText:accessibilityText markdown:markdownString revision:accessibilityRevision];
+       }];
+ }
+ 
+@@ -1123,6 +1129,10 @@
+   const auto &newViewProps = *std::static_pointer_cast<EnrichedMarkdownProps const>(props);
+ 
+   BOOL markdownChanged = oldViewProps.markdown != newViewProps.markdown;
++  if (oldViewProps.accessibilityRevision != newViewProps.accessibilityRevision) {
++    _accessibilityRevision = [[NSString alloc] initWithUTF8String:newViewProps.accessibilityRevision.c_str()];
++    _dirtyFlags |= ENRMDirtyRender;
++  }
+   const auto &oldQuote = oldViewProps.quoteCollapse;
+   const auto &newQuote = newViewProps.quoteCollapse;
+   BOOL quoteChanged = oldQuote.enabled != newQuote.enabled || oldQuote.expanded != newQuote.expanded ||
+@@ -1385,6 +1395,7 @@
+   [_segmentSignatures removeAllObjects];
+ 
+   _cachedMarkdown = nil;
++  _accessibilityRevision = nil;
+   _quoteCollapse = {};
+ #if !TARGET_OS_OSX
+   [_quoteReadingAnchor cancel];
+@@ -1638,6 +1649,17 @@
+ }
+ #endif
+ 
++// Emit only after the matching AST has committed. Recycling/prop changes and
++// partial streaming renders cannot publish a receipt for another source.
++- (void)emitResolvedAccessibilityText:(NSString *)text markdown:(NSString *)markdown revision:(NSString *)revision
++{
++  if (!_eventEmitter || !revision.length || ![revision isEqualToString:_accessibilityRevision] ||
++      ![markdown isEqualToString:_cachedMarkdown] || ![markdown isEqualToString:_renderedMarkdown]) return;
++  const auto emitter = std::static_pointer_cast<const EnrichedMarkdownEventEmitter>(_eventEmitter);
++  emitter->onResolvedAccessibilityText({.revision = std::string(revision.UTF8String ?: ""),
++    .markdown = std::string(markdown.UTF8String ?: ""), .text = std::string(text.UTF8String ?: "")});
++}
++
+ - (BOOL)isAccessibilityElement
+ {
+   return NO;
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
+@@ -15,2 +15,13 @@
+ 
++void EnrichedMarkdownEventEmitter::onResolvedAccessibilityText(OnResolvedAccessibilityText event) const {
++  dispatchEvent("resolvedAccessibilityText", [event=std::move(event)](jsi::Runtime &runtime) {
++    auto payload = jsi::Object(runtime);
++    payload.setProperty(runtime, "revision", event.revision);
++payload.setProperty(runtime, "markdown", event.markdown);
++payload.setProperty(runtime, "text", event.text);
++    return payload;
++  });
++}
++
++
+ void EnrichedMarkdownEventEmitter::onBlockquoteToggle(OnBlockquoteToggle event) const {
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
+@@ -19,2 +19,8 @@
+ 
++  struct OnResolvedAccessibilityText {
++      std::string revision;
++    std::string markdown;
++    std::string text;
++    };
++
+   struct OnBlockquoteToggle {
+@@ -66,2 +72,4 @@
+     };
++  void onResolvedAccessibilityText(OnResolvedAccessibilityText value) const;
++
+   void onBlockquoteToggle(OnBlockquoteToggle value) const;
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+@@ -21,2 +21,3 @@
+ 
++    accessibilityRevision(convertRawProp(context, rawProps, "accessibilityRevision", sourceProps.accessibilityRevision, {})),
+     quoteCollapse(convertRawProp(context, rawProps, "quoteCollapse", sourceProps.quoteCollapse, {})),
+@@ -66,2 +67,6 @@
+   
++  if (accessibilityRevision != oldProps->accessibilityRevision) {
++    result["accessibilityRevision"] = accessibilityRevision;
++  }
++    
+   if (quoteCollapse != oldProps->quoteCollapse) {
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+@@ -3200,2 +3200,3 @@
+ 
++  std::string accessibilityRevision{};
+   EnrichedMarkdownQuoteCollapseStruct quoteCollapse{};
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+@@ -425,3 +425,6 @@
+ 
++type ResolvedAccessibilityTextEvent = Readonly<{ revision: string; markdown: string; text: string }>;
+ export interface NativeProps extends ViewProps {
++  accessibilityRevision?: string;
++  onResolvedAccessibilityText?: CodegenTypes.BubblingEventHandler<ResolvedAccessibilityTextEvent>;
+   quoteCollapse?: Readonly<QuoteCollapseConfig>;
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js b/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
+--- a/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
++++ b/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
+@@ -75,2 +75,4 @@
+   onLinkPress,
++  accessibilityRevision,
++  onResolvedAccessibilityText,
+   onLinkLongPress,
+@@ -167,2 +169,3 @@
+   }, []);
++  const handleResolvedAccessibilityText = useCallback(event => onResolvedAccessibilityText?.(event.nativeEvent), [onResolvedAccessibilityText]);
+   const handleLinkPress = useCallback(e => {
+@@ -303,3 +306,5 @@
+     return /*#__PURE__*/_jsx(EnrichedMarkdownNativeComponent, {
+-      ...sharedProps
++      ...sharedProps,
++      accessibilityRevision,
++      onResolvedAccessibilityText: onResolvedAccessibilityText ? handleResolvedAccessibilityText : undefined
+     });
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
+@@ -356,3 +356,6 @@
+ }
++type ResolvedAccessibilityTextEvent = Readonly<{ revision: string; markdown: string; text: string }>;
+ export interface NativeProps extends ViewProps {
++    accessibilityRevision?: string;
++    onResolvedAccessibilityText?: CodegenTypes.BubblingEventHandler<ResolvedAccessibilityTextEvent>;
+     /**
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/index.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/index.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/index.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/index.d.ts
+@@ -3,3 +3,3 @@
+ export type { EnrichedMarkdownTextProps, StreamingConfig, MarkdownStyle, Md4cFlags, ContextMenuItem as TextContextMenuItem, SelectionMenuConfig as TextSelectionMenuConfig, SelectionMenuPluralLabels as TextSelectionMenuPluralLabels, } from './native/EnrichedMarkdownText';
+-export type { LinkPressEvent, LinkLongPressEvent, ImagePressEvent, TaskListItemPressEvent, CopyPressEvent, LatexErrorEvent, CodeBlockPressEvent, } from './types/events';
++export type { ResolvedAccessibilityTextEvent, LinkPressEvent, LinkLongPressEvent, ImagePressEvent, TaskListItemPressEvent, CopyPressEvent, LatexErrorEvent, CodeBlockPressEvent, } from './types/events';
+ export type { AccessibilityLabels, ResolvedAccessibilityLabels, } from './types/AccessibilityLabels';
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/native/EnrichedMarkdownText.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/native/EnrichedMarkdownText.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/native/EnrichedMarkdownText.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/native/EnrichedMarkdownText.d.ts
+@@ -2,6 +2,6 @@
+ import type { EnrichedMarkdownTextProps, StreamingConfig, ContextMenuItem, SelectionMenuConfig, SelectionMenuPluralLabels } from '../types/MarkdownTextProps';
+-import type { LinkPressEvent, LinkLongPressEvent, ImagePressEvent, TaskListItemPressEvent, CopyPressEvent, LatexErrorEvent, CodeBlockPressEvent } from '../types/events';
++import type { ResolvedAccessibilityTextEvent, LinkPressEvent, LinkLongPressEvent, ImagePressEvent, TaskListItemPressEvent, CopyPressEvent, LatexErrorEvent, CodeBlockPressEvent } from '../types/events';
+ export type { MarkdownStyle, Md4cFlags };
+ export type { EnrichedMarkdownTextProps, StreamingConfig, ContextMenuItem, SelectionMenuConfig, SelectionMenuPluralLabels, };
+-export type { LinkPressEvent, LinkLongPressEvent, ImagePressEvent, TaskListItemPressEvent, CopyPressEvent, LatexErrorEvent, CodeBlockPressEvent, };
++export type { ResolvedAccessibilityTextEvent, LinkPressEvent, LinkLongPressEvent, ImagePressEvent, TaskListItemPressEvent, CopyPressEvent, LatexErrorEvent, CodeBlockPressEvent, };
+ export declare const EnrichedMarkdownText: ({ markdown, markdownStyle, containerStyle, onLinkPress, onLinkLongPress, onImagePress, onTaskListItemPress, enableTaskListItemToggle, onCopyPress, onLatexError, onCodeBlockPress, enableBlockContextMenu, enableLinkPreview, selectable, md4cFlags, allowFontScaling, maxFontSizeMultiplier, allowTrailingMargin, flavor, streamingAnimation, streamingConfig, spoilerOverlay, contextMenuItems, imageRequestHeaders, selectionMenuConfig, accessibilityLabels, selectionColor, selectionHandleColor, textBreakStrategy, lineBreakStrategyIOS, writingDirection, numberOfLines, ellipsizeMode, ...rest }: EnrichedMarkdownTextProps) => import("react/jsx-runtime").JSX.Element;
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
+@@ -3,3 +3,3 @@
+ import type { AccessibilityLabels } from './AccessibilityLabels';
+-import type { LinkPressEvent, LinkLongPressEvent, ImagePressEvent, TaskListItemPressEvent, CopyPressEvent, LatexErrorEvent, CodeBlockPressEvent } from './events';
++import type { ResolvedAccessibilityTextEvent, LinkPressEvent, LinkLongPressEvent, ImagePressEvent, TaskListItemPressEvent, CopyPressEvent, LatexErrorEvent, CodeBlockPressEvent } from './events';
+ /**
+@@ -153,3 +153,6 @@
+      */
+-    onLinkPress?: (event: LinkPressEvent) => void;
++    /** iOS GitHub renderer: bind the committed AST text receipt to a caller-owned row revision. */
++  accessibilityRevision?: string;
++  onResolvedAccessibilityText?: (event: ResolvedAccessibilityTextEvent) => void;
++  onLinkPress?: (event: LinkPressEvent) => void;
+     /**
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts
+@@ -58,2 +58,3 @@
+ }
+-//# sourceMappingURL=events.d.ts.map+//# sourceMappingURL=events.d.ts.map
++export interface ResolvedAccessibilityTextEvent { revision: string; markdown: string; text: string; }
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+@@ -424,7 +424,10 @@
+   generation: CodegenTypes.Int32;
+ }
+ 
++type ResolvedAccessibilityTextEvent = Readonly<{ revision: string; markdown: string; text: string }>;
+ export interface NativeProps extends ViewProps {
++  accessibilityRevision?: string;
++  onResolvedAccessibilityText?: CodegenTypes.BubblingEventHandler<ResolvedAccessibilityTextEvent>;
+   quoteCollapse?: Readonly<QuoteCollapseConfig>;
+   onBlockquoteToggle?: CodegenTypes.DirectEventHandler<QuoteToggleEvent>;
+ 
+diff --git a/node_modules/react-native-enriched-markdown/src/index.tsx b/node_modules/react-native-enriched-markdown/src/index.tsx
+--- a/node_modules/react-native-enriched-markdown/src/index.tsx
++++ b/node_modules/react-native-enriched-markdown/src/index.tsx
+@@ -10,6 +10,7 @@
+   SelectionMenuPluralLabels as TextSelectionMenuPluralLabels,
+ } from './native/EnrichedMarkdownText';
+ export type {
++  ResolvedAccessibilityTextEvent,
+   LinkPressEvent,
+   LinkLongPressEvent,
+   ImagePressEvent,
+diff --git a/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx b/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
+--- a/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
++++ b/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
+@@ -19,6 +19,7 @@
+   SelectionMenuPluralLabels,
+ } from '../types/MarkdownTextProps';
+ import type {
++  ResolvedAccessibilityTextEvent,
+   LinkPressEvent,
+   LinkLongPressEvent,
+   ImagePressEvent,
+@@ -38,6 +39,7 @@
+   SelectionMenuPluralLabels,
+ };
+ export type {
++  ResolvedAccessibilityTextEvent,
+   LinkPressEvent,
+   LinkLongPressEvent,
+   ImagePressEvent,
+@@ -125,6 +127,8 @@
+   markdownStyle = {},
+   containerStyle,
+   onLinkPress,
++  accessibilityRevision,
++  onResolvedAccessibilityText,
+   onLinkLongPress,
+   onImagePress,
+   onTaskListItemPress,
+@@ -233,6 +237,10 @@
+     []
+   );
+ 
++  const handleResolvedAccessibilityText = useCallback(
++    (event: NativeSyntheticEvent<ResolvedAccessibilityTextEvent>) => onResolvedAccessibilityText?.(event.nativeEvent),
++    [onResolvedAccessibilityText]
++  );
+   const handleLinkPress = useCallback(
+     (e: NativeSyntheticEvent<LinkPressEvent>) => {
+       const { url } = e.nativeEvent;
+@@ -388,7 +396,10 @@
+   };
+ 
+   if (flavor === 'github') {
+-    return <EnrichedMarkdownNativeComponent {...sharedProps} />;
++    return <EnrichedMarkdownNativeComponent {...sharedProps}
++      accessibilityRevision={accessibilityRevision}
++      onResolvedAccessibilityText={onResolvedAccessibilityText ? handleResolvedAccessibilityText : undefined}
++    />;
+   }
+ 
+   return <EnrichedMarkdownTextNativeComponent {...sharedProps} />;
+diff --git a/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts b/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
+--- a/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
++++ b/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
+@@ -2,6 +2,7 @@
+ import type { MarkdownStyle, Md4cFlags } from './MarkdownStyle';
+ import type { AccessibilityLabels } from './AccessibilityLabels';
+ import type {
++  ResolvedAccessibilityTextEvent,
+   LinkPressEvent,
+   LinkLongPressEvent,
+   ImagePressEvent,
+@@ -156,6 +157,9 @@
+    * Receives the link URL directly.
+    * @platform ios, android, web
+    */
++  /** iOS GitHub renderer: bind the committed AST text receipt to a caller-owned row revision. */
++  accessibilityRevision?: string;
++  onResolvedAccessibilityText?: (event: ResolvedAccessibilityTextEvent) => void;
+   onLinkPress?: (event: LinkPressEvent) => void;
+   /**
+    * Callback fired when a link is long pressed.
+diff --git a/node_modules/react-native-enriched-markdown/src/types/events.ts b/node_modules/react-native-enriched-markdown/src/types/events.ts
+--- a/node_modules/react-native-enriched-markdown/src/types/events.ts
++++ b/node_modules/react-native-enriched-markdown/src/types/events.ts
+@@ -64,3 +64,5 @@
+   selectionEnd: number;
+   sourceRangesJSON?: string;
+ }
++
++export interface ResolvedAccessibilityTextEvent { revision: string; markdown: string; text: string; }
