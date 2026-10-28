@@ -7,6 +7,7 @@ import * as React from 'react';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import * as measurements from './conversation-reveal-measurement.ts';
 import * as presentation from './message-presentation.ts';
+import * as messageTextPresentation from './presentation.ts';
 import { elements, entry, plainMessage, render } from './message-caption.fixtures.ts';
 import { resolveSkyTheme } from '../theme/sky.ts';
 
@@ -75,6 +76,7 @@ test('Compiler Timeline/context bind real native text measurements and retire la
     },
     '../core/conversation-reveal-measurement': measurements,
     '../core/message-presentation': presentation,
+    '../core/presentation': messageTextPresentation,
     '../theme': {
       useTheme: () => ({ ...resolveSkyTheme('night', new Date(1000)), localDate: new Date(1000) }),
     },

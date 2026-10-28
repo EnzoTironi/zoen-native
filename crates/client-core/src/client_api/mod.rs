@@ -95,6 +95,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     Snapshot::export_all(&config)?;
     crate::SpaceMemberContext::export_all(&config)?;
     crate::ForwardReview::export_all(&config)?;
+    crate::ForwardBatchReview::export_all(&config)?;
     crate::chat_layout::ChatLayoutResult::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;
     crate::MessageDraftSendResult::export_all(&config)?;

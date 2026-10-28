@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { messageMayContainMarkdown } from './message-markdown.ts';
 
 test(
   'actual MD4C parser, native stores and serializer retain composer Markdown through edits',
@@ -24,7 +25,7 @@ test(
     const input = join(pkg, 'ios/input');
     const installed = join(app, 'node_modules/react-native-enriched-markdown');
     try {
-      for (const path of ['ios/input', 'cpp/md4c']) {
+      for (const path of ['ios/input', 'cpp/md4c', 'cpp/parser']) {
         mkdirSync(join(pkg, path, '..'), { recursive: true });
         cpSync(join(installed, path), join(pkg, path), { recursive: true });
       }
@@ -109,6 +110,8 @@ test(
           '-fblocks',
           '-I' + input,
           '-I' + join(pkg, 'cpp/md4c'),
+          '-I' + join(pkg, 'cpp/parser'),
+          join(pkg, 'cpp/parser/MD4CParser.cpp'),
           join(app, 'modules/zoen-core/tests/ComposerMarkdown/RoundTripTests.mm'),
           ...files.map((name) => join(input, `${name}.mm`)),
           join(directory, 'input-state.o'),
@@ -122,6 +125,7 @@ test(
       );
       type Result = {
         plain: string;
+        viewerPlain: string;
         markdown: string;
         types: number[];
         ranges: { type: number; start: number; length: number }[];
@@ -135,6 +139,23 @@ test(
             encoding: 'utf8',
           }),
         );
+      // Follow actual typed text through the canonical serializer, the message
+      // candidate gate and the maintained viewer parser (not a JS unescaper).
+      for (const literal of [
+        'QA753: nota em Mensagens Salvas.',
+        'café 🦊: 2 + 2 = 4. Pontuação!',
+        String.raw`literal \: and \. and \q`,
+        '*literal* [a](b) `z`',
+        String.raw`C:\Temp\note.txt`,
+      ]) {
+        const sent = run('', { edit: { start: 0, delete: 0, text: literal } });
+        const displayed = messageMayContainMarkdown(sent.markdown, true)
+          ? sent.viewerPlain
+          : sent.markdown;
+        assert.equal(displayed, literal, 'sent canonical text must render the original literal');
+        assert.equal(run(sent.markdown).plain, literal);
+        assert.equal(run(sent.markdown).markdown, sent.markdown);
+      }
       for (const [markdown, plain] of [
         ['**forte**', 'forte'],
         ['_ênfase_', 'ênfase'],
@@ -142,12 +163,15 @@ test(
         ['||segredo||', 'segredo'],
         ['***ambos***', 'ambos'],
         ['`a`', 'a'],
+        [String.raw`**forte** e \*literal\*`, 'forte e *literal*'],
+        ['`a\\: b\\q`', String.raw`a\: b\q`],
         ['`  a  `', ' a '],
         ['[😀 link](https://example.org/a_(b))', '😀 link'],
         ['> **citação**\n> `código`', 'citação\ncódigo'],
       ]) {
         const first = run(markdown!);
         assert.equal(first.plain, plain);
+        if (!markdown!.startsWith('>')) assert.equal(first.viewerPlain, plain);
         assert.equal(run(first.markdown).plain, plain);
         assert.deepEqual(run(first.markdown).types, first.types);
       }
@@ -175,6 +199,7 @@ test(
       ];
       for (const source of opaque) {
         assert.equal(run(source).markdown, source, 'unsupported source must stay byte-identical');
+        assert.equal(run(run(source).markdown).viewerPlain, run(source).viewerPlain);
         const edited = run(source, { edit: { start: 0, delete: 0, text: 'prefix ' } });
         assert.equal(edited.markdown, 'prefix ' + source);
       }
