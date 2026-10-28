@@ -231,6 +231,9 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
     '../media/MediaComposer': { MediaComposer: 'MediaComposer' },
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './message-context': { MessageContext: 'MessageContext' },
+    './use-semantic-message-preview': {
+      useSemanticMessagePreview: ({ text }: { text: string }) => ({ text }),
+    },
     './composer-action': { ComposerAction: 'ComposerAction' },
     './composer-glass': {
       ComposerGlassContainer: 'ComposerGlassContainer',
