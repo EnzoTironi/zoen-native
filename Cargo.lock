@@ -871,6 +871,7 @@ dependencies = [
  "localization",
  "miniapps",
  "mls",
+ "num-traits",
  "png",
  "prost",
  "protocol",
