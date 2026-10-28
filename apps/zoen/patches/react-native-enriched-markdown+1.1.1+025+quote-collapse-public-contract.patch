@@ -1,0 +1,462 @@
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+index 79a0388e..66753a07 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+@@ -410,7 +410,24 @@ interface StreamingConfigInternal {
+   codeBlockMode: string;
+ }
+ 
++export interface QuoteCollapseConfig {
++  enabled: boolean;
++  expanded: ReadonlyArray<CodegenTypes.Int32>;
++  generation: CodegenTypes.Int32;
++  expandLabel: string;
++  collapseLabel: string;
++  expandedLabel: string;
++  collapsedLabel: string;
++}
++export interface QuoteToggleEvent {
++  index: CodegenTypes.Int32;
++  generation: CodegenTypes.Int32;
++}
++
+ export interface NativeProps extends ViewProps {
++  quoteCollapse?: Readonly<QuoteCollapseConfig>;
++  onBlockquoteToggle?: CodegenTypes.DirectEventHandler<QuoteToggleEvent>;
++
+   /**
+    * Markdown content to render.
+    */
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+index f0456904..5829a4c8 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+@@ -409,7 +409,24 @@ interface StreamingConfigInternal {
+   codeBlockMode: string;
+ }
+ 
++export interface QuoteCollapseConfig {
++  enabled: boolean;
++  expanded: ReadonlyArray<CodegenTypes.Int32>;
++  generation: CodegenTypes.Int32;
++  expandLabel: string;
++  collapseLabel: string;
++  expandedLabel: string;
++  collapsedLabel: string;
++}
++export interface QuoteToggleEvent {
++  index: CodegenTypes.Int32;
++  generation: CodegenTypes.Int32;
++}
++
+ export interface NativeProps extends ViewProps {
++  quoteCollapse?: Readonly<QuoteCollapseConfig>;
++  onBlockquoteToggle?: CodegenTypes.DirectEventHandler<QuoteToggleEvent>;
++
+   /**
+    * Markdown content to render.
+    */
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+index 2a9c6ff8..e54b6407 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+@@ -410,7 +410,24 @@ interface StreamingConfigInternal {
+   codeBlockMode: string;
+ }
+ 
++export interface QuoteCollapseConfig {
++  enabled: boolean;
++  expanded: ReadonlyArray<CodegenTypes.Int32>;
++  generation: CodegenTypes.Int32;
++  expandLabel: string;
++  collapseLabel: string;
++  expandedLabel: string;
++  collapsedLabel: string;
++}
++export interface QuoteToggleEvent {
++  index: CodegenTypes.Int32;
++  generation: CodegenTypes.Int32;
++}
++
+ export interface NativeProps extends ViewProps {
++  quoteCollapse?: Readonly<QuoteCollapseConfig>;
++  onBlockquoteToggle?: CodegenTypes.DirectEventHandler<QuoteToggleEvent>;
++
+   /**
+    * Markdown content to render.
+    */
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
+index 2a9c6ff8..e54b6407 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
+@@ -410,7 +410,24 @@ interface StreamingConfigInternal {
+   codeBlockMode: string;
+ }
+ 
++export interface QuoteCollapseConfig {
++  enabled: boolean;
++  expanded: ReadonlyArray<CodegenTypes.Int32>;
++  generation: CodegenTypes.Int32;
++  expandLabel: string;
++  collapseLabel: string;
++  expandedLabel: string;
++  collapsedLabel: string;
++}
++export interface QuoteToggleEvent {
++  index: CodegenTypes.Int32;
++  generation: CodegenTypes.Int32;
++}
++
+ export interface NativeProps extends ViewProps {
++  quoteCollapse?: Readonly<QuoteCollapseConfig>;
++  onBlockquoteToggle?: CodegenTypes.DirectEventHandler<QuoteToggleEvent>;
++
+   /**
+    * Markdown content to render.
+    */
+diff --git a/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts b/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
+index 9b50987a..a32ccc85 100644
+--- a/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
++++ b/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
+@@ -118,6 +118,18 @@ export interface StreamingConfig {
+ }
+ 
+ export interface EnrichedMarkdownTextProps extends Omit<ViewProps, 'style'> {
++  /** Controlled local quote presentation. iOS GitHub renderer only. */
++  quoteCollapse?: {
++    enabled: boolean;
++    expanded: readonly number[];
++    generation: number;
++    expandLabel: string;
++    collapseLabel: string;
++    expandedLabel: string;
++    collapsedLabel: string;
++  };
++  onBlockquoteToggle?: (event: { nativeEvent: { index: number; generation: number } }) => void;
++
+   /**
+    * Markdown content to render.
+    * @platform ios, android, web
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
+index 3faac47c..47422d70 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
+@@ -113,6 +113,18 @@ export interface StreamingConfig {
+     codeBlockMode?: 'hidden' | 'progressive';
+ }
+ export interface EnrichedMarkdownTextProps extends Omit<ViewProps, 'style'> {
++  /** Controlled local quote presentation. iOS GitHub renderer only. */
++  quoteCollapse?: {
++    enabled: boolean;
++    expanded: readonly number[];
++    generation: number;
++    expandLabel: string;
++    collapseLabel: string;
++    expandedLabel: string;
++    collapsedLabel: string;
++  };
++  onBlockquoteToggle?: (event: { nativeEvent: { index: number; generation: number } }) => void;
++
+     /**
+      * Markdown content to render.
+      * @platform ios, android, web
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+index 4bda3fa9..5072671e 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+@@ -18,6 +18,76 @@
+ 
+ namespace facebook::react {
+ 
++struct EnrichedMarkdownQuoteCollapseStruct {
++  bool enabled{false};
++  std::vector<int> expanded{};
++  int generation{0};
++  std::string expandLabel{};
++  std::string collapseLabel{};
++  std::string expandedLabel{};
++  std::string collapsedLabel{};
++
++
++#ifdef RN_SERIALIZABLE_STATE
++  bool operator==(const EnrichedMarkdownQuoteCollapseStruct&) const = default;
++
++  folly::dynamic toDynamic() const {
++    folly::dynamic result = folly::dynamic::object();
++    result["enabled"] = enabled;
++    result["expanded"] = ::facebook::react::toDynamic(expanded);
++    result["generation"] = generation;
++    result["expandLabel"] = expandLabel;
++    result["collapseLabel"] = collapseLabel;
++    result["expandedLabel"] = expandedLabel;
++    result["collapsedLabel"] = collapsedLabel;
++    return result;
++  }
++#endif
++};
++
++static inline void fromRawValue(const PropsParserContext& context, const RawValue &value, EnrichedMarkdownQuoteCollapseStruct &result) {
++  auto map = (std::unordered_map<std::string, RawValue>)value;
++
++  auto tmp_enabled = map.find("enabled");
++  if (tmp_enabled != map.end()) {
++    fromRawValue(context, tmp_enabled->second, result.enabled);
++  }
++  auto tmp_expanded = map.find("expanded");
++  if (tmp_expanded != map.end()) {
++    fromRawValue(context, tmp_expanded->second, result.expanded);
++  }
++  auto tmp_generation = map.find("generation");
++  if (tmp_generation != map.end()) {
++    fromRawValue(context, tmp_generation->second, result.generation);
++  }
++  auto tmp_expandLabel = map.find("expandLabel");
++  if (tmp_expandLabel != map.end()) {
++    fromRawValue(context, tmp_expandLabel->second, result.expandLabel);
++  }
++  auto tmp_collapseLabel = map.find("collapseLabel");
++  if (tmp_collapseLabel != map.end()) {
++    fromRawValue(context, tmp_collapseLabel->second, result.collapseLabel);
++  }
++  auto tmp_expandedLabel = map.find("expandedLabel");
++  if (tmp_expandedLabel != map.end()) {
++    fromRawValue(context, tmp_expandedLabel->second, result.expandedLabel);
++  }
++  auto tmp_collapsedLabel = map.find("collapsedLabel");
++  if (tmp_collapsedLabel != map.end()) {
++    fromRawValue(context, tmp_collapsedLabel->second, result.collapsedLabel);
++  }
++}
++
++static inline std::string toString(const EnrichedMarkdownQuoteCollapseStruct &value) {
++  return "[Object EnrichedMarkdownQuoteCollapseStruct]";
++}
++
++#ifdef RN_SERIALIZABLE_STATE
++static inline folly::dynamic toDynamic(const EnrichedMarkdownQuoteCollapseStruct &value) {
++  return value.toDynamic();
++}
++#endif
++
+ struct EnrichedMarkdownMarkdownStyleParagraphStruct {
+   Float fontSize{0.0};
+   std::string fontFamily{};
+@@ -3128,6 +3198,7 @@ class EnrichedMarkdownProps final : public ViewProps {
+ 
+ #pragma mark - Props
+ 
++  EnrichedMarkdownQuoteCollapseStruct quoteCollapse{};
+   std::string markdown{};
+   EnrichedMarkdownMarkdownStyleStruct markdownStyle{};
+   bool enableImagePress{false};
+@@ -4149,6 +4220,76 @@ class EnrichedMarkdownTextInputProps final : public ViewProps {
+   
+ };
+ 
++struct EnrichedMarkdownTextQuoteCollapseStruct {
++  bool enabled{false};
++  std::vector<int> expanded{};
++  int generation{0};
++  std::string expandLabel{};
++  std::string collapseLabel{};
++  std::string expandedLabel{};
++  std::string collapsedLabel{};
++
++
++#ifdef RN_SERIALIZABLE_STATE
++  bool operator==(const EnrichedMarkdownTextQuoteCollapseStruct&) const = default;
++
++  folly::dynamic toDynamic() const {
++    folly::dynamic result = folly::dynamic::object();
++    result["enabled"] = enabled;
++    result["expanded"] = ::facebook::react::toDynamic(expanded);
++    result["generation"] = generation;
++    result["expandLabel"] = expandLabel;
++    result["collapseLabel"] = collapseLabel;
++    result["expandedLabel"] = expandedLabel;
++    result["collapsedLabel"] = collapsedLabel;
++    return result;
++  }
++#endif
++};
++
++static inline void fromRawValue(const PropsParserContext& context, const RawValue &value, EnrichedMarkdownTextQuoteCollapseStruct &result) {
++  auto map = (std::unordered_map<std::string, RawValue>)value;
++
++  auto tmp_enabled = map.find("enabled");
++  if (tmp_enabled != map.end()) {
++    fromRawValue(context, tmp_enabled->second, result.enabled);
++  }
++  auto tmp_expanded = map.find("expanded");
++  if (tmp_expanded != map.end()) {
++    fromRawValue(context, tmp_expanded->second, result.expanded);
++  }
++  auto tmp_generation = map.find("generation");
++  if (tmp_generation != map.end()) {
++    fromRawValue(context, tmp_generation->second, result.generation);
++  }
++  auto tmp_expandLabel = map.find("expandLabel");
++  if (tmp_expandLabel != map.end()) {
++    fromRawValue(context, tmp_expandLabel->second, result.expandLabel);
++  }
++  auto tmp_collapseLabel = map.find("collapseLabel");
++  if (tmp_collapseLabel != map.end()) {
++    fromRawValue(context, tmp_collapseLabel->second, result.collapseLabel);
++  }
++  auto tmp_expandedLabel = map.find("expandedLabel");
++  if (tmp_expandedLabel != map.end()) {
++    fromRawValue(context, tmp_expandedLabel->second, result.expandedLabel);
++  }
++  auto tmp_collapsedLabel = map.find("collapsedLabel");
++  if (tmp_collapsedLabel != map.end()) {
++    fromRawValue(context, tmp_collapsedLabel->second, result.collapsedLabel);
++  }
++}
++
++static inline std::string toString(const EnrichedMarkdownTextQuoteCollapseStruct &value) {
++  return "[Object EnrichedMarkdownTextQuoteCollapseStruct]";
++}
++
++#ifdef RN_SERIALIZABLE_STATE
++static inline folly::dynamic toDynamic(const EnrichedMarkdownTextQuoteCollapseStruct &value) {
++  return value.toDynamic();
++}
++#endif
++
+ struct EnrichedMarkdownTextMarkdownStyleParagraphStruct {
+   Float fontSize{0.0};
+   std::string fontFamily{};
+@@ -7259,6 +7400,7 @@ class EnrichedMarkdownTextProps final : public ViewProps {
+ 
+ #pragma mark - Props
+ 
++  EnrichedMarkdownTextQuoteCollapseStruct quoteCollapse{};
+   std::string markdown{};
+   EnrichedMarkdownTextMarkdownStyleStruct markdownStyle{};
+   bool enableImagePress{false};
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+index 2a645c5f..e4c4c6a2 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+@@ -19,6 +19,7 @@ EnrichedMarkdownProps::EnrichedMarkdownProps(
+     const EnrichedMarkdownProps &sourceProps,
+     const RawProps &rawProps): ViewProps(context, sourceProps, rawProps),
+ 
++    quoteCollapse(convertRawProp(context, rawProps, "quoteCollapse", sourceProps.quoteCollapse, {})),
+     markdown(convertRawProp(context, rawProps, "markdown", sourceProps.markdown, {})),
+     markdownStyle(convertRawProp(context, rawProps, "markdownStyle", sourceProps.markdownStyle, {})),
+     enableImagePress(convertRawProp(context, rawProps, "enableImagePress", sourceProps.enableImagePress, {false})),
+@@ -63,6 +64,10 @@ folly::dynamic EnrichedMarkdownProps::getDiffProps(
+   }
+   folly::dynamic result = HostPlatformViewProps::getDiffProps(prevProps);
+   
++  if (quoteCollapse != oldProps->quoteCollapse) {
++    result["quoteCollapse"] = toDynamic(quoteCollapse);
++  }
++    
+   if (markdown != oldProps->markdown) {
+     result["markdown"] = markdown;
+   }
+@@ -382,6 +387,7 @@ EnrichedMarkdownTextProps::EnrichedMarkdownTextProps(
+     const EnrichedMarkdownTextProps &sourceProps,
+     const RawProps &rawProps): ViewProps(context, sourceProps, rawProps),
+ 
++    quoteCollapse(convertRawProp(context, rawProps, "quoteCollapse", sourceProps.quoteCollapse, {})),
+     markdown(convertRawProp(context, rawProps, "markdown", sourceProps.markdown, {})),
+     markdownStyle(convertRawProp(context, rawProps, "markdownStyle", sourceProps.markdownStyle, {})),
+     enableImagePress(convertRawProp(context, rawProps, "enableImagePress", sourceProps.enableImagePress, {false})),
+@@ -426,6 +432,10 @@ folly::dynamic EnrichedMarkdownTextProps::getDiffProps(
+   }
+   folly::dynamic result = HostPlatformViewProps::getDiffProps(prevProps);
+   
++  if (quoteCollapse != oldProps->quoteCollapse) {
++    result["quoteCollapse"] = toDynamic(quoteCollapse);
++  }
++    
+   if (markdown != oldProps->markdown) {
+     result["markdown"] = markdown;
+   }
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
+index 5b21f6e4..9cf1b4f7 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
+@@ -17,6 +17,11 @@ class EnrichedMarkdownEventEmitter : public ViewEventEmitter {
+  public:
+   using ViewEventEmitter::ViewEventEmitter;
+ 
++  struct OnBlockquoteToggle {
++      int index;
++    int generation;
++    };
++
+   struct OnLinkPress {
+       std::string url;
+     };
+@@ -59,6 +64,8 @@ class EnrichedMarkdownEventEmitter : public ViewEventEmitter {
+     int selectionEnd;
+     std::string sourceRangesJSON;
+     };
++  void onBlockquoteToggle(OnBlockquoteToggle value) const;
++
+   void onLinkPress(OnLinkPress value) const;
+ 
+   void onLinkLongPress(OnLinkLongPress value) const;
+@@ -290,6 +297,11 @@ class EnrichedMarkdownTextEventEmitter : public ViewEventEmitter {
+  public:
+   using ViewEventEmitter::ViewEventEmitter;
+ 
++  struct OnBlockquoteToggle {
++      int index;
++    int generation;
++    };
++
+   struct OnLinkPress {
+       std::string url;
+     };
+@@ -331,6 +343,8 @@ class EnrichedMarkdownTextEventEmitter : public ViewEventEmitter {
+     int selectionStart;
+     int selectionEnd;
+     };
++  void onBlockquoteToggle(OnBlockquoteToggle value) const;
++
+   void onLinkPress(OnLinkPress value) const;
+ 
+   void onLinkLongPress(OnLinkLongPress value) const;
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
+index b6c730ce..9084a347 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
+@@ -13,6 +13,16 @@
+ 
+ namespace facebook::react {
+ 
++void EnrichedMarkdownEventEmitter::onBlockquoteToggle(OnBlockquoteToggle event) const {
++  dispatchEvent("blockquoteToggle", [event=std::move(event)](jsi::Runtime &runtime) {
++    auto payload = jsi::Object(runtime);
++    payload.setProperty(runtime, "index", event.index);
++payload.setProperty(runtime, "generation", event.generation);
++    return payload;
++  });
++}
++
++
+ void EnrichedMarkdownEventEmitter::onLinkPress(OnLinkPress event) const {
+   dispatchEvent("linkPress", [event=std::move(event)](jsi::Runtime &runtime) {
+     auto payload = jsi::Object(runtime);
+@@ -349,6 +359,16 @@ void EnrichedMarkdownTextInputEventEmitter::onEndMention(OnEndMention event) con
+ }
+ 
+ 
++void EnrichedMarkdownTextEventEmitter::onBlockquoteToggle(OnBlockquoteToggle event) const {
++  dispatchEvent("blockquoteToggle", [event=std::move(event)](jsi::Runtime &runtime) {
++    auto payload = jsi::Object(runtime);
++    payload.setProperty(runtime, "index", event.index);
++payload.setProperty(runtime, "generation", event.generation);
++    return payload;
++  });
++}
++
++
+ void EnrichedMarkdownTextEventEmitter::onLinkPress(OnLinkPress event) const {
+   dispatchEvent("linkPress", [event=std::move(event)](jsi::Runtime &runtime) {
+     auto payload = jsi::Object(runtime);

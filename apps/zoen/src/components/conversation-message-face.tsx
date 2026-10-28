@@ -275,6 +275,8 @@ export function renderConversationMessage(context: MessageFace) {
                         }}
                       >
                         <MessageMarkdown
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           testID={`message-body-${entry.id}`}
                           onLayout={revealAnchor?.onLayout}
                           text={text}
@@ -289,6 +291,8 @@ export function renderConversationMessage(context: MessageFace) {
                       </View>
                     ) : (
                       <MessageTextSelectionLeaf
+                        revision={entry.text_revision}
+                        expandedForReveal={Boolean(revealAnchor)}
                         text={text}
                         color={attachment && !appCard ? colors.text : ink}
                         fontSize={emojiFont ?? messageFontSize}
@@ -378,6 +382,8 @@ export function renderConversationMessage(context: MessageFace) {
                     >
                       {formattedText ? (
                         <MessageMarkdown
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           text={fileCaption}
                           accessibilityText={accessibilityText}
                           onLayout={revealAnchor?.onLayout}
@@ -387,6 +393,8 @@ export function renderConversationMessage(context: MessageFace) {
                         />
                       ) : (
                         <MessageTextSelectionLeaf
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           text={fileCaption!}
                           color={ink}
                           fontSize={p.typography.message.fontSize}

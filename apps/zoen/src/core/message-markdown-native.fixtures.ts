@@ -24,6 +24,10 @@ export function preparePackage(app: string, directory: string) {
     '021+composer-format-availability',
     '022+composer-native-accessibility',
     '023+composer-escaped-inline-import',
+    '024+composer-link-accessibility',
+    '025+quote-collapse-public-contract',
+    '026+quote-collapse-text-layout',
+    '027+quote-collapse-native-host',
   ].map((stage) => join(app, `patches/react-native-enriched-markdown+1.1.1+${stage}.patch`));
   const paths = new Set(
     patches.flatMap((patch) =>
@@ -39,7 +43,7 @@ export function preparePackage(app: string, directory: string) {
     mkdirSync(join(pkg, path, '..'), { recursive: true });
     cpSync(join(installed, path), join(pkg, path));
   }
-  for (const path of ['cpp/parser', 'cpp/md4c', 'src', 'ios/parser', 'ios/segments'])
+  for (const path of ['cpp/parser', 'cpp/md4c', 'src', 'ios/parser', 'ios/segments', 'ios/utils'])
     cpSync(join(installed, path), join(pkg, path), { recursive: true });
   const markers = [
     () => existsSync(join(pkg, 'ios/utils/ENRMQuoteRanges.m')),
@@ -93,6 +97,17 @@ export function preparePackage(app: string, directory: string) {
       readFileSync(join(pkg, 'ios/input/ENRMInputParser.mm'), 'utf8').includes(
         'size_t cursor=textStart - (escaped ? 1 : 0);',
       ),
+    () =>
+      readFileSync(join(pkg, 'ios/input/ENRMInputLinkPrompt.mm'), 'utf8').includes(
+        'enriched-markdown-link-url',
+      ),
+    () =>
+      readFileSync(join(pkg, 'lib/module/EnrichedMarkdownNativeComponent.ts'), 'utf8').includes(
+        'quoteCollapse?:',
+      ),
+    () => existsSync(join(pkg, 'ios/utils/ENRMQuotePresentation.mm')),
+    () =>
+      readFileSync(join(pkg, 'ios/EnrichedMarkdown.mm'), 'utf8').includes('view.onQuoteToggle ='),
   ];
   for (const [index, patch] of patches.entries())
     if (!markers[index]!())
