@@ -228,6 +228,9 @@ impl SpaceTools<'_> {
         {
             return Err("This tool is outside the signed App request".into());
         }
+        if call.name == history_search::TOOL {
+            return self.search_history(call);
+        }
         if call.name == image_tools::TOOL {
             return self.image_stage(call);
         }
