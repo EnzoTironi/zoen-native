@@ -154,7 +154,7 @@ function Navigation() {
                     title: t('messageInfo.title'),
                     presentation: 'formSheet',
                     headerTransparent: false,
-                    sheetAllowedDetents: [0.65, 1],
+                    sheetAllowedDetents: 'fitToContents',
                     sheetGrabberVisible: true,
                   }}
                 />
