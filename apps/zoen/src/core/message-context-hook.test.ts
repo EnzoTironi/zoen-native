@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
+import * as messageCopyText from './message-copy-text.ts';
 const code = (
   await build({
     stdin: {
@@ -28,6 +29,29 @@ const code = (
     ],
   })
 ).outputFiles[0]!.text;
+const copyCode = (
+  await build({
+    stdin: {
+      contents: readFileSync(new URL('../components/message-copy.ts', import.meta.url), 'utf8'),
+      loader: 'ts',
+    },
+    bundle: true,
+    external: ['*'],
+    format: 'cjs',
+    platform: 'node',
+    write: false,
+  })
+).outputFiles[0]!.text;
+const copy = { exports: {} };
+runInNewContext(copyCode, {
+  module: copy,
+  exports: copy.exports,
+  require(name: string) {
+    if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
+    assert.equal(name, '../core/message-copy-text');
+    return messageCopyText;
+  },
+});
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((yes) => {
@@ -53,7 +77,14 @@ function fixture() {
     mountedCleanup: () => void = () => {};
   let row = true,
     visible = true;
-  let entry = { id: 'm1', author: { is_me: false }, reactions: [] as any[], deleted: false };
+  let entry = {
+    id: 'm1',
+    kind: { Message: { text: 'message', card: null } },
+    voice: null,
+    author: { is_me: false },
+    reactions: [] as any[],
+    deleted: false,
+  };
   const state = {
     phase: 'ready',
     mode: 'native',
@@ -140,6 +171,7 @@ function fixture() {
     './use-message-quote-selection': {
       useMessageQuoteSelection: () => ({ open() {}, panel: null }),
     },
+    './message-copy': copy.exports,
     './message-actions': { MessageActions: 'MessageActions' },
     './reaction-details': { ReactionDetails: 'ReactionDetails' },
   };
