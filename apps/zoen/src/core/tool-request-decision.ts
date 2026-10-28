@@ -12,6 +12,15 @@ type DecisionRequest = Pick<
 > & { agent: Pick<AgentRequestDto['agent'], 'is_mine'> };
 
 /** Presentation checks never grant authority; the core checks the signed request again. */
+export function conversationSearchReview(tool: ToolApprovalDto): boolean {
+  return (
+    tool?.canonical_tool === 'search_conversation_history' &&
+    tool.preview_kind === 'conversation' &&
+    tool.artifact_id === '' &&
+    tool.version === 0
+  );
+}
+
 export function toolApprovalValid(tool: ToolApprovalDto): boolean {
   return (
     typeof tool === 'object' &&
@@ -19,13 +28,14 @@ export function toolApprovalValid(tool: ToolApprovalDto): boolean {
     typeof tool.content_hash === 'string' &&
     /^[a-f0-9]{64}$/.test(tool.content_hash) &&
     typeof tool.artifact_id === 'string' &&
-    tool.artifact_id.length > 0 &&
+    (tool.artifact_id.length > 0 || conversationSearchReview(tool)) &&
     typeof tool.artifact_title === 'string' &&
     tool.artifact_title.length > 0 &&
     typeof tool.operation === 'string' &&
     tool.operation.length > 0 &&
     Number.isSafeInteger(tool.version) &&
-    tool.version > 0 &&
+    (tool.version > 0 || conversationSearchReview(tool)) &&
+    (tool.canonical_tool !== 'search_conversation_history' || conversationSearchReview(tool)) &&
     typeof tool.expires_ms === 'string' &&
     /^[0-9]{1,19}$/.test(tool.expires_ms) &&
     BigInt(tool.expires_ms) <= 8_640_000_000_000_000n

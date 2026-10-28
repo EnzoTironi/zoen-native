@@ -1,22 +1,7 @@
 //! One native history read; conversation/source/identity come only from SpaceTools.
 use super::{SpaceTools, ToolCall, ToolDef};
-use serde::Deserialize;
+pub(super) use client_core::agent_conversation_tools::TOOL;
 use serde_json::json;
-
-pub(super) const TOOL: &str = "search_conversation_history";
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Query {
-    query: String,
-    #[serde(default)]
-    cursor: Option<String>,
-    #[serde(default = "page_limit")]
-    limit: u32,
-}
-fn page_limit() -> u32 {
-    10
-}
 
 pub(super) fn definition() -> ToolDef {
     ToolDef {
@@ -43,11 +28,8 @@ impl SpaceTools<'_> {
         if call.name != TOOL || !self.names.iter().any(|(tool, _, _)| tool.name == TOOL) {
             return Err("Conversation history search is not offered for this source".into());
         }
-        let query: Query = serde_json::from_value(call.arguments.clone())
-            .map_err(|_| "Invalid conversation history query")?;
-        if query.query.trim().is_empty() {
-            return Err("Enter a conversation history query".into());
-        }
+        let query = client_core::agent_conversation_tools::parse(&call.arguments)
+            .map_err(|error| error.to_string())?;
         let page = self
             .e
             .agent_search_messages(
