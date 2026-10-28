@@ -8,7 +8,9 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod batch;
 mod storage;
+pub use batch::{ForwardBatchReview, ForwardBatchScope, ForwardBatchSource};
 #[cfg(test)]
 mod tests;
 

@@ -11,24 +11,26 @@ impl Client {
         vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<String, CoreError> {
         use Command::{
-            AddAdmin, AddMember, AddMemberReviewed, AgentControlChange, AgentControlRead,
-            AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
-            AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
-            AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
-            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ConfirmForward,
-            ControlAgent, CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite,
-            DeleteMessage, DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            AbandonForwardBatch, AddAdmin, AddMember, AddMemberReviewed, AgentControlChange,
+            AgentControlRead, AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview,
+            AgentDefinitionRead, AgentDefinitionReconcile, AgentDefinitionUpdate,
+            AgentEnrollmentApprove, AgentEnrollmentDismiss, AgentEnrollmentPreview,
+            AgentEnrollmentStatus, AgentStatus, AppCurrentShareContext, AppEditTargets,
+            CallHistory, ChatLayout, ConfirmForward, ConfirmForwardBatch, ControlAgent,
+            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
+            DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
-            ForwardMessage, ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace,
-            MarkRead, Message, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
-            OwnerPolicyStatus, PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy,
-            PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
-            RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
-            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
-            RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft,
-            SetChatMute, SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping,
-            ShareAppCurrent, Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect,
-            SubmitOwnerPolicy, Thread, Timeline, UniversalSearch, UniversalSearchPage,
+            FinishForwardBatch, ForwardBatchReview, ForwardBatchStatus, ForwardMessage,
+            ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
+            MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus,
+            PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite,
+            ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
+            RequestAccountPolicyOptions, RequestAppEdit, RequestOwnerPolicyOptions, RespondCall,
+            ReviewOwnerPolicy, ReviewReplySelection, RevokeAgentInvite, SaveMessageDraft,
+            SavedMessages, SendMessage, SendMessageDraft, SetChatMute, SetChatMuted, SetChatPrefs,
+            SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot, SpaceMemberContext,
+            StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline,
+            UniversalSearch, UniversalSearchPage,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -194,7 +196,12 @@ impl Client {
                 message_id,
                 emoji,
             } => encode(&self.react(space_id, message_id, emoji)?),
-            command @ (ForwardReview { .. }
+            command @ (ForwardBatchStatus { .. }
+            | ForwardBatchReview { .. }
+            | ConfirmForwardBatch { .. }
+            | FinishForwardBatch { .. }
+            | AbandonForwardBatch { .. }
+            | ForwardReview { .. }
             | ForwardStatus { .. }
             | ConfirmForward { .. }
             | DismissForward { .. }) => self.dispatch_forwarding(command),

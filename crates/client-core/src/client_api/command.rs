@@ -1,7 +1,12 @@
-//! The closed application command contract.
+//! Application commands.
 use super::{
     page_size, Deserialize, PageBlockDto, RequestDecision, ToolRequestDecision, TrustLevelDto,
     UndoToken,
+};
+use crate::owner_policy::OwnerPolicyScope;
+use crate::{
+    app_resources::{Install, Update},
+    sites::{SiteReview, SiteScope},
 };
 
 #[derive(Debug, Deserialize)]
@@ -21,27 +26,27 @@ pub(super) enum Command {
         agent_id: String,
     },
     RequestAccountPolicyOptions {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
     },
     FindAccountPolicyOptions {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
     },
     FindOwnerPolicyOptions {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
         request_id: String,
         expected_hash: String,
     },
     RequestOwnerPolicyOptions {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
         request_id: String,
         expected_hash: String,
     },
     OwnerPolicyOptions {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
         source: String,
     },
     PrepareOwnerPolicy {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
         source: String,
         options_digest: String,
         limit_units: String,
@@ -49,20 +54,20 @@ pub(super) enum Command {
         enabled: bool,
     },
     FindOwnerPolicySubmission {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
         policy_digest: String,
     },
     ReviewOwnerPolicy {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
         policy_json: String,
     },
     SubmitOwnerPolicy {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
         policy_json: String,
         confirmation_digest: String,
     },
     OwnerPolicyStatus {
-        scope: crate::owner_policy::OwnerPolicyScope,
+        scope: OwnerPolicyScope,
         source: String,
     },
     SceneToolReview {
@@ -81,36 +86,36 @@ pub(super) enum Command {
         input: crate::image_tasks::ImageTaskInput,
     },
     SiteRead {
-        scope: crate::sites::SiteScope,
+        scope: SiteScope,
         item_id: String,
         version: u32,
         expected_sha256: String,
     },
     SiteCreate {
-        scope: crate::sites::SiteScope,
+        scope: SiteScope,
         name: String,
         html: String,
         mutation_id: String,
     },
     SiteSave {
-        scope: crate::sites::SiteScope,
+        scope: SiteScope,
         source: protocol::sites::SourceVersion,
         html: String,
     },
     SiteReview {
-        scope: crate::sites::SiteScope,
+        scope: SiteScope,
         source: protocol::sites::SourceVersion,
         unpublish: bool,
     },
     SiteStatus {
-        scope: crate::sites::SiteScope,
+        scope: SiteScope,
         source: protocol::sites::SourceVersion,
     },
     SitePrepare {
-        review: crate::sites::SiteReview,
+        review: SiteReview,
     },
     SitePublish {
-        review: crate::sites::SiteReview,
+        review: SiteReview,
     },
     ProviderSignIn {
         relay_url: String,
@@ -232,6 +237,26 @@ pub(super) enum Command {
         space_id: String,
         message_id: String,
         emoji: Option<String>,
+    },
+    ForwardBatchStatus {
+        source: crate::ForwardBatchSource,
+    },
+    ForwardBatchReview {
+        scope: crate::ForwardBatchScope,
+    },
+    ConfirmForwardBatch {
+        source: crate::ForwardBatchSource,
+        batch_id: String,
+        review_revision: String,
+    },
+    AbandonForwardBatch {
+        source: crate::ForwardBatchSource,
+        batch_id: String,
+        review_revision: String,
+    },
+    FinishForwardBatch {
+        source: crate::ForwardBatchSource,
+        batch_id: String,
     },
     ForwardReview {
         scope: crate::ForwardScope,
@@ -640,17 +665,17 @@ pub(super) enum Command {
         item_id: String,
     },
     AppResourceInstall {
-        input: crate::app_resources::Install,
+        input: Install,
     },
     AppResourceFind {
-        input: crate::app_resources::Install,
+        input: Install,
     },
     AppDocumentResource {
         item_id: String,
         expected_resource_uri: String,
     },
     AppResourceUpdate {
-        input: crate::app_resources::Update,
+        input: Update,
     },
     AppDocumentReadPinned {
         item_id: String,
