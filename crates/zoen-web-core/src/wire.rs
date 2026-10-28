@@ -364,7 +364,8 @@ mod relay_tests {
         Ok(())
     }
     #[test]
-    fn timed_read_preserves_legacy_browser_event_and_full_prefix() {
+    fn timed_read_preserves_legacy_browser_event_and_full_prefix(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let frame = |kind| ServerFrame::Ephemeral {
             space: "sp_fixture".into(),
             from: "authenticated_peer".into(),
@@ -378,13 +379,14 @@ mod relay_tests {
                 reported_at_ms: 1234,
             },
         ));
-        let decode = |frame: ServerFrame| {
-            serde_json::to_value(decode_server(&frame.encode()).unwrap()).unwrap()
+        let decode = |frame: ServerFrame| -> std::result::Result<serde_json::Value, Box<dyn std::error::Error>> {
+            Ok(serde_json::to_value(decode_server(&frame.encode())?)?)
         };
-        let value = decode(timed);
-        assert_eq!(value, decode(legacy));
+        let value = decode(timed)?;
+        assert_eq!(value, decode(legacy)?);
         assert_eq!(value["event"], "read");
         assert_eq!(value["detail"], u64::MAX.to_string());
         assert!(value.get("reported_at_ms").is_none());
+        Ok(())
     }
 }
