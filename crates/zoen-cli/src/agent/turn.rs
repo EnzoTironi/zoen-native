@@ -133,19 +133,27 @@ async fn checked(
     {
         // A client booked or cancelled in a mini-app: tell the owner, once.
         return match e.booking_note(item_id.clone(), *version) {
-            Some(n) if owner_note(e, cx, &t.id).is_none() => {
-                let mut n: serde_json::Value = serde_json::from_str(&n).unwrap_or_default();
-                n["booking"]["source"] = t.id.clone().into();
-                tell_owner(e, cx, n, space, &t.id)
-            }
-            _ => true,
+            Some(n) => match owner_note(e, cx, space, t) {
+                Ok(Some(_)) => true,
+                Ok(None) => {
+                    let Ok(mut note) = serde_json::from_str::<serde_json::Value>(&n) else {
+                        return false;
+                    };
+                    note["booking"]["source"] = t.id.clone().into();
+                    tell_owner(e, cx, note, space, &t.id)
+                }
+                Err(_) => false,
+            },
+            None => true,
         };
     }
     let Some(text) = text_of(t) else {
         return true;
     };
     // Idempotent on the source: did an earlier run already answer this message?
-    let tl = e.timeline(space.to_string()).unwrap_or_default();
+    let Ok(tl) = e.timeline(space.to_string()) else {
+        return false;
+    };
     if tl
         .iter()
         .any(|m| m.author.id == cx.me && m.reply_to.as_ref().is_some_and(|q| q.id == t.id))
@@ -153,7 +161,11 @@ async fn checked(
         trace::stop(space, &t.id, trace::Stop::AlreadyReplied, None);
         return true;
     }
-    if let Some(note) = owner_note(e, cx, &t.id) {
+    let previous_note = match owner_note(e, cx, space, t) {
+        Ok(note) => note,
+        Err(_) => return false,
+    };
+    if let Some(note) = previous_note {
         // Told the owner already. A proposal's confirmation may still be owed to the chat
         // (the reply failed after the note went out): send it now, from the note.
         return match note["agent_proposal"]["confirmation"].as_str() {

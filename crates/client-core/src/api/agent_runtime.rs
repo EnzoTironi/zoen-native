@@ -62,6 +62,30 @@ impl Client {
             .and_then(|(i, _)| i.owner)
     }
 
+    /// Inspect already-known owner receipts without creating a DM or requiring
+    /// the owner's directory profile. Absence and unreadable history differ.
+    pub fn agent_owner_timeline(
+        &self,
+        owner: &str,
+    ) -> Result<Option<Vec<crate::TimelineEntry>>, CoreError> {
+        let e = self.lock();
+        let me = e.me_id()?;
+        let bound_owner = e
+            .store
+            .identities()?
+            .into_iter()
+            .find(|(identity, _)| identity.id == me)
+            .and_then(|(identity, _)| identity.owner);
+        if bound_owner.as_deref() != Some(owner) {
+            return Err(CoreError::Forbidden {
+                reason: "The agent owner changed".into(),
+            });
+        }
+        e.direct_with(owner)
+            .map(|space| e.timeline(&space))
+            .transpose()
+    }
+
     /// The relay's record for this agent runtime: status, definition and cursors.
     pub async fn agent_state(&self) -> Result<protocol::AgentStateRecord, CoreError> {
         let (owner, channel) = self.device_directory_owner()?;
