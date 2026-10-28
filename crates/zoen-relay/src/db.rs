@@ -356,6 +356,7 @@ fn authorized_directory_profile((id, kind, owner, json): DirectoryRow) -> Option
 }
 
 mod key_material;
+pub(crate) mod read_time;
 mod watermarks;
 pub(crate) use key_material::claim_key_packages_on;
 pub use key_material::{

@@ -4,6 +4,7 @@ export type MessageContextAction =
   | 'thread'
   | 'copy'
   | 'select'
+  | 'info'
   | 'selectMessages'
   | 'edit'
   | 'recover'

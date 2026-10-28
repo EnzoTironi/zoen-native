@@ -114,6 +114,9 @@ impl<S: Signer> Client<S> {
             ServerFrame::Ephemeral { space, from, kind } => {
                 let mark = match kind {
                     protocol::EphemeralKind::Read { seq } => Some((seq, seq)),
+                    protocol::EphemeralKind::ReadTime(time) => {
+                        Some((time.through_seq, time.through_seq))
+                    }
                     protocol::EphemeralKind::Delivered { seq } => Some((seq, 0)),
                     _ => None,
                 };

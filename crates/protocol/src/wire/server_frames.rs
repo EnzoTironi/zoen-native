@@ -152,7 +152,7 @@ impl ServerFrame {
             F::Ephemeral(e) => ServerFrame::Ephemeral {
                 space: e.space,
                 from: e.from,
-                kind: ephemeral_kind(e.kind)?,
+                kind: ephemeral_kind(e.kind, e.read_time)?,
             },
             F::Presence(p) => ServerFrame::Presence {
                 identity: p.identity,
