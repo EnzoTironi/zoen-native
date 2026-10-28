@@ -253,6 +253,27 @@ function renderScreen(
     if (path.endsWith('/core/live-activity')) return { chatActivityLabel: () => '' };
     if (path.endsWith('/components/keyboard-motion'))
       return { useKeyboardMotion: () => ({ progress: { value: 0 } }) };
+    if (path.endsWith('/use-message-selection'))
+      return {
+        useMessageSelection: () => ({
+          active: false,
+          ids: new Set<string>(),
+          count: 0,
+          limitReached: false,
+          canCopy: false,
+          canForward: false,
+          toggle: noop,
+          cancel: noop,
+          copy: noop,
+          forward: noop,
+        }),
+      };
+    if (path.endsWith('/message-selection-toolbar'))
+      return components([
+        'MessageSelectionToolbar',
+        'MessageSelectionHeader',
+        'MessageSelectionCancel',
+      ]);
     if (path.endsWith('/components/use-message-actions'))
       return { useMessageActions: () => ({ busy: false }) };
     if (path.endsWith('/components/dialogs')) return { useDialogs: () => ({ inform: noop }) };

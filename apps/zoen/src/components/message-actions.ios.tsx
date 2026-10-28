@@ -89,6 +89,7 @@ function SafeMessageActions(props: MessageActionsProps) {
           image: 'arrowshape.turn.up.right',
           run: !entry.deleted ? current?.onForward : undefined,
         },
+        { label: t('chat.selectMessages'), image: 'checkmark.circle', run: current?.onSelect },
         { label: t('chat.copyText'), image: 'doc.on.doc', run: current?.onCopy },
         { label: t('media.share'), image: 'square.and.arrow.up', run: current?.onShare },
         {
