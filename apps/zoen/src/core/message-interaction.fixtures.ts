@@ -198,6 +198,9 @@ export function albumMetadata(delivery: TimelineEntry['delivery']) {
     },
     './conversation-reveal-content-view': { useConversationRevealAnchor: () => null },
     './message-receipt': { MessageReceipt: 'Receipt', messageDeliveryLabel: () => delivery },
+    './use-semantic-message-preview': {
+      useSemanticMessagePreview: ({ text }: { text: string }) => ({ text }),
+    },
     './primitives': { Icon: 'Icon' },
   };
   const module = { exports: {} as { ConversationMessage(props: unknown): Element } };
