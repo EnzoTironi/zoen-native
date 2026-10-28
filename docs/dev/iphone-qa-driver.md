@@ -7,6 +7,19 @@ python3 scripts/qa-device.py snapshot -i --session <authorized-session>
 python3 scripts/qa-device.py screenshot --session <authorized-session>
 ```
 
+Update an existing installation with **`install <app> <binary>`**, preserving the
+same app identity. Do not use `reinstall`: the qualified driver's iOS deployment
+implementation uninstalls the app first, deleting its local database and drafts
+while Keychain keys remain. The wrapper refuses `reinstall` and `uninstall` before
+dispatch, including with a qualified private candidate. Do not bypass this through
+batch, the raw driver, or another interface. Before an update, preserve a private
+copy of the closed app's data; verify the account, drafts and messages afterwards.
+
+QA764 used `reinstall` in error on 2026-10-28. The resulting account database is
+empty and the app correctly refuses to replace the remaining Keychain keys. This
+is a destructive QA operation, not proof of a product migration failure. Native
+quote-motion acceptance remains pending; the previous QA762 evidence is historical.
+
 The default wrapper refuses **all `fill` and `type` commands**, including empty and
 nonempty text, before starting `agent-device`. Leading options are refused too;
 put session/platform options after the verb. Other commands retain their literal
