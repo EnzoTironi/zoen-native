@@ -1,0 +1,119 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.cpp
+@@ -109,6 +109,9 @@
+   dispatchEvent("changeMarkdown", [event=std::move(event)](jsi::Runtime &runtime) {
+     auto payload = jsi::Object(runtime);
+     payload.setProperty(runtime, "value", event.value);
++payload.setProperty(runtime, "text", event.text);
++payload.setProperty(runtime, "binding", event.binding);
++payload.setProperty(runtime, "eventCount", event.eventCount);
+     return payload;
+   });
+ }
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/EventEmitters.h
+@@ -85,6 +85,9 @@
+ 
+   struct OnChangeMarkdown {
+       std::string value;
++    std::string text;
++    std::string binding;
++    double eventCount;
+     };
+ 
+   struct OnChangeSelection {
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+@@ -178,6 +178,17 @@
+     const EnrichedMarkdownTextInputProps &sourceProps,
+     const RawProps &rawProps): ViewProps(context, sourceProps, rawProps),
+ 
++    composerSubmitOnReturn(convertRawProp(context, rawProps, "composerSubmitOnReturn", sourceProps.composerSubmitOnReturn, {false})),
++    composerKeyboardAppearance(convertRawProp(context, rawProps, "composerKeyboardAppearance", sourceProps.composerKeyboardAppearance, {})),
++    composerBinding(convertRawProp(context, rawProps, "composerBinding", sourceProps.composerBinding, {})),
++    composerValue(convertRawProp(context, rawProps, "composerValue", sourceProps.composerValue, {})),
++    composerMostRecentEventCount(convertRawProp(context, rawProps, "composerMostRecentEventCount", sourceProps.composerMostRecentEventCount, {0.0})),
++    composerRichText(convertRawProp(context, rawProps, "composerRichText", sourceProps.composerRichText, {true})),
++    composerCodeLabel(convertRawProp(context, rawProps, "composerCodeLabel", sourceProps.composerCodeLabel, {})),
++    composerQuoteLabel(convertRawProp(context, rawProps, "composerQuoteLabel", sourceProps.composerQuoteLabel, {})),
++    composerLinkTitle(convertRawProp(context, rawProps, "composerLinkTitle", sourceProps.composerLinkTitle, {})),
++    composerLinkConfirm(convertRawProp(context, rawProps, "composerLinkConfirm", sourceProps.composerLinkConfirm, {})),
++    composerCancelLabel(convertRawProp(context, rawProps, "composerCancelLabel", sourceProps.composerCancelLabel, {})),
+     defaultValue(convertRawProp(context, rawProps, "defaultValue", sourceProps.defaultValue, {})),
+     placeholder(convertRawProp(context, rawProps, "placeholder", sourceProps.placeholder, {})),
+     placeholderTextColor(convertRawProp(context, rawProps, "placeholderTextColor", sourceProps.placeholderTextColor, {})),
+@@ -220,6 +231,50 @@
+   }
+   folly::dynamic result = HostPlatformViewProps::getDiffProps(prevProps);
+   
++  if (composerSubmitOnReturn != oldProps->composerSubmitOnReturn) {
++    result["composerSubmitOnReturn"] = composerSubmitOnReturn;
++  }
++    
++  if (composerKeyboardAppearance != oldProps->composerKeyboardAppearance) {
++    result["composerKeyboardAppearance"] = composerKeyboardAppearance;
++  }
++    
++  if (composerBinding != oldProps->composerBinding) {
++    result["composerBinding"] = composerBinding;
++  }
++    
++  if (composerValue != oldProps->composerValue) {
++    result["composerValue"] = composerValue;
++  }
++    
++  if ((composerMostRecentEventCount != oldProps->composerMostRecentEventCount) && !(std::isnan(composerMostRecentEventCount) && std::isnan(oldProps->composerMostRecentEventCount))) {
++    result["composerMostRecentEventCount"] = composerMostRecentEventCount;
++  }
++    
++  if (composerRichText != oldProps->composerRichText) {
++    result["composerRichText"] = composerRichText;
++  }
++    
++  if (composerCodeLabel != oldProps->composerCodeLabel) {
++    result["composerCodeLabel"] = composerCodeLabel;
++  }
++    
++  if (composerQuoteLabel != oldProps->composerQuoteLabel) {
++    result["composerQuoteLabel"] = composerQuoteLabel;
++  }
++    
++  if (composerLinkTitle != oldProps->composerLinkTitle) {
++    result["composerLinkTitle"] = composerLinkTitle;
++  }
++    
++  if (composerLinkConfirm != oldProps->composerLinkConfirm) {
++    result["composerLinkConfirm"] = composerLinkConfirm;
++  }
++    
++  if (composerCancelLabel != oldProps->composerCancelLabel) {
++    result["composerCancelLabel"] = composerCancelLabel;
++  }
++    
+   if (defaultValue != oldProps->defaultValue) {
+     result["defaultValue"] = defaultValue;
+   }
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+@@ -4103,6 +4103,17 @@
+ 
+ #pragma mark - Props
+ 
++  bool composerSubmitOnReturn{false};
++  std::string composerKeyboardAppearance{};
++  std::string composerBinding{};
++  std::string composerValue{};
++  double composerMostRecentEventCount{0.0};
++  bool composerRichText{true};
++  std::string composerCodeLabel{};
++  std::string composerQuoteLabel{};
++  std::string composerLinkTitle{};
++  std::string composerLinkConfirm{};
++  std::string composerCancelLabel{};
+   std::string defaultValue{};
+   std::string placeholder{};
+   SharedColor placeholderTextColor{};

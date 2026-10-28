@@ -169,6 +169,7 @@ export function MessageComposer({
     const send = createRef<() => void>();
     const field = (
       <ComposerTextField
+        richText={!search}
         inputRef={inputRef}
         bindSend={(capture) => {
           send.current = capture;

@@ -1,0 +1,377 @@
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInputNativeComponent.ts
+@@ -65,6 +65,9 @@
+ 
+ export interface OnChangeMarkdownEvent {
+   value: string;
++  text: string;
++  binding: string;
++  eventCount: CodegenTypes.Double;
+ }
+ 
+ export interface OnKeyPressEvent {
+@@ -188,6 +191,17 @@
+ }
+ 
+ export interface NativeProps extends ViewProps {
++  composerSubmitOnReturn?: CodegenTypes.WithDefault<boolean, false>;
++  composerKeyboardAppearance?: string;
++  composerBinding?: string;
++  composerValue?: string;
++  composerMostRecentEventCount?: CodegenTypes.WithDefault<CodegenTypes.Double, 0>;
++  composerRichText?: CodegenTypes.WithDefault<boolean, true>;
++  composerCodeLabel?: string;
++  composerQuoteLabel?: string;
++  composerLinkTitle?: string;
++  composerLinkConfirm?: string;
++  composerCancelLabel?: string;
+   /**
+    * Initial markdown content.
+    */
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextInput.tsx
+@@ -5,6 +5,7 @@
+   useLayoutEffect,
+   useMemo,
+   useRef,
++  useState,
+ } from 'react';
+ import type React from 'react';
+ import EnrichedMarkdownTextInputNativeComponent, {
+@@ -138,6 +139,8 @@
+ }
+ 
+ export interface EnrichedMarkdownTextInputInstance {
++  getNativeRef: () => HostInstance;
++  getAnimatableRef: () => HostInstance;
+   focus: () => void;
+   blur: () => void;
+   measure: HostInstance['measure'];
+@@ -225,6 +228,18 @@
+       'onPress' | 'onPressIn' | 'onPressOut' | 'rejectResponderTermination'
+     > {
+   ref?: RefObject<EnrichedMarkdownTextInputInstance | null>;
++  composerSubmitOnReturn?: boolean;
++  composerKeyboardAppearance?: string;
++  composerBinding?: string;
++  composerValue?: string;
++  composerMostRecentEventCount?: number;
++  composerRichText?: boolean;
++  composerCodeLabel?: string;
++  composerQuoteLabel?: string;
++  composerLinkTitle?: string;
++  composerLinkConfirm?: string;
++  composerCancelLabel?: string;
++  onComposerChange?: (event: NativeSyntheticEvent<OnChangeMarkdownEvent>) => void;
+   defaultValue?: string;
+   placeholder?: string;
+   placeholderTextColor?: ColorValue;
+@@ -319,6 +334,18 @@
+   markdownStyle,
+   style,
+   defaultValue,
++  composerSubmitOnReturn,
++  composerKeyboardAppearance,
++  composerBinding,
++  composerValue,
++  composerMostRecentEventCount,
++  composerRichText,
++  composerCodeLabel,
++  composerQuoteLabel,
++  composerLinkTitle,
++  composerLinkConfirm,
++  composerCancelLabel,
++  onComposerChange,
+   placeholder,
+   placeholderTextColor,
+   editable = true,
+@@ -358,6 +385,7 @@
+   const nativeRef = useRef<NativeRef | null>(null);
+   // Freeze `defaultValue` at mount (RN TextInput semantics): post-mount changes are ignored.
+   const initialDefaultValue = useRef(defaultValue).current;
++  const [composerReceipt, setComposerReceipt] = useState({ binding: composerBinding, eventCount: 0 });
+ 
+   const nextRequestId = useRef(1);
+   const pendingRequests = useRef(new Map<number, PendingRequest<string>>());
+@@ -503,9 +531,16 @@
+ 
+   const handleChangeMarkdown = useCallback(
+     (e: NativeSyntheticEvent<OnChangeMarkdownEvent>) => {
++      if (composerBinding && e.nativeEvent.binding !== composerBinding) return;
+       onChangeMarkdown?.(e.nativeEvent.value);
+-    },
+-    [onChangeMarkdown]
++      onComposerChange?.(e);
++      if (composerBinding) setComposerReceipt((previous) => ({
++        binding: composerBinding,
++        eventCount: previous.binding === composerBinding
++          ? Math.max(previous.eventCount, e.nativeEvent.eventCount) : e.nativeEvent.eventCount,
++      }));
++    },
++    [onChangeMarkdown, onComposerChange, composerBinding]
+   );
+ 
+   const handleChangeSelection = useCallback(
+@@ -683,6 +718,8 @@
+     // HostComponent type — the cast is safe at runtime.
+     const commandRef = node as Parameters<(typeof Commands)['focus']>[0];
+     return {
++      getNativeRef: () => node,
++      getAnimatableRef: () => node,
+       measure: (callback) => node.measure(callback),
+       measureInWindow: (callback) => node.measureInWindow(callback),
+       measureLayout: (relativeToNativeNode, onSuccess, onFail) =>
+@@ -734,6 +771,18 @@
+       style={style}
+       markdownStyle={normalizedStyle}
+       defaultValue={initialDefaultValue}
++      composerSubmitOnReturn={composerSubmitOnReturn}
++      composerKeyboardAppearance={composerKeyboardAppearance}
++      composerBinding={composerBinding}
++      composerValue={composerValue}
++      composerMostRecentEventCount={Math.max(composerMostRecentEventCount ?? 0,
++        composerReceipt.binding === composerBinding ? composerReceipt.eventCount : 0)}
++      composerRichText={composerRichText}
++      composerCodeLabel={composerCodeLabel}
++      composerQuoteLabel={composerQuoteLabel}
++      composerLinkTitle={composerLinkTitle}
++      composerLinkConfirm={composerLinkConfirm}
++      composerCancelLabel={composerCancelLabel}
+       placeholder={placeholder}
+       placeholderTextColor={placeholderTextColor}
+       editable={editable}
+@@ -745,7 +794,7 @@
+       multiline={multiline}
+       cursorColor={cursorColor}
+       selectionColor={selectionColor}
+-      isOnChangeMarkdownSet={onChangeMarkdown !== undefined}
++      isOnChangeMarkdownSet={onChangeMarkdown !== undefined || onComposerChange !== undefined}
+       onChangeText={handleChangeText as NativeProps['onChangeText']}
+       onChangeMarkdown={handleChangeMarkdown as NativeProps['onChangeMarkdown']}
+       onChangeSelection={
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.js b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.js
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.js
+@@ -0,0 +1,7 @@
++import { codegenNativeComponent, codegenNativeCommands } from 'react-native';
++export const Commands = codegenNativeCommands({
++  supportedCommands: ['focus', 'blur', 'setValue', 'setSelection', 'toggleBold', 'toggleItalic', 'toggleUnderline', 'toggleStrikethrough', 'toggleSpoiler', 'toggleHeading', 'toggleUnorderedList', 'toggleOrderedList', 'indentList', 'outdentList', 'setLink', 'insertLink', 'insertText', 'insertMention', 'startMention', 'removeLink', 'copyToClipboard', 'requestMarkdown', 'requestCaretRect']
++});
++export default codegenNativeComponent('EnrichedMarkdownTextInput', {
++  interfaceOnly: true
++});
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInput.js
+@@ -1,14 +1,12 @@
+-"use strict";
+-
+-import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react';
++import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+ import EnrichedMarkdownTextInputNativeComponent, { Commands } from './EnrichedMarkdownTextInputNativeComponent';
+ import { Platform } from 'react-native';
+-import { normalizeMarkdownShortcuts } from "./normalizeMarkdownShortcuts.js";
+-import { normalizeMarkdownTextInputStyle } from "./normalizeMarkdownTextInputStyle.js";
+-import { normalizeMenuItem } from "./normalizeMenuItem.js";
+-import { toNativeRegexConfig } from "./utils/regexParser.js";
+-import { TextInputState } from "./utils/textInputState.js";
+-import { usePressability } from "./utils/usePressability.js";
++import { normalizeMarkdownShortcuts } from './normalizeMarkdownShortcuts';
++import { normalizeMarkdownTextInputStyle } from './normalizeMarkdownTextInputStyle';
++import { normalizeMenuItem } from './normalizeMenuItem';
++import { toNativeRegexConfig } from './utils/regexParser';
++import { TextInputState } from './utils/textInputState';
++import { usePressability } from './utils/usePressability';
+ import { jsx as _jsx } from "react/jsx-runtime";
+ const VALID_HEADING_LEVELS = new Set([1, 2, 3, 4, 5, 6]);
+ function toHeadingLevel(n) {
+@@ -38,6 +36,18 @@
+   markdownStyle,
+   style,
+   defaultValue,
++  composerSubmitOnReturn,
++  composerKeyboardAppearance,
++  composerBinding,
++  composerValue,
++  composerMostRecentEventCount,
++  composerRichText,
++  composerCodeLabel,
++  composerQuoteLabel,
++  composerLinkTitle,
++  composerLinkConfirm,
++  composerCancelLabel,
++  onComposerChange,
+   placeholder,
+   placeholderTextColor,
+   editable = true,
+@@ -77,6 +87,10 @@
+   const nativeRef = useRef(null);
+   // Freeze `defaultValue` at mount (RN TextInput semantics): post-mount changes are ignored.
+   const initialDefaultValue = useRef(defaultValue).current;
++  const [composerReceipt, setComposerReceipt] = useState({
++    binding: composerBinding,
++    eventCount: 0
++  });
+   const nextRequestId = useRef(1);
+   const pendingRequests = useRef(new Map());
+   const pendingCaretRectRequests = useRef(new Map());
+@@ -182,8 +196,14 @@
+     onChangeText?.(e.nativeEvent.value);
+   }, [onChangeText]);
+   const handleChangeMarkdown = useCallback(e => {
++    if (composerBinding && e.nativeEvent.binding !== composerBinding) return;
+     onChangeMarkdown?.(e.nativeEvent.value);
+-  }, [onChangeMarkdown]);
++    onComposerChange?.(e);
++    if (composerBinding) setComposerReceipt(previous => ({
++      binding: composerBinding,
++      eventCount: previous.binding === composerBinding ? Math.max(previous.eventCount, e.nativeEvent.eventCount) : e.nativeEvent.eventCount
++    }));
++  }, [onChangeMarkdown, onComposerChange, composerBinding]);
+   const handleChangeSelection = useCallback(e => {
+     const {
+       start,
+@@ -344,6 +364,8 @@
+     // HostComponent type — the cast is safe at runtime.
+     const commandRef = node;
+     return {
++      getNativeRef: () => node,
++      getAnimatableRef: () => node,
+       measure: callback => node.measure(callback),
+       measureInWindow: callback => node.measureInWindow(callback),
+       measureLayout: (relativeToNativeNode, onSuccess, onFail) => node.measureLayout(relativeToNativeNode, onSuccess, onFail),
+@@ -391,6 +413,17 @@
+     style: style,
+     markdownStyle: normalizedStyle,
+     defaultValue: initialDefaultValue,
++    composerSubmitOnReturn: composerSubmitOnReturn,
++    composerKeyboardAppearance: composerKeyboardAppearance,
++    composerBinding: composerBinding,
++    composerValue: composerValue,
++    composerMostRecentEventCount: Math.max(composerMostRecentEventCount ?? 0, composerReceipt.binding === composerBinding ? composerReceipt.eventCount : 0),
++    composerRichText: composerRichText,
++    composerCodeLabel: composerCodeLabel,
++    composerQuoteLabel: composerQuoteLabel,
++    composerLinkTitle: composerLinkTitle,
++    composerLinkConfirm: composerLinkConfirm,
++    composerCancelLabel: composerCancelLabel,
+     placeholder: placeholder,
+     placeholderTextColor: placeholderTextColor,
+     editable: editable,
+@@ -402,7 +435,7 @@
+     multiline: multiline,
+     cursorColor: cursorColor,
+     selectionColor: selectionColor,
+-    isOnChangeMarkdownSet: onChangeMarkdown !== undefined,
++    isOnChangeMarkdownSet: onChangeMarkdown !== undefined || onComposerChange !== undefined,
+     onChangeText: handleChangeText,
+     onChangeMarkdown: handleChangeMarkdown,
+     onChangeSelection: handleChangeSelection,
+@@ -433,4 +466,3 @@
+   });
+ };
+ export default EnrichedMarkdownTextInput;
+-//# sourceMappingURL=EnrichedMarkdownTextInput.js.map
+\ No newline at end of file
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInput.d.ts
+@@ -1,4 +1,5 @@
+-import { type OnKeyPressEvent, type OnLinkDetected, type OnStartMentionEvent, type OnChangeMentionEvent, type OnEndMentionEvent } from './EnrichedMarkdownTextInputNativeComponent';
++import type React from 'react';
++import { type OnChangeMarkdownEvent, type OnKeyPressEvent, type OnLinkDetected, type OnStartMentionEvent, type OnChangeMentionEvent, type OnEndMentionEvent } from './EnrichedMarkdownTextInputNativeComponent';
+ export type { OnKeyPressEvent, OnLinkDetected, OnStartMentionEvent, OnChangeMentionEvent, OnEndMentionEvent, } from './EnrichedMarkdownTextInputNativeComponent';
+ import type { HostInstance, NativeSyntheticEvent, TextInputProps, ViewProps, ViewStyle, TextStyle, ColorValue } from 'react-native';
+ import type { RefObject } from 'react';
+@@ -99,6 +100,8 @@
+     height: number;
+ }
+ export interface EnrichedMarkdownTextInputInstance {
++    getNativeRef: () => HostInstance;
++    getAnimatableRef: () => HostInstance;
+     focus: () => void;
+     blur: () => void;
+     measure: HostInstance['measure'];
+@@ -177,11 +180,23 @@
+ }
+ export interface EnrichedMarkdownTextInputProps extends Omit<ViewProps, 'style' | 'children'>, Pick<TextInputProps, 'onPress' | 'onPressIn' | 'onPressOut' | 'rejectResponderTermination'> {
+     ref?: RefObject<EnrichedMarkdownTextInputInstance | null>;
++    composerSubmitOnReturn?: boolean;
++    composerKeyboardAppearance?: string;
++    composerBinding?: string;
++    composerValue?: string;
++    composerMostRecentEventCount?: number;
++    composerRichText?: boolean;
++    composerCodeLabel?: string;
++    composerQuoteLabel?: string;
++    composerLinkTitle?: string;
++    composerLinkConfirm?: string;
++    composerCancelLabel?: string;
++    onComposerChange?: (event: NativeSyntheticEvent<OnChangeMarkdownEvent>) => void;
+     defaultValue?: string;
+     placeholder?: string;
+     placeholderTextColor?: ColorValue;
+     editable?: boolean;
+-    /** iOS-only opaque native checkpoint lease. */
++    /** iOS-only opaque native checkpoint lease; the application owns storage. */
+     draftCheckpointToken?: string;
+     autoFocus?: boolean;
+     scrollEnabled?: boolean;
+@@ -254,6 +269,5 @@
+      */
+     writingDirection?: 'auto' | 'ltr' | 'rtl' | 'first-strong';
+ }
+-export declare const EnrichedMarkdownTextInput: ({ ref, markdownStyle, style, defaultValue, placeholder, placeholderTextColor, editable, autoFocus, scrollEnabled, markdownShortcuts, autoCapitalize, multiline, cursorColor, selectionColor, onChangeText, onChangeMarkdown, onChangeSelection, onChangeState, onKeyPress, onCaretRectChange, onLinkDetected, mentionIndicators, onStartMention, onChangeMention, onEndMention, onFocus, onBlur, onPress, onPressIn, onPressOut, hitSlop, rejectResponderTermination, contextMenuItems, selectionMenuConfig, formatMenuConfig, linkRegex: _linkRegex, writingDirection, ...rest }: EnrichedMarkdownTextInputProps) => import("react/jsx-runtime").JSX.Element;
++export declare const EnrichedMarkdownTextInput: ({ ref, markdownStyle, style, defaultValue, composerSubmitOnReturn, composerKeyboardAppearance, composerBinding, composerValue, composerMostRecentEventCount, composerRichText, composerCodeLabel, composerQuoteLabel, composerLinkTitle, composerLinkConfirm, composerCancelLabel, onComposerChange, placeholder, placeholderTextColor, editable, draftCheckpointToken, autoFocus, scrollEnabled, markdownShortcuts, autoCapitalize, multiline, cursorColor, selectionColor, onChangeText, onChangeMarkdown, onChangeSelection, onChangeState, onKeyPress, onCaretRectChange, onLinkDetected, mentionIndicators, onStartMention, onChangeMention, onEndMention, onFocus, onBlur, onPress, onPressIn, onPressOut, hitSlop, rejectResponderTermination, contextMenuItems, selectionMenuConfig, formatMenuConfig, linkRegex: _linkRegex, writingDirection, ...rest }: EnrichedMarkdownTextInputProps) => React.JSX.Element;
+ export default EnrichedMarkdownTextInput;
+-//# sourceMappingURL=EnrichedMarkdownTextInput.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextInputNativeComponent.d.ts
+@@ -45,6 +45,9 @@
+ }
+ export interface OnChangeMarkdownEvent {
+     value: string;
++    text: string;
++    binding: string;
++    eventCount: CodegenTypes.Double;
+ }
+ export interface OnKeyPressEvent {
+     key: string;
+@@ -193,6 +196,17 @@
+     };
+ }
+ export interface NativeProps extends ViewProps {
++    composerSubmitOnReturn?: CodegenTypes.WithDefault<boolean, false>;
++    composerKeyboardAppearance?: string;
++    composerBinding?: string;
++    composerValue?: string;
++    composerMostRecentEventCount?: CodegenTypes.WithDefault<CodegenTypes.Double, 0>;
++    composerRichText?: CodegenTypes.WithDefault<boolean, true>;
++    composerCodeLabel?: string;
++    composerQuoteLabel?: string;
++    composerLinkTitle?: string;
++    composerLinkConfirm?: string;
++    composerCancelLabel?: string;
+     /**
+      * Initial markdown content.
+      */
+@@ -210,7 +224,7 @@
+      * @default true
+      */
+     editable?: boolean;
+-    /** iOS-only opaque native checkpoint lease. */
++    /** iOS-only opaque native checkpoint lease. Absent preserves ordinary volatile behavior. */
+     draftCheckpointToken?: string;
+     /**
+      * Whether the input should auto-focus on mount.
+@@ -340,4 +354,3 @@
+ export declare const Commands: NativeCommands;
+ declare const _default: HostComponent<NativeProps>;
+ export default _default;
+-//# sourceMappingURL=EnrichedMarkdownTextInputNativeComponent.d.ts.map
+\ No newline at end of file

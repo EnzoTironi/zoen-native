@@ -15,6 +15,7 @@ public class ZoenCoreModule: Module {
     Events("onChange", "onPageInputStatus", "onCallState", "onCallAudio")
     Constant("sitePreviewVersion") { 2 }
     Constant("pageInputVersion") { 2 }
+    Constant("composerFormattingVersion") { 1 }
     zoenSitePreviewDefinition()
     Constant("staticLocationVersion") { 1 }
     zoenLocationMapDefinition()

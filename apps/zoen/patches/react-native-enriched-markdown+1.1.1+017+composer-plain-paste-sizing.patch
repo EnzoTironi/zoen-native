@@ -1,0 +1,65 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.h
+@@ -12,10 +12,12 @@
+ @interface EnrichedMarkdownTextInput : RCTViewComponentView <ENRMDraftSnapshotProducer>
+ @property (nonatomic, readonly) ENRMEditSession *editSession;
+ - (BOOL)isComposerRichInput;
++- (BOOL)isComposerPlainInput;
+ - (void)performComposerFormatting:(dispatch_block_t)mutation;
+ - (NSString *)composerCodeLabel;
+ - (NSString *)composerQuoteLabel;
+ - (nullable NSString *)zoenComposerCanonicalText;
++- (nullable NSNumber *)zoenComposerBaseFontSize;
+ - (CGSize)measureSize:(CGFloat)maxWidth;
+ - (nullable NSString *)markdownForSelectedRange;
+ - (void)copyToClipboard;
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -784,9 +784,11 @@
+ 
+ 
+ - (BOOL)isComposerRichInput { return _composer.binding.length && _composer.richText; }
++- (BOOL)isComposerPlainInput { return _composer.binding.length && !_composer.richText; }
+ - (NSString *)composerCodeLabel { return _composerCodeLabel ?: @""; }
+ - (NSString *)composerQuoteLabel { return _composerQuoteLabel ?: @""; }
+ - (NSString *)zoenComposerCanonicalText { return _composer.binding.length ? [self currentMarkdown] : nil; }
++- (NSNumber *)zoenComposerBaseFontSize { return _composer.binding.length ? @(_formatterStyle.baseFont.pointSize) : nil; }
+ - (NSDictionary *)composerReceiptForMarkdown:(NSString *)markdown { return [_composer receiptForMarkdown:markdown]; }
+ 
+ - (void)composerMutationWillBegin
+@@ -946,6 +948,10 @@
+ /// omitting) newlines in the string.
+ - (void)pasteMarkdown:(NSString *)markdown
+ {
++  if ([self isComposerPlainInput]) {
++    [self replaceTextInRange:_textView.selectedRange withText:markdown formattingRanges:@[] blockRanges:@[]];
++    return;
++  }
+   NSUInteger lead = 0;
+   while (lead < markdown.length && [markdown characterAtIndex:lead] == '\n') {
+     lead++;
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTextView.mm
+@@ -67,6 +67,11 @@
+ - (void)paste:(id)sender
+ {
+   UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
++  if ([self.markdownTextInput isComposerPlainInput]) {
++    NSString *plainText = pasteboard.string;
++    if (plainText.length > 0) [self.markdownTextInput pasteMarkdown:plainText];
++    return;
++  }
+ 
+   NSString *markdown = nil;
+   id markdownValue = [pasteboard valueForPasteboardType:kENRMMarkdownPasteboardType];
+@@ -95,6 +100,7 @@
+ {
+   if (action == @selector(paste:)) {
+     UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
++    if ([self.markdownTextInput isComposerPlainInput]) return pasteboard.hasStrings;
+     if (pasteboard.hasStrings || [pasteboard containsPasteboardTypes:@[ kENRMMarkdownPasteboardType ]]) {
+       return YES;
+     }

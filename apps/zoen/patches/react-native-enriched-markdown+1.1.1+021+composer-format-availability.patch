@@ -1,0 +1,299 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.h
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.h
+@@ -0,0 +1,14 @@
++#pragma once
++#import "ENRMFormattingRange.h"
++#import "ENRMBlockRange.h"
++
++NS_ASSUME_NONNULL_BEGIN
++
++NSRange ENRMComposerFormattingSelection(NSString *text, ENRMInputStyleType type, NSRange selection);
++
++BOOL ENRMComposerCanToggle(NSString *text, NSArray<ENRMFormattingRange *> *ranges,
++  ENRMInputStyleType type, NSRange selection, NSString *_Nullable linkURL);
++BOOL ENRMComposerCanToggleBlock(NSString *text, NSArray<ENRMFormattingRange *> *ranges,
++  NSArray<ENRMBlockRange *> *blocks, ENRMInputBlockType type, NSInteger level, NSRange selection);
++
++NS_ASSUME_NONNULL_END
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.mm
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMComposerAvailability.mm
+@@ -0,0 +1,98 @@
++#import "ENRMComposerAvailability.h"
++#import "ENRMComposerRanges.h"
++#import "ENRMFormattingStore.h"
++#import "ENRMBlockStore.h"
++#import "ENRMBlockEditCoordinator.h"
++#import "ENRMLinkCoordinator.h"
++#import "ENRMMarkdownSerializer.h"
++#import "ENRMInputParser.h"
++
++@interface ENRMComposerProbeLinks : NSObject <ENRMAutoLinkDetecting>
++@end
++@implementation ENRMComposerProbeLinks
++- (void)clearAutoLinkInRange:(NSRange)range {}
++@end
++
++static ENRMFormattingStore *ENRMComposerCopiedStore(NSArray<ENRMFormattingRange *> *ranges)
++{
++  ENRMFormattingStore *store = [ENRMFormattingStore new];
++  NSMutableArray *copies = [NSMutableArray new];
++  for (ENRMFormattingRange *range in ranges)
++    [copies addObject:[ENRMFormattingRange rangeWithType:range.type range:range.range url:range.url]];
++  [store setRanges:copies];
++  return store;
++}
++
++NSRange ENRMComposerFormattingSelection(NSString *text, ENRMInputStyleType type, NSRange selection)
++{
++  if (selection.location > text.length || selection.length > text.length - selection.location)
++    return NSMakeRange(NSNotFound, 0);
++  if (type == ENRMInputStyleTypeStrong || type == ENRMInputStyleTypeEmphasis ||
++      type == ENRMInputStyleTypeStrikethrough || type == ENRMInputStyleTypeSpoiler) {
++    NSUInteger start = selection.location, end = NSMaxRange(selection);
++    NSCharacterSet *space = NSCharacterSet.whitespaceAndNewlineCharacterSet;
++    while (start < end && [space characterIsMember:[text characterAtIndex:start]]) start++;
++    while (end > start && [space characterIsMember:[text characterAtIndex:end - 1]]) end--;
++    return NSMakeRange(start, end - start);
++  }
++  return selection;
++}
++
++BOOL ENRMComposerCanToggle(NSString *text, NSArray<ENRMFormattingRange *> *ranges,
++  ENRMInputStyleType type, NSRange selection, NSString *linkURL)
++{
++  if (type > ENRMInputStyleTypeCode || !selection.length || selection.location > text.length ||
++      selection.length > text.length - selection.location || type == ENRMInputStyleTypeUnderline) return NO;
++  selection = ENRMComposerFormattingSelection(text, type, selection);
++  if (!selection.length) return NO;
++  ENRMFormattingStore *store = ENRMComposerCopiedStore(ranges);
++  BOOL removed = NO;
++  if (type == ENRMInputStyleTypeLink) {
++    ENRMLinkCoordinator *links = [[ENRMLinkCoordinator alloc] initWithFormattingStore:store
++      autoLinkDetector:[ENRMComposerProbeLinks new]];
++    if (![links setLinkURL:linkURL ?: @"https://example.invalid" atCursor:selection.location selection:selection]) return NO;
++  } else {
++    removed = [store toggleStyle:type inRange:selection conflictingStyles:NSSet.set];
++  }
++  ENRMRetainComposerLiteralText(store, text, selection);
++  NSArray *proposed = ENRMCoalescedComposerRanges(text, store.allRanges);
++  NSString *selected = [text substringWithRange:selection];
++  if (!removed && type != ENRMInputStyleTypeCode &&
++      ![selected stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) return NO;
++  return ENRMRepresentableComposerInline(text, proposed) != nil;
++}
++
++static NSArray *ENRMComposerBlockCoverage(NSString *text, NSArray<ENRMBlockRange *> *blocks)
++{
++  NSMutableArray<NSMutableSet *> *coverage = [NSMutableArray new];
++  for (NSUInteger i = 0; i < text.length; i++) [coverage addObject:[NSMutableSet new]];
++  for (ENRMBlockRange *block in blocks) {
++    if (block.range.location > text.length || block.range.length > text.length - block.range.location) continue;
++    NSString *mark = [NSString stringWithFormat:@"%ld:%ld:%ld", (long)block.type, (long)block.level, (long)block.ordinal];
++    for (NSUInteger i = block.range.location; i < NSMaxRange(block.range); i++) {
++      unichar c = [text characterAtIndex:i];
++      if (c != '\n' && c != '\r') [coverage[i] addObject:mark];
++    }
++  }
++  return coverage;
++}
++
++BOOL ENRMComposerCanToggleBlock(NSString *text, NSArray<ENRMFormattingRange *> *ranges,
++  NSArray<ENRMBlockRange *> *blocks, ENRMInputBlockType type, NSInteger level, NSRange selection)
++{
++  if (selection.location > text.length || selection.length > text.length - selection.location) return NO;
++  ENRMBlockStore *store = [ENRMBlockStore new];
++  NSMutableArray *copies = [NSMutableArray new];
++  for (ENRMBlockRange *block in blocks) {
++    ENRMBlockRange *copy = [ENRMBlockRange rangeWithType:block.type range:block.range level:block.level];
++    copy.ordinal = block.ordinal;
++    [copies addObject:copy];
++  }
++  [store setRanges:copies];
++  ENRMBlockEditCoordinator *coordinator = [[ENRMBlockEditCoordinator alloc] initWithBlockStore:store];
++  [coordinator toggleBlockType:type level:level selectionRange:selection inText:text];
++  NSString *candidate = [ENRMMarkdownSerializer serializeComposerText:text ranges:ranges blockRanges:store.allRanges];
++  ENRMParseResult *parsed = [[ENRMInputParser new] parseComposerMarkdown:candidate];
++  return [parsed.plainText isEqualToString:text] &&
++    [ENRMComposerBlockCoverage(text, store.allRanges) isEqual:ENRMComposerBlockCoverage(text, parsed.blockRanges)];
++}
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -16,6 +16,7 @@
+ #import "ENRMComposerInputState.h"
+ #import "ENRMMarkdownSerializer.h"
+ #import "ENRMComposerRanges.h"
++#import "ENRMComposerAvailability.h"
+ #import "ENRMInputFormatter.h"
+ #import "ENRMInputLayoutManager.h"
+ #import "ENRMInputLinkPrompt.h"
+@@ -821,6 +822,58 @@
+       [weakSelf composerRestore:markdown selection:selection binding:binding];
+     }];
+ }
++- (BOOL)composerIsComposing
++{
++  if (_editSession.isComposing) return YES;
++#if !TARGET_OS_OSX
++  return _textView.markedTextRange != nil;
++#else
++  return NO;
++#endif
++}
++- (BOOL)composerMenuMayAct
++{
++  if (![self isComposerRichInput] || ![self draftMayMutate] || !self.window || [self composerIsComposing]) return NO;
++#if !TARGET_OS_OSX
++  return _textView.isFirstResponder && !_textView.markedTextRange;
++#else
++  return _textView.window.firstResponder == _textView;
++#endif
++}
++- (BOOL)composerCanToggleStyle:(ENRMInputStyleType)type range:(NSRange)range
++{
++  return [self composerMenuMayAct] && ENRMComposerCanToggle(ENRMGetPlainText(_textView),
++    _formattingStore.allRanges, type, range, nil);
++}
++- (BOOL)composerCanToggleQuote:(NSRange)range
++{
++  return [self composerMenuMayAct] && ENRMComposerCanToggleBlock(ENRMGetPlainText(_textView),
++    _formattingStore.allRanges, _blockStore.allRanges, ENRMInputBlockTypeQuote, 1, range);
++}
++- (dispatch_block_t)composerMenuAction:(dispatch_block_t)work
++{
++  __weak EnrichedMarkdownTextInput *weakSelf = self;
++  if (!_composer.binding.length) {
++    // The article editor keeps its existing checkpoint admission, without a
++    // composer receipt. This capability cannot cross into a composer binding.
++    return [^{
++      EnrichedMarkdownTextInput *owner = weakSelf;
++      if (owner && !owner->_composer.binding.length) work();
++    } copy];
++  }
++  NSString *binding = _composer.binding;
++  uint64_t count = _composer.eventCount;
++  NSString *markdown = [self currentMarkdown];
++  NSRange selection = _textView.selectedRange;
++  return [^{
++    EnrichedMarkdownTextInput *owner = weakSelf;
++    if (!owner || ![owner composerMenuMayAct] || ![owner->_composer matches:binding eventCount:count] ||
++        ![[owner currentMarkdown] isEqualToString:markdown] ||
++        !NSEqualRanges(owner->_textView.selectedRange, selection)) return;
++    [owner performComposerFormatting:work];
++  } copy];
++}
++
+ - (void)performComposerFormatting:(dispatch_block_t)mutation
+ {
+   if (![self draftMayMutate]) return;
+@@ -1151,7 +1204,10 @@
+ - (void)toggleInlineStyle:(ENRMInputStyleType)styleType
+ {
+   if(![self draftMayMutate])return;
++  if (_composer.binding.length && [self composerIsComposing]) return;
+   if (_composer.binding.length && (!_composer.richText || styleType == ENRMInputStyleTypeUnderline)) return;
++  if (_composer.binding.length && _textView.selectedRange.length &&
++      ![self composerCanToggleStyle:styleType range:_textView.selectedRange]) return;
+   if (_composer.binding.length && _composer.undoDepth == 0) {
+     [self performComposerFormatting:^{ [self toggleInlineStyle:styleType]; }]; return;
+   }
+@@ -1162,6 +1218,8 @@
+   ENRMStyleMergingConfig *mergingConfig = handler.mergingConfig;
+ 
+   NSRange selection = _textView.selectedRange;
++  if (_composer.binding.length)
++    selection = ENRMComposerFormattingSelection(ENRMGetPlainText(_textView), styleType, selection);
+ 
+   if ([_formattingStore isToggleBlocked:styleType
+                              atPosition:selection.location
+@@ -1194,6 +1252,10 @@
+ - (void)toggleBlockType:(ENRMInputBlockType)type level:(NSInteger)level
+ {
+   if(![self draftMayMutate])return;
++  if (_composer.binding.length && [self composerIsComposing]) return;
++  if (_composer.binding.length && _textView.selectedRange.length &&
++      !ENRMComposerCanToggleBlock(ENRMGetPlainText(_textView), _formattingStore.allRanges,
++        _blockStore.allRanges, type, level, _textView.selectedRange)) return;
+   if (_composer.binding.length && _composer.undoDepth == 0) {
+     [self performComposerFormatting:^{ [self toggleBlockType:type level:level]; }]; return;
+   }
+@@ -1532,11 +1594,17 @@
+ - (void)setLink:(NSString *)url
+ {
+   if(![self draftMayMutate])return;
++  if (_composer.binding.length && [self composerIsComposing]) return;
++  if (_composer.binding.length && _textView.selectedRange.length &&
++      !ENRMComposerCanToggle(ENRMGetPlainText(_textView), _formattingStore.allRanges,
++        ENRMInputStyleTypeLink, _textView.selectedRange, url)) return;
+   if (_composer.binding.length && !_composer.richText) return;
+   if (_composer.binding.length && _composer.undoDepth == 0) {
+     [self performComposerFormatting:^{ [self setLink:url]; }]; return;
+   }
+   NSRange selection = _textView.selectedRange;
++  if (_composer.binding.length && selection.length)
++    ENRMRetainComposerLiteralText(_formattingStore, ENRMGetPlainText(_textView), selection);
+   if (![_linkCoordinator setLinkURL:url atCursor:selection.location selection:selection]) {
+     return;
+   }
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+ContextMenu.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+ContextMenu.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+ContextMenu.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput+ContextMenu.mm
+@@ -11,6 +11,9 @@
+ - (void)toggleBlockType:(ENRMInputBlockType)type level:(NSInteger)level;
+ - (void)toggleComposerCode;
+ - (void)toggleComposerQuote;
++- (BOOL)composerCanToggleStyle:(ENRMInputStyleType)type range:(NSRange)range;
++- (BOOL)composerCanToggleQuote:(NSRange)range;
++- (dispatch_block_t)composerMenuAction:(dispatch_block_t)work;
+ @end
+ 
+ @implementation EnrichedMarkdownTextInput (ContextMenu)
+@@ -64,21 +67,33 @@
+       continue;
+     }
+     ENRMInputStyleType styleType = formatItems[i].styleType;
++    dispatch_block_t work = ^{
++      if (styleType == ENRMInputStyleTypeLink) [weakSelf showLinkPrompt];
++      else [weakSelf toggleInlineStyle:styleType];
++    };
++    BOOL composer = [self isComposerRichInput];
++    dispatch_block_t admitted = [self composerMenuAction:work];
+     UIAction *action = [UIAction actionWithTitle:formatItems[i].title
+-                                           image:[UIImage systemImageNamed:formatItems[i].icon]
+-                                      identifier:nil
+-                                         handler:^(__kindof UIAction *_) {
+-                                           dispatch_block_t work = ^{
+-                                             if (styleType == ENRMInputStyleTypeLink) [weakSelf showLinkPrompt];
+-                                             else [weakSelf toggleInlineStyle:styleType];
+-                                           };
+-                                           if (([weakSelf respondsToSelector:@selector(isComposerRichInput)] && [weakSelf isComposerRichInput])) [weakSelf performComposerFormatting:work]; else work();
+-                                         }];
++      image:[UIImage systemImageNamed:formatItems[i].icon] identifier:nil
++      handler:^(__kindof UIAction *_) { admitted(); }];
++    if (composer && ![self composerCanToggleStyle:styleType range:range])
++      action.attributes = UIMenuElementAttributesDisabled;
+     [formatActions addObject:action];
+   }
+   if (([self respondsToSelector:@selector(isComposerRichInput)] && [self isComposerRichInput])) {
+-    [formatActions addObject:[UIAction actionWithTitle:[self composerCodeLabel] image:[UIImage systemImageNamed:@"chevron.left.forwardslash.chevron.right"] identifier:nil handler:^(__kindof UIAction *action) { [weakSelf toggleComposerCode]; }]];
+-    [formatActions addObject:[UIAction actionWithTitle:[self composerQuoteLabel] image:[UIImage systemImageNamed:@"text.quote"] identifier:nil handler:^(__kindof UIAction *action) { [weakSelf toggleComposerQuote]; }]];
++    dispatch_block_t code = [self composerMenuAction:^{ [weakSelf toggleInlineStyle:ENRMInputStyleTypeCode]; }];
++    UIAction *codeAction = [UIAction actionWithTitle:[self composerCodeLabel]
++      image:[UIImage systemImageNamed:@"chevron.left.forwardslash.chevron.right"] identifier:nil
++      handler:^(__kindof UIAction *_) { code(); }];
++    if (![self composerCanToggleStyle:ENRMInputStyleTypeCode range:range])
++      codeAction.attributes = UIMenuElementAttributesDisabled;
++    [formatActions addObject:codeAction];
++    dispatch_block_t quote = [self composerMenuAction:^{ [weakSelf toggleBlockType:ENRMInputBlockTypeQuote level:1]; }];
++    UIAction *quoteAction = [UIAction actionWithTitle:[self composerQuoteLabel]
++      image:[UIImage systemImageNamed:@"text.quote"] identifier:nil
++      handler:^(__kindof UIAction *_) { quote(); }];
++    if (![self composerCanToggleQuote:range]) quoteAction.attributes = UIMenuElementAttributesDisabled;
++    [formatActions addObject:quoteAction];
+   }
+   UIMenu *formatMenu = [UIMenu menuWithTitle:menuConfig.formatLabel
+                                        image:[UIImage systemImageNamed:@"textformat"]
