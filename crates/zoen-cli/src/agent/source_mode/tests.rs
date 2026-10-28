@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 mod file_import;
 mod fixture;
+mod history_search;
 mod known_result;
 mod known_tools;
 mod lifecycle;

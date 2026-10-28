@@ -44,6 +44,7 @@ use messages::{
     turn_note,
 };
 pub(crate) mod controls;
+mod history_search;
 mod image_ipc;
 mod image_tools;
 mod journal;
