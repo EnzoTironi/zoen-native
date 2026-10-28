@@ -49,7 +49,7 @@ FRONTEND_CONTRACTS = {
     # Android installer and its invoked fixtures are real workflow inputs.
     "scripts/install-android-sdk.py": "aff7527c4fb23ca29e9d9eeace380837e9a23eb20b88d5499e33fd4e30cf1144",
     "scripts/test-install-android-sdk.py": "986a43af641273820ad8d50ca62a1b52e0f64bf70066b836c04dd08da82244cd",
-    "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
+    "apps/zoen/package.json": "fa5291f5df59e1d9cd9b2143e91358bcab4b20cb5c1b8ceb8643bf1ee94c3610",
     "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "2f0eccb5f4de55d63dd56a287685921b4acdb4224308d9d7747edd2eec2464cd",
     "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "3bd56bac1f1f496a2213c69c2242c6233891cd377fc298db94260b14fcd91318",
     "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json": "10c784d78a451c963826cbbcc8335de1485d89b0e90a84b36c14777b21f6c0b4",
