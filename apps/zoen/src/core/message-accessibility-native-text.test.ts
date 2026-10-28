@@ -106,6 +106,7 @@ int main() { @autoreleasepool {
         parse('\\*literal\\* \\[a\\]\\(b\\) \\`z\\` café🦊').text,
         '*literal* [a](b) `z` café🦊',
       );
+      assert.equal(parse(String.raw`\"Conversa pronta\"`).text, '"Conversa pronta"');
       const rich = parse(
         '**bold** *italic* ~~strike~~\n\n> quoted\n\n[label](https://example.test/path)',
       );

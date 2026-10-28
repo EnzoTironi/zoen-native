@@ -214,7 +214,9 @@ diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/type
 +++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/events.d.ts
 @@ -58,2 +58,3 @@
  }
--//# sourceMappingURL=events.d.ts.map+//# sourceMappingURL=events.d.ts.map
+-//# sourceMappingURL=events.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=events.d.ts.map
 +export interface ResolvedAccessibilityTextEvent { revision: string; markdown: string; text: string; }
 diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
 --- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts

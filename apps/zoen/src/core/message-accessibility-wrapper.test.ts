@@ -56,7 +56,7 @@ test('the maintained public wrapper forwards the current GFM receipt and retains
     accessibilityRevision: 'row:revision',
     onResolvedAccessibilityText: (event: unknown) => receipts.push(event),
     onLinkPress: (event: unknown) => links.push(event),
-    onQuoteToggle: (event: unknown) => quotes.push(event),
+    onBlockquoteToggle: (event: unknown) => quotes.push(event),
     quoteCollapse: { enabled: true },
   });
   assert.equal(view.type, 'EnrichedMarkdown');
@@ -67,5 +67,8 @@ test('the maintained public wrapper forwards the current GFM receipt and retains
   assert.equal(receipts[0], receipt, 'the wrapper must not invent or unescape native text');
   view.props.onLinkPress({ nativeEvent: { url: 'https://example.test' } });
   assert.equal((links[0] as any).url, 'https://example.test');
-  assert.equal(typeof view.props.onQuoteToggle, 'function');
+  assert.equal(typeof view.props.onBlockquoteToggle, 'function');
+  const quoteEvent = { nativeEvent: { source, quoteIndex: 0 } };
+  view.props.onBlockquoteToggle(quoteEvent);
+  assert.equal(quotes[0], quoteEvent);
 });
