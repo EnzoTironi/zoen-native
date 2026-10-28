@@ -50,6 +50,7 @@ function fixture(
     row?: boolean;
     recover?: boolean;
     quote?: boolean;
+    info?: boolean;
   } = {},
 ) {
   const result = deferred<string | null>(),
@@ -113,6 +114,7 @@ function fixture(
     onClose: () => calls.push('close'),
     onReact: (value: string | null) => calls.push(`react:${value}`),
     onMore: () => calls.push('more'),
+    onInfo: options.info ? () => calls.push('info') : undefined,
     onReply: () => calls.push('reply'),
     onThread: () => calls.push('thread'),
     onForward: () => calls.push('forward'),
@@ -359,3 +361,23 @@ for (const failure of ['source', 'revision', 'spans'] as const)
     assert.ok(!f.calls.includes('quoted'));
     assert.ok(f.calls.includes('close'));
   });
+
+test('actual compiled Info delegates after native completion and refuses a revoked row', async () => {
+  const f = fixture({ info: true });
+  f.render();
+  await tick();
+  assert.equal(
+    f.configurations[0].actions.some((action: any) => action.id === 'info'),
+    true,
+  );
+  f.result.resolve('info');
+  await tick();
+  assert.deepEqual(f.calls, ['close', 'info']);
+  const stale = fixture({ info: true });
+  stale.render();
+  await tick();
+  stale.revoke();
+  stale.result.resolve('info');
+  await tick();
+  assert.equal(stale.calls.includes('info'), false);
+});

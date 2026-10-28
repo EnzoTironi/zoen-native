@@ -1,4 +1,5 @@
 import type { ReplySelection } from '../core/generated/ReplySelection';
+import { messageInfoAction } from './message-info-navigation';
 import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -47,6 +48,7 @@ export function useMessageActions({
 }) {
   const client = useClient();
   const { store, snapshot, mode } = client;
+  const infoEpoch = store.sessionEpoch;
   const { confirm, inform } = useDialogs();
   const scope = `${mode}:${snapshot?.account?.identity_id ?? snapshot?.me?.id}:${snapshot?.account?.device_id}:${spaceId}`;
   const latest = useRef({ entries, disabled, scope });
@@ -188,8 +190,7 @@ export function useMessageActions({
       Boolean(current(value));
     let navigated = false;
     try {
-      // A recycled row supplies only message identity. Resolve the signed current
-      // author again, and keep late reads from opening a different account's route.
+      // Resolve the signed author again; recycled rows and late reads grant no route authority.
       const canonical = await store.driver.request({
         op: 'message',
         space_id: spaceId,
@@ -234,8 +235,7 @@ export function useMessageActions({
         });
     } finally {
       pending.current = false;
-      // This releases an interaction latch, never old account content. A scope
-      // change must not leave the newly focused conversation permanently busy.
+      // Release only the latch, never old content after a scope change.
       if (mounted.current) setBusy(false);
     }
   }
@@ -283,9 +283,7 @@ export function useMessageActions({
       )
         return;
       if (nativeSource?.kind === 'double') {
-        // Exact native admission fences a held/replayed event after a NEW touch.
-        // The native view has no mutation authority; current() still checks the
-        // account, access, signed message and focus again after this bridge await.
+        // Native admission fences a touch; current() rechecks account, access, message and focus.
         const attempt = {
           epoch: profileEpoch.current,
           scope,
@@ -469,6 +467,11 @@ export function useMessageActions({
           onReply={() => {
             if (selected) reply(selected);
           }}
+          onInfo={
+            selected && mode === 'account'
+              ? () => messageInfoAction(store, spaceId, selected, current, infoEpoch)()
+              : undefined
+          }
           onQuoteReview={quote.review}
           onQuote={quote.accept}
           onSelect={

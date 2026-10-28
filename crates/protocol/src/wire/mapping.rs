@@ -139,18 +139,43 @@ pub(super) fn ephemeral_to(space: &str, from: &str, k: &EphemeralKind) -> PbEphe
     PbEphemeral {
         space: space.to_string(),
         from: from.to_string(),
+        read_time: match k {
+            EphemeralKind::ReadTime(time) => Some(super::PbReadTime {
+                after_seq: time.after_seq,
+                reported_at_ms: time.reported_at_ms,
+            }),
+            _ => None,
+        },
         kind: Some(match k {
             EphemeralKind::Typing => Kind::Typing(PbEmpty {}),
             EphemeralKind::StoppedTyping => Kind::StoppedTyping(PbEmpty {}),
             EphemeralKind::Status { status } => Kind::Status(status.clone()),
             EphemeralKind::Read { seq } => Kind::Read(*seq),
+            EphemeralKind::ReadTime(time) => Kind::Read(time.through_seq),
             EphemeralKind::Delivered { seq } => Kind::Delivered(*seq),
         }),
     }
 }
 
-pub(super) fn ephemeral_kind(k: Option<pb_ephemeral::Kind>) -> Result<EphemeralKind, DecodeError> {
+pub(super) fn ephemeral_kind(
+    k: Option<pb_ephemeral::Kind>,
+    time: Option<super::PbReadTime>,
+) -> Result<EphemeralKind, DecodeError> {
     use pb_ephemeral::Kind;
+    if let Some(time) = time {
+        let Some(Kind::Read(seq)) = k else {
+            return Err(bad("read time without read"));
+        };
+        let report = crate::read_time::ReadTime {
+            after_seq: time.after_seq,
+            through_seq: seq,
+            reported_at_ms: time.reported_at_ms,
+        };
+        if !report.valid() {
+            return Err(bad("read time interval"));
+        }
+        return Ok(EphemeralKind::ReadTime(report));
+    }
     Ok(match k.ok_or_else(|| bad("ephemeral kind"))? {
         Kind::Typing(_) => EphemeralKind::Typing,
         Kind::StoppedTyping(_) => EphemeralKind::StoppedTyping,
