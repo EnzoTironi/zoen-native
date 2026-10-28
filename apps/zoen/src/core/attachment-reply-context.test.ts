@@ -10,6 +10,7 @@ import { telegramPresentation } from '../theme/telegram.ts';
 import { messageText } from './presentation.ts';
 import type { ClientState } from './store.ts';
 import type { TimelineEntry } from './types.ts';
+import type { ReplySelection } from './generated/ReplySelection.ts';
 import type { AttachmentDraftScope } from '../media/attachment-draft.ts';
 
 const require = createRequire(import.meta.url);
@@ -37,6 +38,7 @@ const external = new Set([
   'react-native-reanimated',
   '../components/primitives',
   './primitives',
+  './use-semantic-message-preview',
   '../core/provider',
   '../core/query',
   '../core/presentation',
@@ -44,7 +46,11 @@ const external = new Set([
   '../i18n/index.ts',
 ]);
 const output = await build({
-  stdin: { contents: compiled, resolveDir: dirname(path), loader: 'js' },
+  stdin: {
+    contents: compiled + "\nObject.assign(exports, require('../components/message-context'));",
+    resolveDir: dirname(path),
+    loader: 'js',
+  },
   bundle: true,
   platform: 'node',
   format: 'cjs',
@@ -105,14 +111,21 @@ function render({
   data = original,
   error = null,
   onCancel,
+  context,
 }: {
   state?: ClientState;
   captured?: AttachmentDraftScope;
   data?: TimelineEntry | null;
   error?: string | null;
   onCancel?: () => void;
+  context?: {
+    entry: TimelineEntry;
+    editing?: boolean;
+    quote?: ReplySelection;
+  };
 } = {}) {
   const queries: unknown[] = [];
+  const previews: { text: string; literal: boolean }[] = [];
   const keys: string[] = [];
   const jsx = (type: unknown, props: Element['props'], key?: string) => ({ type, props, key });
   const modules: Record<string, unknown> = {
@@ -123,6 +136,12 @@ function render({
     'react-native': { View: 'View', Text: 'Text' },
     'react-native-reanimated': { View: 'AnimatedView' },
     '../core/provider': { useClient: () => state },
+    './use-semantic-message-preview': {
+      useSemanticMessagePreview: (input: { text: string; literal: boolean }) => {
+        previews.push(input);
+        return { text: input.literal ? input.text : 'Native semantic preview' };
+      },
+    },
     '../core/query': {
       useCoreQuery: (command: unknown) => {
         queries.push(command);
@@ -144,7 +163,10 @@ function render({
     './primitives': { IconButton: 'IconButton', Icon: 'Icon' },
   };
   const module = {
-    exports: {} as { AttachmentReplyContext(props: Record<string, unknown>): Element },
+    exports: {} as {
+      AttachmentReplyContext(props: Record<string, unknown>): Element;
+      MessageContext(props: Record<string, unknown>): Element;
+    },
   };
   runInNewContext(output.outputFiles[0]!.text, {
     module,
@@ -162,10 +184,15 @@ function render({
     if (typeof node.type === 'function') return expand(node.type(node.props));
     return [node, ...expand(node.props.children)];
   }
-  const nodes = expand(module.exports.AttachmentReplyContext({ scope: captured, onCancel }));
+  const nodes = expand(
+    context
+      ? module.exports.MessageContext({ ...context, onCancel })
+      : module.exports.AttachmentReplyContext({ scope: captured, onCancel }),
+  );
   return {
     nodes,
     queries,
+    previews,
     keys,
     text: nodes.filter((node) => node.type === 'Text').map((node) => node.props.children),
     cancel: nodes.find((node) => node.type === 'IconButton'),
@@ -179,7 +206,8 @@ test('compiled attachment reply reads the captured canonical message and preserv
     JSON.stringify(result.queries),
     JSON.stringify([{ op: 'message', space_id: 'chat', message_id: 'original-reply' }]),
   );
-  assert.ok(result.text.includes('Captured canonical reply'));
+  assert.equal(result.previews[0]?.text, 'Captured canonical reply');
+  assert.ok(result.text.includes('Native semantic preview'));
   assert.ok(result.text.some((text) => String(text).includes('Canonical author')));
   (result.cancel!.props.onPress as () => void)();
   assert.equal(canceled, 1);
@@ -257,4 +285,51 @@ test('a changed device remounts its reader and a batch without a reply makes no 
   const noReply = render({ captured: { ...scope, replyTo: null } });
   assert.deepEqual(noReply.queries, []);
   assert.deepEqual(noReply.nodes, []);
+});
+
+test('composer previews project canonical Markdown but preserve literal selected text and generated labels', () => {
+  const canonical = {
+    ...original,
+    kind: { Message: { text: String.raw`\"café🦊\" **bold**`, card: null } },
+  } as TimelineEntry;
+  const before = structuredClone(canonical);
+  const full = render({ context: { entry: canonical } });
+  assert.equal(full.previews[0]?.literal, false);
+  assert.equal(
+    full.previews[0]?.text,
+    canonical.kind && 'Message' in canonical.kind ? canonical.kind.Message.text : '',
+  );
+  assert.ok(full.text.includes('Native semantic preview'));
+  const text = String.raw`*literal* \[a\](b) café🦊`;
+  const quote = {
+    source_id: canonical.id,
+    revision: 'r1',
+    spans: [{ start_utf16: 0, end_utf16: 1 }],
+    text,
+  };
+  const selected = render({ context: { entry: canonical, quote } });
+  assert.equal(selected.previews[0]?.literal, true);
+  assert.ok(selected.text.includes(text));
+  const editing = render({ context: { entry: canonical, editing: true, quote } });
+  assert.equal(editing.previews[0]?.literal, false);
+  assert.ok(!editing.text.includes(text));
+  const generated = render({
+    context: {
+      entry: {
+        ...canonical,
+        kind: {
+          Message: {
+            text: '',
+            card: { kind_id: 'file', item_id: 'file', title: 'photo_[1].jpg', version: 1 },
+          },
+        } as TimelineEntry['kind'],
+      },
+    },
+  });
+  assert.equal(generated.previews[0]?.literal, true);
+  assert.deepEqual(
+    canonical,
+    before,
+    'presentation never rewrites canonical text or draft context',
+  );
 });

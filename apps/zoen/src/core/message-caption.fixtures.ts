@@ -50,6 +50,7 @@ export const nativePorts = new Set([
   './message-receipt',
   './service-message',
   './message-markdown',
+  './use-semantic-message-preview',
 ]);
 export const output = await build({
   stdin: {
@@ -135,8 +136,10 @@ export function render(
     previous,
     albumPart,
     revealAnchor,
+    previewText,
   }: {
     phase?: SkyPhase;
+    previewText?: string | null;
     disabled?: boolean;
     next?: TimelineEntry;
     previous?: TimelineEntry;
@@ -147,6 +150,8 @@ export function render(
   const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'));
   const calls: { mode: string; entry: TimelineEntry }[] = [];
   const routes: unknown[] = [];
+  const quotes: string[] = [];
+  const previews: unknown[] = [];
   let didPan = false;
   let compilerCursor = 0;
   const caches: unknown[][] = [];
@@ -211,6 +216,12 @@ export function render(
     './primitives': { Icon: 'Icon' },
     './service-message': { ServiceMessage: 'ServiceMessage' },
     './message-markdown': { MessageMarkdown: 'MessageMarkdown' },
+    './use-semantic-message-preview': {
+      useSemanticMessagePreview: (input: { text: string }) => {
+        previews.push(input);
+        return { text: previewText === null ? undefined : (previewText ?? input.text) };
+      },
+    },
     './message-receipt': { MessageReceipt: 'MessageReceipt', messageDeliveryLabel: () => 'Sent' },
   };
   const module = {
@@ -252,7 +263,9 @@ export function render(
       },
       onAuthor() {},
       onReact() {},
-      onQuote() {},
+      onQuote(id: string) {
+        quotes.push(id);
+      },
       onMenu: (value: TimelineEntry, mode: string) => {
         calls.push({ mode, entry: value });
       },
@@ -265,6 +278,8 @@ export function render(
   return {
     tree,
     routes,
+    quotes,
+    previews,
     rerender: draw,
     caption,
     theme,
