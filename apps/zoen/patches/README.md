@@ -1,6 +1,6 @@
 # Dependency patches
 
-`@expo+inline-modules+0.2.7.patch` fixes the SDK 58 watched-directory lookup after
+`@expo+inline-modules+0.2.8.patch` fixes the SDK 58 watched-directory lookup after
 CocoaPods' `xcodeproj` serializer quotes the same `SOURCE_ROOT` path. It uses the
 installed Expo Xcode utility to compare the path's value and records newly created
 groups immediately. It changes no dependency version. The existing native-surfaces
@@ -90,7 +90,8 @@ them separately instead of replacing that overlay with a source-only package.
 
 ## Temporary Automatic theme input probe (#440)
 
-`@expo+ui+58.0.24.patch` adds only bounded native diagnostics to the existing
+`@expo+ui+58.0.25.patch` retains the RNHost touch-ownership fix and adds bounded
+native diagnostics to the existing
 Toggle Binding setter and dispatch call. It does not change the binding, events,
 gestures or control state. The SDK patch is silent unless the caller explicitly
 sets the closed `zoen-theme-automatic-probe` testID. Zoen supplies that ID only in
@@ -110,8 +111,10 @@ actual iPhone tap reaches that event. Native compilation and one controlled QA
 input on the next opt-in artifact are required. Remove this temporary patch and
 probe after that evidence identifies and verifies the actual fix. Retain the
 wrapper/provider regression. `patch-package --error-on-fail` applies the patch
-through the existing postinstall. The SDK 58 patch alignment ports this overlay to
-locked `@expo/ui@58.0.24`: both overlays produce identical bytes, modes and paths
-for all 1,670 package files from the integrity-checked pristine 58.0.24 tarball.
-Real apply, repeat apply and reverse restore were verified. This source equivalence
-does not qualify a new native App; the frozen 747 artifact retains its prior SDK.
+through the existing postinstall. The 28 October SDK 58 patch alignment ports the
+unchanged overlay to locked `@expo/ui@58.0.25`. It applies to the integrity-checked
+pristine 58.0.24 and 58.0.25 tarballs; all resulting iOS source bytes match. Upstream
+Android changes to DateTimePicker and FieldGroup remain intact. This source
+comparison does not qualify a new native App; previously frozen artifacts retain
+their original dependencies. Evidence is in the external
+`zoen-conversation-cohort-v765/sdk-alignment` build directory.
