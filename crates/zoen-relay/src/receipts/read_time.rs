@@ -139,77 +139,89 @@ mod sql_tests {
     #[tokio::test]
     async fn actual_sql_reopen_preserves_first_peer_time_and_expires_only_time_evidence(
     ) -> Result<(), Box<dyn std::error::Error>> {
+        use futures_util::FutureExt;
         use sqlx::{Connection, PgConnection};
-        let admin = std::env::var("ZOEN_TEST_PG")
-            .expect("set ZOEN_TEST_PG for actual read-time persistence tests");
+        let admin = std::env::var("ZOEN_TEST_PG")?;
         let name = format!(
             "zoen_read_time_{}",
             &event_log::Signer::generate()?.id()[..16]
         );
+        let options = admin
+            .parse::<sqlx::postgres::PgConnectOptions>()?
+            .database(&name);
         let mut connection = PgConnection::connect(&admin).await?;
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
             .execute(&mut connection)
             .await?;
-        let options = admin
-            .parse::<sqlx::postgres::PgConnectOptions>()?
-            .database(&name);
-        let pool = sqlx::PgPool::connect_with(options).await?;
-        sqlx::query(include_str!("../../migrations/0030_receipts.sql"))
+        let pool = sqlx::PgPool::connect_lazy_with(options);
+        let outcome = std::panic::AssertUnwindSafe(async {
+            sqlx::raw_sql(include_str!("../../migrations/0030_receipts.sql"))
+                .execute(&pool)
+                .await?;
+            sqlx::raw_sql(include_str!(
+                "../../migrations/0041_read_time_intervals.sql"
+            ))
             .execute(&pool)
             .await?;
-        sqlx::query(include_str!(
-            "../../migrations/0041_read_time_intervals.sql"
-        ))
-        .execute(&pool)
-        .await?;
-        let report = ReadTime {
-            after_seq: 5,
-            through_seq: 9,
-            reported_at_ms: 1234,
-        };
-        let live = Receipts::default();
-        assert!(live.raise("space", "peer", 0, 9));
-        assert!(live.raise_time("space", "peer", &report));
-        live.flush(&pool, &crate::metrics::Metrics::default())
-            .await?;
-        let reopened = Receipts::default();
-        let peers = vec!["peer".into()];
-        assert_eq!(
-            reopened.read_times(&pool, "space", &peers).await?,
-            vec![("peer".into(), report.clone())]
-        );
-        assert!(reopened.raise_time(
-            "space",
-            "peer",
-            &ReadTime {
-                reported_at_ms: 9999,
-                ..report.clone()
-            }
-        ));
-        reopened
-            .flush(&pool, &crate::metrics::Metrics::default())
-            .await?;
-        assert_eq!(
-            reopened.read_times(&pool, "space", &peers).await?[0]
-                .1
-                .reported_at_ms,
-            1234
-        );
-        sqlx::query("UPDATE space_read_times SET observed_at=clock_timestamp()-INTERVAL '8 days'")
+            let report = ReadTime {
+                after_seq: 5,
+                through_seq: 9,
+                reported_at_ms: 1234,
+            };
+            let live = Receipts::default();
+            assert!(live.raise("space", "peer", 0, 9));
+            assert!(live.raise_time("space", "peer", &report));
+            live.flush(&pool, &crate::metrics::Metrics::default())
+                .await?;
+            let reopened = Receipts::default();
+            let peers = vec!["peer".into()];
+            assert_eq!(
+                reopened.read_times(&pool, "space", &peers).await?,
+                vec![("peer".into(), report.clone())]
+            );
+            assert!(reopened.raise_time(
+                "space",
+                "peer",
+                &ReadTime {
+                    reported_at_ms: 9999,
+                    ..report.clone()
+                }
+            ));
+            reopened
+                .flush(&pool, &crate::metrics::Metrics::default())
+                .await?;
+            assert_eq!(
+                reopened.read_times(&pool, "space", &peers).await?[0]
+                    .1
+                    .reported_at_ms,
+                1234
+            );
+            sqlx::query(
+                "UPDATE space_read_times SET observed_at=clock_timestamp()-INTERVAL '8 days'",
+            )
             .execute(&pool)
             .await?;
-        assert!(reopened
-            .read_times(&pool, "space", &peers)
-            .await?
-            .is_empty());
-        assert_eq!(
-            reopened.page(&pool, "space", "", "peer").await?.rows,
-            vec![("peer".into(), 9, 9)]
-        );
+            assert!(reopened
+                .read_times(&pool, "space", &peers)
+                .await?
+                .is_empty());
+            assert_eq!(
+                reopened.page(&pool, "space", "", "peer").await?.rows,
+                vec![("peer".into(), 9, 9)]
+            );
+            Ok::<(), Box<dyn std::error::Error>>(())
+        })
+        .catch_unwind()
+        .await;
         pool.close().await;
-        sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE {name}")))
-            .execute(&mut connection)
-            .await?;
-        Ok(())
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP DATABASE {name} WITH (FORCE)"
+        )))
+        .execute(&mut connection)
+        .await?;
+        match outcome {
+            Ok(result) => result,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
     }
 }
