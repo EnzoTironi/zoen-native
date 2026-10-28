@@ -26,7 +26,7 @@ test('native header binds this screen scroll node and keeps one system header wi
   assert.equal(screen.props.options.header, undefined);
   assert.equal(screen.props.options.headerLeft, undefined);
   assert.equal(screen.props.options.gestureEnabled, undefined);
-  assert.equal(screen.props.options.scrollEdgeEffects.top, 'automatic');
+  assert.equal(screen.props.options.scrollEdgeEffects.top, 'soft');
   const title = screen.props.options.headerTitle();
   assert.equal(title.type, 'NavigationContainer');
   assert.equal(title.props.scrollViewTag, 741);

@@ -327,7 +327,8 @@ impl Store {
     }
 
     pub fn wipe_sync(&self) -> Result<()> {
-        self.conn.execute_batch("DELETE FROM outbox; DELETE FROM synced_spaces; DELETE FROM peer_receipts; DELETE FROM media_keys; DELETE FROM blob_uploads; DELETE FROM mls_recovery_uploads; DELETE FROM mls_recovery_blobs; DELETE FROM meta WHERE key GLOB 'native.blob.pending/1/*';")?;
+        self.migrate_read_times()?;
+        self.conn.execute_batch("DELETE FROM outbox; DELETE FROM synced_spaces; DELETE FROM peer_receipts; DELETE FROM peer_read_times; DELETE FROM media_keys; DELETE FROM blob_uploads; DELETE FROM mls_recovery_uploads; DELETE FROM mls_recovery_blobs; DELETE FROM meta WHERE key GLOB 'native.blob.pending/1/*';")?;
         Ok(())
     }
 }

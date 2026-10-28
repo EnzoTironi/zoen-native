@@ -191,6 +191,7 @@ test('native bar keeps the inbox backdrop and Back while title, Details and Sear
   const f = fixture();
   const options = f.header().props.options;
   assert.equal(options.headerShown, true);
+  assert.equal(options.orientation, 'portrait');
   assert.equal(options.header, undefined);
   assert.equal(options.headerLeft, undefined);
   assert.equal(options.headerBackButtonDisplayMode, 'minimal');
@@ -201,7 +202,7 @@ test('native bar keeps the inbox backdrop and Back while title, Details and Sear
   assert.equal(options.headerBackground, undefined);
   assert.equal(options.headerRight, undefined);
   assert.equal(options.unstable_headerRightItems()[0].hidesSharedBackground, true);
-  assert.equal(options.scrollEdgeEffects.top, 'automatic');
+  assert.equal(options.scrollEdgeEffects.top, 'soft');
   assert.equal(options.scrollEdgeEffects.bottom, 'hidden');
   assert.equal(options.gestureEnabled, undefined);
   const container = options.headerTitle();

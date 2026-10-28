@@ -258,6 +258,7 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
                 protocol::EphemeralKind::StoppedTyping => ("stopped", String::new()),
                 protocol::EphemeralKind::Status { status } => ("status", status),
                 protocol::EphemeralKind::Read { seq } => ("read", seq.to_string()),
+                protocol::EphemeralKind::ReadTime(time) => ("read", time.through_seq.to_string()),
                 protocol::EphemeralKind::Delivered { seq } => ("delivered", seq.to_string()),
             };
             ServerMessage::Ephemeral {
@@ -360,6 +361,32 @@ mod relay_tests {
         };
         let json = serde_json::to_value(decode_server(&read.encode()).unwrap()).unwrap();
         assert_eq!(json["detail"], u64::MAX.to_string());
+        Ok(())
+    }
+    #[test]
+    fn timed_read_preserves_legacy_browser_event_and_full_prefix(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let frame = |kind| ServerFrame::Ephemeral {
+            space: "sp_fixture".into(),
+            from: "authenticated_peer".into(),
+            kind,
+        };
+        let legacy = frame(protocol::EphemeralKind::Read { seq: u64::MAX });
+        let timed = frame(protocol::EphemeralKind::ReadTime(
+            protocol::read_time::ReadTime {
+                after_seq: u64::MAX - 1,
+                through_seq: u64::MAX,
+                reported_at_ms: 1234,
+            },
+        ));
+        let decode = |frame: ServerFrame| -> std::result::Result<serde_json::Value, Box<dyn std::error::Error>> {
+            Ok(serde_json::to_value(decode_server(&frame.encode())?)?)
+        };
+        let value = decode(timed)?;
+        assert_eq!(value, decode(legacy)?);
+        assert_eq!(value["event"], "read");
+        assert_eq!(value["detail"], u64::MAX.to_string());
+        assert!(value.get("reported_at_ms").is_none());
         Ok(())
     }
 }
