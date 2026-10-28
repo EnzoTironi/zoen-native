@@ -104,3 +104,37 @@ test(
     }
   },
 );
+
+test(
+  'actual retained quote layout restores accessibility after reflow and forced full selection',
+  { skip: process.platform !== 'darwin', timeout: 90000 },
+  () => {
+    const app = fileURLToPath(new URL('../../', import.meta.url));
+    const directory = mkdtempSync(join(tmpdir(), 'zoen-quote-reflow-'));
+    try {
+      const pkg = preparePackage(app, directory);
+      const method = body(
+        readFileSync(join(pkg, 'ios/segments/ENRMBlockquoteContainerView.mm'), 'utf8'),
+        '- (void)layoutSubviews {',
+      );
+      writeFileSync(join(directory, 'quote-layout.inc'), method);
+      const binary = join(directory, 'quote-reflow');
+      execFileSync('xcrun', [
+        '--sdk',
+        'macosx',
+        'clang',
+        '-fobjc-arc',
+        '-fblocks',
+        '-I' + directory,
+        join(app, 'modules/zoen-core/tests/MessageQuotes/QuoteReflowTests.m'),
+        '-framework',
+        'AppKit',
+        '-o',
+        binary,
+      ]);
+      assert.match(execFileSync(binary, { encoding: 'utf8' }), /Retained quote reflow PASS/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);

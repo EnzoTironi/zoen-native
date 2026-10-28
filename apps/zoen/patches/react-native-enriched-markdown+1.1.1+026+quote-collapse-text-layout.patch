@@ -123,7 +123,7 @@ index b01ca5bf..c3dbaca7 100644
  // Splits the node's children into segments and applies them to this container.
  - (void)applyBlockquoteNode:(MarkdownASTNode *)node;
 diff --git a/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm b/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
-index ccb4cac0..abd77ddc 100644
+index ccb4cac0..abf24283 100644
 --- a/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
 +++ b/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
 @@ -1,4 +1,6 @@
@@ -185,7 +185,7 @@ index ccb4cac0..abd77ddc 100644
  }
  
  + (CGFloat)measureHeightForBlockquoteNode:(MarkdownASTNode *)node
-@@ -381,8 +401,53 @@ static UIEdgeInsets ENRMBlockquoteContentInsets(StyleConfig *config)
+@@ -381,8 +401,54 @@ static UIEdgeInsets ENRMBlockquoteContentInsets(StyleConfig *config)
        rendered, config, innerWidth, /*allowTrailingMargin*/ NO, pointScaleFactor, ENRMWritingDirectionModeFirstStrong,
        NSWritingDirectionNatural, allowFontScaling, lineBreakStrategy);
  
@@ -216,17 +216,18 @@ index ccb4cac0..abd77ddc 100644
 +  CGFloat preview = ENRMQuotePreviewHeight(self.quotePreviewText, inner, RCTScreenScale());
 +  BOOL longQuote = preview > 0;
 +  self.quoteToggleButton.hidden = !longQuote;
-+  if (!longQuote) return;
 +  // The renderer still owns the original attributed text and its source map.
 +  // Only its viewport is clipped; selection mode disables collapse at the host.
 +  for (UIView *child in self.subviews) {
 +    if (child == self.quoteToggleButton) continue;
-+    child.accessibilityElementsHidden = !self.quoteExpanded;
-+    if (!self.quoteExpanded) {
++    BOOL collapsed = longQuote && !self.quoteExpanded;
++    child.accessibilityElementsHidden = collapsed;
++    child.clipsToBounds = collapsed;
++    if (collapsed) {
 +      CGRect frame = child.frame; frame.size.height = preview; child.frame = frame;
-+      child.clipsToBounds = YES;
 +    }
 +  }
++  if (!longQuote) return;
 +  UIButton *button = self.quoteToggleButton;
 +  CGFloat x = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft ? 4 : MAX(0, self.bounds.size.width - 48);
 +  button.frame = CGRectMake(x, self.bounds.size.height - 44, 44, 44);
