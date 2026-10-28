@@ -107,12 +107,23 @@ def frontend_reference_readers(tree, paths, reader=None):
             for row in search.stdout.split(b"\0") if row}
 
 
-def validate_frontend(base, head, ancestor, paths):
+PHOTO_HELPER_IMPORTS = {
+    "apps/zoen/modules/zoen-core/ios/ZoenPhotoEditorImage.swift": (
+        frozenset({"Foundation", "CoreGraphics"}),),
+    "apps/zoen/modules/zoen-core/tests/PhotoEditorImageTests.swift": (
+        frozenset({"Foundation", "CoreGraphics"}),
+        frozenset({"Foundation", "CoreGraphics", "AppKit", "PencilKit"})),
+}
+PHOTO_HELPER_PATHS = frozenset(PHOTO_HELPER_IMPORTS)
+
+
+def validate_frontend(base, head, ancestor, paths, photo_helper=False):
     if not FRONTEND_CONTRACTS or not (set(RESOURCE_MANIFESTS) | NON_INPUT_APP_LITERALS).issubset(FRONTEND_CONTRACTS):
         raise ValueError("Incomplete frontend boundary contract")
     if ancestor != base:
         raise ValueError("Stale or non-ancestral base requires full Rust")
-    if len(paths) > 128 or not all(frontend_path(path) for path in paths):
+    if len(paths) > 128 or not all(
+            path in PHOTO_HELPER_PATHS if photo_helper else frontend_path(path) for path in paths):
         raise ValueError("Not exclusively reviewed app TypeScript source")
     disjoint = verified_disjoint_readers(base, head, paths)
     names = {PurePosixPath(path).name for path in paths}
@@ -124,6 +135,15 @@ def validate_frontend(base, head, ancestor, paths):
             text = git("show", tree + ":" + path) if tree == head else None
             if text is not None and (b"\0" in text or not text.decode("utf-8")):
                 raise ValueError("Binary or empty frontend input requires full Rust")
+        if photo_helper:
+            for path in PHOTO_HELPER_PATHS:
+                if not regular_blob(tree, path):
+                    raise ValueError("Photo helper requires regular standalone Swift sources")
+                source = git("show", tree + ":" + path).decode("utf-8")
+                if frozenset(re.findall(r"\bimport\s+([\w.]+)", source)) not in PHOTO_HELPER_IMPORTS[path]:
+                    raise ValueError("Photo helper imports are not standalone SDK modules")
+                if re.search(r"@_(?:silgen_name|cdecl)|\b(?:dlopen|dlsym|unsafeBitCast|ZoenCore)\b", source):
+                    raise ValueError("Photo helper contains a Core/FFI boundary")
         listed = git("ls-tree", "-r", "--name-only", "-z", tree, "--",
                      "apps/zoen/src/miniapps/vendor", "crates/miniapps/resources", "miniapps").split(b"\0")
         manifests = {path.decode("utf-8") for path in listed if path and (
@@ -152,11 +172,13 @@ def validate_frontend(base, head, ancestor, paths):
         readers = material_readers(git, regular_blob, base, head,
                                    frontend_reference_readers(tree, paths))
         for reader in readers:
+            if photo_helper and reader == ".github/workflows/ci.yml":
+                continue  # Pinned job compiles standalone Swift; it does not feed Rust.
             if reader not in disjoint or frontend_reference_readers(
                     tree, [path for path in paths if path not in disjoint[reader]], reader):
                 raise ValueError("A tracked cross-boundary input refers to frontend source")
         command = ["git", "grep", "-I", "-l", "-z", "-F",
-                   "-e", "apps/zoen/src", "-e", '"apps/zoen"',
+                   "-e", "apps/zoen/src", "-e", "apps/zoen/modules", "-e", '"apps/zoen"',
                    "-e", "'apps/zoen'", "-e", '"apps"', "-e", "'apps'"]
         search = subprocess.run(command + [tree, "--", *RUST_ROOTS, ":(exclude)*.md"],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -177,7 +199,7 @@ def git(*args):
 
 
 def classify(base, head, event, candidate=None):
-    result = {"documentation_only": False, "frontend_only": False, "run_rust": True,
+    result = {"documentation_only": False, "frontend_only": False, "photo_helper_only": False, "run_photo_helper": False, "run_rust": True,
               "reason": "full-suite default", "paths": []}
     if event != "pull_request":
         result["reason"] = "Only pull requests may use the documentation lane"
@@ -204,6 +226,8 @@ def classify(base, head, event, candidate=None):
                 raise ValueError("Unsupported tracked file mode: " + path)
             changes.append(path)
         result["paths"] = changes
+        result["run_photo_helper"] = bool(set(changes) & (PHOTO_HELPER_PATHS | {
+            ".github/workflows/ci.yml", "apps/zoen/src/core/photo-editor-image.test.ts"}))
         if not changes:
             raise ValueError("Empty or unavailable diff requires the full suite")
         if any(path not in DOCUMENTS for path in changes):
@@ -223,6 +247,12 @@ def classify(base, head, event, candidate=None):
                 from expo_artifact_candidate import tested_candidate
                 tested = tested_candidate(git, base, head, event, candidate)
                 return classify(base, tested, event)
+            if set(changes).issubset(PHOTO_HELPER_PATHS):
+                validate_frontend(base, head, ancestor, changes, photo_helper=True)
+                result.update(photo_helper_only=True, run_rust=False,
+                              reason="Standalone photo Swift only; required rust check awaits SDK/pixel qualification",
+                              validation="Application Rust shards omitted; the stable rust check requires real macOS pixel and iPhoneSimulator SDK qualification. Other applicable checks remain selected.")
+                return result
             validate_frontend(base, head, ancestor, changes)
             result.update(frontend_only=True, run_rust=False,
                           reason="Verified frontend-only PR; client/Expo and local integrity remain selected")
@@ -295,7 +325,7 @@ def main():
     print(json.dumps(result, indent=2))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-            for key in ("documentation_only", "frontend_only", "run_rust"):
+            for key in ("documentation_only", "frontend_only", "photo_helper_only", "run_photo_helper", "run_rust"):
                 output.write(key + "=" + str(result[key]).lower() + "\n")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:

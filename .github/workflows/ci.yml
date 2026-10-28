@@ -1,6 +1,6 @@
 # Rust checks and every box journey on Linux: fmt, clippy (-D warnings), unit tests, and the
-# journeys against a real relay, Postgres, FoundationDB and NATS. No macOS runners: the
-# current Expo simulator acceptance is qualified separately on the Mac.
+# journeys against a real relay, Postgres, FoundationDB and NATS. A bounded macOS
+# lane qualifies standalone photo geometry; full App acceptance remains separate.
 name: ci
 
 on:
@@ -30,6 +30,8 @@ jobs:
       documentation_only: ${{ steps.scope.outputs.documentation_only }}
       frontend_only: ${{ steps.scope.outputs.frontend_only }}
       run_rust: ${{ steps.scope.outputs.run_rust }}
+      photo_helper_only: ${{ steps.scope.outputs.photo_helper_only }}
+      run_photo_helper: ${{ steps.scope.outputs.run_photo_helper }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -127,17 +129,44 @@ jobs:
           node --test --test-concurrency=1 scripts/tests/build-expo-core.test.mjs scripts/tests/expo-ios-orchestration.test.mjs scripts/tests/expo-android-proxy.test.mjs scripts/tests/expo-android-orchestration.test.mjs
 
 
+  photo-helper:
+    needs: change-scope
+    if: needs.change-scope.outputs.run_photo_helper == 'true'
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '26'
+      - name: Real CoreGraphics pixel fixture (no Linux skip)
+        run: node --test apps/zoen/src/core/photo-editor-image.test.ts
+      - name: iPhoneSimulator SDK helper typecheck (no App or Core build)
+        run: |
+          xcrun --sdk iphonesimulator swiftc -swift-version 6 -strict-concurrency=complete -warnings-as-errors -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" -target arm64-apple-ios16.0-simulator -typecheck apps/zoen/modules/zoen-core/ios/ZoenPhotoEditorImage.swift
+
   rust:
-    needs: [change-scope, rust-tests]
-    # Keep one stable required check; a failed/cancelled/missing shard cannot pass.
-    if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.run_rust != 'false') }}
+    needs: [change-scope, rust-tests, photo-helper]
+    # Keep the stable required check: selected Rust shards or standalone native proof.
+    if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.run_rust != 'false' || needs.change-scope.outputs.photo_helper_only == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
-      - name: Require every Rust shard
+      - name: Require selected Rust shards and native qualification
         env:
           RUST_RESULT: ${{ needs.rust-tests.result }}
-        run: test "$RUST_RESULT" = success
+          PHOTO_ONLY: ${{ needs.change-scope.outputs.photo_helper_only }}
+          RUN_PHOTO: ${{ needs.change-scope.outputs.run_photo_helper }}
+          PHOTO_RESULT: ${{ needs.photo-helper.result }}
+        run: |
+          if [ "$PHOTO_ONLY" = true ] || [ "$RUN_PHOTO" = true ]; then
+            test "$PHOTO_RESULT" = success || exit 1
+          fi
+          if [ "$PHOTO_ONLY" != true ]; then
+            test "$RUST_RESULT" = success
+          fi
 
   rust-tests:
     needs: change-scope

@@ -3,6 +3,7 @@
 # Reviewed Cargo roots, test commands, client coverage and embedded-resource
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
 FRONTEND_CONTRACTS = {
+    "apps/zoen/src/core/photo-editor-image.test.ts": "bccf5c4e25968b1dca8afac700c2d5c3475012b2abeb419e509686af3f16c194",
     "scripts/expo_artifact_candidate.py": "0f43561817f940cb50e607c5d94ce06ad4aafde130690b683c4bae6099332a31",
     "miniapps/pdfcraft-ui/prepare-engine.py": "4704dfe72d3608e5a48e5847d3c3fae14e5042e286ee0351003eeb9c9a6b1879",
     "miniapps/pdfcraft-ui/build-resource-manifest.mjs": "69635b70da63254efc2a96629c869e8398a6989e8890fa756b64c76c1225c586",
@@ -44,7 +45,7 @@ FRONTEND_CONTRACTS = {
     "crates/zoen-agentd/src/citizen/codex.rs": "4d5e32fb4677abf8e2429b7a8867c50ca7e9998dc2d073dc8e0d6e4f9def41df",
     "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
     "Cargo.toml": "6abf6b794f912e0e95fcb66d5ea6f89a176b04a1b2b8714d1c21f40f091827bb",
-    ".github/workflows/ci.yml": "c682599963459f11504f73b36e25da0a3473f0b5195da249dfaebea57dcd647c",
+    ".github/workflows/ci.yml": "3bb41c58e62638a4a910003efa91bab640780ad227dbb7267016b0486c8f6008",
     ".github/workflows/expo.yml": "cdf7ecf20dc72c12c564792c95043bd25e28adf59d3e18851594f815ab3e1520",
     # Android installer and its invoked fixtures are real workflow inputs.
     "scripts/install-android-sdk.py": "aff7527c4fb23ca29e9d9eeace380837e9a23eb20b88d5499e33fd4e30cf1144",
