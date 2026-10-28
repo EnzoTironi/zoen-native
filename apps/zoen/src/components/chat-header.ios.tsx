@@ -5,6 +5,7 @@ import { useNativeCalls } from '../calls/provider';
 import { useClient } from '../core/provider';
 import { CallHeaderAction } from '../calls/header-action.ios';
 import { ProfileAvatar } from '../profile/profile-avatar';
+import { ConversationAvatar } from '../saved-messages/conversation-avatar';
 import { useTheme } from '../theme';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
 import { Icon } from './primitives';
@@ -55,6 +56,8 @@ function ChatHeaderActions(props: ChatHeaderProps & { canCall: boolean }) {
   const { presentation: p } = useTheme();
   const search = props.search;
   const canCall = props.canCall;
+  const { snapshot } = useClient();
+  const chat = snapshot?.conversations.find((chat) => chat.id === props.id);
   return (
     <NavigationGlass>
       <View
@@ -86,8 +89,13 @@ function ChatHeaderActions(props: ChatHeaderProps & { canCall: boolean }) {
           testID="chat-details-avatar"
           accessibilityRole="button"
           accessibilityLabel={props.title}
-          accessibilityHint={t('chat.chatDetails')}
-          onPress={() => router.push({ pathname: '/space/[id]', params: { id: props.id } })}
+          accessibilityHint={t(props.saved ? 'peerInfo.mediaTitle' : 'chat.chatDetails')}
+          onPress={() =>
+            router.push({
+              pathname: props.saved ? '/shared-media/[id]' : '/space/[id]',
+              params: { id: props.id },
+            })
+          }
           style={({ pressed }) => ({
             width: 44,
             height: 44,
@@ -96,12 +104,16 @@ function ChatHeaderActions(props: ChatHeaderProps & { canCall: boolean }) {
             opacity: pressed ? 0.65 : 1,
           })}
         >
-          <ProfileAvatar
-            person={props.counterpart}
-            name={props.title}
-            color={props.counterpart?.tint_hex}
-            size={38}
-          />
+          {chat?.kind === 'saved' ? (
+            <ConversationAvatar chat={chat} size={38} />
+          ) : (
+            <ProfileAvatar
+              person={props.counterpart}
+              name={props.title}
+              color={props.counterpart?.tint_hex}
+              size={38}
+            />
+          )}
         </Pressable>
       </View>
     </NavigationGlass>

@@ -29,7 +29,8 @@ impl Engine {
     }
     /// Whether `space` is relay-ordered and end-to-end encrypted.
     pub(crate) fn is_e2e(&self, space: &str) -> bool {
-        self.net.synced.contains(space)
+        (!types::saved_messages::reserved(space) || self.saved_messages_canonical(space))
+            && self.net.synced.contains(space)
             && self
                 .state
                 .spaces
@@ -184,6 +185,9 @@ impl Engine {
         state: &crate::engine::State,
     ) -> std::result::Result<u64, ReadinessRejection> {
         use ReadinessRejection as E;
+        if types::saved_messages::reserved(space) && !self.saved_messages_canonical(space) {
+            return Err(E::Behind);
+        }
         let device = self.device().map_err(|_| E::Credential)?;
         match device.group_state(space).map_err(|_| E::Storage)? {
             ::mls::GroupState::Missing => return Err(E::Group),

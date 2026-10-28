@@ -60,6 +60,8 @@ pub enum ClientFrame {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Op {
+    /// Ensure this authenticated owner's one Saved Messages genesis using normal append CAS.
+    EnsureSavedMessages(crate::saved_messages::Genesis),
     /// Publishes this identity's profile and claims its handle.
     Register {
         profile: Identity,
@@ -250,6 +252,7 @@ impl Op {
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
+            Op::EnsureSavedMessages(_) => "ensure_saved_messages",
             Op::Register { .. } => "register",
             Op::Lookup { .. } => "lookup",
             Op::Profiles { .. } => "profiles",
@@ -306,6 +309,7 @@ pub struct SealedProfile {
 /// The typed answer to each [`Op`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reply {
+    SavedMessages(crate::saved_messages::Receipt),
     /// Register: the profile as stored (handle normalized).
     Registered(Identity),
     /// Lookup and Profiles.

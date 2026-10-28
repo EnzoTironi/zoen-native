@@ -178,6 +178,15 @@ impl Engine {
                     return Vec::new();
                 }
             };
+            if types::saved_messages::reserved(&event.space)
+                && (!self.net.saved_messages_supported
+                    || matches!(event.body, EventBody::SpaceCreated { .. }))
+            {
+                // Bootstrap is resolved by the typed canonical ensure operation;
+                // no Saved traffic may downgrade onto an older relay.
+                blocked.insert(event.space.clone());
+                continue;
+            }
             // An offline creation has a predicted genesis link. Its descendants
             // must wait for confirmation: a retryable creation failure can otherwise
             // let them reach the relay before the Space exists.

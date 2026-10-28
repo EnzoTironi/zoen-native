@@ -109,6 +109,8 @@ pub struct NetState {
     /// The unlocked device key (loaded from the vault).
     pub author: Option<Author>,
     pub synced: HashSet<SpaceId>,
+    /// Authenticated current socket supports owner-only Saved genesis admission.
+    pub(crate) saved_messages_supported: bool,
     /// `client_id` → Space, for events in the outbox.
     pub pending: HashMap<String, SpaceId>,
     /// Spaces whose pending resolutions overlay their ordered approval state.

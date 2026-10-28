@@ -279,7 +279,9 @@ export async function communityUi(
   }
   function render() {
     cursor = 0;
-    const tree = load('route').default();
+    let tree = load('route').default();
+    // Render the actual route's functional boundary (for example SpaceContent).
+    while (typeof tree?.type === 'function') tree = tree.type(tree.props);
     for (const effect of effects.splice(0)) effect();
     const sheet = nodes(tree).find((node) => node.type === load('sheet').MemberActionsSheet);
     return { tree, props: sheet?.props, sheet: sheet ? sheet.type(sheet.props) : null };

@@ -1,12 +1,14 @@
 //! Test-owned, one-frame wire loss AFTER relay B's actual NATS subscriber/WS writer.
 //! Does not alter Hello/Auth, Sync, Ping/Pong, timing, relay storage or broker state.
 use futures_util::{SinkExt, StreamExt};
-use protocol::{ClientFrame, Cursor, EphemeralKind, ServerFrame};
+use protocol::{ClientFrame, Cursor, EphemeralKind, Op, Reply, ServerFrame};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use tokio::sync::Barrier;
 use tokio::{
     net::{TcpListener, TcpStream},
     task::{JoinHandle, JoinSet},
@@ -28,6 +30,21 @@ pub enum Kind {
     Pong,
     Joined(String),
     Publish,
+    #[allow(
+        dead_code,
+        reason = "used by the relay Saved journey, not every shared proxy consumer"
+    )]
+    SavedEnsure {
+        client_id: String,
+        wire_hash: String,
+    },
+    #[allow(
+        dead_code,
+        reason = "used by the relay Saved journey, not every shared proxy consumer"
+    )]
+    SavedReceipt {
+        dropped: bool,
+    },
     Delivered {
         space: String,
         seq: u64,
@@ -57,7 +74,15 @@ pub(super) struct Selector {
     pub(super) consumed: bool,
 }
 
+struct SavedFault {
+    gate: Arc<Barrier>,
+    first: AtomicBool,
+    lose_receipt: AtomicBool,
+    lose_genesis: AtomicBool,
+}
+
 pub(super) struct State {
+    saved: Option<Arc<SavedFault>>,
     born: Instant,
     connections: u64,
     pub(super) selector: Option<Selector>,
@@ -85,9 +110,50 @@ pub struct FinalEventProxy {
 
 impl FinalEventProxy {
     pub async fn new(port: u16, evidence: PathBuf) -> Self {
+        Self::start(port, evidence, None).await
+    }
+    /// Opt-in only: hold both original proposals, then lose one recipient's ACK/genesis.
+    #[allow(
+        dead_code,
+        reason = "used by the relay Saved journey, not every shared proxy consumer"
+    )]
+    pub async fn saved(port: u16, evidence: PathBuf, gate: Arc<Barrier>, lose: bool) -> Self {
+        Self::start(
+            port,
+            evidence,
+            Some(Arc::new(SavedFault {
+                gate,
+                first: AtomicBool::new(true),
+                lose_receipt: AtomicBool::new(lose),
+                lose_genesis: AtomicBool::new(lose),
+            })),
+        )
+        .await
+    }
+    #[allow(
+        dead_code,
+        reason = "used by the relay Saved journey, not every shared proxy consumer"
+    )]
+    pub fn resume_saved(&self) {
+        if let Some(fault) = &self.state.lock().unwrap().saved {
+            fault.lose_receipt.store(false, Ordering::SeqCst);
+            fault.lose_genesis.store(false, Ordering::SeqCst);
+        }
+    }
+    #[allow(
+        dead_code,
+        reason = "used by the relay Saved journey, not every shared proxy consumer"
+    )]
+    pub fn resume_saved_receipt(&self) {
+        if let Some(fault) = &self.state.lock().unwrap().saved {
+            fault.lose_receipt.store(false, Ordering::SeqCst);
+        }
+    }
+    async fn start(port: u16, evidence: PathBuf, saved: Option<Arc<SavedFault>>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let state = Arc::new(Mutex::new(State {
+            saved,
             born: Instant::now(),
             connections: 0,
             selector: None,
@@ -230,6 +296,16 @@ async fn forward_ws(
                 let msg = msg.map_err(|e| e.to_string())?;
                 if let Message::Binary(bytes) = &msg {
                     let frame = ClientFrame::decode(bytes).map_err(|e| e.to_string())?;
+                    if let ClientFrame::Req { op: Op::EnsureSavedMessages(proposal), .. } = &frame {
+                        let fault = state.lock().unwrap().saved.clone();
+                        if let Some(fault) = fault {
+                            let env = proposal.envelope().expect("actual signed saved proposal");
+                            state.lock().unwrap().record(connection, Kind::SavedEnsure {
+                                client_id: env.client_id().into(), wire_hash: env.wire_hash(),
+                            });
+                            if fault.first.swap(false, Ordering::SeqCst) { fault.gate.wait().await; }
+                        }
+                    }
                     let kind = match frame {
                         ClientFrame::Sync { cursors, all } => Some(Kind::Sync { cursors, all }),
                         ClientFrame::Ping => Some(Kind::Ping),
@@ -249,7 +325,15 @@ async fn forward_ws(
                     let frame = ServerFrame::decode(bytes).map_err(|e| e.to_string())?;
                     let mut state = state.lock().unwrap();
                     let kind = match frame {
+                        ServerFrame::Res { result: Ok(Reply::SavedMessages(_)), .. } if state.saved.is_some() => {
+                            dropped = state.saved.as_ref().unwrap().lose_receipt.load(Ordering::SeqCst);
+                            Some(Kind::SavedReceipt { dropped })
+                        }
                         ServerFrame::Event { ev } => {
+                            if ev.seq == 0 && types::saved_messages::reserved(ev.env.space())
+                                && state.saved.as_ref().is_some_and(|fault| fault.lose_genesis.load(Ordering::SeqCst)) {
+                                dropped = true;
+                            }
                             if let Some(selector) = &mut state.selector {
                                 let selected = !selector.consumed
                                     && ev.env.space() == selector.space

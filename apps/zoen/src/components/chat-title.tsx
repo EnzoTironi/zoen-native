@@ -14,6 +14,7 @@ export type ChatHeaderProps = {
   scrollViewTag?: number;
   navigationMetrics?: NavigationMetricsBinding;
   title: string;
+  saved?: boolean;
   counterpart?: Persona | null;
   activityLabel?: string | null;
   search?: { active: boolean; onToggle: () => void };
@@ -23,6 +24,7 @@ export function ChatTitle({
   id,
   title,
   counterpart,
+  saved,
   activityLabel,
   search,
   availableWidth,
@@ -97,8 +99,10 @@ export function ChatTitle({
       onLayout={onLayout}
       accessibilityRole="button"
       accessibilityLabel={[title, activityLabel].filter(Boolean).join(', ')}
-      accessibilityHint={t('chat.chatDetails')}
-      onPress={() => router.push({ pathname: '/space/[id]', params: { id } })}
+      accessibilityHint={t(saved ? 'peerInfo.mediaTitle' : 'chat.chatDetails')}
+      onPress={() =>
+        router.push({ pathname: saved ? '/shared-media/[id]' : '/space/[id]', params: { id } })
+      }
       onLongPress={native && !search?.active ? search?.onToggle : undefined}
       style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
     >

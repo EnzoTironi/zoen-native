@@ -8,6 +8,7 @@ pub(super) struct LoggedIn {
     pub(super) registered: bool,
     pub(super) claim_receipts: bool,
     pub(super) complete_reads: bool,
+    pub(super) saved_messages: bool,
 }
 
 /// Hello → Challenge → Auth. `None` when the client is refused; the reason has been sent.
@@ -74,6 +75,9 @@ pub(super) async fn handshake(
     let complete_reads = capabilities
         .iter()
         .any(|c| c == protocol::complete_reads::CAPABILITY);
+    let saved_messages = capabilities
+        .iter()
+        .any(|c| c == protocol::saved_messages::CAPABILITY);
     let claim_receipts = capabilities
         .iter()
         .any(|c| c == protocol::KEY_PACKAGE_CLAIM_CAPABILITY);
@@ -187,6 +191,7 @@ pub(super) async fn handshake(
         registered,
         claim_receipts,
         complete_reads,
+        saved_messages,
     })
 }
 

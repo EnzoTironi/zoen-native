@@ -25,10 +25,10 @@ impl Client {
             PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
             RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
             RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
-            RevokeAgentInvite, SaveMessageDraft, SendMessage, SendMessageDraft, SetChatMute,
-            SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent,
-            Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy,
-            Thread, Timeline, UniversalSearch, UniversalSearchPage,
+            RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft,
+            SetChatMute, SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping,
+            ShareAppCurrent, Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect,
+            SubmitOwnerPolicy, Thread, Timeline, UniversalSearch, UniversalSearchPage,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -237,6 +237,14 @@ impl Client {
             | SetChatMuted(..)
             | SetChatMute(..)
             | ChatLayout { .. }) => self.dispatch_chat_preferences(command),
+            SavedMessages {
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &self
+                    .saved_messages(expected_identity_id, expected_device_id)
+                    .await?,
+            ),
             StartDirect { identity_id } => encode(&self.start_direct(identity_id)?),
             CreateGroup { title, member_ids } => encode(&self.create_group(title, member_ids)?),
             CreateCommunity { title } => encode(&self.create_community(title)?),

@@ -1,6 +1,7 @@
 import { Text, View, StyleSheet } from 'react-native';
 import { formatLocale } from '../i18n';
-import { ProfileAvatar } from '../profile/profile-avatar';
+import { ConversationAvatar } from '../saved-messages/conversation-avatar';
+import { conversationTitle } from '../saved-messages/presentation';
 import { MessageReceipt } from '../components/message-receipt';
 import { Icon } from '../components/primitives';
 import { useTheme } from '../theme';
@@ -11,13 +12,7 @@ export function ChatRowContent({ chat }: { chat: SpaceSummary }) {
   const { presentation: p } = useTheme();
   return (
     <>
-      <ProfileAvatar
-        person={chat.counterpart}
-        name={chat.title}
-        color={chat.counterpart?.tint_hex}
-        size={60}
-        agent={chat.counterpart?.kind === 'Agent'}
-      />
+      <ConversationAvatar chat={chat} size={60} />
       <View style={{ flex: 1, gap: 3 }}>
         <View
           style={{
@@ -36,7 +31,7 @@ export function ChatRowContent({ chat }: { chat: SpaceSummary }) {
               color: p.chatList.title,
             }}
           >
-            {chat.title}
+            {conversationTitle(chat)}
           </Text>
           {chat.last_author?.is_me && chat.last_delivery ? (
             <MessageReceipt

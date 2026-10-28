@@ -1,5 +1,6 @@
 import { t, formatLocale } from '../../../i18n/index.ts';
-import { ProfileAvatar } from '../../../profile/profile-avatar';
+import { ConversationAvatar } from '../../../saved-messages/conversation-avatar';
+import { conversationTitle } from '../../../saved-messages/presentation';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
@@ -116,7 +117,9 @@ export default function Forward() {
         spaces.has(space) &&
         spaces.has(chat.id) &&
         chat.can_write &&
-        chat.title.toLocaleLowerCase(formatLocale).includes(query.toLocaleLowerCase(formatLocale)),
+        conversationTitle(chat)
+          .toLocaleLowerCase(formatLocale)
+          .includes(query.toLocaleLowerCase(formatLocale)),
     ) ?? [];
   const previewCurrent = useCallback(() => {
     const current = homeOwnerFor(store.getSnapshot());
@@ -131,6 +134,7 @@ export default function Forward() {
     );
   }, [review, store, sessionEpoch, identityId, deviceId, mode, space]);
   const target = review && snapshot?.conversations.find((chat) => chat.id === review.targetId);
+  const source = snapshot?.conversations.find((chat) => chat.id === space);
   const reviewedMessage = review?.message;
   const content =
     reviewedMessage && 'Message' in reviewedMessage.kind ? reviewedMessage.kind.Message : null;
@@ -179,9 +183,9 @@ export default function Forward() {
         <ForwardReviewPanel
           spaceId={space}
           entry={reviewedMessage!}
-          recipient={target?.title ?? t('chat.chatUnavailable')}
+          recipient={target ? conversationTitle(target) : t('chat.chatUnavailable')}
           counterpart={target?.counterpart}
-          sourceTitle={snapshot?.conversations.find((chat) => chat.id === space)?.title}
+          sourceTitle={source ? conversationTitle(source) : undefined}
           accepted={review.acceptedMessageId !== null}
           busy={busy}
           canSend={target?.can_write === true}
@@ -214,7 +218,7 @@ export default function Forward() {
             <Pressable
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel={item.title}
+              accessibilityLabel={conversationTitle(item)}
               onPress={() => {
                 Keyboard.dismiss();
                 void session.prepare(item.id);
@@ -228,12 +232,10 @@ export default function Forward() {
                 opacity: busy ? 0.5 : 1,
               }}
             >
-              <ProfileAvatar
-                person={item.counterpart}
-                name={item.title}
-                color={item.counterpart?.tint_hex}
-              />
-              <Text style={{ color: colors.text, fontSize: 17, flex: 1 }}>{item.title}</Text>
+              <ConversationAvatar chat={item} />
+              <Text style={{ color: colors.text, fontSize: 17, flex: 1 }}>
+                {conversationTitle(item)}
+              </Text>
             </Pressable>
           )}
         />

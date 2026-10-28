@@ -189,7 +189,11 @@ export default function Chats() {
             pending={inbox.state.pending !== null}
             onOpen={() => {
               if (inbox.canOpen(chat.id))
-                router.push({ pathname: '/chat/[id]', params: { id: chat.id } });
+                router.push(
+                  chat.kind === 'saved' && !chat.can_write
+                    ? '/saved-messages'
+                    : { pathname: '/chat/[id]', params: { id: chat.id } },
+                );
             }}
             onAction={(action) => {
               void inbox.session.run(chat, action, inbox.ticket);
