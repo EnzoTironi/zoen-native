@@ -20,6 +20,7 @@ pub(super) fn request_previews_use_the_action_title_and_preserve_message_bodies(
         .is_some());
     let preview = find_space(&e, "Turma do Sábado");
     assert_eq!(preview.last_preview, title);
+    assert!(!preview.last_preview_is_markdown);
     assert!(
         preview.last_author.is_none(),
         "a request summary needs no author prefix"
@@ -37,6 +38,7 @@ pub(super) fn request_previews_use_the_action_title_and_preserve_message_bodies(
         "ordinary text is never stripped"
     );
     assert!(preview.last_author.unwrap().is_me);
+    assert!(preview.last_preview_is_markdown);
 }
 
 pub(super) fn edit_then_undo_restores_content_and_keeps_history() {

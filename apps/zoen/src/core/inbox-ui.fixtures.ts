@@ -6,7 +6,7 @@ import * as React from 'react';
 import { build } from 'esbuild';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { ClientStore } from './store.ts';
-import { Driver } from './store.fixtures.ts';
+import { Driver, deferred } from './store.fixtures.ts';
 import { inboxFixture } from './inbox-actions.fixtures.ts';
 import { createLocalization } from '../i18n/runtime.ts';
 import { chat } from '../i18n/catalogs/chat.ts';
@@ -42,6 +42,7 @@ const compiled = await build({
               'react-native-gesture-handler/ReanimatedSwipeable',
               '@expo/ui/community/menu',
               'react-native-safe-area-context',
+              'react-native-enriched-markdown',
             ].includes(path)
           )
             return { path, external: true };
@@ -83,6 +84,7 @@ export async function inboxUi(locale: 'en' | 'pt-BR' = 'en') {
   const calls: any[] = [],
     routes: unknown[] = [],
     haptics: string[] = [];
+  const projections: { markdown: string; result: ReturnType<typeof deferred<string>> }[] = [];
   let sequence = 0,
     layout = core.canonical,
     snapshot = async () => structuredClone(core.snapshot);
@@ -118,6 +120,15 @@ export async function inboxUi(locale: 'en' | 'pt-BR' = 'en') {
       };
     }, [key, props]);
     return children(props);
+  };
+  const CaptureText = (props: any) => {
+    React.useLayoutEffect(() => {
+      if (props.testID) controls.set(props.testID, props);
+      return () => {
+        if (controls.get(props.testID) === props) controls.delete(props.testID);
+      };
+    }, [props]);
+    return null;
   };
   const Swipeable = ({ ref, children: content, ...props }: any) => {
     const [edge, setEdge] = React.useState<string | null>(null);
@@ -202,7 +213,7 @@ export async function inboxUi(locale: 'en' | 'pt-BR' = 'en') {
       if (name === 'react-native')
         return {
           View: Capture,
-          Text: () => null,
+          Text: CaptureText,
           Pressable: Capture,
           ScrollView: children,
           StyleSheet: { hairlineWidth: 0.5 },
@@ -221,6 +232,14 @@ export async function inboxUi(locale: 'en' | 'pt-BR' = 'en') {
           Stack: { Screen: () => null },
           router: { push: (route: unknown) => routes.push(route) },
           useFocusEffect,
+        };
+      if (name === 'react-native-enriched-markdown')
+        return {
+          markdownToPlainText(markdown: string) {
+            const result = deferred<string>();
+            projections.push({ markdown, result });
+            return result.promise;
+          },
         };
       if (name === '@shopify/flash-list') return { FlashList: list };
       if (name === 'react-native-safe-area-context')
@@ -302,6 +321,7 @@ export async function inboxUi(locale: 'en' | 'pt-BR' = 'en') {
     calls,
     routes,
     haptics,
+    projections,
     errors: root.errors,
     act: root.act,
     t: localization.t,

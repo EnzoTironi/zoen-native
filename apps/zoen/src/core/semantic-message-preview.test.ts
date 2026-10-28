@@ -68,6 +68,29 @@ test('uncached quotes use the existing exact conversation/message read; generate
   }
 });
 
+test('complete inbox source needs no second message read and fences membership loss before parsing returns', async () => {
+  const f = await semanticPreviewFixture({ ...input, target: { spaceId: target.spaceId } });
+  try {
+    await f.render();
+    assert.equal(f.reads.length, 0, 'the authenticated summary already contains the whole source');
+    const pending = f.projections[0]!;
+    const refresh = await f.refresh([target.spaceId]);
+    await f.act(() => pending.result.resolve('retired private preview'));
+    assert.notEqual(f.current().text, 'retired private preview');
+    const removed = structuredClone(f.snapshot);
+    removed.conversations[0]!.members = [];
+    await f.act(async () => {
+      f.snapshotReads[0]!.resolve(removed);
+      await refresh.done;
+    });
+    assert.equal(f.current().text, t('chat.messageUnavailable'));
+    assert.equal(f.projections.length, 1);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});
+
 test('retired source reads and native results cannot overwrite recycled rows, edited revisions or account reopen', async () => {
   const f = await semanticPreviewFixture(input);
   try {
