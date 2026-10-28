@@ -13,7 +13,7 @@ const { reconcileWatchedGroups } = require('../../plugins/with-native-surfaces.c
 const root = mkdtempSync(path.join(tmpdir(), 'zoen-watched-groups-'));
 const upstream = path.dirname(require.resolve('@expo/inline-modules/package.json'));
 const installedSourceBefore = readFileSync(path.join(upstream, 'build/xcodeProjectUpdates.js'));
-const patch = new URL('../../patches/@expo+inline-modules+0.2.7.patch', import.meta.url);
+const patch = new URL('../../patches/@expo+inline-modules+0.2.8.patch', import.meta.url);
 const projectId = 'AAAAAAAAAAAAAAAAAAAAAAAA';
 const groupId = 'BBBBBBBBBBBBBBBBBBBBBBBB';
 const originalId = 'CCCCCCCCCCCCCCCCCCCCCCCC';
@@ -43,7 +43,7 @@ function packageCopy(name: string) {
     JSON.stringify({
       name: `watched-groups-${name}`,
       private: true,
-      dependencies: { '@expo/inline-modules': '0.2.7' },
+      dependencies: { '@expo/inline-modules': '0.2.8' },
     }),
   );
   return directory;
@@ -66,7 +66,7 @@ function applyPatch(directory: string, reverse = false) {
 }
 
 before(() => {
-  assert.equal(require('@expo/inline-modules/package.json').version, '0.2.7');
+  assert.equal(require('@expo/inline-modules/package.json').version, '0.2.8');
   const original = packageCopy('original');
   const patched = packageCopy('patched');
   applyPatch(original, true);
