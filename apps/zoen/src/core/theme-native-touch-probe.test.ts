@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const patch = readFileSync(
-  new URL('../../patches/@expo+ui+58.0.24.patch', import.meta.url),
+  new URL('../../patches/@expo+ui+58.0.25.patch', import.meta.url),
   'utf8',
 );
 function addedSwift(name: string) {
