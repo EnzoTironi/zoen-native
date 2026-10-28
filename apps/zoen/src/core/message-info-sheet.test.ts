@@ -80,6 +80,8 @@ test('actual compiled Info sheet shows precise author/edit/peer dates without su
   const output = text(
     module.exports.MessageInfoSheet({ value, loading: false, error: false, retry() {} }),
   );
+  assert.ok(!output.includes('messageInfo.authorClock'));
+  assert.ok(!output.includes('messageInfo.peerClock'));
   for (const at of ['1000', '2000', '3000'])
     assert.ok(output.includes(dates.messageInfoDate(at, 'en')!));
   assert.ok(!output.includes(dates.messageInfoDate('90000000000', 'en')!));

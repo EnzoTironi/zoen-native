@@ -55,7 +55,6 @@ export function MessageInfoSheet({
         {row(t('messageInfo.sent'), date(value.sent_at_ms))}
         {value.edited ? row(t('messageInfo.edited'), date(value.edited_at_ms)) : null}
       </View>
-      <Text style={{ color: colors.secondary, fontSize: 13 }}>{t('messageInfo.authorClock')}</Text>
       {value.read_details === 'available' && value.participants.length ? (
         <View style={{ gap: 12 }}>
           <Text
@@ -83,9 +82,6 @@ export function MessageInfoSheet({
               </View>
             </View>
           ))}
-          <Text style={{ color: colors.secondary, fontSize: 13 }}>
-            {t('messageInfo.peerClock')}
-          </Text>
         </View>
       ) : value.read_details === 'not_small_conversation' ? (
         <Text style={{ color: colors.secondary }}>{t('messageInfo.smallConversationOnly')}</Text>

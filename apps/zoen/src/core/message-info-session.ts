@@ -35,6 +35,9 @@ export class MessageInfoSession {
     this.again = false;
     this.publish(null, false, false);
   }
+  checkAuthority() {
+    if (this.focused && !this.port.current()) this.refresh();
+  }
   refresh() {
     ++this.version;
     if (!this.current()) {

@@ -8,8 +8,6 @@ export const messageInfo = defineFeature(
     delivered: 'Delivered',
     pending: 'Awaiting confirmation',
     timeUnavailable: 'Time not provided',
-    authorClock: 'Times reported by the sender’s device.',
-    peerClock: 'Read times are reported by participants’ devices, not this device’s receipt time.',
     readReceipts: 'Read receipts',
     smallConversationOnly: 'Participant details are available in direct chats and small groups.',
     unavailable: 'Message info is no longer available.',
@@ -23,9 +21,6 @@ export const messageInfo = defineFeature(
     delivered: 'Entregue',
     pending: 'Aguardando confirmação',
     timeUnavailable: 'Horário não informado',
-    authorClock: 'Horários informados pelo dispositivo de quem enviou.',
-    peerClock:
-      'Os horários de leitura são informados pelos dispositivos dos participantes, não pelo recebimento neste aparelho.',
     readReceipts: 'Confirmações de leitura',
     smallConversationOnly:
       'Os detalhes dos participantes estão disponíveis em conversas diretas e grupos pequenos.',

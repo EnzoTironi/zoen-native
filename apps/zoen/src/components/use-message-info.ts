@@ -40,6 +40,15 @@ export function useMessageInfo(spaceId: string, messageId: string, expectedScope
       return () => session.blur();
     }, [session]),
   );
-  useEffect(() => store.subscribe(() => session.refresh()), [store, session]);
+  useEffect(() => {
+    const authority = store.subscribe(() => session.checkAuthority());
+    const canonical = store.subscribeCanonicalChanges((spaces) => {
+      if (!spaces || spaces.includes(spaceId)) session.refresh();
+    });
+    return () => {
+      authority();
+      canonical();
+    };
+  }, [store, session, spaceId]);
   return { ...state, retry: () => session.refresh() };
 }

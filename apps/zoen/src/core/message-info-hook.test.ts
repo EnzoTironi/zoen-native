@@ -15,20 +15,24 @@ import type { MessageInfo } from './generated/MessageInfo';
 
 const require = createRequire(import.meta.url);
 const file = new URL('../components/use-message-info.ts', import.meta.url);
-const compiled = require('@babel/core').transformSync(readFileSync(file, 'utf8'), {
-  filename: file.pathname,
-  babelrc: false,
-  configFile: false,
-  presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
-  plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-  caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
-}).code as string;
+const compiled = require('@babel/core').transformSync(
+  readFileSync(process.env.ZOEN_MESSAGE_INFO_SOURCE ?? file, 'utf8'),
+  {
+    filename: file.pathname,
+    babelrc: false,
+    configFile: false,
+    presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+    plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+    caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
+  },
+).code as string;
 assert.match(compiled, /react\/compiler-runtime/);
 
-test('actual Expo compiled Info hook retires held reads on account lifetime change and only requests metadata', async () => {
+test('actual Expo Info ignores typing/other chats and retires canonical, membership and account changes', async () => {
   const root = createReactTestRoot(),
     driver = new Driver(),
     snapshot = draftSession();
+  snapshot.connection = { state: 'online', synced: true, pending: '0', error: null };
   const calls: any[] = [],
     reads: ReturnType<typeof deferred<MessageInfo>>[] = [];
   driver.opening = async () => structuredClone(snapshot);
@@ -100,12 +104,51 @@ test('actual Expo compiled Info hook retires held reads on account lifetime chan
       participants: [],
     };
     await root.act(async () => {
-      await store.close();
-      await store.open('account');
       reads[0]!.resolve(info);
     });
+    assert.equal(current!.value!.sent_at_ms, '1000');
+    const beforeActivity = store.getSnapshot();
+    await root.act(async () => {
+      driver.changed!({
+        kind: 'ephemeral',
+        spaceId,
+        fromId: snapshot.conversations[0]!.members[0]!.id,
+        type: 'typing',
+        detail: '',
+      });
+    });
+    assert.notEqual(
+      store.getSnapshot(),
+      beforeActivity,
+      'actual activity emits a store publication',
+    );
+    assert.equal(reads.length, 1, 'typing does not reread metadata');
+    assert.equal(current!.value!.sent_at_ms, '1000');
+    await root.act(() => store.refresh(['other-chat']));
+    assert.equal(reads.length, 1, 'another conversation does not invalidate Info');
+    assert.equal(current!.value!.sent_at_ms, '1000');
+    await root.act(() => store.refresh([spaceId]));
+    assert.equal(reads.length, 2, 'canonical changes to this conversation reread');
+    assert.equal(current!.value, null, 'invalidated canonical data is not retained optimistically');
+    const members = snapshot.conversations[0]!.members;
+    snapshot.conversations[0]!.members = [];
+    await root.act(() => store.refresh(['other-chat']));
+    assert.equal(current!.value, null, 'membership loss retires immediately on publication');
+    snapshot.conversations[0]!.members = members;
+    await root.act(() => store.refresh(['other-chat']));
+    await root.act(async () => {
+      reads[1]!.resolve(info);
+    });
+    assert.equal(current!.value, null, 'membership ABA cannot revive a held result');
+    await root.act(() => store.refresh([spaceId]));
+    assert.equal(reads.length, 3);
+    await root.act(async () => {
+      await store.close();
+      await store.open('account');
+      reads[2]!.resolve(info);
+    });
     assert.equal(current!.value, null);
-    assert.equal(reads.length, 1);
+    assert.equal(reads.length, 3);
     assert.ok(calls.every((call) => call.op === 'message_info' || call.op === 'snapshot'));
     assert.deepEqual(root.errors, []);
   } finally {
