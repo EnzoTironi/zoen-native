@@ -8,6 +8,7 @@ import { messageMarkdownLink, messageMarkdownMayLoadMedia } from '../core/messag
 import { useTheme } from '../theme';
 import { useLinkLaunch } from './use-link-launch';
 import { useMessageCodeCopy } from './use-message-code-copy';
+import { useQuoteLayoutTransition } from './quote-layout-context';
 import { useQuoteCollapse } from './use-quote-collapse';
 
 export type MessageMarkdownProps = {
@@ -40,6 +41,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
 }: MessageMarkdownProps) {
   const { colors, scheme } = useTheme();
   const selection = use(MessageTextSelection);
+  const quoteMotion = useQuoteLayoutTransition();
   const quotePresentation = useQuoteCollapse(
     text,
     testID,
@@ -144,7 +146,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         {text}
       </Text>
     );
-  const rendered = (
+  const nativeRendered = (
     <EnrichedMarkdownText
       {...(process.env.EXPO_OS === 'ios' ? quotePresentation : {})}
       testID={testID}
@@ -195,6 +197,9 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       }}
     />
   );
+  const rendered = quoteMotion
+    ? quoteMotion.markdown(nativeRendered, quotePresentation.quoteCollapse.generation)
+    : nativeRendered;
   return selection?.active && selection.error ? (
     <>
       {rendered}

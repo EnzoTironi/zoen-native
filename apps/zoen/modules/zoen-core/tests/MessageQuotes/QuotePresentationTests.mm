@@ -69,5 +69,10 @@ int main() { @autoreleasepool {
   NSCAssert(ENRMQuoteRestoreOffset(600,300,500,-62,1000) == 400, @"collapse restores anchor");
   NSCAssert(ENRMQuoteRestoreOffset(0,100,500,-62,1000) == -62, @"top boundary");
   NSCAssert(ENRMQuoteRestoreOffset(900,900,500,-62,1000) == 1000, @"bottom and keyboard boundary");
+  NSCAssert(ENRMQuoteGeometryProgress(150,100,200) == 0.5, @"committed half geometry");
+  CGRect half = ENRMQuoteGeometryFrame(CGRectMake(0,20,200,100),CGRectMake(0,120,200,300),0.5);
+  NSCAssert(half.origin.y == 70 && half.size.height == 200, @"viewport and sibling position share progress");
+  CGRect interrupted = ENRMQuoteGeometryFrame(half,CGRectMake(0,20,200,100),0);
+  NSCAssert(CGRectEqualToRect(half, interrupted), @"interruption begins from current presentation");
   puts("Quote AST, copy, TextKit preview and reading anchor PASS");
 } }

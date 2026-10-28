@@ -1,0 +1,321 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+index f346e566..05d1160a 100644
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+@@ -408,8 +408,9 @@ static char kENRMSegmentFadeAnimatorKey;
+     // Expand down from the visible quote start, like Telegram's inverted
+     // offset update. When folding a long block, keep its action in view.
+     owner->_quoteAnchorAtTop = !quote.quoteExpanded;
++    auto presented = std::static_pointer_cast<EnrichedMarkdownProps const>(owner->_props);
+     [owner->_quoteReadingAnchor capture:owner->_quoteAnchorAtTop ? quote : quote.quoteToggleAnchor
+-                                 index:quote.quoteIndex generation:owner->_quoteCollapse.generation];
++                                 content:owner segments:owner->_segmentViews minimumSequence:presented->quoteMotion.sequence + 1 index:quote.quoteIndex generation:owner->_quoteCollapse.generation];
+     auto emitter = std::static_pointer_cast<EnrichedMarkdownEventEmitter const>(owner->_eventEmitter);
+     if (emitter) emitter->onBlockquoteToggle({.index = (int)quote.quoteIndex, .generation = owner->_quoteCollapse.generation});
+   };
+@@ -493,6 +494,11 @@ static char kENRMSegmentFadeAnimatorKey;
+ #endif
+   }
+ 
++
++#if !TARGET_OS_OSX
++  if (_quoteReadingAnchor && _quoteReadingAnchor.index != NSNotFound && _quoteReadingAnchor.progress < 1)
++    self.clipsToBounds = NO;
++#endif
+   __block CGFloat yOffset = 0.0;
+   __block CGFloat maxContentWidth = 0.0;
+   const NSUInteger lastIndex = _segmentViews.count - 1;
+@@ -555,6 +561,11 @@ static char kENRMSegmentFadeAnimatorKey;
+         }
+       }
+       CGRect segmentFrame = CGRectMake(segmentX, contentOrigin.y + yOffset, segmentWidth, segmentHeight);
++#if !TARGET_OS_OSX
++      if (_quoteReadingAnchor && _quoteReadingAnchor.index != NSNotFound)
++        segmentFrame = [_quoteReadingAnchor frameForSegment:segment target:segmentFrame
++            width:self.bounds.size.width];
++#endif
+       segment.frame = segmentFrame;
+ #if TARGET_OS_OSX
+       if ([segment isKindOfClass:[EnrichedMarkdownInternalText class]]) {
+@@ -761,8 +772,7 @@ static char kENRMSegmentFadeAnimatorKey;
+   __block NSString *renderableMarkdown = nil;
+   __block BOOL endsInsideOpenCodeFence = NO;
+ 
+-  [_renderCoordinator
+-      scheduleRender:^BOOL {
++  BOOL (^render)(void) = ^BOOL {
+         renderableMarkdown = streamingAnimation
+                                  ? ENRMRenderableMarkdownForStreaming(markdownString, tableStreamingMode,
+                                                                       codeBlockStreamingMode, &endsInsideOpenCodeFence)
+@@ -789,14 +799,21 @@ static char kENRMSegmentFadeAnimatorKey;
+           }
+         }
+         return YES;
+-      }
+-      apply:^{
++      };
++  dispatch_block_t apply = ^{
+         self->_renderedStyleFingerprint = self->_pendingStyleFingerprint;
+         [self applyRenderedSegments:renderedSegments
+                    renderedMarkdown:renderableMarkdown
+             endsInsideOpenCodeFence:endsInsideOpenCodeFence];
+         [self emitResolvedAccessibilityText:accessibilityText markdown:markdownString revision:accessibilityRevision];
+-      }];
++      };
++#if !TARGET_OS_OSX
++  if (_quoteReadingAnchor && _quoteReadingAnchor.index != NSNotFound && !streamingAnimation &&
++      [markdownString isEqualToString:_renderedMarkdown])
++    [_renderCoordinator renderSynchronously:render apply:apply];
++  else
++#endif
++    [_renderCoordinator scheduleRender:render apply:apply];
+ }
+ 
+ - (NSArray *)parseAndRenderSegments:(NSString *)markdownString
+@@ -1099,8 +1116,7 @@ static char kENRMSegmentFadeAnimatorKey;
+   if (contentWidth > 0) {
+     [self computeSegmentLayoutForWidth:contentWidth applyFrames:YES];
+ #if !TARGET_OS_OSX
+-    if (_quoteReadingAnchor && _quoteReadingAnchor.index != NSNotFound &&
+-        fabs([self measureSize:contentWidth].height - [self contentBounds].size.height) < 1) {
++    if (_quoteReadingAnchor && _quoteReadingAnchor.index != NSNotFound) {
+       NSUInteger sequence = _quoteReadingAnchor.sequence;
+       __weak EnrichedMarkdown *weakSelf = self;
+       // Wait for this actual native layout commit, never a guessed duration.
+@@ -1114,7 +1130,8 @@ static char kENRMSegmentFadeAnimatorKey;
+           [quote layoutIfNeeded];
+           if (quote.quoteToggleAnchor.hidden) { [owner->_quoteReadingAnchor cancel]; break; }
+           [owner->_quoteReadingAnchor restore:owner->_quoteAnchorAtTop ? quote : quote.quoteToggleAnchor
+-                                       focus:quote.quoteReadingFocus generation:owner->_quoteCollapse.generation];
++                                       focus:quote.quoteReadingFocus generation:owner->_quoteCollapse.generation
++                                       settled:owner->_quoteReadingAnchor.progress >= 1];
+           break;
+         }
+       });
+@@ -1128,6 +1145,13 @@ static char kENRMSegmentFadeAnimatorKey;
+   const auto &oldViewProps = *std::static_pointer_cast<EnrichedMarkdownProps const>(_props);
+   const auto &newViewProps = *std::static_pointer_cast<EnrichedMarkdownProps const>(props);
+ 
++#if !TARGET_OS_OSX
++  const auto &motion = newViewProps.quoteMotion;
++  if (_quoteReadingAnchor && _quoteCollapse.enabled && motion.generation == _quoteCollapse.generation) {
++    [_quoteReadingAnchor advanceProgress:motion.progress sequence:motion.sequence generation:motion.generation];
++    [self setNeedsLayout];
++  }
++#endif
+   BOOL markdownChanged = oldViewProps.markdown != newViewProps.markdown;
+   if (oldViewProps.accessibilityRevision != newViewProps.accessibilityRevision) {
+     _accessibilityRevision = [[NSString alloc] initWithUTF8String:newViewProps.accessibilityRevision.c_str()];
+diff --git a/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm b/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
+index abf24283..d3acb430 100644
+--- a/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
++++ b/node_modules/react-native-enriched-markdown/ios/segments/ENRMBlockquoteContainerView.mm
+@@ -431,19 +431,27 @@ static UIEdgeInsets ENRMBlockquoteContentInsets(StyleConfig *config)
+   // Only its viewport is clipped; selection mode disables collapse at the host.
+   for (UIView *child in self.subviews) {
+     if (child == self.quoteToggleButton) continue;
+-    BOOL collapsed = longQuote && !self.quoteExpanded;
++    CGFloat open = [self computeContentHeightForWidth:inner] + 44;
++    // Fabric's actual row geometry drives both the text viewport and arrow.
++    // Interruption starts from the already-applied viewport, not an old endpoint.
++    BOOL collapsed = longQuote && (!self.quoteExpanded || self.bounds.size.height < open - 0.5);
+     child.accessibilityElementsHidden = collapsed;
+     child.clipsToBounds = collapsed;
+     if (collapsed) {
+-      CGRect frame = child.frame; frame.size.height = preview; child.frame = frame;
++      CGRect frame = child.frame; frame.size.height = MAX(preview, self.bounds.size.height - self.contentInsets.top - self.contentInsets.bottom - 44); child.frame = frame;
+     }
+   }
+   if (!longQuote) return;
+   UIButton *button = self.quoteToggleButton;
+   CGFloat x = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft ? 4 : MAX(0, self.bounds.size.width - 48);
+-  button.frame = CGRectMake(x, self.bounds.size.height - 44, 44, 44);
++  button.bounds = CGRectMake(0, 0, 44, 44);
++  button.center = CGPointMake(x + 22, self.bounds.size.height - 22);
+   button.tintColor = self.config.blockquoteBorderColor;
+-  [button setImage:[UIImage systemImageNamed:self.quoteExpanded ? @"chevron.up" : @"chevron.down"] forState:UIControlStateNormal];
++  [button setImage:[UIImage systemImageNamed:@"chevron.down"] forState:UIControlStateNormal];
++  CGFloat full = [self computeContentHeightForWidth:inner] + 44;
++  CGFloat closed = preview + self.contentInsets.top + self.contentInsets.bottom + 44;
++  CGFloat fraction = MIN(1, MAX(0, ENRMQuoteGeometryProgress(self.bounds.size.height, closed, full)));
++  button.transform = CGAffineTransformMakeRotation(M_PI * fraction);
+   button.accessibilityLabel = self.quoteExpanded ? (self.quoteCollapseLabel.length ? self.quoteCollapseLabel : @"Collapse quote") : (self.quoteExpandLabel.length ? self.quoteExpandLabel : @"Expand quote");
+   button.accessibilityValue = self.quoteExpanded ? (self.quoteExpandedLabel.length ? self.quoteExpandedLabel : @"Expanded") : (self.quoteCollapsedLabel.length ? self.quoteCollapsedLabel : @"Collapsed");
+   [self bringSubviewToFront:button];
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuoteReadingAnchor.h b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuoteReadingAnchor.h
+index 7c399d78..40e2cb73 100644
+--- a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuoteReadingAnchor.h
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuoteReadingAnchor.h
+@@ -6,8 +6,11 @@
+ @property (nonatomic, readonly) NSInteger index;
+ @property (nonatomic, readonly) NSInteger generation;
+ @property (nonatomic, readonly) NSUInteger sequence;
+-- (BOOL)capture:(UIView *)button index:(NSInteger)index generation:(NSInteger)generation;
+-- (void)restore:(UIView *)view focus:(id)focus generation:(NSInteger)generation;
++- (BOOL)capture:(UIView *)button content:(UIView *)content segments:(NSArray<UIView *> *)segments minimumSequence:(NSInteger)minimumSequence index:(NSInteger)index generation:(NSInteger)generation;
++- (void)restore:(UIView *)view focus:(id)focus generation:(NSInteger)generation settled:(BOOL)settled;
++- (CGRect)frameForSegment:(UIView *)segment target:(CGRect)target width:(CGFloat)width;
++@property (nonatomic, readonly) CGFloat progress;
++- (void)advanceProgress:(CGFloat)progress sequence:(NSInteger)sequence generation:(NSInteger)generation;
+ - (void)cancel;
+ @end
+ #endif
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuoteReadingAnchor.m b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuoteReadingAnchor.m
+index a3ae323f..c92ca323 100644
+--- a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuoteReadingAnchor.m
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuoteReadingAnchor.m
+@@ -7,17 +7,29 @@ static char ENRMQuoteAnchorObservation;
+   __weak UIWindow *_window;
+   __weak UIView *_button;
+   __weak id _focus;
+-  CGFloat _screenY;
+-  BOOL _observing, _adjusting, _scheduled, _announced;
++  CGFloat _screenY, _localY;
++  BOOL _observing, _adjusting, _scheduled, _announced, _settled;
++  NSMapTable<UIView *, NSValue *> *_frames;
++  CGSize _initialSize;
++  NSInteger _motionSequence;
+ }
+-- (BOOL)capture:(UIView *)button index:(NSInteger)index generation:(NSInteger)generation {
++- (BOOL)capture:(UIView *)button content:(UIView *)content segments:(NSArray<UIView *> *)segments minimumSequence:(NSInteger)minimumSequence index:(NSInteger)index generation:(NSInteger)generation {
+   [self cancel];
+   UIView *parent = button.superview;
+   while (parent && ![parent isKindOfClass:UIScrollView.class]) parent = parent.superview;
+   UIScrollView *scroll = (UIScrollView *)parent;
+   if (!button.window || !scroll || scroll.dragging || scroll.decelerating) return NO;
++  if (!UIAccessibilityIsReduceMotionEnabled()) {
++    _initialSize = content.bounds.size;
++    _frames = [NSMapTable weakToStrongObjectsMapTable];
++    for (UIView *segment in segments) [_frames setObject:[NSValue valueWithCGRect:segment.frame] forKey:segment];
++  }
++  _progress = 1; _motionSequence = minimumSequence;
+   _scroll = scroll; _window = button.window; _index = index; _generation = generation;
+-  _screenY = [button convertPoint:CGPointMake(CGRectGetMidX(button.bounds), CGRectGetMinY(button.bounds)) toView:_window].y;
++  CGRect visible = [scroll convertRect:UIEdgeInsetsInsetRect(scroll.bounds, scroll.adjustedContentInset) toView:button];
++  if (CGRectIsEmpty(CGRectIntersection(visible, button.bounds))) { [self cancel]; return NO; }
++  _localY = MAX(CGRectGetMinY(button.bounds), CGRectGetMinY(visible));
++  _screenY = [button convertPoint:CGPointMake(CGRectGetMidX(button.bounds), _localY) toView:_window].y;
+   // FlashList can commit its content size after the text view's own layout.
+   // Follow that real commit; any subsequent external scroll retires this intent.
+   [scroll addObserver:self forKeyPath:@"contentSize" options:NSKeyValueObservingOptionNew context:&ENRMQuoteAnchorObservation];
+@@ -25,8 +37,21 @@ static char ENRMQuoteAnchorObservation;
+   _observing = YES;
+   return YES;
+ }
+-- (void)restore:(UIView *)button focus:(id)focus generation:(NSInteger)generation {
++- (CGRect)frameForSegment:(UIView *)segment target:(CGRect)target width:(CGFloat)width {
++  if (fabs(width - _initialSize.width) > 0.5 || UIAccessibilityIsReduceMotionEnabled()) _frames = nil;
++  NSValue *initial = [_frames objectForKey:segment];
++  if (!initial) return target;
++  CGFloat progress = _progress;
++  return ENRMQuoteGeometryFrame(initial.CGRectValue, target, progress);
++}
++- (void)advanceProgress:(CGFloat)progress sequence:(NSInteger)sequence generation:(NSInteger)generation {
++  if (generation != _generation || sequence < _motionSequence || !isfinite(progress)) return;
++  _motionSequence = sequence;
++  _progress = MIN(1, MAX(0, progress));
++}
++- (void)restore:(UIView *)button focus:(id)focus generation:(NSInteger)generation settled:(BOOL)settled {
+   if (generation != _generation) { [self cancel]; return; }
++  _settled = settled;
+   _button = button;
+   _focus = focus;
+   [self applyAnchor];
+@@ -36,7 +61,7 @@ static char ENRMQuoteAnchorObservation;
+   UIView *button = _button;
+   if (!scroll || !_window || button.window != _window || scroll.window != _window ||
+       ![button isDescendantOfView:scroll] || scroll.dragging || scroll.decelerating) { [self cancel]; return; }
+-  CGFloat y = [button convertPoint:CGPointMake(CGRectGetMidX(button.bounds), CGRectGetMinY(button.bounds)) toView:_window].y;
++  CGFloat y = [button convertPoint:CGPointMake(CGRectGetMidX(button.bounds), _localY) toView:_window].y;
+   CGFloat minimum = -scroll.adjustedContentInset.top;
+   CGFloat maximum = MAX(minimum, scroll.contentSize.height - scroll.bounds.size.height + scroll.adjustedContentInset.bottom);
+   CGPoint offset = scroll.contentOffset;
+@@ -44,7 +69,7 @@ static char ENRMQuoteAnchorObservation;
+   _adjusting = YES;
+   [scroll setContentOffset:offset animated:NO];
+   _adjusting = NO;
+-  if (!_announced) {
++  if (_settled && !_announced) {
+     _announced = YES;
+     UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, _focus);
+   }
+@@ -73,7 +98,8 @@ static char ENRMQuoteAnchorObservation;
+     [_scroll removeObserver:self forKeyPath:@"contentSize" context:&ENRMQuoteAnchorObservation];
+     [_scroll removeObserver:self forKeyPath:@"contentOffset" context:&ENRMQuoteAnchorObservation];
+   }
+-  _observing = NO; _scheduled = NO; _announced = NO;
++  _frames = nil;
++  _observing = NO; _scheduled = NO; _announced = NO; _settled = NO;
+   _scroll = nil; _window = nil; _button = nil; _focus = nil; _index = NSNotFound; _generation = -1;
+ }
+ - (void)dealloc { [self cancel]; }
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.h b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.h
+index 7afb8687..1f4e14e2 100644
+--- a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.h
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.h
+@@ -11,6 +11,8 @@ extern "C" {
+ // serialization, source maps and copy/selection text remain untouched.
+ void ENRMConfigureQuoteNodes(MarkdownASTNode *root, BOOL enabled, NSSet<NSNumber *> *expanded);
+ CGFloat ENRMQuotePreviewHeight(NSAttributedString *text, CGFloat width, CGFloat scale);
++CGFloat ENRMQuoteGeometryProgress(CGFloat current, CGFloat initial, CGFloat target);
++CGRect ENRMQuoteGeometryFrame(CGRect initial, CGRect target, CGFloat progress);
+ CGFloat ENRMQuoteRestoreOffset(CGFloat offset, CGFloat currentY, CGFloat targetY, CGFloat minimum, CGFloat maximum);
+ #ifdef __cplusplus
+ }
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.mm b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.mm
+index ab3b4035..2972ea3d 100644
+--- a/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.mm
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMQuotePresentation.mm
+@@ -63,3 +63,16 @@ CGFloat ENRMQuoteRestoreOffset(CGFloat offset, CGFloat currentY, CGFloat targetY
+   if (!isfinite(currentY) || !isfinite(targetY)) return offset;
+   return MIN(maximum, MAX(minimum, offset + currentY - targetY));
+ }
++
++// The layout engine supplies committed geometry, including interrupted spring
++// frames. This projection owns no timer, easing curve or second progress clock.
++CGFloat ENRMQuoteGeometryProgress(CGFloat current, CGFloat initial, CGFloat target) {
++  if (!isfinite(current) || !isfinite(initial) || !isfinite(target) || fabs(target - initial) < 0.5) return 1;
++  return (current - initial) / (target - initial);
++}
++CGRect ENRMQuoteGeometryFrame(CGRect initial, CGRect target, CGFloat progress) {
++  return CGRectMake(initial.origin.x + (target.origin.x - initial.origin.x) * progress,
++                    initial.origin.y + (target.origin.y - initial.origin.y) * progress,
++                    MAX(0, initial.size.width + (target.size.width - initial.size.width) * progress),
++                    MAX(0, initial.size.height + (target.size.height - initial.size.height) * progress));
++}
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMAsyncRenderCoordinator.h b/node_modules/react-native-enriched-markdown/ios/utils/ENRMAsyncRenderCoordinator.h
+index aabece2a..6f20c77d 100644
+--- a/node_modules/react-native-enriched-markdown/ios/utils/ENRMAsyncRenderCoordinator.h
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMAsyncRenderCoordinator.h
+@@ -19,6 +19,8 @@
+ /// Advances the render ID so any in-flight render's apply block is discarded
+ /// by the renderId == currentRenderId check when it lands on the main queue.
+ /// Use before recycling or otherwise resetting a host that owns this coordinator.
++- (void)renderSynchronously:(BOOL (^)(void))renderBlock apply:(dispatch_block_t)applyBlock;
++
+ - (void)invalidate;
+ 
+ @end
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMAsyncRenderCoordinator.m b/node_modules/react-native-enriched-markdown/ios/utils/ENRMAsyncRenderCoordinator.m
+index ab16e698..7934cd75 100644
+--- a/node_modules/react-native-enriched-markdown/ios/utils/ENRMAsyncRenderCoordinator.m
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMAsyncRenderCoordinator.m
+@@ -29,6 +29,18 @@
+   });
+ }
+ 
++// An unchanged-source presentation update must participate in the mounting
++// transaction that measured its new height. Serialize with prior parser work,
++// invalidate stale applies, and commit before that transaction lays out views.
++- (void)renderSynchronously:(BOOL (^)(void))renderBlock apply:(dispatch_block_t)applyBlock
++{
++  if (_blockAsyncRender) return;
++  NSUInteger renderId = ++_currentRenderId;
++  __block BOOL rendered = NO;
++  dispatch_sync(_queue, ^{ rendered = renderBlock(); });
++  if (rendered && renderId == _currentRenderId) applyBlock();
++}
++
+ - (void)invalidate
+ {
+   ++_currentRenderId;

@@ -98,6 +98,9 @@ function fixture(active = true) {
           }),
         };
       if (name.endsWith('/message-audio-provider')) return { useMessageAudioFocus() {} };
+      if (name.endsWith('/quote-layout-transition'))
+        return { QuoteLayoutTransition: 'QuoteLayoutTransition' };
+      if (name.endsWith('/quote-layout-context')) return { QuoteMotionView: 'QuoteMotionView' };
       if (name.endsWith('/mosaic-layout')) return { supportsMediaMosaic: true };
       if (name.endsWith('/core/presentation')) return { messageText: () => '' };
       if (name.endsWith('/message-presentation')) return { messageCard: () => null };
@@ -149,10 +152,20 @@ function fixture(active = true) {
   });
   const tree = host.render(() => module.exports.default());
   const viewport = find(tree, 'Viewport')!;
-  const list = (viewport.props.children as (spacer: unknown, scroll: unknown) => Element)(
+  const content = (viewport.props.children as (spacer: unknown, scroll: unknown) => Element)(
     null,
     'Scroll',
   );
+  const transition = find(content, 'QuoteLayoutTransition');
+  assert.ok(transition, 'Thread viewport must retain its shared quote transition');
+  const transitioned = (transition.props.children as (...args: unknown[]) => Element)(
+    false,
+    () => {},
+    () => {},
+    false,
+  );
+  const list = find(transitioned, 'FlashList');
+  assert.ok(list, 'Thread viewport must retain its actual list');
   return { calls, entries, selection, tree, viewport, list, hookArgs, actionArgs };
 }
 

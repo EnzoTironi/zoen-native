@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../i18n/index.ts';
+import { useQuoteLayoutTransition } from './quote-layout-context';
 
 let nextGeneration = 1;
 type Owner = { text: string; id?: string; revision?: string; generation: number };
@@ -11,6 +12,7 @@ export function useQuoteCollapse(
   revision: string | undefined,
   selecting: boolean,
 ) {
+  const beginLayoutTransition = useQuoteLayoutTransition();
   const owner = useMemo(
     () => ({ text, id, revision, generation: nextGeneration++ }),
     [text, id, revision],
@@ -24,10 +26,12 @@ export function useQuoteCollapse(
   useLayoutEffect(() => {
     ownerRef.current = owner;
     enabledRef.current = enabled;
+    if (!enabled) beginLayoutTransition?.finish(owner.generation);
     return () => {
+      beginLayoutTransition?.finish(owner.generation);
       if (ownerRef.current?.generation === owner.generation) ownerRef.current = null;
     };
-  }, [owner, enabled]);
+  }, [owner, enabled, beginLayoutTransition]);
   const onBlockquoteToggle = useCallback(
     (event: { nativeEvent: { index: number; generation: number } }) => {
       const { index, generation } = event.nativeEvent;
@@ -40,6 +44,7 @@ export function useQuoteCollapse(
         index > 2147483647
       )
         return;
+      beginLayoutTransition?.begin(generation);
       setState((previous) => {
         if (!enabledRef.current || ownerRef.current?.generation !== generation) return previous;
         const expanded = previous.generation === generation ? previous.expanded : [];
@@ -52,7 +57,7 @@ export function useQuoteCollapse(
         };
       });
     },
-    [owner],
+    [owner, beginLayoutTransition],
   );
   return {
     quoteCollapse: {

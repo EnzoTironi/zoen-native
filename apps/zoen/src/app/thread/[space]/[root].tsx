@@ -1,10 +1,12 @@
 import { t } from '../../../i18n/index.ts';
+import { QuoteLayoutTransition } from '../../../components/quote-layout-transition';
+import { QuoteMotionView } from '../../../components/quote-layout-context';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { Text, View, type TextInputInstance } from 'react-native';
+import { Text, type TextInputInstance } from 'react-native';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
 import { useMessageAudioFocus } from '../../../media/message-audio-provider';
@@ -36,15 +38,13 @@ import { useMessageActions } from '../../../components/use-message-actions';
 export default function Thread() {
   const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
   const { store, snapshot, notice, mode } = useClient();
-  useMessageAudioFocus(
-    space,
-    JSON.stringify([
-      mode,
-      snapshot?.account?.identity_id,
-      snapshot?.account?.device_id,
-      store.sessionEpoch,
-    ]),
-  );
+  const owner = JSON.stringify([
+    mode,
+    snapshot?.account?.identity_id,
+    snapshot?.account?.device_id,
+    store.sessionEpoch,
+  ]);
+  useMessageAudioFocus(space, owner);
   const groupChat =
     snapshot?.conversations.some(
       (chat) => chat.id === space && (chat.kind === 'Group' || chat.kind === 'Community'),
@@ -218,88 +218,98 @@ export default function Thread() {
           ) : !entries ? (
             <Loading />
           ) : (
-            <FlashList
-              style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
-              ref={list}
-              testID="conversation-timeline"
-              renderScrollComponent={ScrollComponent}
-              extraData={selection.ids}
-              data={rows}
-              keyExtractor={(row) => row.key}
-              keyboardDismissMode="interactive"
-              keyboardShouldPersistTaps="handled"
-              contentInsetAdjustmentBehavior="never"
-              ListFooterComponent={composerSpacer}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingTop: Math.max(0, headerHeight - timelineTopInset) + 8,
-                paddingBottom: 12,
-              }}
-              maintainVisibleContentPosition={{
-                startRenderingFromBottom: false,
-                autoscrollToBottomThreshold: 0.15,
-              }}
-              renderItem={({ item: { entry, activity, album }, index }) => (
-                <View>
-                  <ConversationMessage
-                    selection={
-                      selection.active
-                        ? {
-                            selected: selection.ids.has(entry.id),
-                            disabled: selection.limitReached && !selection.ids.has(entry.id),
-                            onToggle: selection.toggle,
-                          }
-                        : undefined
-                    }
-                    disabled={selection.active}
-                    spaceId={space}
-                    entry={entry}
-                    activity={activity}
-                    album={album}
-                    previous={index > 1 ? rows[index - 1]?.entry : undefined}
-                    next={index > 0 ? rows[index + 1]?.entry : undefined}
-                    groupChat={groupChat}
-                    item={items.find((item) => item.id === messageCard(entry)?.item_id)}
-                    reactionPending={actions.busy}
-                    onReply={actions.reply}
-                    onThread={actions.thread}
-                    onAuthor={actions.profile}
-                    onMenu={actions.open}
-                    onReact={(message, emoji) => {
-                      void actions.react(message, emoji);
-                    }}
-                    onQuote={(messageId) => {
-                      const target = rows.findIndex(
-                        (row) =>
-                          row.entry.id === messageId ||
-                          row.album?.entries.some((entry) => entry.id === messageId),
-                      );
-                      if (target >= 0)
-                        void list.current
-                          ?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 })
-                          .catch(() => {});
-                      else
-                        router.push({
-                          pathname: '/chat/[id]',
-                          params: { id: space, jump: messageId },
-                        });
-                    }}
-                  />
-                  {index === 0 ? (
-                    <Text
-                      style={{
-                        color: colors.secondary,
-                        fontSize: 12,
-                        textAlign: 'center',
-                        paddingVertical: 18,
-                      }}
-                    >
-                      {t('chat.originalMessage')}
-                    </Text>
-                  ) : null}
-                </View>
+            <QuoteLayoutTransition key={`${owner}:${space}:${root}`} list={list}>
+              {(active, commit, cancel, reading) => (
+                <FlashList
+                  style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
+                  ref={list}
+                  testID="conversation-timeline"
+                  renderScrollComponent={ScrollComponent}
+                  CellRendererComponent={
+                    process.env.EXPO_OS === 'ios' ? QuoteMotionView : undefined
+                  }
+                  onCommitLayoutEffect={commit}
+                  onScrollBeginDrag={cancel}
+                  extraData={selection.ids}
+                  data={rows}
+                  keyExtractor={(row) => row.key}
+                  keyboardDismissMode="interactive"
+                  keyboardShouldPersistTaps="handled"
+                  contentInsetAdjustmentBehavior="never"
+                  ListFooterComponent={composerSpacer}
+                  contentContainerStyle={{
+                    paddingHorizontal: 16,
+                    paddingTop: Math.max(0, headerHeight - timelineTopInset) + 8,
+                    paddingBottom: 12,
+                  }}
+                  maintainVisibleContentPosition={{
+                    disabled: active,
+                    startRenderingFromBottom: false,
+                    autoscrollToBottomThreshold: reading ? undefined : 0.15,
+                  }}
+                  renderItem={({ item: { entry, activity, album }, index }) => (
+                    <QuoteMotionView>
+                      <ConversationMessage
+                        selection={
+                          selection.active
+                            ? {
+                                selected: selection.ids.has(entry.id),
+                                disabled: selection.limitReached && !selection.ids.has(entry.id),
+                                onToggle: selection.toggle,
+                              }
+                            : undefined
+                        }
+                        disabled={selection.active}
+                        spaceId={space}
+                        entry={entry}
+                        activity={activity}
+                        album={album}
+                        previous={index > 1 ? rows[index - 1]?.entry : undefined}
+                        next={index > 0 ? rows[index + 1]?.entry : undefined}
+                        groupChat={groupChat}
+                        item={items.find((item) => item.id === messageCard(entry)?.item_id)}
+                        reactionPending={actions.busy}
+                        onReply={actions.reply}
+                        onThread={actions.thread}
+                        onAuthor={actions.profile}
+                        onMenu={actions.open}
+                        onReact={(message, emoji) => {
+                          void actions.react(message, emoji);
+                        }}
+                        onQuote={(messageId) => {
+                          const target = rows.findIndex(
+                            (row) =>
+                              row.entry.id === messageId ||
+                              row.album?.entries.some((entry) => entry.id === messageId),
+                          );
+                          if (target >= 0)
+                            void list.current
+                              ?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 })
+                              .catch(() => {});
+                          else
+                            router.push({
+                              pathname: '/chat/[id]',
+                              params: { id: space, jump: messageId },
+                            });
+                        }}
+                      />
+                      {index === 0 ? (
+                        <Text
+                          style={{
+                            color: colors.secondary,
+                            fontSize: 12,
+                            textAlign: 'center',
+                            paddingVertical: 18,
+                          }}
+                        >
+                          {t('chat.originalMessage')}
+                        </Text>
+                      ) : null}
+                    </QuoteMotionView>
+                  )}
+                />
               )}
-            />
+            </QuoteLayoutTransition>
           )
         }
       </ConversationViewport>
