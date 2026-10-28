@@ -98,9 +98,18 @@ import PencilKit
     let reopened = try pixels(recipe.rendered())
     precondition(reopened == full)
   }
+  static func stage(_ label: String, since start: Date) {
+    let elapsed = String(format: "%.3f", Date().timeIntervalSince(start))
+    // Write directly so a terminated hosted process still identifies its last stage.
+    FileHandle.standardError.write(Data("Photo editor pixels: \(label) at \(elapsed)s\n".utf8))
+  }
   @MainActor static func main() throws {
+    let start = Date()
+    stage("PencilKit start", since: start)
     try actualPencilKitRecrop()
+    stage("PencilKit complete; extended RGB start", since: start)
     try explicitExtendedRangeRecrop()
+    stage("extended RGB complete; geometry start", since: start)
 
     // Odd, asymmetric dimensions expose half-pixel centering and turn direction.
     let odd = try image(Array(1...15), width: 5, height: 3)
@@ -176,6 +185,7 @@ import PencilKit
     refused { try recipe.rotate() }
     refused { try recipe.crop(to: CGRect(x: 0, y: 0, width: 1, height: 1)) }
     refused { try recipe.commitInk(overlay) }
+    stage("geometry complete", since: start)
     print("Photo editor pixels PASS: crop/rotation, Reset, ink, bounds, retirement")
   }
 }

@@ -86,6 +86,12 @@ the full Rust suite. The CI-policy PR itself therefore exercises both lanes.
 The runner and workflow are pinned; changing/removing their protection restores
 full Rust selection until reviewed. Other checks and branch protections remain.
 
+Hosted run 40500782585 compiled successfully but exceeded the former 5-second
+native execution deadline. The executable now has a bounded 15-second deadline
+and writes stage timings directly to stderr; all assertions remain. Compilation
+stays bounded at 45 seconds and the overall test at 60 seconds. A timeout still
+fails the required native proof; the timings distinguish progress from a hang.
+
 This removes application Rust tests that cannot observe these image pixels.
 It does not claim an App build, editor/journal integration, device acceptance or
 coverage of arbitrary native code. Those existing qualifications remain separate;

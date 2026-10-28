@@ -3,7 +3,7 @@
 # Reviewed Cargo roots, test commands, client coverage and embedded-resource
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
 FRONTEND_CONTRACTS = {
-    "apps/zoen/src/core/photo-editor-image.test.ts": "42f19380be74c9ce3729c94aff098016415efd1be2ecb1c9f47b041974aeb204",
+    "apps/zoen/src/core/photo-editor-image.test.ts": "bccf5c4e25968b1dca8afac700c2d5c3475012b2abeb419e509686af3f16c194",
     "scripts/expo_artifact_candidate.py": "0f43561817f940cb50e607c5d94ce06ad4aafde130690b683c4bae6099332a31",
     "miniapps/pdfcraft-ui/prepare-engine.py": "4704dfe72d3608e5a48e5847d3c3fae14e5042e286ee0351003eeb9c9a6b1879",
     "miniapps/pdfcraft-ui/build-resource-manifest.mjs": "69635b70da63254efc2a96629c869e8398a6989e8890fa756b64c76c1225c586",
