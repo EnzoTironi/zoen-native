@@ -124,6 +124,14 @@ int main() { @autoreleasepool {
         'project full source before the two-line UI truncation',
       );
       assert.equal(project(''), '');
+      assert.equal(
+        project('> **café🦊**\n> [Read more](https://example.org/a_(b))'),
+        'café🦊\nRead more',
+      );
+      assert.equal(
+        project(String.raw`[\*QA769 café🦊 link\*](https://example.org/a_(b))`),
+        '*QA769 café🦊 link*',
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

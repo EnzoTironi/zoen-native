@@ -286,8 +286,12 @@ impl Engine {
         }
     }
 
-    pub(super) fn preview(&self, s: &SpaceState) -> (String, Option<Persona>, Option<Delivery>) {
+    pub(super) fn preview(
+        &self,
+        s: &SpaceState,
+    ) -> (String, bool, Option<Persona>, Option<Delivery>) {
         for e in s.entries.iter().rev() {
+            let mut markdown = false;
             let text = match &e.body {
                 EntryBody::Message { marks, .. } if marks.deleted => {
                     t("Mensagem apagada", "Message deleted")
@@ -301,14 +305,17 @@ impl Engine {
                 EntryBody::Message { text, attaches, .. } => {
                     match attaches.as_deref().and_then(|i| self.card(i)) {
                         Some(c) if text.is_empty() => format!("{} · {}", c.kind_label, c.title),
-                        _ => text.clone(),
+                        _ => {
+                            markdown = !text.is_empty();
+                            text.clone()
+                        }
                     }
                 }
                 EntryBody::ItemEdited { note, .. } => note.clone(),
                 EntryBody::Request { request } => {
                     if let Some(r) = self.state.requests.get(request) {
                         // A request's title already describes the action in natural language.
-                        return (r.req.title.clone(), None, None);
+                        return (r.req.title.clone(), false, None, None);
                     }
                     continue;
                 }
@@ -331,8 +338,13 @@ impl Engine {
             } else {
                 None
             };
-            return (text, Some(self.persona(&e.author)), delivery);
+            return (text, markdown, Some(self.persona(&e.author)), delivery);
         }
-        (t("Nenhuma mensagem ainda", "No messages yet"), None, None)
+        (
+            t("Nenhuma mensagem ainda", "No messages yet"),
+            false,
+            None,
+            None,
+        )
     }
 }

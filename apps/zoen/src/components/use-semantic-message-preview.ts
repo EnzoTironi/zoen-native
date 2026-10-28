@@ -13,7 +13,7 @@ type Source = {
   text: string;
   literal: boolean;
   enabled?: boolean;
-  target?: { spaceId: string; messageId: string };
+  target?: { spaceId: string; messageId?: string };
 };
 function session(store: ClientStore, state: ClientState, space?: string): string {
   if (store.isSessionRetiring) return '';

@@ -107,6 +107,11 @@ pub struct SpaceSummary {
     /// Para DMs: a outra ponta (pessoa ou agente).
     pub counterpart: Option<Persona>,
     pub last_preview: String,
+    /// Complete message Markdown; false for generated labels, titles and warnings.
+    #[serde(default)]
+    #[uniffi(default = false)]
+    #[cfg_attr(feature = "client-types", ts(optional = nullable))]
+    pub last_preview_is_markdown: bool,
     pub last_author: Option<Persona>,
     pub last_at_ms: i64,
     pub unread: u32,

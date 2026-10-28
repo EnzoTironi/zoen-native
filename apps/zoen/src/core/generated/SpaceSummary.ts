@@ -12,7 +12,11 @@ can_write: boolean, members: Array<Persona>,
 /**
  * Para DMs: a outra ponta (pessoa ou agente).
  */
-counterpart: Persona | null, last_preview: string, last_author: Persona | null, last_at_ms: string, unread: number, 
+counterpart: Persona | null, last_preview: string, 
+/**
+ * Complete message Markdown; false for generated labels, titles and warnings.
+ */
+last_preview_is_markdown?: boolean, last_author: Persona | null, last_at_ms: string, unread: number, 
 /**
  * Local manual reminder; does not alter the actual unread-message count.
  */

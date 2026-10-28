@@ -58,14 +58,16 @@ impl Engine {
         } else {
             None
         };
-        let (last_preview, last_author, last_delivery) = match &s.integrity_error {
-            Some(err) => (
-                tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"),
-                None,
-                None,
-            ),
-            None => self.preview(s),
-        };
+        let (last_preview, last_preview_is_markdown, last_author, last_delivery) =
+            match &s.integrity_error {
+                Some(err) => (
+                    tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"),
+                    false,
+                    None,
+                    None,
+                ),
+                None => self.preview(s),
+            };
         let read_seq = self.read_up_to(id);
         let unread = s
             .entries
@@ -108,6 +110,7 @@ impl Engine {
             members,
             counterpart,
             last_preview,
+            last_preview_is_markdown,
             last_author,
             last_at_ms: s.last_at_ms,
             unread,
