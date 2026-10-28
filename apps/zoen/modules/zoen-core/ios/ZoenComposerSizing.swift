@@ -86,17 +86,26 @@ enum ZoenComposerSizing {
     }
     guard actualFontSize.isFinite,
           abs(actualFontSize - expectedFontSize) <= 0.5 else { return nil }
-    // UITextView accounts for paragraph attributes and its own insets. Only
-    // ENRM's separate host padding remains outside that measurement.
-    let fitting = editor.sizeThatFits(
-      CGSize(width: editor.bounds.width, height: .greatestFiniteMagnitude)
-    )
-    guard fitting.height.isFinite, fitting.height > 0 else { return nil }
+    let contentHeight: Double
+    if canonicalInput {
+      // Use the renderer's own measureSize path. Its typing attributes measure
+      // empty and trailing-newline paragraphs; UITextView.sizeThatFits can use
+      // the unstyled empty editor font instead. Host padding stays outside it.
+      let fittingSelector = NSSelectorFromString("zoenComposerFittingHeight")
+      guard root.responds(to: fittingSelector),
+            let height = root.perform(fittingSelector)?.takeUnretainedValue() as? NSNumber else { return nil }
+      contentHeight = height.doubleValue
+    } else {
+      contentHeight = Double(editor.sizeThatFits(
+        CGSize(width: editor.bounds.width, height: .greatestFiniteMagnitude)
+      ).height)
+    }
+    guard contentHeight.isFinite, contentHeight > 0 else { return nil }
     return [
       "tag": Double(tag),
       "nonce": Double(nonce),
       "width": actualWidth,
-      "height": Double(fitting.height + containerInsets),
+      "height": contentHeight + Double(containerInsets),
       "fontSize": actualFontSize,
     ]
   }
