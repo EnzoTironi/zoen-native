@@ -1,12 +1,13 @@
 use super::*;
 use crate::client::tests::{account, clear, sequence, HostSigner};
+use crate::client::{ClientFrame, Privacy, ServerFrame, SpaceKind, SpaceLog};
 use event_log::{Author, Signer as NativeSigner};
 
 fn fixture() -> std::result::Result<(Client<HostSigner>, SpaceLog), Box<dyn std::error::Error>> {
     let identity = NativeSigner::from_secret(&[81; 32]);
     let signer = HostSigner(NativeSigner::from_secret(&[82; 32]));
     let author = Author::device(&identity, signer.0.clone());
-    let mut client = Client::new(account(&identity, &signer.0), signer, "").unwrap();
+    let mut client = Client::new(account(&identity, &signer.0), signer, "")?;
     let mut log = SpaceLog::new("sp_web_attachment_batch");
     let frame = clear(
         &mut log,
@@ -18,53 +19,65 @@ fn fixture() -> std::result::Result<(Client<HostSigner>, SpaceLog), Box<dyn std:
         },
         1,
     )?;
-    client.receive(&frame, 2).unwrap();
-    client.receive(&ServerFrame::SyncDone.encode(), 3).unwrap();
+    client.receive(&frame, 2)?;
+    client.receive(&ServerFrame::SyncDone.encode(), 3)?;
     Ok((client, log))
 }
 
-fn frame(sealed: &crate::media::Sealed) -> Vec<u8> {
+fn frame(
+    sealed: &crate::media::Sealed,
+) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let uploads = sealed
         .uploads
         .iter()
         .map(|upload| serde_json::json!({"blob":upload.blob,"len":upload.sealed.len()}))
         .collect::<Vec<_>>();
-    let header =
-        serde_json::to_vec(&serde_json::json!({"doc":sealed.doc,"uploads":uploads})).unwrap();
-    let mut result = (header.len() as u32).to_le_bytes().to_vec();
+    let header = serde_json::to_vec(&serde_json::json!({"doc":sealed.doc,"uploads":uploads}))?;
+    let mut result = u32::try_from(header.len())?.to_le_bytes().to_vec();
     result.extend(header);
     for upload in &sealed.uploads {
         result.extend(&upload.sealed);
     }
-    result
+    Ok(result)
 }
 
-fn framed(files: &[crate::media::Sealed]) -> Vec<u8> {
+fn framed(
+    files: &[crate::media::Sealed],
+) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut result = Vec::new();
     for file in files {
-        let frame = frame(file);
-        result.extend((frame.len() as u32).to_le_bytes());
+        let frame = frame(file)?;
+        result.extend(u32::try_from(frame.len())?.to_le_bytes());
         result.extend(frame);
     }
-    result
+    Ok(result)
 }
 
-fn files(count: usize) -> Vec<crate::media::Sealed> {
-    (0..count)
+fn files(
+    count: usize,
+) -> std::result::Result<Vec<crate::media::Sealed>, Box<dyn std::error::Error>> {
+    Ok((0..count)
         .map(|index| {
             crate::media::seal_file(
                 &format!("photo-{index}.jpg"),
                 "image/jpeg",
-                &[index as u8, 4, 9],
+                &[
+                    u8::try_from(index).map_err(|_| "fixture index exceeds byte domain")?,
+                    4,
+                    9,
+                ],
                 None,
             )
-            .unwrap()
         })
-        .collect()
+        .collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
-fn request(client: &mut Client<HostSigner>, space: &str, count: usize) -> serde_json::Value {
-    let producer = client.attachment_producer(r#"{"op":"begin"}"#).unwrap();
+fn request(
+    client: &mut Client<HostSigner>,
+    space: &str,
+    count: usize,
+) -> std::result::Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let producer = client.attachment_producer(r#"{"op":"begin"}"#)?;
     let items = (0..count)
         .map(|index| {
             let mutation = client
@@ -74,34 +87,79 @@ fn request(client: &mut Client<HostSigner>, space: &str, count: usize) -> serde_
                     })
                     .to_string(),
                 )
-                .unwrap();
-            serde_json::json!({"mutation_id":mutation,"caption":format!("  Photo {index}\n  ")})
+                ?;
+            Ok::<_, String>(serde_json::json!({"mutation_id":mutation,"caption":format!("  Photo {index}\n  ")}))
         })
-        .collect::<Vec<_>>();
-    serde_json::json!({"space_id":space,"reply_to":null,"thread":false,"items":items})
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(serde_json::json!({"space_id":space,"reply_to":null,"thread":false,"items":items}))
 }
 
-fn snapshot(client: &Client<HostSigner>) -> String {
-    serde_json::to_string(&client.saved).unwrap()
+fn snapshot(
+    client: &Client<HostSigner>,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    Ok(serde_json::to_string(&client.saved)?)
+}
+
+fn assert_media_album(posts: &[types::MessageMedia]) -> Result<(), String> {
+    assert_eq!(posts.len(), 2);
+    assert!(posts
+        .iter()
+        .all(|media| media.presentation == types::AttachmentPresentation::File));
+    assert_eq!(
+        posts[0]
+            .group
+            .as_ref()
+            .ok_or("missing authenticated test as_ref value")?
+            .id,
+        posts[1]
+            .group
+            .as_ref()
+            .ok_or("missing authenticated test as_ref value")?
+            .id
+    );
+    assert_eq!(
+        posts[0]
+            .group
+            .as_ref()
+            .ok_or("missing authenticated test as_ref value")?
+            .index,
+        0
+    );
+    assert_eq!(
+        posts[1]
+            .group
+            .as_ref()
+            .ok_or("missing authenticated test as_ref value")?
+            .index,
+        1
+    );
+    assert_eq!(
+        posts[1]
+            .group
+            .as_ref()
+            .ok_or("missing authenticated test as_ref value")?
+            .count,
+        2
+    );
+    Ok(())
 }
 
 #[test]
 fn media_contract_batch_media_group_survives_saved_reload_and_shares_one_upload_barrier(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut client, mut log) = fixture()?;
-    let files = files(2);
-    let mut request = request(&mut client, log.space(), 2);
+    let files = files(2)?;
+    let mut request = request(&mut client, log.space(), 2)?;
     request["options"] = serde_json::json!({"presentation":"file","grouping":"grouped"});
-    let (update, results) = client
-        .queue_attachment_batch(&request.to_string(), &framed(&files), 10)
-        .unwrap();
+    let (update, results) =
+        client.queue_attachment_batch(&request.to_string(), &framed(&files)?, 10)?;
     assert_eq!(results.len(), 2);
     assert_eq!(client.saved.outbox.len(), 4);
     assert_eq!(client.saved.local_chunks.len(), 2);
-    assert!(!update
-        .frames
-        .iter()
-        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
+    assert!(!update.frames.iter().any(|frame| matches!(
+        ClientFrame::decode(frame).map_err(|error| error.to_string()),
+        Ok(ClientFrame::Publish { .. })
+    )));
     let uploads = files
         .iter()
         .flat_map(|file| file.uploads.iter().map(|upload| upload.blob.clone()))
@@ -116,26 +174,25 @@ fn media_contract_batch_media_group_survives_saved_reload_and_shares_one_upload_
         client.account.clone(),
         client.signer.clone(),
         &update.snapshot,
-    )
-    .unwrap();
+    )?;
     assert!(
         restored
-            .queue_attachment_batch(&request.to_string(), &framed(&files), 11)
+            .queue_attachment_batch(&request.to_string(), &framed(&files)?, 11)
             .is_err(),
         "a restore retires the old producer"
     );
-    restored
-        .receive(&ServerFrame::SyncDone.encode(), 12)
-        .unwrap();
-    let partial = restored.document_uploaded(&uploads[..1]).unwrap();
-    assert!(!partial
-        .frames
-        .iter()
-        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
-    let ready = restored.document_uploaded(&uploads[1..]).unwrap();
+    restored.receive(&ServerFrame::SyncDone.encode(), 12)?;
+    let partial = restored.document_uploaded(&uploads[..1])?;
+    assert!(!partial.frames.iter().any(|frame| matches!(
+        ClientFrame::decode(frame).map_err(|error| error.to_string()),
+        Ok(ClientFrame::Publish { .. })
+    )));
+    let ready = restored.document_uploaded(&uploads[1..])?;
     let mut posts = Vec::new();
     for raw in ready.frames {
-        if let ClientFrame::Publish { env } = ClientFrame::decode(&raw).unwrap() {
+        if let ClientFrame::Publish { env } =
+            ClientFrame::decode(&raw).map_err(|error| error.to_string())?
+        {
             if let Some(event) = env.plain_event() {
                 if let EventBody::MessagePosted {
                     media: Some(media), ..
@@ -145,40 +202,43 @@ fn media_contract_batch_media_group_survives_saved_reload_and_shares_one_upload_
                 }
             }
             let confirmed = sequence(&mut log, env)?;
-            restored.receive(&confirmed, 13).unwrap();
+            restored.receive(&confirmed, 13)?;
         }
     }
-    assert_eq!(posts.len(), 2);
-    assert!(posts
-        .iter()
-        .all(|media| media.presentation == types::AttachmentPresentation::File));
-    assert_eq!(
-        posts[0].group.as_ref().unwrap().id,
-        posts[1].group.as_ref().unwrap().id
-    );
-    assert_eq!(posts[0].group.as_ref().unwrap().index, 0);
-    assert_eq!(posts[1].group.as_ref().unwrap().index, 1);
-    assert_eq!(posts[1].group.as_ref().unwrap().count, 2);
+    assert_media_album(&posts)?;
     let conversations = restored.conversations();
     for (index, (item, message)) in results.iter().enumerate() {
         let posted = conversations[0]
             .messages
             .iter()
             .find(|entry| &entry.id == message)
-            .unwrap();
+            .ok_or("missing authenticated test find value")?;
         assert_eq!(posted.file_item_id.as_ref(), Some(item));
-        assert_eq!(posted.file.as_ref().unwrap().mime, "image/jpeg");
         assert_eq!(
-            posted.file.as_ref().unwrap().sha256,
+            posted
+                .file
+                .as_ref()
+                .ok_or("missing authenticated test as_ref value")?
+                .mime,
+            "image/jpeg"
+        );
+        assert_eq!(
+            posted
+                .file
+                .as_ref()
+                .ok_or("missing authenticated test as_ref value")?
+                .sha256,
             files[index].doc.sha256
         );
         assert_eq!(
             posted.text,
-            request["items"][index]["caption"].as_str().unwrap()
+            request["items"][index]["caption"]
+                .as_str()
+                .ok_or("missing authenticated test as_str value")?
         );
         assert_eq!(
-            serde_json::to_value(&posted.media).unwrap(),
-            serde_json::to_value(&posts[index]).unwrap()
+            serde_json::to_value(&posted.media)?,
+            serde_json::to_value(&posts[index])?
         );
     }
     Ok(())
@@ -188,21 +248,18 @@ fn media_contract_batch_media_group_survives_saved_reload_and_shares_one_upload_
 fn media_contract_batch_replay_authenticates_new_ciphertext_but_freezes_order_options_captions_and_bytes(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut client, log) = fixture()?;
-    let mut request = request(&mut client, log.space(), 2);
+    let mut request = request(&mut client, log.space(), 2)?;
     request["options"] = serde_json::json!({"presentation":"media","grouping":"grouped"});
-    let original = files(2);
-    let (_, results) = client
-        .queue_attachment_batch(&request.to_string(), &framed(&original), 10)
-        .unwrap();
-    let baseline = snapshot(&client);
-    let fresh = files(2);
+    let original = files(2)?;
+    let (_, results) =
+        client.queue_attachment_batch(&request.to_string(), &framed(&original)?, 10)?;
+    let baseline = snapshot(&client)?;
+    let fresh = files(2)?;
     assert_ne!(original[0].doc.chunks[0].blob, fresh[0].doc.chunks[0].blob);
-    let (_, replay) = client
-        .queue_attachment_batch(&request.to_string(), &framed(&fresh), 11)
-        .unwrap();
+    let (_, replay) = client.queue_attachment_batch(&request.to_string(), &framed(&fresh)?, 11)?;
     assert_eq!(replay, results);
     assert_eq!(
-        snapshot(&client),
+        snapshot(&client)?,
         baseline,
         "retry cannot replace the accepted ciphertext"
     );
@@ -213,21 +270,24 @@ fn media_contract_batch_replay_authenticates_new_ciphertext_but_freezes_order_op
     let mut caption_drift = request.clone();
     caption_drift["items"][0]["caption"] = serde_json::json!("changed");
     let mut reordered = request.clone();
-    reordered["items"].as_array_mut().unwrap().swap(0, 1);
+    reordered["items"]
+        .as_array_mut()
+        .ok_or("missing authenticated test as_array_mut value")?
+        .swap(0, 1);
     for changed in [option_drift, grouping_drift, caption_drift, reordered] {
         assert!(client
-            .queue_attachment_batch(&changed.to_string(), &framed(&fresh), 12)
+            .queue_attachment_batch(&changed.to_string(), &framed(&fresh)?, 12)
             .is_err());
-        assert_eq!(snapshot(&client), baseline);
+        assert_eq!(snapshot(&client)?, baseline);
     }
     let changed = vec![
-        crate::media::seal_file("photo-0.jpg", "image/jpeg", b"other", None).unwrap(),
-        files(2).remove(1),
+        crate::media::seal_file("photo-0.jpg", "image/jpeg", b"other", None)?,
+        files(2)?.remove(1),
     ];
     assert!(client
-        .queue_attachment_batch(&request.to_string(), &framed(&changed), 12)
+        .queue_attachment_batch(&request.to_string(), &framed(&changed)?, 12)
         .is_err());
-    assert_eq!(snapshot(&client), baseline);
+    assert_eq!(snapshot(&client)?, baseline);
     Ok(())
 }
 
@@ -235,18 +295,20 @@ fn media_contract_batch_replay_authenticates_new_ciphertext_but_freezes_order_op
 fn media_contract_batch_invalid_last_frame_target_options_or_lease_preserve_every_issued_intent(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut client, log) = fixture()?;
-    let request = request(&mut client, log.space(), 2);
-    let valid = framed(&files(2));
-    let baseline = snapshot(&client);
+    let request = request(&mut client, log.space(), 2)?;
+    let valid = framed(&files(2)?)?;
+    let baseline = snapshot(&client)?;
     let mut corrupt = valid.clone();
-    *corrupt.last_mut().unwrap() ^= 1;
+    *corrupt
+        .last_mut()
+        .ok_or("missing authenticated test last_mut value")? ^= 1;
     let mut trailing = valid.clone();
     trailing.push(1);
     for bad in [vec![], valid[..3].to_vec(), corrupt, trailing] {
         assert!(client
             .queue_attachment_batch(&request.to_string(), &bad, 10)
             .is_err());
-        assert_eq!(snapshot(&client), baseline);
+        assert_eq!(snapshot(&client)?, baseline);
     }
     let mut requests = Vec::new();
     for options in [
@@ -278,23 +340,22 @@ fn media_contract_batch_invalid_last_frame_target_options_or_lease_preserve_ever
         assert!(client
             .queue_attachment_batch(&bad.to_string(), &valid, 10)
             .is_err());
-        assert_eq!(snapshot(&client), baseline);
+        assert_eq!(snapshot(&client)?, baseline);
     }
     client.saved.outbox_sequence = u64::MAX - 3;
-    let full = snapshot(&client);
+    let full = snapshot(&client)?;
     assert!(client
         .queue_attachment_batch(&request.to_string(), &valid, 10)
         .is_err());
     assert_eq!(
-        snapshot(&client),
+        snapshot(&client)?,
         full,
         "all four events must fit before accepting any"
     );
     client.saved.outbox_sequence = 0;
     assert_eq!(
         client
-            .queue_attachment_batch(&request.to_string(), &valid, 11)
-            .unwrap()
+            .queue_attachment_batch(&request.to_string(), &valid, 11)?
             .1
             .len(),
         2
@@ -302,191 +363,4 @@ fn media_contract_batch_invalid_last_frame_target_options_or_lease_preserve_ever
     Ok(())
 }
 
-#[test]
-fn media_contract_batch_group_count_limits_and_partial_receipts_never_create_partial_albums(
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    for count in [0, 1, 2, 10, 11] {
-        let (mut client, log) = fixture()?;
-        let mut request = request(&mut client, log.space(), count);
-        request["options"] = serde_json::json!({"presentation":"media","grouping":"grouped"});
-        let baseline = snapshot(&client);
-        let result =
-            client.queue_attachment_batch(&request.to_string(), &framed(&files(count)), 10);
-        if count == 2 || count == 10 {
-            assert_eq!(result.unwrap().1.len(), count);
-        } else {
-            assert!(result.is_err());
-            assert_eq!(snapshot(&client), baseline);
-        }
-    }
-    let (mut client, log) = fixture()?;
-    let request = request(&mut client, log.space(), 2);
-    let files = files(2);
-    let single = serde_json::json!({"space_id":log.space(),"reply_to":null,"thread":false,
-        "caption":request["items"][0]["caption"],"mutation_id":request["items"][0]["mutation_id"]});
-    client
-        .queue_attachment(&single.to_string(), &frame(&files[0]), 10)
-        .unwrap();
-    let baseline = snapshot(&client);
-    assert!(client
-        .queue_attachment_batch(&request.to_string(), &framed(&files), 11)
-        .is_err());
-    assert_eq!(snapshot(&client), baseline);
-    let second = serde_json::json!({"space_id":log.space(),"reply_to":null,"thread":false,
-        "caption":request["items"][1]["caption"],"mutation_id":request["items"][1]["mutation_id"]});
-    client
-        .queue_attachment(&second.to_string(), &frame(&files[1]), 12)
-        .unwrap();
-    Ok(())
-}
-
-#[test]
-fn media_contract_single_legacy_receipts_keep_the_exact_fingerprint_and_file_mode_keeps_real_mime(
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let (mut client, log) = fixture()?;
-    let batch = request(&mut client, log.space(), 1);
-    let mut request = serde_json::json!({"space_id":log.space(),"reply_to":null,"thread":false,
-        "mutation_id":batch["items"][0]["mutation_id"],"caption":batch["items"][0]["caption"]});
-    let files = files(1);
-    let doc = &files[0].doc;
-    let (_, item, message) = client
-        .queue_attachment(&request.to_string(), &frame(&files[0]), 10)
-        .unwrap();
-    let legacy = hex::encode(Sha256::digest(
-        serde_json::to_vec(&serde_json::json!([
-            request["space_id"],
-            request["caption"],
-            request["reply_to"],
-            request["thread"],
-            doc.name,
-            doc.mime,
-            doc.bytes,
-            doc.sha256,
-            doc.thumb.as_ref().map(|thumb| (&thumb.sha256, thumb.bytes)),
-        ]))
-        .unwrap(),
-    ));
-    let mutation = request["mutation_id"].as_str().unwrap();
-    let sequence = client.attachment_producer.sequence(mutation).unwrap();
-    assert_eq!(
-        client.attachment_producer.pending[&sequence]
-            .as_ref()
-            .unwrap()
-            .fingerprint,
-        legacy
-    );
-    request["options"] = serde_json::json!({"presentation":"media","grouping":"separate"});
-    let (_, replay_item, replay_message) = client
-        .queue_attachment(&request.to_string(), &frame(&files[0]), 11)
-        .unwrap();
-    assert_eq!((item, message), (replay_item, replay_message));
-    request["options"]["presentation"] = serde_json::json!("file");
-    assert!(client
-        .queue_attachment(&request.to_string(), &frame(&files[0]), 12)
-        .is_err());
-    let fresh = self::request(&mut client, log.space(), 1);
-    request["mutation_id"] = fresh["items"][0]["mutation_id"].clone();
-    let (update, _, _) = client
-        .queue_attachment(&request.to_string(), &frame(&files[0]), 13)
-        .unwrap();
-    let view = serde_json::to_value(&update.conversations).unwrap();
-    let posted = view[0]["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|message| message["media"]["presentation"] == "file")
-        .unwrap();
-    assert_eq!(posted["file"]["mime"], "image/jpeg");
-    request["options"]["grouping"] = serde_json::json!("grouped");
-    assert!(client
-        .queue_attachment(&request.to_string(), &frame(&files[0]), 14)
-        .is_err());
-    Ok(())
-}
-
-#[test]
-fn media_contract_received_ordered_fixtures_match_native_projection(
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-        "../../../../types/src/media-received-fixtures.json"
-    ))
-    .unwrap();
-    for scenario in fixtures {
-        let (mut client, mut log) = fixture()?;
-        let identity = NativeSigner::from_secret(&[81; 32]);
-        let device = NativeSigner::from_secret(&[82; 32]);
-        let author = Author::device(&identity, device);
-        let members = scenario["members"].as_array().unwrap();
-        let files = files(members.len());
-        for (index, file) in files.iter().enumerate() {
-            let raw = clear(
-                &mut log,
-                &author,
-                EventBody::ItemCreated {
-                    item: format!("fixture-{index}"),
-                    kind: types::ItemKind::File,
-                    content: types::ItemContent::File(file.doc.clone()),
-                    origin: "Fixture".into(),
-                },
-                4 + index as i64,
-            )?;
-            client.receive(&raw, 10).unwrap();
-        }
-        for (index, member) in members.iter().enumerate() {
-            let media = types::MessageMedia {
-                presentation: if member["presentation"] == "file" {
-                    types::AttachmentPresentation::File
-                } else {
-                    types::AttachmentPresentation::Media
-                },
-                group: Some(types::MediaGroup {
-                    id: format!("album_{}", "a".repeat(64)),
-                    index: member["index"].as_u64().unwrap() as u32,
-                    count: member["count"].as_u64().unwrap_or(2) as u32,
-                }),
-            };
-            let raw = clear(
-                &mut log,
-                &author,
-                EventBody::MessagePosted {
-                    message: format!("post-{index}"),
-                    text: format!("fixture-{index}"),
-                    attaches: Some(format!("fixture-{index}")),
-                    media: Some(media),
-                    reply: member["reply"].as_str().map(|to| types::ReplyRef {
-                        quote: None,
-                        artifact: None,
-                        to: to.into(),
-                        thread: false,
-                    }),
-                    forwarded: member["forwarded"].as_bool().unwrap_or(false),
-                },
-                20 + index as i64,
-            )?;
-            client.receive(&raw, 30).unwrap();
-        }
-        let conversations = client.conversations();
-        let accepted = conversations[0]
-            .messages
-            .iter()
-            .filter_map(|message| {
-                message
-                    .text
-                    .strip_prefix("fixture-")
-                    .and_then(|index| index.parse::<u64>().ok())
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(
-            accepted,
-            scenario["accepted"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|value| value.as_u64().unwrap())
-                .collect::<Vec<_>>(),
-            "{}",
-            scenario["name"]
-        );
-    }
-    Ok(())
-}
+mod batch_receipts;

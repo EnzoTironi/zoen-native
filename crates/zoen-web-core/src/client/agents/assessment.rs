@@ -1,5 +1,10 @@
 //! Implementation within the existing browser client authority.
-use super::*;
+use super::{
+    action_label, asking_note, evaluate, json, month, reason, standing_allow_permitted,
+    standing_key, writer, ActionClass, AgentRequest, Budget, Capability, Client, Decision, Event,
+    EventBody, GrantRead, GrantScope, ItemContent, ItemKind, Policy, Projection, Reason,
+    RequestRead, RequestResolution, RequestScope, Signer, SpaceKind, TrustLevel, Value,
+};
 
 impl<S: Signer> Client<S> {
     pub(super) fn agent_request_current(
@@ -84,7 +89,6 @@ impl<S: Signer> Client<S> {
         }
     }
     pub(super) fn valid_agent_receipt(
-        &self,
         state: &Projection,
         original: &RequestRead,
         event: &Event,

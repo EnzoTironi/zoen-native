@@ -1,6 +1,6 @@
 //! Agenda projection.
 
-use super::*;
+use super::{busy, is_for, json, role, when_label, Role, Value};
 
 /// What `viewer` may see. The owner, the agent and resolvers get everything; a client
 /// gets the business, busy times, and only their own bookings and events.

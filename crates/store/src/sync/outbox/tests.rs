@@ -62,7 +62,7 @@ fn insert_legacy(store: &Store, event: &Event, rowid: i64) {
 #[test]
 fn enqueue_order_survives_clock_rollback_retry_duplicate_and_reinsert(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let store = Store::in_memory().unwrap();
+    let store = Store::in_memory()?;
     let events = [
         event("commit", 300, "Commit"),
         event("welcome", 100, "Welcome"),
@@ -105,7 +105,7 @@ fn enqueue_order_survives_clock_rollback_retry_duplicate_and_reinsert(
 #[test]
 fn migration_preserves_bytes_retry_state_and_order_through_vacuum_and_image(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let store = Store::in_memory().unwrap();
+    let store = Store::in_memory()?;
     legacy(&store);
     let events = [
         event("first", 300, "Commit"),
@@ -140,7 +140,7 @@ fn migration_preserves_bytes_retry_state_and_order_through_vacuum_and_image(
 #[test]
 fn failed_migration_leaves_legacy_schema_and_original_rows_unchanged(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let store = Store::in_memory().unwrap();
+    let store = Store::in_memory()?;
     legacy(&store);
     let e = event("original", 3, "Commit");
     insert_legacy(&store, &e, 9);
@@ -174,7 +174,7 @@ fn failed_migration_leaves_legacy_schema_and_original_rows_unchanged(
 #[test]
 fn exhausted_order_refuses_new_intent_but_duplicate_stays_noop(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let store = Store::in_memory().unwrap();
+    let store = Store::in_memory()?;
     let e = event("last", 1, "Commit");
     store.outbox_put(&e).unwrap();
     store

@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 
 /// Read-only transaction condition. Possessing/decoding it is not a permit.
-/// Relay append must receive the private linear ManagedPublishPermit as well.
+/// Relay append must receive the private linear `ManagedPublishPermit` as well.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublishCondition {
@@ -53,6 +53,8 @@ pub struct ManagedPublishPermit {
     _generation: GenerationGuard,
 }
 
+/// # Errors
+/// Refuses invalid namespace, unverified/pruned/plain envelopes or failed canonical encoding.
 pub fn publish_digest(namespace: &str, envelope: &Envelope) -> Result<String, AnchorError> {
     if namespace.is_empty()
         || namespace.len() > 256
@@ -99,6 +101,8 @@ impl AnchorReader {
     /// A concurrent prepared transition may legitimately have committed its
     /// store half before the final external rename. This is observation only;
     /// callers still need the original effect's guard/permit through commit.
+    /// # Errors
+    /// Refuses state outside the committed/prepared checkpoint or unavailable anchor reads.
     pub fn check_store_checkpoint(&self, observed: &Checkpoint) -> Result<(), AnchorError> {
         let state = self.state()?;
         if state.committed != *observed
@@ -113,7 +117,9 @@ impl AnchorReader {
     }
 
     /// Read-only binding facts for a per-effect transport challenge. These
-    /// facts cannot enter append without consume_publish's private permit.
+    /// facts cannot enter append without `consume_publish`'s private permit.
+    /// # Errors
+    /// Refuses a retired/missing checkpoint or envelope inconsistent with deployment and its original retained effect.
     pub fn inspect_publish(
         &self,
         checkpoint: &Checkpoint,
@@ -202,6 +208,8 @@ impl AnchorReader {
         Ok(record)
     }
 
+    /// # Errors
+    /// Refuses invalid/retired history, conflicting or partial consumption records and failed durable writes. Failure never recreates a permit.
     pub fn consume_publish(
         &self,
         checkpoint: &Checkpoint,
@@ -239,6 +247,7 @@ impl AnchorReader {
 }
 
 impl ManagedPublishPermit {
+    #[must_use]
     pub fn condition(&self) -> &PublishCondition {
         &self.condition
     }
@@ -246,6 +255,8 @@ impl ManagedPublishPermit {
     /// The append transaction reads current CP with a conflict range and calls
     /// this before committing consumption and the exact original event. An old
     /// matching original CP is insufficient when independent history advanced.
+    /// # Errors
+    /// Refuses a different generation, an older store checkpoint or a state not matching the live anchor.
     pub fn check_store_checkpoint(&self, observed: &Checkpoint) -> Result<(), AnchorError> {
         if observed.generation != self.condition.checkpoint.generation
             || observed.sequence < self.condition.checkpoint.sequence
@@ -258,6 +269,8 @@ impl ManagedPublishPermit {
     /// Independent live proof, kept under the original shared generation lock.
     /// FDB must additionally compare the historical checkpoint record and CAS
     /// absent consumption in the same transaction as the exact original append.
+    /// # Errors
+    /// Refuses retirement, changed envelope/effect or altered consumption history and unavailable anchor reads.
     pub fn check(&self, envelope: &Envelope) -> Result<(), AnchorError> {
         let state = self.reader.state()?;
         if state.committed.generation != self.condition.checkpoint.generation

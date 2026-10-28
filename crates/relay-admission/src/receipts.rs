@@ -34,21 +34,27 @@ pub struct Raised {
 impl Watermark {
     /// Validate an existing authoritative stored pair. Never silently repair
     /// corrupt stored state, truncate an unsigned value, or wrap through i64.
+    /// # Errors
+    /// Refuses a stored read watermark above the delivered watermark.
     pub fn stored(delivered: u64, read: u64) -> Result<Self, BoundaryError> {
         if read > delivered {
             return Err(invalid("stored read exceeds delivered"));
         }
         Ok(Self { delivered, read })
     }
+    #[must_use]
     pub fn pair(self) -> (u64, u64) {
         (self.delivered, self.read)
     }
+    #[must_use]
     pub fn dto(self) -> WatermarkDto {
         WatermarkDto {
             delivered: self.delivered.to_string(),
             read: self.read.to_string(),
         }
     }
+    /// # Errors
+    /// Refuses noncanonical unsigned decimal watermarks or read values above delivery.
     pub fn from_dto(value: &WatermarkDto) -> Result<Self, BoundaryError> {
         Self::stored(
             crate::portable::parse_u64(&value.delivered)?,
@@ -59,6 +65,7 @@ impl Watermark {
 
 /// Native in-memory pending/inflight and authoritative host rows use this same
 /// exact unsigned max operation. `read` also proves delivery. No clamp mode.
+#[must_use]
 pub fn raise(previous: Option<Watermark>, delivered: u64, read: u64) -> Raised {
     let old = previous.unwrap_or_default();
     let watermark = Watermark {
@@ -71,6 +78,8 @@ pub fn raise(previous: Option<Watermark>, delivered: u64, read: u64) -> Raised {
     }
 }
 
+/// # Errors
+/// Refuses invalid identity keys, reversed continuation bounds or out-of-range page limits.
 pub fn validate_page(after: &str, ceiling: &str, limit: u32) -> Result<(), BoundaryError> {
     if (!after.is_empty() && !crate::identity_key(after))
         || !crate::identity_key(ceiling)
@@ -86,6 +95,8 @@ pub fn validate_page(after: &str, ceiling: &str, limit: u32) -> Result<(), Bound
 /// Shared live routing over a roster read from the actual current Space authority.
 /// Caller-owned authentication is required. This intentionally corrects the old
 /// native optimization that included authors who had since been removed.
+/// # Errors
+/// Refuses malformed authoritative identities or more than 16 author hints.
 pub fn recipients(
     from: &str,
     current: &[String],

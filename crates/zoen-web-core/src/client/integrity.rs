@@ -1,5 +1,5 @@
 //! Read-only browser log verification and bounded audit projection.
-use super::*;
+use super::{BTreeMap, Client, Deserialize, EventBody, Signer, SpaceLog};
 use serde_json::{json, Value};
 
 #[derive(Deserialize)]
@@ -17,6 +17,10 @@ enum Command {
 }
 
 impl<S: Signer> Client<S> {
+    ///
+    /// # Errors
+    /// Returns an error for malformed or oversized requests, conversations
+    /// unavailable to this account, or invalid audit pagination.
     pub fn integrity_request(&self, request: &str) -> Result<Value, String> {
         if request.len() > 16_384 {
             return Err("Audit request too large.".into());
@@ -83,11 +87,21 @@ impl<S: Signer> Client<S> {
                     .iter()
                     .rev()
                     .filter(|e| before.is_none_or(|seq| e.seq < seq));
-                let events: Vec<_> = entries.by_ref().take(limit as usize).collect();
+                let events: Vec<_> = entries
+                    .by_ref()
+                    .take(
+                        usize::try_from(limit)
+                            .map_err(|_| "audit page size exceeds platform limit")?,
+                    )
+                    .collect();
                 let next = if entries.next().is_some() {
-                    events.last().map(|e| {
-                        serde_json::to_string(&(&space_id, e.seq, &e.hash)).expect("audit cursor")
-                    })
+                    events
+                        .last()
+                        .map(|e| {
+                            serde_json::to_string(&(&space_id, e.seq, &e.hash))
+                                .map_err(|error| error.to_string())
+                        })
+                        .transpose()?
                 } else {
                     None
                 };
@@ -114,49 +128,46 @@ impl<S: Signer> Client<S> {
 mod tests {
     use super::super::tests::{account, clear, HostSigner};
     use super::*;
+    use crate::client::{Privacy, SpaceKind};
     use event_log::{Author, Signer as NativeSigner};
 
     fn fixture() -> std::result::Result<(Client<HostSigner>, String), Box<dyn std::error::Error>> {
         let identity = NativeSigner::from_secret(&[201; 32]);
         let device = NativeSigner::from_secret(&[202; 32]);
         let author = Author::device(&identity, device.clone());
-        let mut client = Client::new(account(&identity, &device), HostSigner(device), "").unwrap();
+        let mut client = Client::new(account(&identity, &device), HostSigner(device), "")?;
         let space = "sp_integrity_fixture".to_string();
         let mut log = SpaceLog::new(&space);
-        client
-            .receive(
+        client.receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::SpaceCreated {
+                    title: "Audit fixture".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::Closed,
+                },
+                1,
+            )?,
+            1,
+        )?;
+        for now in 2..7 {
+            client.receive(
                 &clear(
                     &mut log,
                     &author,
-                    EventBody::SpaceCreated {
-                        title: "Audit fixture".into(),
-                        kind: SpaceKind::Group,
-                        privacy: Privacy::Closed,
+                    EventBody::MessagePosted {
+                        text: format!("private {now}"),
+                        attaches: None,
+                        message: format!("msg_{now}"),
+                        reply: None,
+                        media: None,
+                        forwarded: false,
                     },
-                    1,
-                )?,
-                1,
-            )
-            .unwrap();
-        for now in 2..7 {
-            client
-                .receive(
-                    &clear(
-                        &mut log,
-                        &author,
-                        EventBody::MessagePosted {
-                            text: format!("private {now}"),
-                            attaches: None,
-                            message: format!("msg_{now}"),
-                            reply: None,
-                            media: None,
-                            forwarded: false,
-                        },
-                        now,
-                    )?,
                     now,
-                )
-                .unwrap();
+                )?,
+                now,
+            )?;
         }
         Ok((client, space))
     }
@@ -168,29 +179,29 @@ mod tests {
         let request = |op: &str, before: Value| {
             json!({"op":op,"space_id":space,"before":before,"limit":2}).to_string()
         };
-        let report = client
-            .integrity_request(&json!({"op":"verify_log","space_id":space}).to_string())
-            .unwrap();
+        let report =
+            client.integrity_request(&json!({"op":"verify_log","space_id":space}).to_string())?;
         assert_eq!(report["valid"], true);
-        let first = client
-            .integrity_request(&request("log_events_page", Value::Null))
-            .unwrap();
-        assert_eq!(first["events"].as_array().unwrap().len(), 2);
+        let first = client.integrity_request(&request("log_events_page", Value::Null))?;
+        assert_eq!(
+            first["events"]
+                .as_array()
+                .ok_or("missing authenticated test as_array value")?
+                .len(),
+            2
+        );
         assert!(!first.to_string().contains("private"));
-        let second = client
-            .integrity_request(&request("log_events_page", first["before"].clone()))
-            .unwrap();
+        let second =
+            client.integrity_request(&request("log_events_page", first["before"].clone()))?;
         assert!(
             first["events"][1]["seq"]
                 .as_str()
-                .unwrap()
-                .parse::<u64>()
-                .unwrap()
+                .ok_or("missing authenticated test as_str value")?
+                .parse::<u64>()?
                 > second["events"][0]["seq"]
                     .as_str()
-                    .unwrap()
-                    .parse::<u64>()
-                    .unwrap()
+                    .ok_or("missing authenticated test as_str value")?
+                    .parse::<u64>()?
         );
         assert!(client
             .integrity_request(
@@ -201,7 +212,7 @@ mod tests {
         assert!(client
             .integrity_request(&json!({"op":"verify_log","space_id":"sp_unknown"}).to_string())
             .is_err());
-        let wrong_scope = serde_json::to_string(&("sp_other", 2u64, "hash")).unwrap();
+        let wrong_scope = serde_json::to_string(&("sp_other", 2u64, "hash"))?;
         assert!(client
             .integrity_request(&request("log_events_page", json!(wrong_scope)))
             .is_err());
@@ -209,21 +220,19 @@ mod tests {
         let outsider = NativeSigner::from_secret(&[203; 32]);
         let mut other_log = SpaceLog::new("sp_not_a_member");
         let outsider_author = Author::root(outsider);
-        changed
-            .receive(
-                &clear(
-                    &mut other_log,
-                    &outsider_author,
-                    EventBody::SpaceCreated {
-                        title: "Other account".into(),
-                        kind: SpaceKind::Group,
-                        privacy: Privacy::Closed,
-                    },
-                    9,
-                )?,
+        changed.receive(
+            &clear(
+                &mut other_log,
+                &outsider_author,
+                EventBody::SpaceCreated {
+                    title: "Other account".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::Closed,
+                },
                 9,
-            )
-            .unwrap();
+            )?,
+            9,
+        )?;
         assert!(changed
             .integrity_request(&json!({"op":"verify_log","space_id":"sp_not_a_member"}).to_string())
             .is_err());
@@ -233,15 +242,12 @@ mod tests {
             .integrity_errors
             .insert(space.clone(), "Conflicting encrypted membership".into());
         assert_eq!(
-            changed
-                .integrity_request(&json!({"op":"verify_log","space_id":space}).to_string())
-                .unwrap()["valid"],
+            changed.integrity_request(&json!({"op":"verify_log","space_id":space}).to_string())?
+                ["valid"],
             false
         );
         assert_eq!(
-            changed
-                .integrity_request(r#"{"op":"integrity_warnings"}"#)
-                .unwrap()[&space],
+            changed.integrity_request(r#"{"op":"integrity_warnings"}"#)?[&space],
             "Conflicting encrypted membership"
         );
         changed
@@ -249,8 +255,7 @@ mod tests {
             .integrity_errors
             .insert("sp_not_a_member".into(), "not mine".into());
         assert!(changed
-            .integrity_request(r#"{"op":"integrity_warnings"}"#)
-            .unwrap()
+            .integrity_request(r#"{"op":"integrity_warnings"}"#)?
             .get("sp_not_a_member")
             .is_none());
         changed.logs.remove(&space);
@@ -264,8 +269,8 @@ mod tests {
     fn corrupted_snapshot_cannot_be_reopened_as_verified_history(
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let (mut client, space) = fixture()?;
-        let snapshot = client.update(Vec::new()).unwrap().snapshot;
-        let mut saved: Value = serde_json::from_str(&snapshot).unwrap();
+        let snapshot = client.update(Vec::new())?.snapshot;
+        let mut saved: Value = serde_json::from_str(&snapshot)?;
         saved["logs"][&space][1]["hash"] = json!("corrupted");
         assert!(Client::new(
             client.account.clone(),

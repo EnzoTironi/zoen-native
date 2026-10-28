@@ -32,10 +32,13 @@ pub struct Scene {
     text_count: usize,
 }
 impl Scene {
+    /// # Errors
+    /// Refuses malformed, oversized or unsupported document structure instead of losing accepted content.
     pub fn parse(text: &str) -> Result<Self, InvalidScene> {
         validate_scene(text)
     }
 
+    #[must_use]
     pub fn metadata(&self) -> String {
         json!({"elementCount": self.element_count, "textCount": self.text_count}).to_string()
     }
@@ -97,34 +100,7 @@ fn validate_scene(text: &str) -> Result<Scene, InvalidScene> {
         .as_object()
         .filter(|f| f.len() <= 256)
         .ok_or(InvalidScene)?;
-    for (id, file) in files {
-        if !valid_id(id) || file["id"].as_str() != Some(id) {
-            return Err(InvalidScene);
-        }
-        let mime = file["mimeType"].as_str().ok_or(InvalidScene)?;
-        if !matches!(
-            mime,
-            "image/png" | "image/jpeg" | "image/webp" | "image/gif"
-        ) {
-            return Err(InvalidScene);
-        }
-        let url = file["dataURL"].as_str().ok_or(InvalidScene)?;
-        let data = url
-            .strip_prefix(&format!("data:{mime};base64,"))
-            .ok_or(InvalidScene)?;
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(data)
-            .map_err(|_| InvalidScene)?;
-        let signature = match mime {
-            "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
-            "image/jpeg" => bytes.starts_with(b"\xff\xd8\xff"),
-            "image/webp" => bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"),
-            _ => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
-        };
-        if !signature || bytes.len() > MAX_SCENE_BYTES {
-            return Err(InvalidScene);
-        }
-    }
+    validate_files(files)?;
     let mut ids = BTreeSet::new();
     for e in elements {
         let id = e["id"]
@@ -187,6 +163,52 @@ fn validate_scene(text: &str) -> Result<Scene, InvalidScene> {
             return Err(InvalidScene);
         }
     }
+    validate_references(elements, &ids)?;
+    let (element_count, text_count) = elements
+        .iter()
+        .filter(|element| element["isDeleted"] != true)
+        .fold((0, 0), |(elements, texts), element| {
+            (elements + 1, texts + usize::from(element["type"] == "text"))
+        });
+    Ok(Scene {
+        element_count,
+        text_count,
+    })
+}
+
+fn validate_files(files: &serde_json::Map<String, Value>) -> Result<(), InvalidScene> {
+    for (id, file) in files {
+        if !valid_id(id) || file["id"].as_str() != Some(id) {
+            return Err(InvalidScene);
+        }
+        let mime = file["mimeType"].as_str().ok_or(InvalidScene)?;
+        if !matches!(
+            mime,
+            "image/png" | "image/jpeg" | "image/webp" | "image/gif"
+        ) {
+            return Err(InvalidScene);
+        }
+        let url = file["dataURL"].as_str().ok_or(InvalidScene)?;
+        let data = url
+            .strip_prefix(&format!("data:{mime};base64,"))
+            .ok_or(InvalidScene)?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data)
+            .map_err(|_| InvalidScene)?;
+        let signature = match mime {
+            "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+            "image/jpeg" => bytes.starts_with(b"\xff\xd8\xff"),
+            "image/webp" => bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"),
+            _ => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+        };
+        if !signature || bytes.len() > MAX_SCENE_BYTES {
+            return Err(InvalidScene);
+        }
+    }
+    Ok(())
+}
+
+fn validate_references(elements: &[Value], ids: &BTreeSet<&str>) -> Result<(), InvalidScene> {
     for e in elements {
         for field in ["containerId", "frameId"] {
             if let Some(id) = e.get(field).filter(|v| !v.is_null()) {
@@ -215,14 +237,5 @@ fn validate_scene(text: &str) -> Result<Scene, InvalidScene> {
             }
         }
     }
-    let (element_count, text_count) = elements
-        .iter()
-        .filter(|element| element["isDeleted"] != true)
-        .fold((0, 0), |(elements, texts), element| {
-            (elements + 1, texts + usize::from(element["type"] == "text"))
-        });
-    Ok(Scene {
-        element_count,
-        text_count,
-    })
+    Ok(())
 }

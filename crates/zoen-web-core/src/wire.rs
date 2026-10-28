@@ -21,14 +21,15 @@ struct ControlAgent {
 
 fn identity(value: &str) -> Result<String, String> {
     event_log::parse_device_key(value)
-        .map(|_| value.to_owned())
+        .map(|()| value.to_owned())
         .ok_or_else(|| "invalid identity public key".into())
 }
 
+#[must_use]
 pub fn hello(identity: &str, device: &str, cert: &str) -> Vec<u8> {
     ClientFrame::Hello {
         protocol: PROTOCOL_VERSION,
-        capabilities: CAPABILITIES.iter().map(|c| c.to_string()).collect(),
+        capabilities: CAPABILITIES.iter().map(ToString::to_string).collect(),
         identity: identity.to_string(),
         device: device.to_string(),
         cert: cert.to_string(),
@@ -36,6 +37,10 @@ pub fn hello(identity: &str, device: &str, cert: &str) -> Vec<u8> {
     .encode()
 }
 
+///
+/// # Errors
+/// Returns an error for an unsupported request kind, malformed request JSON,
+/// invalid device or identity keys, or invalid public profile fields.
 pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
     let op = match kind {
         "register" => {
@@ -60,7 +65,7 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
         "devices" => Op::Devices,
         "unlink" => Op::Unlink {
             device: event_log::parse_device_key(value)
-                .map(|_| value.to_string())
+                .map(|()| value.to_owned())
                 .ok_or("invalid device public key")?,
         },
         "preview_invite" => Op::PreviewInvite {
@@ -177,6 +182,9 @@ pub enum ServerMessage {
     Other,
 }
 
+///
+/// # Errors
+/// Returns an error if the server frame is malformed or cannot be decoded.
 pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
     let frame = ServerFrame::decode(bytes).map_err(|e| e.to_string())?;
     Ok(match frame {
@@ -212,33 +220,7 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
             result: Ok(reply),
         } => ServerMessage::Response {
             id,
-            value: match reply {
-                Reply::Registered(profile) => {
-                    serde_json::json!({"kind":"registered","profile":profile})
-                }
-                Reply::Link(sealed) => serde_json::json!({"kind":"link","sealed":sealed}),
-                Reply::AgentState(a) => {
-                    serde_json::json!({"kind":"agent_state","status":a.status,"definition_version":a.definition_version})
-                }
-                Reply::CompletePage(_) => serde_json::json!({"kind":"complete_page"}),
-                Reply::Devices(devices) => {
-                    serde_json::json!({"kind":"devices","devices":devices.iter().map(|d| serde_json::json!({"device":d.device,"revoked":d.revoked})).collect::<Vec<_>>()})
-                }
-                Reply::Profiles(profiles) => {
-                    serde_json::json!({"kind":"profiles","profiles":profiles})
-                }
-                Reply::Preview(p) => {
-                    serde_json::json!({"kind":"preview","space":p.space,"role":p.role,"title":p.title,"members":p.members,"invite_kind":p.kind,"agent":p.agent,"inviter":p.inviter})
-                }
-                Reply::Invite(invite) => {
-                    serde_json::json!({"kind":"invite","code":invite.code,"expires_at_ms":invite.expires_at_ms.to_string()})
-                }
-                Reply::KeyPackages(records) => {
-                    serde_json::json!({"kind":"key_packages","records":records})
-                }
-                Reply::Done => serde_json::json!({"kind":"done"}),
-                _ => serde_json::json!({"kind":"other"}),
-            },
+            value: reply_value(reply),
         },
         ServerFrame::Event { .. } => ServerMessage::Event,
         ServerFrame::SyncDone => ServerMessage::SyncDone,
@@ -296,6 +278,36 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
     })
 }
 
+fn reply_value(reply: Reply) -> serde_json::Value {
+    match reply {
+        Reply::Registered(profile) => {
+            serde_json::json!({"kind":"registered","profile":profile})
+        }
+        Reply::Link(sealed) => serde_json::json!({"kind":"link","sealed":sealed}),
+        Reply::AgentState(a) => {
+            serde_json::json!({"kind":"agent_state","status":a.status,"definition_version":a.definition_version})
+        }
+        Reply::CompletePage(_) => serde_json::json!({"kind":"complete_page"}),
+        Reply::Devices(devices) => {
+            serde_json::json!({"kind":"devices","devices":devices.iter().map(|d| serde_json::json!({"device":d.device,"revoked":d.revoked})).collect::<Vec<_>>()})
+        }
+        Reply::Profiles(profiles) => {
+            serde_json::json!({"kind":"profiles","profiles":profiles})
+        }
+        Reply::Preview(p) => {
+            serde_json::json!({"kind":"preview","space":p.space,"role":p.role,"title":p.title,"members":p.members,"invite_kind":p.kind,"agent":p.agent,"inviter":p.inviter})
+        }
+        Reply::Invite(invite) => {
+            serde_json::json!({"kind":"invite","code":invite.code,"expires_at_ms":invite.expires_at_ms.to_string()})
+        }
+        Reply::KeyPackages(records) => {
+            serde_json::json!({"kind":"key_packages","records":records})
+        }
+        Reply::Done => serde_json::json!({"kind":"done"}),
+        _ => serde_json::json!({"kind":"other"}),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,7 +316,8 @@ mod tests {
     fn browser_unlink_uses_the_existing_authenticated_device_operation(
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let device = event_log::Signer::generate()?.id();
-        let frame = ClientFrame::decode(&request(42, "unlink", &device).unwrap()).unwrap();
+        let frame = ClientFrame::decode(&request(42, "unlink", &device)?)
+            .map_err(|error| error.to_string())?;
         assert!(
             matches!(frame, ClientFrame::Req { id: 42, op: Op::Unlink { device: target } } if target == device)
         );
@@ -322,7 +335,8 @@ mod relay_tests {
         let agent = event_log::Signer::generate()?.id();
         let request_value = serde_json::json!({"agent":agent,"action":"pause"}).to_string();
         assert!(matches!(
-            ClientFrame::decode(&request(45, "control_agent", &request_value).unwrap()).unwrap(),
+            ClientFrame::decode(&request(45, "control_agent", &request_value)?)
+                .map_err(|error| error.to_string())?,
             ClientFrame::Req {
                 op: Op::Agent(protocol::AgentRequest::Control {
                     action: protocol::AgentAction::Pause,
@@ -344,21 +358,21 @@ mod relay_tests {
                 expires_at_ms: i64::MAX,
             })),
         };
-        let json = serde_json::to_value(decode_server(&invite.encode()).unwrap()).unwrap();
+        let json = serde_json::to_value(decode_server(&invite.encode())?)?;
         assert_eq!(json["value"]["expires_at_ms"], i64::MAX.to_string());
         let accepted = ServerFrame::Accepted {
             space: "sp_fixture".into(),
             client_id: "client".into(),
             seq: u64::MAX,
         };
-        let json = serde_json::to_value(decode_server(&accepted.encode()).unwrap()).unwrap();
+        let json = serde_json::to_value(decode_server(&accepted.encode())?)?;
         assert_eq!(json["seq"], u64::MAX.to_string());
         let read = ServerFrame::Ephemeral {
             space: "sp_fixture".into(),
             from: agent,
             kind: protocol::EphemeralKind::Read { seq: u64::MAX },
         };
-        let json = serde_json::to_value(decode_server(&read.encode()).unwrap()).unwrap();
+        let json = serde_json::to_value(decode_server(&read.encode())?)?;
         assert_eq!(json["detail"], u64::MAX.to_string());
         Ok(())
     }

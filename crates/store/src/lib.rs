@@ -4,10 +4,11 @@
 //! Guarda **só** o que é fonte da verdade: Identidades locais e eventos. Todo o resto
 //! (lista de Espaços, timeline, Itens, pedidos) é projeção reconstruída do log.
 //!
-//! Seams para depois: SQLCipher (mesma API, `PRAGMA key`), FTS5 para busca local,
+//! Seams para depois: `SQLCipher` (mesma API, `PRAGMA key`), FTS5 para busca local,
 //! App Group compartilhado com as extensões do iOS.
 
 mod image;
+mod media;
 mod profiles;
 mod recent_attachments;
 mod search;
@@ -62,6 +63,10 @@ pub struct SearchRow {
 }
 
 impl Store {
+    /// Opens and migrates one exclusively owned file-backed store.
+    ///
+    /// # Errors
+    /// Returns SQLite errors when opening, acquiring the exclusive lock or migrating the database.
     pub fn open(path: &str) -> Result<Self> {
         let conn = Connection::open(path)?;
         conn.busy_timeout(std::time::Duration::from_millis(0))?;
@@ -80,14 +85,21 @@ impl Store {
     }
 
     /// The device database, for state that commits with the log (MLS groups, ADR 0026).
+    #[must_use]
     pub fn conn(&self) -> &Connection {
         &self.conn
     }
 
+    /// Mutable access to the same connection, preserving the store ownership boundary.
+    #[must_use]
     pub fn conn_mut(&mut self) -> &mut Connection {
         &mut self.conn
     }
 
+    /// Creates and migrates a private in-memory store.
+    ///
+    /// # Errors
+    /// Returns SQLite errors when allocating or migrating the in-memory database.
     pub fn in_memory() -> Result<Self> {
         let s = Self {
             conn: Connection::open_in_memory()?,
@@ -153,156 +165,10 @@ impl Store {
         Ok(())
     }
 
-    // ── media ──
-
-    pub fn put_media(&self, sha256: &str, mime: &str, bytes: &[u8], at_ms: i64) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO media (sha256, mime, bytes, at_ms) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(sha256) DO NOTHING",
-            params![sha256, mime, bytes, at_ms],
-        )?;
-        Ok(())
-    }
-
-    /// Cache an import whose hash the caller has verified, repairing damaged bytes.
-    /// An identical cached payload preserves its original metadata and timestamp.
-    pub fn cache_imported_media(
-        &self,
-        sha256: &str,
-        mime: &str,
-        bytes: &[u8],
-        at_ms: i64,
-    ) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO media (sha256, mime, bytes, at_ms) VALUES (?1, ?2, ?3, ?4) \
-             ON CONFLICT(sha256) DO UPDATE SET mime = excluded.mime, bytes = excluded.bytes, at_ms = excluded.at_ms \
-             WHERE media.bytes <> excluded.bytes",
-            params![sha256, mime, bytes, at_ms],
-        )?;
-        Ok(())
-    }
-
-    /// Whether these bytes are on this device (without reading them).
-    pub fn has_media(&self, sha256: &str) -> Result<bool> {
-        Ok(self
-            .conn
-            .query_row(
-                "SELECT 1 FROM media WHERE sha256 = ?1",
-                [sha256],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some())
-    }
-
-    pub fn media(&self, sha256: &str) -> Result<Option<(String, Vec<u8>)>> {
-        Ok(self
-            .conn
-            .query_row(
-                "SELECT mime, bytes FROM media WHERE sha256 = ?1",
-                [sha256],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()?)
-    }
-
-    /// Reads only the cached length, without materializing a payload.
-    pub fn media_bytes_len(&self, sha256: &str) -> Result<Option<u64>> {
-        Ok(self
-            .conn
-            .query_row(
-                "SELECT length(bytes) FROM media WHERE sha256 = ?1",
-                [sha256],
-                |r| r.get(0),
-            )
-            .optional()?)
-    }
-
-    /// The length check and payload selection use the same SQLite snapshot. An
-    /// oversized BLOB is never returned to Rust, including after a cache replacement.
-    pub fn media_bytes_bounded(&self, sha256: &str, max_bytes: usize) -> Result<Option<Vec<u8>>> {
-        let limit = i64::try_from(max_bytes).map_err(|_| StoreError::MediaTooLarge)?;
-        let row: Option<(u64, Option<Vec<u8>>)> = self
-            .conn
-            .query_row(
-                "SELECT length(bytes), CASE WHEN length(bytes) <= ?2 THEN bytes ELSE NULL END \
-                 FROM media WHERE sha256 = ?1",
-                params![sha256, limit],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()?;
-        match row {
-            None => Ok(None),
-            Some((len, Some(bytes))) if len <= max_bytes as u64 => Ok(Some(bytes)),
-            Some(_) => Err(StoreError::MediaTooLarge),
-        }
-    }
-
-    // ── search index ──
-
-    pub fn index_clear(&self) -> Result<()> {
-        self.conn.execute("DELETE FROM search", [])?;
-        Ok(())
-    }
-
-    /// Replaces the row for (kind, ref_id).
-    #[allow(clippy::too_many_arguments)]
-    pub fn index_put(
-        &self,
-        kind: &str,
-        ref_id: &str,
-        space: &str,
-        author: &str,
-        at_ms: i64,
-        title: &str,
-        body: &str,
-    ) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM search WHERE kind = ?1 AND ref_id = ?2",
-            params![kind, ref_id],
-        )?;
-        self.conn.execute(
-            "INSERT INTO search (kind, ref_id, space, author, at_ms, title, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![kind, ref_id, space, author, at_ms, title, body],
-        )?;
-        Ok(())
-    }
-
-    pub fn index_begin(&self) -> Result<()> {
-        self.conn.execute_batch("SAVEPOINT idx")?;
-        Ok(())
-    }
-
-    pub fn index_commit(&self) -> Result<()> {
-        self.conn.execute_batch(
-            "INSERT INTO meta (key, value) VALUES ('search:generation', '1')
-             ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1;
-             RELEASE idx",
-        )?;
-        Ok(())
-    }
-
-    /// Changes only after a committed rebuild; cursors cannot silently span edits.
-    pub fn search_generation(&self) -> Result<u64> {
-        Ok(self.conn.query_row(
-            "SELECT COALESCE((SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'search:generation'), 0)",
-            [],
-            |row| row.get(0),
-        )?)
-    }
-
-    /// Undo a failed rebuild. Never leave the savepoint open: every later write would sit
-    /// in an uncommitted transaction and vanish when the app is killed.
-    pub fn index_abort(&self) {
-        let _ = self.conn.execute_batch("ROLLBACK TO idx; RELEASE idx");
-    }
-
-    pub fn index_count(&self) -> Result<u64> {
-        Ok(self
-            .conn
-            .query_row("SELECT COUNT(*) FROM search", [], |r| r.get::<_, i64>(0))?
-            as u64)
-    }
-
+    /// Upserts an identity profile while retaining any previously stored local secret.
+    ///
+    /// # Errors
+    /// Returns JSON encoding or SQLite errors while storing the profile and optional local secret.
     pub fn put_identity(&self, identity: &Identity, secret: Option<&[u8; 32]>) -> Result<()> {
         self.conn.execute(
             "INSERT INTO identities (id, profile, secret) VALUES (?1, ?2, ?3)
@@ -317,6 +183,9 @@ impl Store {
     }
 
     /// Todas as Identidades conhecidas, com o segredo quando ele vive aqui.
+    ///
+    /// # Errors
+    /// Returns SQLite errors or JSON decoding errors in a stored identity profile.
     pub fn identities(&self) -> Result<Vec<(Identity, Option<[u8; 32]>)>> {
         let mut stmt = self
             .conn
@@ -335,43 +204,40 @@ impl Store {
     }
 
     /// Append-only: um `(space, seq)` repetido falha (a PRIMARY KEY garante).
+    ///
+    /// # Errors
+    /// Returns JSON encoding or SQLite insertion errors, including duplicate keys and sequences outside SQLite INTEGER.
     pub fn append_event(&self, e: &Event) -> Result<()> {
         self.conn.execute(
             "INSERT INTO events (space, seq, hash, at_ms, json) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                e.space,
-                e.seq as i64,
-                e.hash,
-                e.at_ms,
-                serde_json::to_string(e)?
-            ],
+            params![e.space, e.seq, e.hash, e.at_ms, serde_json::to_string(e)?],
         )?;
         Ok(())
     }
 
     /// Replaces the event at (space, seq): a sealed entry this device couldn't open, by
     /// its opened form from another device of the same person (ADR 0045).
+    ///
+    /// # Errors
+    /// Returns JSON encoding or SQLite update errors, including sequences outside SQLite INTEGER.
     pub fn replace_event(&self, e: &Event) -> Result<bool> {
         let n = self.conn.execute(
             "UPDATE events SET at_ms = ?3, json = ?4 WHERE space = ?1 AND seq = ?2",
-            params![e.space, e.seq as i64, e.at_ms, serde_json::to_string(e)?],
+            params![e.space, e.seq, e.at_ms, serde_json::to_string(e)?],
         )?;
         Ok(n == 1)
     }
 
     /// Grava vários eventos numa transação (tudo ou nada).
+    ///
+    /// # Errors
+    /// Returns JSON encoding or SQLite errors; the transaction rolls back the entire batch on failure.
     pub fn append_events(&mut self, events: &[Event]) -> Result<()> {
         let tx = self.conn.transaction()?;
         for e in events {
             tx.execute(
                 "INSERT INTO events (space, seq, hash, at_ms, json) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    e.space,
-                    e.seq as i64,
-                    e.hash,
-                    e.at_ms,
-                    serde_json::to_string(e)?
-                ],
+                params![e.space, e.seq, e.hash, e.at_ms, serde_json::to_string(e)?],
             )?;
         }
         tx.commit()?;
@@ -379,6 +245,9 @@ impl Store {
     }
 
     /// IDs dos Espaços, na ordem em que nasceram.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn space_ids(&self) -> Result<Vec<String>> {
         let mut stmt = self
             .conn
@@ -387,6 +256,10 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Reads retained events for one space in canonical sequence order.
+    ///
+    /// # Errors
+    /// Returns SQLite errors or JSON decoding errors in a retained event.
     pub fn events(&self, space: &str) -> Result<Vec<Event>> {
         let mut stmt = self
             .conn
@@ -399,13 +272,20 @@ impl Store {
         Ok(out)
     }
 
+    /// Counts the retained canonical events.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn event_count(&self) -> Result<u64> {
         Ok(self
             .conn
-            .query_row("SELECT COUNT(*) FROM events", [], |r| r.get::<_, i64>(0))?
-            as u64)
+            .query_row("SELECT COUNT(*) FROM events", [], |r| r.get::<_, u64>(0))?)
     }
 
+    /// Reads one device-local metadata value, or `None` when absent.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn meta(&self, key: &str) -> Result<Option<String>> {
         Ok(self
             .conn
@@ -413,6 +293,10 @@ impl Store {
             .optional()?)
     }
 
+    /// Upserts one device-local metadata value.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
         self.conn.execute(
             "INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -422,6 +306,9 @@ impl Store {
     }
 
     /// Apaga tudo (usado por "Recomeçar demo").
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn wipe(&self) -> Result<()> {
         self.conn.execute_batch("DELETE FROM events; DELETE FROM identities; DELETE FROM meta; DELETE FROM search; DELETE FROM media; DELETE FROM peer_receipts;")?;
         Ok(())
@@ -429,6 +316,9 @@ impl Store {
 
     /// Só para testes de integridade: simula alguém mexendo no arquivo por fora.
     #[doc(hidden)]
+    ///
+    /// # Errors
+    /// Returns the SQLite error from the supplied fixture SQL.
     pub fn raw_execute(&self, sql: &str) -> Result<usize> {
         Ok(self.conn.execute(sql, [])?)
     }
@@ -439,13 +329,13 @@ mod tests {
     use super::*;
     use types::{EventBody, IdentityKind, Privacy, SpaceKind};
 
-    fn ev(space: &str, seq: u64, hash: &str) -> Event {
+    fn ev(space: &str, seq: u8, hash: &str) -> Event {
         Event {
             space: space.into(),
-            seq,
+            seq: u64::from(seq),
             prev: "p".into(),
             author: "a".into(),
-            at_ms: seq as i64,
+            at_ms: i64::from(seq),
             body: EventBody::SpaceCreated {
                 title: "t".into(),
                 kind: SpaceKind::Group,
@@ -457,7 +347,7 @@ mod tests {
             device: None,
             cert: None,
             seen: None,
-            content: vec![seq as u8],
+            content: vec![seq],
             sealed_wire: None,
         }
     }
@@ -525,6 +415,81 @@ mod tests {
         s.set_meta("me", "abc").unwrap();
         assert_eq!(s.meta("me").unwrap().as_deref(), Some("abc"));
         s.wipe().unwrap();
-        assert!(s.identities().unwrap().is_empty());
+        assert_eq!(s.identities().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn numeric_sequence_overflow_preserves_original_and_rolls_back_batch() -> Result<()> {
+        let mut store = Store::in_memory()?;
+        let original = ev("bounded", 0, "original");
+        store.append_event(&original)?;
+        let retained: String = store
+            .conn
+            .query_row("SELECT json FROM events", [], |row| row.get(0))?;
+        let mut oversized = ev("bounded", 2, "oversized");
+        oversized.seq = u64::MAX;
+        assert!(store.append_event(&oversized).is_err());
+        assert!(store.replace_event(&oversized).is_err());
+        assert!(store
+            .append_events(&[ev("bounded", 1, "next"), oversized])
+            .is_err());
+        assert_eq!(store.events("bounded")?, vec![original]);
+        assert_eq!(store.event_count()?, 1);
+        assert_eq!(
+            store
+                .conn
+                .query_row("SELECT json FROM events", [], |row| row.get::<_, String>(0))?,
+            retained
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn numeric_profile_versions_refuse_overflow_and_negative_stored_rows() -> Result<()> {
+        let store = Store::in_memory()?;
+        store.put_profile_key("owner", "retained-key", 7)?;
+        store.set_profile_fields("owner", 8, b"retained fields")?;
+        let retained = store.profile_key("owner")?;
+        assert!(store
+            .put_profile_key("owner", "replacement", u64::MAX)
+            .is_err());
+        assert!(store
+            .set_profile_fields("owner", u64::MAX, b"replacement")
+            .is_err());
+        assert_eq!(store.profile_key("owner")?, retained);
+        store.put_profile_key("max", "max-key", i64::MAX.unsigned_abs())?;
+        assert_eq!(
+            store.profile_key("max")?.map(|row| row.key_version),
+            Some(i64::MAX.unsigned_abs())
+        );
+        for column in ["key_version", "seen_version"] {
+            // Both column names are this fixed test fixture, not untrusted SQL.
+            store.conn.execute(
+                &format!("UPDATE profile_keys SET {column}=-1 WHERE identity='owner'"),
+                [],
+            )?;
+            assert!(store.profile_key("owner").is_err());
+            store.conn.execute(
+                &format!("UPDATE profile_keys SET {column}=?1 WHERE identity='owner'"),
+                [if column == "key_version" { 7 } else { 8 }],
+            )?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn numeric_retry_counts_refuse_corruption_without_rewriting_retained_bytes() -> Result<()> {
+        let store = Store::in_memory()?;
+        let original = ev("pending", 0, "original");
+        store.outbox_put(&original)?;
+        let retained = store.outbox_original_json(&original.client_id)?;
+        for attempts in [-1, i64::from(u32::MAX) + 1] {
+            store
+                .conn
+                .execute("UPDATE outbox SET attempts=?1", [attempts])?;
+            assert!(store.outbox().is_err());
+            assert_eq!(store.outbox_original_json(&original.client_id)?, retained);
+        }
+        Ok(())
     }
 }

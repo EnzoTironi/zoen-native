@@ -55,7 +55,7 @@ pub(super) struct State {
     pub prepared: Option<Prepared>,
 }
 
-/// Recovery never recovers a Fresh provider permit. Even BothAfter only
+/// Recovery never recovers a `Fresh` provider permit. Even `BothAfter` only
 /// acknowledges durable evidence; a caller must inspect its original attempt.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Recovery {
@@ -89,8 +89,8 @@ impl State {
         self.schema == 2
             && self.deployment.valid()
             && self.committed.generation > 0
-            && self.committed.generation <= i64::MAX as u64
-            && self.committed.sequence <= i64::MAX as u64
+            && i64::try_from(self.committed.generation).is_ok()
+            && i64::try_from(self.committed.sequence).is_ok()
             && digest(&self.committed.digest)
             && match &self.committed_effect {
                 None => {

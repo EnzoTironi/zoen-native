@@ -47,8 +47,7 @@ fn native_claim_input_refuses_invalid_id_sets_before_any_sql_selection(
     Ok(())
 }
 #[test]
-fn native_publication_bounds_precede_real_mls_parsing_and_no_malformed_key_is_accepted(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn native_publication_bounds_precede_real_mls_parsing_and_no_malformed_key_is_accepted() {
     assert_eq!(
         kp::validate_publications("id", "device", &vec![vec![]; 101], None).unwrap_err(),
         "at most 100 key packages at a time"
@@ -69,12 +68,14 @@ fn native_publication_bounds_precede_real_mls_parsing_and_no_malformed_key_is_ac
         kp::validate_publications("id", "device", &[], Some(&[0; 4])).unwrap_err(),
         "not a valid key package"
     );
-    assert!(kp::validate_publications("id", "device", &[], None)
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        kp::validate_publications("id", "device", &[], None)
+            .unwrap()
+            .len(),
+        0
+    );
     assert_eq!(
         (kp::MAX_STOCK, kp::MAX_RECEIPTS, kp::MAX_RECEIPT_BYTES),
         (200, 4096, 8 * 1024 * 1024)
     );
-    Ok(())
 }

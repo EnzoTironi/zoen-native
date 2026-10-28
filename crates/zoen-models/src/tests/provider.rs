@@ -206,10 +206,10 @@ async fn reused_historical_call_id_is_invalid_output_and_keeps_the_bill() {
     assert!(matches!(result.receipt.usage, UsageEvidence::Reported(_)));
     assert_eq!(result.receipt.response_id.as_deref(), Some("response-23"));
     assert!(result.evidence.complete);
-    assert!(
+    assert_eq!(
         serde_json::from_slice::<Value>(&result.evidence.body).unwrap()["choices"][0]["message"]
-            ["tool_calls"][0]["id"]
-            == "approved-call"
+            ["tool_calls"][0]["id"],
+        "approved-call"
     );
     assert_eq!(fixture.connections.load(Ordering::SeqCst), 1);
 }

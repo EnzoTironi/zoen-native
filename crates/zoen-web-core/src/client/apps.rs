@@ -1,7 +1,7 @@
 //! Browser host for the shared portable mini-app server. No mini-app state machine
 //! lives here: miniapps owns creation, tool effects, concurrent reconciliation,
 //! schedule roles, resources and privacy projections on every platform.
-use super::*;
+use super::{browser_id, documents, Client, Deserialize, EventBody, Signer};
 use grants::{evaluate_permission, Decision, Policy};
 use localization::t;
 use miniapps as apps;
@@ -53,6 +53,20 @@ fn action_label(action: &types::ActionClass) -> &'static str {
     }
 }
 
+fn tool_response(
+    tool: &apps::ToolSpec,
+    status: &str,
+    text: &str,
+    structured: &Value,
+    is_error: bool,
+    item: Option<&Value>,
+    confirmation: bool,
+) -> Value {
+    json!({
+            "status":status,"result_json":apps::call_tool_result(text,structured,is_error).to_string(),"message":text,
+            "confirm_title":if confirmation{Some(tool.title)}else{None},"confirm_detail":if confirmation{Some(tool.description)}else{None},"item":item})
+}
+
 impl<S: Signer> Client<S> {
     pub(super) fn app_state_value(
         &self,
@@ -75,7 +89,7 @@ impl<S: Signer> Client<S> {
             .unwrap_or(TrustLevel::Listen);
         Ok(Some(
             json!({"app_id":document.app,"resource_uri":document.resource_uri,
-            "name":apps::spec(&document.app).map(|spec|spec.name).unwrap_or(""),
+            "name":apps::spec(&document.app).map_or("", |spec|spec.name),
             "view_json":apps::view_for(&document.app,&state,now,&self.account.identity).to_string(),
             "headline":headline,"metrics":metrics.into_iter().map(|(label,value)|json!({"label":label,"value":value})).collect::<Vec<_>>(),
             "last_action":apps::last_action(&state),"trust":trust,
@@ -83,6 +97,11 @@ impl<S: Signer> Client<S> {
         ))
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid requests or arguments, unavailable apps or
+    /// resources, missing conversation authority, or failed app mutation, signing,
+    /// encryption or client update.
     pub fn app_request(
         &mut self,
         request: &str,
@@ -112,7 +131,7 @@ impl<S: Signer> Client<S> {
                 let args:Value=serde_json::from_str(&args_json).map_err(error)?;
                 if !args.is_object(){return Err("Argumentos inválidos.".into())}
                 let profile=self.saved.profiles.get(&self.account.identity);
-                let actor=apps::Actor{id:&self.account.identity,name:profile.map(|profile|profile.name.as_str()).unwrap_or(&self.account.name),owner:profile.and_then(|profile|profile.owner.as_deref())};
+                let actor=apps::Actor{id:&self.account.identity,name:profile.map_or(&self.account.name, |profile|profile.name.as_str()),owner:profile.and_then(|profile|profile.owner.as_deref())};
                 let (title,state)=apps::create_as(spec.id,&args,&actor,now)?;
                 let item=browser_id("it", now)?;
                 self.queue_domain_batch(&space_id,vec![
@@ -170,66 +189,22 @@ impl<S: Signer> Client<S> {
             .ok_or("Esta ferramenta não está disponível para a interface.")?;
         let state: Value = serde_json::from_str(&document.state_json).map_err(error)?;
         let current_item = || self.item_value(&item, None, &mut Vec::new());
-        let response = |status: &str,
-                        text: &str,
-                        structured: &Value,
-                        is_error: bool,
-                        item: Option<Value>,
-                        confirmation: bool| {
-            json!({
-            "status":status,"result_json":apps::call_tool_result(text,structured,is_error).to_string(),"message":text,
-            "confirm_title":if confirmation{Some(tool.title)}else{None},"confirm_detail":if confirmation{Some(tool.description)}else{None},"item":item})
-        };
         if tool.read_only {
             return Ok((
-                response(
+                tool_response(
+                    tool,
                     "Done",
                     "Estado atual.",
                     &apps::view_for(&document.app, &state, now, &self.account.identity),
                     false,
-                    Some(current_item()?),
+                    Some(&current_item()?),
                     false,
                 ),
                 false,
             ));
         }
-        let level = self
-            .active_app_grants(id, now)?
-            .into_iter()
-            .rev()
-            .find_map(|grant| match grant.capability {
-                Capability::Trust(level) => Some(level),
-                _ => None,
-            })
-            .unwrap_or(TrustLevel::Listen);
-        match evaluate_permission(level, &tool.action, &Policy::default()) {
-            Decision::Block(_) => {
-                return Ok((
-                    response(
-                        "Denied",
-                        "A autonomia deste app não permite esta ação.",
-                        &Value::Null,
-                        true,
-                        None,
-                        false,
-                    ),
-                    false,
-                ));
-            }
-            Decision::Request(_) if !confirmed => {
-                return Ok((
-                    response(
-                        "NeedsConfirmation",
-                        "Esta ação exige sua confirmação.",
-                        &Value::Null,
-                        true,
-                        None,
-                        true,
-                    ),
-                    false,
-                ));
-            }
-            _ => {}
+        if let Some(response) = self.browser_app_permission(id, tool, confirmed, now)? {
+            return Ok((response, false));
         }
         let mut args: Value = serde_json::from_str(args_json).map_err(error)?;
         if !args.is_object() {
@@ -242,21 +217,20 @@ impl<S: Signer> Client<S> {
         }
         let actor = apps::Actor {
             id: &self.account.identity,
-            name: profile
-                .map(|profile| profile.name.as_str())
-                .unwrap_or(&self.account.name),
+            name: profile.map_or(&self.account.name, |profile| profile.name.as_str()),
             owner,
         };
         let applied = match apps::apply_as(&document.app, tool_name, &args, &state, &actor, now) {
             Ok(applied) => applied,
             Err(reason) => {
                 return Ok((
-                    response(
+                    tool_response(
+                        tool,
                         "Done",
                         &reason,
                         &apps::view_for(&document.app, &state, now, &self.account.identity),
                         true,
-                        Some(current_item()?),
+                        Some(&current_item()?),
                         false,
                     ),
                     false,
@@ -276,15 +250,82 @@ impl<S: Signer> Client<S> {
             content: ItemContent::App(next),
             note: applied.note.clone(),
         }];
+        if let Some(effect) = self.browser_app_plan_effect(&item.space, &applied, now)? {
+            bodies.push(effect);
+        }
+        self.queue_domain_batch(&item.space, bodies, now)?;
+        let updated = self.document_item(id)?;
+        let view = apps::view_for(&document.app, &applied.state, now, &self.account.identity);
+        Ok((
+            tool_response(
+                tool,
+                "Done",
+                &applied.text,
+                &view,
+                false,
+                Some(&self.item_value(&updated, None, &mut Vec::new())?),
+                false,
+            ),
+            true,
+        ))
+    }
+    fn browser_app_permission(
+        &self,
+        id: &str,
+        tool: &apps::ToolSpec,
+        confirmed: bool,
+        now: i64,
+    ) -> Result<Option<Value>, String> {
+        let level = self
+            .active_app_grants(id, now)?
+            .into_iter()
+            .rev()
+            .find_map(|grant| match grant.capability {
+                Capability::Trust(level) => Some(level),
+                _ => None,
+            })
+            .unwrap_or(TrustLevel::Listen);
+        match evaluate_permission(level, &tool.action, &Policy::default()) {
+            Decision::Block(_) => {
+                return Ok(Some(tool_response(
+                    tool,
+                    "Denied",
+                    "A autonomia deste app não permite esta ação.",
+                    &Value::Null,
+                    true,
+                    None,
+                    false,
+                )));
+            }
+            Decision::Request(_) if !confirmed => {
+                return Ok(Some(tool_response(
+                    tool,
+                    "NeedsConfirmation",
+                    "Esta ação exige sua confirmação.",
+                    &Value::Null,
+                    true,
+                    None,
+                    true,
+                )));
+            }
+            _ => {}
+        }
+        Ok(None)
+    }
+
+    fn browser_app_plan_effect(
+        &self,
+        space: &str,
+        applied: &apps::Applied,
+        now: i64,
+    ) -> Result<Option<EventBody>, String> {
         // The shared app may change another Item (for example, a poll winner enters
         // the latest Plan). Validate the entire effect before queuing either change.
         if let Some(apps::Effect::AddPlanLine { text, cost_cents }) = &applied.effect {
             if let Some(target) = self
                 .document_items()?
                 .into_values()
-                .filter(|candidate| {
-                    candidate.space == item.space && candidate.kind == ItemKind::Plan
-                })
+                .filter(|candidate| candidate.space == space && candidate.kind == ItemKind::Plan)
                 .max_by_key(|candidate| candidate.current().event.at_ms)
             {
                 let read = self.plan_read(&target)?;
@@ -318,26 +359,13 @@ impl<S: Signer> Client<S> {
                         "O total do plano excederia o limite; o app não foi alterado.".into(),
                     );
                 }
-                bodies.push(EventBody::ItemVersioned {
+                return Ok(Some(EventBody::ItemVersioned {
                     item: target.id,
                     content: ItemContent::Plan(plan),
                     note: applied.note.clone(),
-                });
+                }));
             }
         }
-        self.queue_domain_batch(&item.space, bodies, now)?;
-        let updated = self.document_item(id)?;
-        let view = apps::view_for(&document.app, &applied.state, now, &self.account.identity);
-        Ok((
-            response(
-                "Done",
-                &applied.text,
-                &view,
-                false,
-                Some(self.item_value(&updated, None, &mut Vec::new())?),
-                false,
-            ),
-            true,
-        ))
+        Ok(None)
     }
 }

@@ -65,7 +65,7 @@ mod tests {
             read: u64::MAX
         }));
         store.wipe_sync().unwrap();
-        assert!(store.peer_receipts().unwrap().is_empty());
+        assert_eq!(store.peer_receipts().unwrap().len(), 0);
     }
 
     #[test]
@@ -84,10 +84,10 @@ mod tests {
         assert!(store.conn().execute(
             "INSERT INTO peer_receipts VALUES ('space', 'peer', '00000000000000000001', '00000000000000000002')", []
         ).is_err());
-        assert!(store.peer_receipts().unwrap().is_empty());
+        assert_eq!(store.peer_receipts().unwrap().len(), 0);
         store.raise_peer_receipt("space", "peer", 2, 1).unwrap();
         store.wipe().unwrap();
-        assert!(store.peer_receipts().unwrap().is_empty());
+        assert_eq!(store.peer_receipts().unwrap().len(), 0);
     }
 
     #[test]
@@ -137,7 +137,7 @@ mod tests {
         {
             let _transaction = store.conn().unchecked_transaction().unwrap();
             assert!(store.upload_refused("blob").unwrap());
-            assert!(store.pending_uploads(8).unwrap().is_empty());
+            assert_eq!(store.pending_uploads(8).unwrap().len(), 0);
         }
         assert_eq!(
             store.pending_uploads(8).unwrap(),
@@ -188,6 +188,9 @@ fn receipt_seq(row: &rusqlite::Row<'_>, column: usize) -> rusqlite::Result<u64> 
 }
 
 impl Store {
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub(crate) fn migrate_sync(&self) -> Result<()> {
         self.conn.execute_batch(
             "
@@ -254,6 +257,10 @@ impl Store {
         self.upgrade_outbox_order()
     }
 
+    /// Marks a space as relay-ordered without changing its retained history.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn set_synced(&self, space: &str) -> Result<()> {
         self.conn.execute(
             "INSERT INTO synced_spaces (space) VALUES (?1) ON CONFLICT DO NOTHING",
@@ -262,6 +269,10 @@ impl Store {
         Ok(())
     }
 
+    /// Lists spaces enrolled in relay catch-up.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn synced_spaces(&self) -> Result<Vec<String>> {
         let mut st = self.conn.prepare("SELECT space FROM synced_spaces")?;
         let rows = st.query_map([], |r| r.get::<_, String>(0))?;
@@ -270,6 +281,9 @@ impl Store {
 
     /// Raise each peer watermark independently, atomically. A read also proves delivery.
     /// Callers validate room membership before admitting untrusted relay frames here.
+    ///
+    /// # Errors
+    /// Returns SQLite errors or invalid unsigned watermark decoding errors; membership validation belongs to the caller.
     pub fn raise_peer_receipt(
         &self,
         space: &str,
@@ -294,6 +308,10 @@ impl Store {
         )?)
     }
 
+    /// Reads per-peer delivered/read watermarks without granting membership.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn peer_receipts(&self) -> Result<Vec<PeerReceipt>> {
         let mut statement = self
             .conn
@@ -310,22 +328,31 @@ impl Store {
     }
 
     /// Next sequence number this device is missing for each relay-ordered Space.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn cursors(&self) -> Result<Vec<(String, u64)>> {
         let mut st = self.conn.prepare(
             "SELECT s.space, COALESCE((SELECT MAX(seq) + 1 FROM events e WHERE e.space = s.space), 0) FROM synced_spaces s",
         )?;
-        let rows = st.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64))
-        })?;
+        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Deletes one device-local metadata entry.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn meta_delete(&self, key: &str) -> Result<()> {
         self.conn
             .execute("DELETE FROM meta WHERE key = ?1", [key])?;
         Ok(())
     }
 
+    /// Deletes local sync, outbox, receipt and media-transfer bookkeeping.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn wipe_sync(&self) -> Result<()> {
         self.conn.execute_batch("DELETE FROM outbox; DELETE FROM synced_spaces; DELETE FROM peer_receipts; DELETE FROM media_keys; DELETE FROM blob_uploads; DELETE FROM mls_recovery_uploads; DELETE FROM mls_recovery_blobs; DELETE FROM meta WHERE key GLOB 'native.blob.pending/1/*';")?;
         Ok(())

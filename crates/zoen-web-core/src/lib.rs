@@ -1,4 +1,4 @@
-//! Browser boundary. Device signing keys belong to nonexportable WebCrypto, never Rust.
+//! Browser boundary. Device signing keys belong to nonexportable `WebCrypto`, never Rust.
 
 mod client;
 mod link;

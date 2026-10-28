@@ -1,3 +1,6 @@
+mod sequence;
+use sequence::MessageSequence;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
@@ -166,8 +169,7 @@ pub struct MessageView {
     /// Timeline entry id (event hash) once the relay ordered it: the target of replies,
     /// threads, reactions, edits and deletes.
     entry: Option<String>,
-    #[serde(serialize_with = "serialize_message_sequence")]
-    seq: Option<u64>,
+    seq: Option<MessageSequence>,
     author: String,
     name: String,
     text: String,
@@ -240,16 +242,6 @@ pub struct ConversationView {
     messages: Vec<MessageView>,
 }
 
-fn serialize_message_sequence<S: serde::Serializer>(
-    value: &Option<u64>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    match value {
-        Some(sequence) => serializer.serialize_some(&sequence.to_string()),
-        None => serializer.serialize_none(),
-    }
-}
-
 #[derive(Serialize)]
 pub struct Update {
     pub snapshot: String,
@@ -260,7 +252,7 @@ pub struct Update {
     pub cursor_repair: Option<CursorRepairStatus>,
 }
 
-/// The same OpenMLS crypto, log verification and binary protocol used by native clients.
+/// The same `OpenMLS` crypto, log verification and binary protocol used by native clients.
 /// Its host encrypts and durably writes each Update before sending any of its frames.
 pub struct Client<S> {
     account: LinkedAccount,
@@ -287,6 +279,11 @@ pub struct Client<S> {
 }
 
 impl<S: Signer> Client<S> {
+    ///
+    /// # Errors
+    /// Returns an error for an invalid or unsupported snapshot, unverified log or
+    /// outbox events, outbox ownership mismatches, unavailable MLS storage,
+    /// or failure to initialize the attachment producer.
     pub fn new(account: LinkedAccount, signer: S, snapshot: &str) -> Result<Self, String> {
         let saved = if snapshot.is_empty() {
             SavedClient {
@@ -351,7 +348,7 @@ impl<S: Signer> Client<S> {
         for event in client
             .logs
             .values()
-            .flat_map(|log| log.events())
+            .flat_map(event_log::SpaceLog::events)
             .cloned()
             .collect::<Vec<_>>()
         {
@@ -376,7 +373,7 @@ impl<S: Signer> Client<S> {
             .logs
             .get(space)
             .into_iter()
-            .flat_map(|log| log.events())
+            .flat_map(event_log::SpaceLog::events)
         {
             match &event.body {
                 EventBody::SpaceCreated { .. } => {
@@ -426,7 +423,7 @@ impl<S: Signer> Client<S> {
     }
 
     /// An already provisioned MLS group can seal a local outbox entry while
-    /// offline. Publishing still waits for SyncDone and reseals after an epoch
+    /// offline. Publishing still waits for `SyncDone` and reseals after an epoch
     /// change, so no cached membership state authorizes a network publication.
     fn queue_epoch(&self, space: &str) -> Result<u64, String> {
         if let Some(error) = self.saved.integrity_errors.get(space) {

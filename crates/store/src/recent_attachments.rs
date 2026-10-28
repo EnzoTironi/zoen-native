@@ -1,5 +1,5 @@
 //! Disposable ordering accelerator for attachment classifications in the existing FTS index.
-use super::*;
+use super::{params, OptionalExtension, Result, Store, StoreError};
 
 #[derive(Debug, Clone)]
 pub struct RecentAttachmentIndexRow {
@@ -12,6 +12,9 @@ pub struct RecentAttachmentIndexRow {
 
 impl Store {
     /// Called only inside the existing index rebuild savepoint. Never a source of truth.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn recent_attachments_reset(&self) -> Result<()> {
         self.conn.execute_batch(
             "DROP TABLE IF EXISTS attachment_recent;
@@ -28,6 +31,10 @@ impl Store {
         Ok(())
     }
 
+    /// Checks whether the disposable attachment index has the expected tables and format.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn recent_attachments_ready(&self) -> Result<bool> {
         Ok(self.conn.query_row(
             "SELECT COALESCE((SELECT value FROM meta WHERE key='search:attachment-format'),'')='1'
@@ -38,7 +45,11 @@ impl Store {
         )?)
     }
 
+    /// Indexes one attachment reference in the caller-owned rebuild savepoint.
     #[allow(clippy::too_many_arguments)]
+    ///
+    /// # Errors
+    /// Returns JSON reference encoding or SQLite errors, including entry indexes outside SQLite INTEGER.
     pub fn recent_attachment_put(
         &self,
         kind: &str,
@@ -61,6 +72,10 @@ impl Store {
         Ok(())
     }
 
+    /// Reads the disposable index row for one attachment reference.
+    ///
+    /// # Errors
+    /// Returns SQLite query/row-decoding errors; a missing reference is `None`.
     pub fn recent_attachment_reference(
         &self,
         kind: &str,
@@ -80,6 +95,9 @@ impl Store {
 
     /// Filtering precedes LIMIT. The B-tree provides newest/keyset order; FTS only
     /// answers text membership and cannot truncate the candidate set prematurely.
+    ///
+    /// # Errors
+    /// Returns `InvalidSearchLimit` outside 1..=50, or SQLite query/row-decoding errors.
     pub fn recent_attachments_page(
         &self,
         kind: &str,

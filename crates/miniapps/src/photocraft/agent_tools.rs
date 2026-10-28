@@ -8,16 +8,20 @@ const ACTIONS: [&str; 5] = [
     "rotate_counterclockwise",
     "rotate180",
 ];
+#[must_use]
 pub fn tools() -> Vec<Definition> {
     let artifact = json!({"type":"string","minLength":1,"maxLength":128});
     vec![
         Definition { name:"read_photocraft".into(), description:"Inspect the accepted image and exact version/hash before proposing a transform. Managed RGB8 raster profile only. The 512 KiB executor limit applies to the serialized .pcraft container, whose tiles are compressed, not width times height times channels. Do not infer refusal from decoded pixel size; call this tool to inspect the actual document. Does not expose raw pixels or grant access.".into(), parameters:json!({"type":"object","properties":{"artifactId":artifact},"required":["artifactId"],"additionalProperties":false}) },
-        Definition { name:"photocraft_transform".into(), description:"Propose one reversible image flip or rotation against the exact version/hash returned by read_photocraft. The executor checks serialized .pcraft bytes separately from decoded raster bounds; do not substitute a raw pixel size estimate for those checks. Requires the owner's exact review. No arbitrary commands, paths, URLs or external assets.".into(), parameters:json!({"type":"object","properties":{"artifactId":artifact,"version":{"type":"integer","minimum":1,"maximum":4294967294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},"action":{"type":"string","enum":ACTIONS}},"required":["artifactId","version","sha256","action"],"additionalProperties":false}) },
+        Definition { name:"photocraft_transform".into(), description:"Propose one reversible image flip or rotation against the exact version/hash returned by read_photocraft. The executor checks serialized .pcraft bytes separately from decoded raster bounds; do not substitute a raw pixel size estimate for those checks. Requires the owner's exact review. No arbitrary commands, paths, URLs or external assets.".into(), parameters:json!({"type":"object","properties":{"artifactId":artifact,"version":{"type":"integer","minimum":1,"maximum":4_294_967_294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},"action":{"type":"string","enum":ACTIONS}},"required":["artifactId","version","sha256","action"],"additionalProperties":false}) },
     ]
 }
+#[must_use]
 pub fn recognizes(tool: &str) -> bool {
     matches!(tool, "read_photocraft" | "photocraft_transform")
 }
+/// # Errors
+/// Refuses unknown tools, malformed or unexpected arguments, unsupported commands or missing exact artifact/version/hash bindings.
 pub fn command(tool: &str, value: &Value) -> Result<ParsedCommand, String> {
     if !recognizes(tool) {
         return Err("Unsupported image operation".into());

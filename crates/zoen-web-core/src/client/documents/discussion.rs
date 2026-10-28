@@ -1,5 +1,5 @@
 //! Read the existing artifact post. No new comment log or publication on open.
-use super::*;
+use super::{json, t, BTreeSet, Client, Event, EventBody, ItemContent, ItemKind, Signer, Value};
 
 impl<S: Signer> Client<S> {
     pub(super) fn item_discussion_value(&self, space: &str, id: &str) -> Result<Value, String> {
@@ -13,7 +13,7 @@ impl<S: Signer> Client<S> {
             return Err(reason.clone());
         }
         let item = self.document_item(id)?;
-        if item.space != space || item.versions[0].failure.is_some() {
+        if item.space != space || item.versions.first().failure.is_some() {
             return Err(t(
                 "Arquivo indisponível nesta conversa.",
                 "Artifact unavailable in this conversation.",
@@ -24,7 +24,7 @@ impl<S: Signer> Client<S> {
             .into_iter()
             .find(|view| view.id == space)
             .ok_or_else(|| t("Conversa indisponível.", "Conversation unavailable."))?;
-        let origin = &item.versions[0].event;
+        let origin = &item.versions.first().event;
         let original = |event: &Event| match &event.body {
             EventBody::ItemCreated {
                 item: source,
@@ -47,7 +47,7 @@ impl<S: Signer> Client<S> {
             .logs
             .get(space)
             .into_iter()
-            .flat_map(|log| log.events())
+            .flat_map(event_log::SpaceLog::events)
             .collect::<Vec<_>>();
         let confirmed = events
             .iter()

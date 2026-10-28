@@ -8,13 +8,18 @@ fn author(device: u8) -> Author {
         Signer::from_secret(&[device; 32]),
     )
 }
-fn sealed(who: &Author, version: u64, ciphertext: Vec<u8>) -> SealedProfile {
-    SealedProfile {
+fn sealed(
+    who: &Author,
+    version: u64,
+    ciphertext: Vec<u8>,
+) -> Result<SealedProfile, Box<dyn std::error::Error>> {
+    Ok(SealedProfile {
         identity: who.identity.clone(),
         version,
-        signed: sign_upload(who, version, &ciphertext).unwrap(),
+        signed: sign_upload(who, version, &ciphertext)
+            .ok_or("fixture upload signature unavailable")?,
         ciphertext,
-    }
+    })
 }
 #[test]
 fn real_profile_ciphertext_keeps_native_crypto_and_wire_without_host_dtos(
@@ -28,7 +33,7 @@ fn real_profile_ciphertext_keeps_native_crypto_and_wire_without_host_dtos(
     let key = ProfileKey::generate()?;
     let version = 9_007_199_254_740_993;
     let ciphertext = seal_profile(&key, &who.identity, version, &fields)?;
-    let p = sealed(&who, version, ciphertext);
+    let p = sealed(&who, version, ciphertext)?;
     policy::validate_profile(&who.identity, who.device.as_deref().unwrap(), &p).unwrap();
     let frame = ServerFrame::Res {
         id: 9_007_199_254_740_993,
@@ -61,7 +66,7 @@ fn real_profile_ciphertext_keeps_native_crypto_and_wire_without_host_dtos(
 fn upload_identity_device_signature_and_size_are_independent_fences(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let who = author(32);
-    let valid = sealed(&who, 1, vec![1]);
+    let valid = sealed(&who, 1, vec![1])?;
     for (profile, reason) in [
         (
             {
@@ -72,19 +77,19 @@ fn upload_identity_device_signature_and_size_are_independent_fences(
             "profile is for another identity",
         ),
         (
-            sealed(&author(33), 1, vec![1]),
+            sealed(&author(33), 1, vec![1])?,
             "profile is for another device",
         ),
         (
             {
-                let mut p = valid.clone();
+                let mut p = valid;
                 p.signed.sig = "00".repeat(64);
                 p
             },
             "profile isn't signed by this identity",
         ),
         (
-            sealed(&who, 1, vec![1; MAX_CIPHERTEXT + 1]),
+            sealed(&who, 1, vec![1; MAX_CIPHERTEXT + 1])?,
             "profile too large",
         ),
     ] {
@@ -98,7 +103,7 @@ fn upload_identity_device_signature_and_size_are_independent_fences(
         assert!(policy::validate_profile(
             &who.identity,
             who.device.as_ref().unwrap(),
-            &sealed(&who, version, vec![0; MAX_CIPHERTEXT])
+            &sealed(&who, version, vec![0; MAX_CIPHERTEXT])?
         )
         .is_ok());
     }
@@ -107,7 +112,7 @@ fn upload_identity_device_signature_and_size_are_independent_fences(
             policy::validate_profile(
                 &who.identity,
                 who.device.as_ref().unwrap(),
-                &sealed(&who, version, vec![1])
+                &sealed(&who, version, vec![1])?
             )
             .unwrap_err(),
             "profile version out of range"
@@ -116,8 +121,7 @@ fn upload_identity_device_signature_and_size_are_independent_fences(
     Ok(())
 }
 #[test]
-fn native_agreement_signatures_bind_current_device_identity_key_and_certificate(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn native_agreement_signatures_bind_current_device_identity_key_and_certificate() {
     let who = author(32);
     let public = AgreementKey::from_secret([44; 32]).public_hex();
     let signed = sign_agreement(&who, &public).unwrap();
@@ -152,7 +156,7 @@ fn native_agreement_signatures_bind_current_device_identity_key_and_certificate(
         &signed
     )
     .is_err());
-    let mut invalid = signed.clone();
+    let mut invalid = signed;
     invalid.cert = "00".repeat(64);
     assert!(policy::validate_agreement(
         &who.identity,
@@ -161,5 +165,4 @@ fn native_agreement_signatures_bind_current_device_identity_key_and_certificate(
         &invalid
     )
     .is_err());
-    Ok(())
 }

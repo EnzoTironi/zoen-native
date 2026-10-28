@@ -1,8 +1,12 @@
 //! Whole operations on the existing Client; no additional state owner.
-use super::*;
+use super::{BTreeMap, BTreeSet, Client, EventBody, Signer, Update};
 
 impl<S: Signer> Client<S> {
     /// A file, photo, video or voice note whose chunks the host already uploaded.
+    ///
+    /// # Errors
+    /// Returns an error if the file cannot be admitted, signed or encrypted for the
+    /// space, or if the resulting client update fails.
     pub fn queue_file(
         &mut self,
         space: &str,
@@ -14,6 +18,10 @@ impl<S: Signer> Client<S> {
 
     /// Explicit signed item/message identities; callers never guess from a filename
     /// or search the latest timeline entry after an asynchronous upload.
+    ///
+    /// # Errors
+    /// Returns an error if queuing fails, no corresponding signed file event was
+    /// retained, or the client update fails.
     pub fn queue_file_record(
         &mut self,
         space: &str,
@@ -55,6 +63,10 @@ impl<S: Signer> Client<S> {
     }
 
     /// Persist failed media atomically without ever publishing its incomplete manifest.
+    ///
+    /// # Errors
+    /// Returns an error for missing or unauthenticated local chunks, an empty file,
+    /// or failure to create and retain the signed local event or client update.
     pub fn queue_failed_file(
         &mut self,
         space: &str,
@@ -74,7 +86,7 @@ impl<S: Signer> Client<S> {
         // MLS catches up. It must never need encryption or become publishable.
         let mut pending = self.clear_event(
             space,
-            EventBody::ItemCreated {
+            &EventBody::ItemCreated {
                 item: types::new_secret_id("it").map_err(|error| error.to_string())?,
                 kind: types::ItemKind::File,
                 content: types::ItemContent::File(doc),
@@ -89,7 +101,7 @@ impl<S: Signer> Client<S> {
         pending.inner = Some(event.clone());
         pending.failure = Some(reason);
         self.saved.local_chunks.extend(chunks);
-        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.saved.outbox.insert(event.client_id, pending);
         self.update(Vec::new())
     }
 
@@ -111,16 +123,19 @@ impl<S: Signer> Client<S> {
             return Err("file empty or too large".into());
         }
         if let Some(reply) = doc.voice.as_mut().and_then(|voice| voice.reply.as_mut()) {
-            let reference = match self.posted(space, &reply.to) {
-                Some(Some(root)) if reply.thread && root.thread => root.to,
-                Some(_) => reply.to.clone(),
-                None => return Err("That message is no longer available.".into()),
+            let posted = self
+                .posted(space, &reply.to)
+                .ok_or("That message is no longer available.")?;
+            let reference = match posted.reply {
+                Some(root) if reply.thread && root.thread => root.to,
+                _ => reply.to.clone(),
             };
-            reply.to = self
-                .resolve_post(space, &reference)
-                .ok_or("That message is no longer available.")?
-                .client_id
-                .clone();
+            reply.to.clone_from(
+                &self
+                    .resolve_post(space, &reference)
+                    .ok_or("That message is no longer available.")?
+                    .client_id,
+            );
         }
         let item = types::new_secret_id("it").map_err(|error| error.to_string())?;
         let voice = doc.is_voice();
@@ -146,6 +161,9 @@ impl<S: Signer> Client<S> {
 
     /// Edit, delete for everyone, react or unreact. Same encrypted path as messages.
     /// Keep a queued file/voice in the timeline as failed so the clip is not lost.
+    ///
+    /// # Errors
+    /// Returns an error if the client update cannot be produced after marking failure.
     pub fn fail_outbox(
         &mut self,
         client_id: &str,

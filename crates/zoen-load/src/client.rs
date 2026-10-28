@@ -329,7 +329,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                 sink.send(Message::Binary(ClientFrame::Publish { env }.encode().into())).await?;
                 continue;
             }
-            _ = tokio::time::sleep_until(stop_at.unwrap_or_else(|| Instant::now() + Duration::from_secs(3600))), if stop_at.is_some() => break,
+            () = tokio::time::sleep_until(stop_at.unwrap_or_else(|| Instant::now() + Duration::from_secs(3600))), if stop_at.is_some() => break,
             msg = stream.next() => msg,
         };
         let Some(msg) = frame else {

@@ -1,7 +1,7 @@
 //! Exact model-facing schemas; no arbitrary command/file/network surface.
 use super::{json, Definition, Value};
 fn range() -> Value {
-    let position = json!({"type":"object","properties":{"paragraph":{"type":"integer","minimum":0,"maximum":4294967295_u32},"offset":{"type":"integer","minimum":0,"maximum":4294967295_u32}},"required":["paragraph","offset"],"additionalProperties":false});
+    let position = json!({"type":"object","properties":{"paragraph":{"type":"integer","minimum":0,"maximum":4_294_967_295_u32},"offset":{"type":"integer","minimum":0,"maximum":4_294_967_295_u32}},"required":["paragraph","offset"],"additionalProperties":false});
     json!({"type":"object","description":"Zero-based body paragraph indices and UTF-8 byte offsets from read_wordcraft; end exclusive, ordered and on codepoint boundaries. No tables or non-body stories.","properties":{"start":position,"end":position},"required":["start","end"],"additionalProperties":false})
 }
 fn format() -> Value {
@@ -13,12 +13,12 @@ fn format() -> Value {
     json!({"type":"object","properties":props,"minProperties":1,"additionalProperties":false})
 }
 fn write(name: &str, description: &str, extra: Value) -> Definition {
-    let mut properties = json!({"artifactId":{"type":"string","minLength":1,"maxLength":128},"version":{"type":"integer","minimum":1,"maximum":4294967294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}});
+    let mut properties = json!({"artifactId":{"type":"string","minLength":1,"maxLength":128},"version":{"type":"integer","minimum":1,"maximum":4_294_967_294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}});
     let mut required = vec![json!("artifactId"), json!("version"), json!("sha256")];
-    if let Some(extra) = extra.as_object() {
+    if let Value::Object(extra) = extra {
         for (key, value) in extra {
-            properties[key] = value.clone();
-            required.push(json!(key));
+            required.push(json!(&key));
+            properties[&key] = value;
         }
     }
     Definition {

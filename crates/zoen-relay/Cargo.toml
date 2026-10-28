@@ -73,3 +73,6 @@ tokio = { version = "1", features = ["test-util"] }
 mls = { workspace = true, features = ["device"] }
 rusqlite.workspace = true
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }
+
+[lints]
+workspace = true

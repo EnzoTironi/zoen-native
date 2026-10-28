@@ -1,6 +1,9 @@
 //! Ordered tool dispatch over one materialized app state.
 
-use super::*;
+use super::{
+    clamp, clock, haversine_km, hike_name, json, pet_mood, push_log, s, st_day, t, thousands, tr,
+    ts, view, Applied, Effect, Value, HIKE_TRAILS,
+};
 
 mod collaboration;
 mod geography;
@@ -8,6 +11,8 @@ mod hike;
 mod pet;
 mod recipe;
 
+/// # Errors
+/// Refuses unknown tools, invalid arguments, missing domain state or operations forbidden by the current state.
 pub fn apply(
     app: &str,
     tool_name: &str,

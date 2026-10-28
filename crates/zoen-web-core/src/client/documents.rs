@@ -2,7 +2,10 @@
 //! browser snapshot owns only disposable projections, downloaded payloads and local drafts.
 //! Pages use documents' exact Loro/Markdown codec and share native Item events and blobs.
 
-use super::*;
+use super::{
+    browser_id, item_edit_key, BTreeMap, BTreeSet, Client, Deserialize, Event, EventBody,
+    ItemEditKey, ItemEditView, OpenMlsProvider, Privacy, Role, Serialize, Signer, Update,
+};
 use ::documents::{BlockEdit, Frontiers, Kind, Page};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use localization::{t, tr};
@@ -123,10 +126,10 @@ impl From<&::documents::Block> for Block {
                 dto.indent = *indent;
                 dto.checked = *checked;
             }
-            Kind::Code { lang } => dto.lang = lang.clone(),
+            Kind::Code { lang } => dto.lang.clone_from(lang),
             Kind::Image { url, alt, .. } => {
-                dto.url = url.clone();
-                dto.alt = alt.clone();
+                dto.url.clone_from(url);
+                dto.alt.clone_from(alt);
             }
             _ => {}
         }
@@ -310,25 +313,28 @@ pub(crate) struct Version {
     pub(crate) failure: Option<String>,
 }
 
+mod versions;
+pub(crate) use versions::VersionHistory;
+
 #[derive(Clone)]
 pub(crate) struct Item {
     pub(crate) id: String,
     pub(crate) space: String,
     pub(crate) kind: ItemKind,
     pub(crate) origin: String,
-    pub(crate) versions: Vec<Version>,
+    pub(crate) versions: VersionHistory,
 }
 
 impl Item {
     pub(crate) fn current(&self) -> &Version {
-        self.versions.last().expect("created item")
+        self.versions.current()
     }
     fn origin_hash(&self) -> String {
         // Signed content identity survives transport confirmation and resealing.
-        hex::encode(Sha256::digest(&self.versions[0].event.content))
+        hex::encode(Sha256::digest(&self.versions.first().event.content))
     }
     pub(crate) fn has_explicit_origin(&self) -> bool {
-        let event = &self.versions[0].event;
+        let event = &self.versions.first().event;
         event_log::event_from_content(
             event.content.clone(),
             event.sig.clone(),
@@ -349,11 +355,14 @@ pub(super) fn item_edits(items: &BTreeMap<String, Item>) -> BTreeMap<ItemEditKey
     for item in items.values() {
         let title = item.current().content.title();
         for (index, version) in item.versions.iter().enumerate().skip(1) {
-            let source_item = match &version.event.body {
-                EventBody::ItemVersioned { item, .. } | EventBody::ItemReverted { item, .. } => {
-                    item
-                }
-                _ => continue,
+            let (EventBody::ItemVersioned {
+                item: source_item, ..
+            }
+            | EventBody::ItemReverted {
+                item: source_item, ..
+            }) = &version.event.body
+            else {
+                continue;
             };
             if *source_item != item.id || version.event.space != item.space {
                 continue;
@@ -439,14 +448,14 @@ fn fold_item(
                     space: space.into(),
                     kind: *kind,
                     origin: origin.clone(),
-                    versions: vec![Version {
+                    versions: VersionHistory::new(Version {
                         content: content.clone(),
                         event: event.clone(),
                         note: origin.clone(),
                         is_undo: false,
                         pending,
                         failure,
-                    }],
+                    }),
                 },
             );
         }
@@ -456,7 +465,7 @@ fn fold_item(
             note,
         } => {
             if let Some(item) = items.get_mut(item).filter(|item| item.space == space) {
-                if item.kind == ItemKind::File && item.versions.iter().any(|version| matches!(&version.content,ItemContent::File(file) if file.is_voice())) && item.versions[0].event.author != event.author { return Ok(()); }
+                if item.kind == ItemKind::File && item.versions.iter().any(|version| matches!(&version.content,ItemContent::File(file) if file.is_voice())) && item.versions.first().event.author != event.author { return Ok(()); }
                 let content =
                     miniapps::reconcile_concurrent(&item.current().content, content, event.at_ms)
                         .unwrap_or_else(|| content.clone());
@@ -508,7 +517,7 @@ fn plan_value(document: &PlanDoc) -> Result<Value, String> {
     )
 }
 
-fn valid_line(text: String, cost: i64) -> Result<String, String> {
+fn valid_line(text: &str, cost: i64) -> Result<String, String> {
     let text = text.trim().to_owned();
     if text.is_empty() || cost < 0 {
         return Err("Informe o texto e um custo positivo para a linha.".into());

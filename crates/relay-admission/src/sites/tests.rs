@@ -145,7 +145,7 @@ fn changed_missing_extra_or_non_utf8_content_cannot_be_published() {
         vec![0],
         vec![0xff],
         vec![],
-        vec![b'a'; MAX_HTML_BYTES as usize + 1],
+        vec![b'a'; usize::try_from(MAX_HTML_BYTES).unwrap() + 1],
     ] {
         let mut altered = signed.clone();
         let Change::Publish { source } = &mut altered.mutation.change else {

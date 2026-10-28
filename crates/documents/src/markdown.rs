@@ -47,7 +47,7 @@ pub(crate) fn import(md: &str) -> Result<Imported, DocError> {
     let lines: Vec<&str> = md.split_inclusive('\n').collect();
     let mut units = Vec::new();
     for child in root.children() {
-        top_level(child, &lines, &mut units, 0);
+        top_level(child, &lines, &mut units, 0)?;
     }
     units.sort_by_key(|u| u.start);
     // Drop units that overlap an earlier one (defensive: the slicing must partition).
@@ -63,7 +63,7 @@ pub(crate) fn import(md: &str) -> Result<Imported, DocError> {
     let n = lines.len();
     let mut out = Vec::new();
     // Lines before the first block: blank ones become the page's lead, others a raw block.
-    let first = units.first().map(|u| u.start).unwrap_or(n + 1);
+    let first = units.first().map_or(n + 1, |u| u.start);
     let mut page_lead = String::new();
     let mut raw_before = Vec::new();
     {
@@ -78,7 +78,7 @@ pub(crate) fn import(md: &str) -> Result<Imported, DocError> {
     }
     out.extend(raw_before);
     for (idx, u) in units.iter().enumerate() {
-        let next = units.get(idx + 1).map(|v| v.start).unwrap_or(n + 1);
+        let next = units.get(idx + 1).map_or(n + 1, |v| v.start);
         let end = u.end.min(next - 1).max(u.start);
         let src: String = lines[u.start - 1..end].concat();
         // After the block: blank lines are its tail; anything else (link reference
@@ -90,7 +90,7 @@ pub(crate) fn import(md: &str) -> Result<Imported, DocError> {
             j += 1;
         }
         let mut b = Block::new(u.kind.clone(), u.runs.clone())?;
-        b.lead = u.lead.clone();
+        b.lead.clone_from(&u.lead);
         b.src = src;
         b.tail = tail;
         b.fp = b.fingerprint()?;
@@ -130,6 +130,7 @@ fn raw_block(lines: &[&str], from: usize, mut to: usize) -> Result<Block, DocErr
 
 /// Source text as a block's text: line breaks inside a block are U+2028, so one block is
 /// always one paragraph in the editor.
+#[must_use]
 pub fn block_text(src: &str) -> String {
     src.strip_suffix('\n')
         .unwrap_or(src)
@@ -169,45 +170,19 @@ fn lead_of(lines: &[&str], line: usize, col: usize) -> String {
     }
 }
 
-fn top_level<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<Unit>, indent: u32) {
+fn top_level<'a>(
+    node: &'a AstNode<'a>,
+    lines: &[&str],
+    out: &mut Vec<Unit>,
+    indent: u32,
+) -> Result<(), DocError> {
     let value = node.data.borrow().value.clone();
     let (s, e, _) = sp(node);
     if s == 0 {
-        return;
+        return Ok(());
     }
     match value {
-        NodeValue::Paragraph => {
-            // A paragraph that is only an image is an image block.
-            let kids: Vec<_> = node.children().collect();
-            if kids.len() == 1 {
-                if let NodeValue::Image(link) = &kids[0].data.borrow().value {
-                    if let Some(alt) = plain_text(kids[0]) {
-                        out.push(Unit {
-                            start: s,
-                            end: e,
-                            kind: Kind::Image {
-                                url: link.url.clone(),
-                                alt,
-                                title: link.title.clone(),
-                            },
-                            runs: vec![],
-                            lead: String::new(),
-                        });
-                        return;
-                    }
-                }
-            }
-            match inlines(node) {
-                Some(runs) => out.push(Unit {
-                    start: s,
-                    end: e,
-                    kind: Kind::Paragraph,
-                    runs,
-                    lead: String::new(),
-                }),
-                None => out.push(raw_unit(node, lines)),
-            }
-        }
+        NodeValue::Paragraph => paragraph(node, lines, out),
         NodeValue::Heading(h) => match inlines(node) {
             Some(runs) => {
                 let lead = if h.setext {
@@ -228,7 +203,7 @@ fn top_level<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<Unit>, ind
                     start: s,
                     end: e,
                     kind: Kind::Heading {
-                        level: h.level as u32,
+                        level: u32::from(h.level),
                         setext: h.setext,
                     },
                     runs,
@@ -256,14 +231,21 @@ fn top_level<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<Unit>, ind
                         kind: Kind::Quote,
                         runs,
                         lead,
-                    })
+                    });
                 }
                 _ => out.push(raw_unit(node, lines)),
             }
         }
         NodeValue::List(list) => {
-            for (number, item) in (list.start as u32..).zip(node.children()) {
-                list_item(item, lines, out, indent, list.list_type, number);
+            for (offset, item) in node.children().enumerate() {
+                let number = list
+                    .start
+                    .checked_add(offset)
+                    .and_then(|number| u32::try_from(number).ok())
+                    .ok_or_else(|| {
+                        DocError("Markdown list ordinal exceeds the supported range".into())
+                    })?;
+                list_item(item, lines, out, indent, list.list_type, number)?;
             }
         }
         NodeValue::CodeBlock(cb) => {
@@ -291,6 +273,42 @@ fn top_level<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<Unit>, ind
         }),
         _ => out.push(raw_unit(node, lines)),
     }
+    Ok(())
+}
+
+fn paragraph<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<Unit>) {
+    let (s, e, _) = sp(node);
+
+    // A paragraph that is only an image is an image block.
+    let kids: Vec<_> = node.children().collect();
+    if kids.len() == 1 {
+        if let NodeValue::Image(link) = &kids[0].data.borrow().value {
+            if let Some(alt) = plain_text(kids[0]) {
+                out.push(Unit {
+                    start: s,
+                    end: e,
+                    kind: Kind::Image {
+                        url: link.url.clone(),
+                        alt,
+                        title: link.title.clone(),
+                    },
+                    runs: vec![],
+                    lead: String::new(),
+                });
+                return;
+            }
+        }
+    }
+    match inlines(node) {
+        Some(runs) => out.push(Unit {
+            start: s,
+            end: e,
+            kind: Kind::Paragraph,
+            runs,
+            lead: String::new(),
+        }),
+        None => out.push(raw_unit(node, lines)),
+    }
 }
 
 fn list_item<'a>(
@@ -300,7 +318,7 @@ fn list_item<'a>(
     indent: u32,
     list_type: ListType,
     number: u32,
-) {
+) -> Result<(), DocError> {
     let value = item.data.borrow().value.clone();
     let (s, e, _) = sp(item);
     let checked = match &value {
@@ -308,7 +326,7 @@ fn list_item<'a>(
         NodeValue::Item(_) => None,
         _ => {
             out.push(raw_unit(item, lines));
-            return;
+            return Ok(());
         }
     };
     let kids: Vec<_> = item.children().collect();
@@ -328,7 +346,7 @@ fn list_item<'a>(
         let mut u = raw_unit(item, lines);
         u.end = e.max(s);
         out.push(u);
-        return;
+        return Ok(());
     };
     let (own_end, lead) = match first {
         Some(p) => {
@@ -358,8 +376,16 @@ fn list_item<'a>(
         lead,
     });
     for k in rest {
-        top_level(k, lines, out, indent + 1);
+        top_level(
+            k,
+            lines,
+            out,
+            indent.checked_add(1).ok_or_else(|| {
+                DocError("Markdown list nesting exceeds the supported range".into())
+            })?,
+        )?;
     }
+    Ok(())
 }
 
 /// The text of an image's alt, or `None` if it has formatting we would lose.
@@ -442,7 +468,7 @@ fn walk<'a>(node: &'a AstNode<'a>, attrs: &Attrs, out: &mut Vec<Run>) -> Option<
                         ..attrs.clone()
                     },
                     out,
-                )?
+                )?;
             }
             _ => return None,
         }

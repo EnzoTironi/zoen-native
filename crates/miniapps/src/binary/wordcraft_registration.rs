@@ -1,4 +1,4 @@
-//! Explicit build configuration gates the real, pinned WordCraft editor package.
+//! Explicit build configuration gates the real, pinned `WordCraft` editor package.
 use super::{
     resource::{self, RuntimePins},
     Format,
@@ -26,6 +26,7 @@ const PINS: RuntimePins = RuntimePins {
     wasm_bytes: 46_665_221,
     wasm_sha: "e6d3d62dab284167e2dd1bf19de568420c89efb52128793d28550a10306f6c29",
 };
+#[must_use]
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Wordcraft, &PINS, html, manifest)
 }
@@ -33,6 +34,8 @@ pub fn available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
     *AVAILABLE.get_or_init(|| valid_resource(HTML, MANIFEST) && Document::parse(EMPTY).is_ok())
 }
+/// # Errors
+/// Refuses invalid, unsupported or oversized initialization arguments before producing canonical state.
 pub fn create(args: &Value) -> Result<(String, Value), String> {
     let title = args
         .get("title")
@@ -58,6 +61,7 @@ pub fn create(args: &Value) -> Result<(String, Value), String> {
         .map_err(|_| "Invalid initial document metadata")?;
     Ok((title.into(), metadata))
 }
+#[must_use]
 pub fn spec() -> Option<AppSpec> {
     if !available() {
         return None;

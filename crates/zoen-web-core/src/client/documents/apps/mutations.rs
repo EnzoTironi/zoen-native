@@ -1,7 +1,51 @@
 //! Implementation within the existing browser client authority.
-use super::*;
+use super::{
+    browser_id, compact, dto, fingerprint, hash, invalid, media, stale, storage, t, unavailable,
+    valid_hash, valid_id, AppDoc, BTreeSet, Capability, Client, CopyReceipt, EventBody, Grant,
+    GrantScope, ItemContent, ItemKind, Receipt, Role, Scene, Signer, TrustLevel, Value,
+    MAX_RECEIPTS, MAX_SCENE_BYTES, MIME,
+};
+
+fn validate_save_receipts(receipts: &[Receipt]) -> Result<(), String> {
+    let mut ids = BTreeSet::new();
+    if receipts.len() > MAX_RECEIPTS
+        || receipts.iter().any(|r| {
+            !ids.insert(&r.id)
+                || !valid_id(&r.id)
+                || !valid_hash(&r.fingerprint)
+                || !valid_hash(&r.sha256)
+                || r.version == 0
+        })
+    {
+        return Err(storage());
+    }
+    Ok(())
+}
 
 impl<S: Signer> Client<S> {
+    fn drawing_write_allowed(&self, item: &super::Item, now: i64) -> Result<(), String> {
+        if self
+            .roster(&item.space)
+            .get(&self.account.identity)
+            .is_none_or(|role| *role == Role::Reader)
+        {
+            return Err(unavailable());
+        }
+        let trust = self
+            .active_app_grants(&item.id, now)?
+            .into_iter()
+            .rev()
+            .find_map(|grant| match grant.capability {
+                Capability::Trust(level) => Some(level),
+                _ => None,
+            })
+            .unwrap_or(TrustLevel::Listen);
+        if trust < TrustLevel::Act {
+            return Err(unavailable());
+        }
+        Ok(())
+    }
+
     pub(super) fn save_drawing(
         &mut self,
         id: &str,
@@ -19,7 +63,8 @@ impl<S: Signer> Client<S> {
             return Err(invalid());
         }
         let (item, app) = self.drawing_scope(id)?;
-        let current_version = item.versions.len() as u32;
+        let current_version =
+            u32::try_from(item.versions.len()).map_err(|_| "document version limit exceeded")?;
         let sha = hash(text.as_bytes());
         let fp = fingerprint(&(
             &self.account.identity,
@@ -38,18 +83,7 @@ impl<S: Signer> Client<S> {
             .get(&key)
             .cloned()
             .unwrap_or_default();
-        let mut ids = BTreeSet::new();
-        if receipts.len() > MAX_RECEIPTS
-            || receipts.iter().any(|r| {
-                !ids.insert(&r.id)
-                    || !valid_id(&r.id)
-                    || !valid_hash(&r.fingerprint)
-                    || !valid_hash(&r.sha256)
-                    || r.version == 0
-            })
-        {
-            return Err(storage());
-        }
+        validate_save_receipts(&receipts)?;
         if let Some(receipt) = receipts.iter().find(|r| r.id == mutation) {
             if receipt.fingerprint != fp {
                 return Err(invalid());
@@ -66,25 +100,7 @@ impl<S: Signer> Client<S> {
         }
         // A no-op save records an immutable receipt without requiring a new MLS
         // encryption. Actual version publication still passes drawing_batch's epoch gate.
-        if !self
-            .roster(&item.space)
-            .get(&self.account.identity)
-            .is_some_and(|role| *role != Role::Reader)
-        {
-            return Err(unavailable());
-        }
-        let trust = self
-            .active_app_grants(id, now)?
-            .into_iter()
-            .rev()
-            .find_map(|grant| match grant.capability {
-                Capability::Trust(level) => Some(level),
-                _ => None,
-            })
-            .unwrap_or(TrustLevel::Listen);
-        if trust < TrustLevel::Act {
-            return Err(unavailable());
-        }
+        self.drawing_write_allowed(&item, now)?;
         let current = app.document.as_ref().ok_or_else(invalid)?;
         if expected != current_version || expected_sha != current.sha256 {
             return Err(stale());
@@ -118,7 +134,7 @@ impl<S: Signer> Client<S> {
                 &uploads,
                 now,
             )?;
-            self.cache_drawing(sealed, text);
+            self.cache_drawing(sealed, text)?;
             next_version
         };
         receipts.push(Receipt {
@@ -184,7 +200,7 @@ impl<S: Signer> Client<S> {
             &uploads,
             now,
         )?;
-        self.cache_drawing(sealed, text);
+        self.cache_drawing(sealed, text)?;
         Ok(())
     }
 
@@ -231,7 +247,8 @@ impl<S: Signer> Client<S> {
             let file = accepted
                 .versions
                 .first()
-                .and_then(|version| version.content.owned_file())
+                .content
+                .owned_file()
                 .ok_or_else(storage)?;
             if accepted.space != item.space || file.sha256 != sha || file.sha256 != receipt.sha256 {
                 return Err(storage());
@@ -239,7 +256,8 @@ impl<S: Signer> Client<S> {
             return Ok(dto(
                 &receipt.item_id,
                 1,
-                accepted.versions.len() as u32,
+                u32::try_from(accepted.versions.len())
+                    .map_err(|_| "document version limit exceeded")?,
                 &sha,
                 text,
             ));

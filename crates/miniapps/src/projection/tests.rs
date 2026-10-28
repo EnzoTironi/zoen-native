@@ -48,7 +48,7 @@ fn countdown_preserves_exact_days_across_the_entire_signed_clock_range() {
     let state = json!({"title": "Clock range", "target": i64::MAX});
     let (line, metrics) = headline("countdown", &state, i64::MIN);
     assert!(line.contains("213503982334"), "{line}");
-    assert!(metrics.is_empty());
+    assert_eq!(metrics, []);
     let (expired, _) = headline("countdown", &json!({"target": i64::MIN}), i64::MAX);
     assert!(expired.contains('0'), "{expired}");
 }

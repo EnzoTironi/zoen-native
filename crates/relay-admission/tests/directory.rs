@@ -104,8 +104,8 @@ fn native_person_normalization_hides_private_profile_fields_and_refuses_other_id
     let p = profile(id.clone());
     let normalized = directory::prepare_profile(p.clone(), &id).unwrap();
     assert_eq!(normalized.handle, "zoen.test");
-    assert!(normalized.name.is_empty());
-    assert!(normalized.bio.is_empty());
+    assert_eq!(normalized.name.len(), 0);
+    assert_eq!(normalized.bio.len(), 0);
     assert_eq!(normalized.tint_hex, p.tint_hex);
     assert!(directory::prepare_profile(p, "other").is_err());
     let mut bad = profile(id.clone());

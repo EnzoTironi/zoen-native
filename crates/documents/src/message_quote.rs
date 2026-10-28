@@ -59,6 +59,46 @@ pub fn validate(md: &str, spans: &[(u32, u32)], excerpt: &str) -> Result<(), Doc
     }
     let first = ranges[0].0;
     let last = ranges[ranges.len() - 1].1;
+    let LiteralRanges { leaves, blocked } = literal_ranges(md);
+    if blocked.iter().any(|&(a, b)| a < last && b > first) {
+        return Err(invalid());
+    }
+    // Every selected byte must come from an actual literal leaf; every intervening
+    // visible leaf must be fully represented. Absolute ranges disambiguate repetitions.
+    for &(a, b) in &ranges {
+        if !leaves.iter().any(|&(x, y)| x <= a && b <= y) {
+            return Err(invalid());
+        }
+    }
+    for &(a, b) in &leaves {
+        let a = a.max(first);
+        let b = b.min(last);
+        if a < b {
+            let covered: usize = ranges
+                .iter()
+                .map(|&(x, y)| y.min(b).saturating_sub(x.max(a)))
+                .sum();
+            if covered != b - a {
+                return Err(invalid());
+            }
+        }
+    }
+    // The viewer synthesizes block separators and normalizes soft breaks; do not
+    // pretend those characters have literal source anchors.
+    if md
+        .get(first..last)
+        .is_none_or(|s| s.contains('\n') || s.contains('\r'))
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+struct LiteralRanges {
+    leaves: Vec<(usize, usize)>,
+    blocked: Vec<(usize, usize)>,
+}
+fn literal_ranges(md: &str) -> LiteralRanges {
     let lines: Vec<_> = std::iter::once(0)
         .chain(md.match_indices('\n').map(|(i, _)| i + 1))
         .collect();
@@ -117,38 +157,7 @@ pub fn validate(md: &str, spans: &[(u32, u32)], excerpt: &str) -> Result<(), Doc
             }
         }
     }
-    if blocked.iter().any(|&(a, b)| a < last && b > first) {
-        return Err(invalid());
-    }
-    // Every selected byte must come from an actual literal leaf; every intervening
-    // visible leaf must be fully represented. Absolute ranges disambiguate repetitions.
-    for &(a, b) in &ranges {
-        if !leaves.iter().any(|&(x, y)| x <= a && b <= y) {
-            return Err(invalid());
-        }
-    }
-    for &(a, b) in &leaves {
-        let a = a.max(first);
-        let b = b.min(last);
-        if a < b {
-            let covered: usize = ranges
-                .iter()
-                .map(|&(x, y)| y.min(b).saturating_sub(x.max(a)))
-                .sum();
-            if covered != b - a {
-                return Err(invalid());
-            }
-        }
-    }
-    // The viewer synthesizes block separators and normalizes soft breaks; do not
-    // pretend those characters have literal source anchors.
-    if md
-        .get(first..last)
-        .is_none_or(|s| s.contains('\n') || s.contains('\r'))
-    {
-        return Err(invalid());
-    }
-    Ok(())
+    LiteralRanges { leaves, blocked }
 }
 
 #[cfg(test)]

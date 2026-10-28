@@ -1,23 +1,37 @@
 //! Document pages on the existing signed client and encrypted journal.
 use super::*;
 
+fn page_edit_context(item: &Item, context: &str) -> Result<Context, String> {
+    let raw = context
+        .strip_prefix("web-page-v1:")
+        .ok_or("Contexto de edição inválido.")?;
+    let decoded: Context =
+        serde_json::from_slice(&BASE64.decode(raw).map_err(error)?).map_err(error)?;
+    if decoded.item != item.id
+        || decoded.space != item.space
+        || decoded.origin != item.origin_hash()
+    {
+        return Err("A edição pertence a outra página.".into());
+    }
+    Ok(decoded)
+}
+
 impl<S: Signer> Client<S> {
     pub(super) fn create_page(
         &mut self,
         space: &str,
         path: &str,
-        page: Page,
+        page: &Page,
         origin: &str,
         now: i64,
     ) -> Result<String, String> {
         let mut title = page.title();
         if title.is_empty() {
-            title = path
-                .rsplit('/')
+            path.rsplit('/')
                 .next()
                 .unwrap_or("")
                 .trim_end_matches(".md")
-                .to_owned();
+                .clone_into(&mut title);
         }
         if title.is_empty() {
             title = t("Sem título", "Untitled");
@@ -26,7 +40,7 @@ impl<S: Signer> Client<S> {
         let item = browser_id("it", now)?;
         self.queue_domain_body(
             space,
-            EventBody::ItemCreated {
+            &EventBody::ItemCreated {
                 item: item.clone(),
                 kind: ItemKind::Page,
                 content: ItemContent::Page(content),
@@ -50,17 +64,7 @@ impl<S: Signer> Client<S> {
         if mutation.trim().is_empty() || mutation.len() > 256 || context.len() > 2 << 20 {
             return Err("Identificação de edição inválida.".into());
         }
-        let raw = context
-            .strip_prefix("web-page-v1:")
-            .ok_or("Contexto de edição inválido.")?;
-        let decoded: Context =
-            serde_json::from_slice(&BASE64.decode(raw).map_err(error)?).map_err(error)?;
-        if decoded.item != item.id
-            || decoded.space != item.space
-            || decoded.origin != item.origin_hash()
-        {
-            return Err("A edição pertence a outra página.".into());
-        }
+        let decoded = page_edit_context(item, context)?;
         let request_hash =
             hash(serde_json::to_vec(&(mutation, context, order, changed)).map_err(error)?);
         let read = self.read_page(item, true)?;
@@ -79,7 +83,7 @@ impl<S: Signer> Client<S> {
             }
             return Ok(
                 json!({ "mutation_hash": request_hash, "mutation_id": mutation, "applied_content_hash": receipt.content_hash,
-                "replayed": true, "applied_edit_context": self.page_context(item, receipt.frontiers.clone())?, "page": self.page_value(item, &read, false)? }),
+                "replayed": true, "applied_edit_context": Self::page_context(item, receipt.frontiers.clone())?, "page": self.page_value(item, &read, false)? }),
             );
         }
         let revision = Frontiers::decode(&decoded.frontiers).map_err(error)?;
@@ -137,8 +141,8 @@ impl<S: Signer> Client<S> {
                 .get(&item.id)
                 .map_or(0, |draft| draft.receipts.len()),
         };
-        let applied_context = self.page_context(item, receipt.frontiers.clone())?;
-        let content_hash = receipt.content_hash.clone();
+        let applied_context = Self::page_context(item, receipt.frontiers.clone())?;
+        let applied_hash = receipt.content_hash.clone();
         let draft = self
             .saved
             .documents
@@ -152,7 +156,7 @@ impl<S: Signer> Client<S> {
         draft.snapshot = read.live.snapshot();
         draft.receipts.insert(mutation.into(), receipt);
         Ok(
-            json!({ "mutation_hash": request_hash, "mutation_id": mutation, "applied_content_hash": content_hash,
+            json!({ "mutation_hash": request_hash, "mutation_id": mutation, "applied_content_hash": applied_hash,
             "replayed": false, "applied_edit_context": applied_context, "page": self.page_value(item, &read, false)? }),
         )
     }
@@ -179,7 +183,7 @@ impl<S: Signer> Client<S> {
         {
             return Ok(false);
         }
-        let path = match &item.versions[0].content {
+        let path = match &item.versions.first().content {
             ItemContent::Page(content) => content.path.clone(),
             _ => String::new(),
         };
@@ -192,7 +196,7 @@ impl<S: Signer> Client<S> {
             self.page_content(title, path, read.live.updates_since(&read.shadow.version()))?;
         self.queue_domain_body(
             &item.space,
-            EventBody::ItemVersioned {
+            &EventBody::ItemVersioned {
                 item: item.id.clone(),
                 content: ItemContent::Page(content),
                 note: if note.trim().is_empty() {

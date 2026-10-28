@@ -13,6 +13,7 @@ pub struct Genesis {
     pub certificate: String,
 }
 impl Genesis {
+    #[must_use]
     pub fn from_envelope(env: &Envelope) -> Self {
         Self {
             content: env.content().to_vec(),
@@ -20,6 +21,7 @@ impl Genesis {
             certificate: env.cert.clone().unwrap_or_default(),
         }
     }
+    #[must_use]
     pub fn envelope(&self) -> Option<Envelope> {
         if self.content.len() > 4096
             || self.signature.len() > 256
@@ -52,6 +54,7 @@ pub struct Receipt {
     pub hash: String,
 }
 impl Receipt {
+    #[must_use]
     pub fn from_sequenced(event: &Sequenced) -> Self {
         Self {
             genesis: Some(Genesis::from_envelope(&event.env)),
@@ -60,6 +63,7 @@ impl Receipt {
             hash: event.hash.clone(),
         }
     }
+    #[must_use]
     pub fn sequenced(&self) -> Option<Sequenced> {
         (self.seq == 0).then_some(())?;
         Some(Sequenced {
@@ -111,7 +115,7 @@ mod tests {
             seq: event.seq,
             prev: event.prev.clone(),
             hash: event.hash.clone(),
-            env: env.clone(),
+            env,
         };
         let receipt = Receipt::from_sequenced(&canonical);
         assert_eq!(receipt.sequenced(), Some(canonical));

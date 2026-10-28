@@ -72,6 +72,8 @@ pub enum Effect {
     Nothing,
 }
 
+/// # Errors
+/// Refuses unsupported capacity, unauthorized membership/write effects, privacy violations, stale MLS handshakes or inconsistent signed history.
 pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     if f.member_count > MAX_MEMBERS {
         return Err(Reject::no("space exceeds the supported member limit"));
@@ -108,69 +110,7 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
             return Err(Reject::no("space already exists"));
         }
         (Some(_), Some(EventBody::MemberAdded { identity, role })) => {
-            if !identity_key(&identity) {
-                return Err(Reject::no("not an identity key"));
-            }
-            if f.target_role.is_none() && f.member_count >= MAX_MEMBERS {
-                return Err(Reject::no("space member limit reached"));
-            }
-            if !f.target_known {
-                return Err(Reject::no("that person isn't on Zoen yet"));
-            }
-            if identity == author {
-                let Some((space, granted)) = &f.invite else {
-                    return Err(Reject::no(if env.invite.is_some() {
-                        "invite expired or already used"
-                    } else {
-                        "joining needs an invite"
-                    }));
-                };
-                if space != env.space() {
-                    return Err(Reject::no("invite is for another space"));
-                }
-                if role < *granted {
-                    return Err(Reject::no("invite doesn't grant that role"));
-                }
-                if f.author_role.is_some() {
-                    return Err(Reject::no("already a member"));
-                }
-                Effect::Add {
-                    identity,
-                    role,
-                    by_invite: true,
-                }
-            } else {
-                if f.target_removed_at
-                    .into_iter()
-                    .chain(f.author_removed_at)
-                    .any(|removed| env.seen().is_none_or(|seen| seen.seq < removed))
-                {
-                    return Err(Reject::no(
-                        "member was removed after this membership review",
-                    ));
-                }
-                if !f
-                    .author_role
-                    .is_some_and(|actor| actor.can_assign(f.target_role, role))
-                {
-                    return Err(Reject::no(if f.target_role == Some(Role::Owner) {
-                        "owner role is protected"
-                    } else {
-                        "only owners and admins add members"
-                    }));
-                }
-                if f.kind == Some(SpaceKind::Direct)
-                    && f.member_count >= 2
-                    && f.target_role.is_none()
-                {
-                    return Err(Reject::no("a direct chat has two people"));
-                }
-                Effect::Add {
-                    identity,
-                    role,
-                    by_invite: false,
-                }
-            }
+            admit_member_add(env, f, identity, role)?
         }
         (Some(_), Some(EventBody::MemberRemoved { identity })) => {
             if !identity_key(&identity) {
@@ -248,6 +188,78 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     Ok(effect)
 }
 
+fn admit_member_add(
+    env: &Envelope,
+    f: &Facts,
+    identity: String,
+    role: Role,
+) -> Result<Effect, Reject> {
+    let author = env.author();
+    Ok({
+        if !identity_key(&identity) {
+            return Err(Reject::no("not an identity key"));
+        }
+        if f.target_role.is_none() && f.member_count >= MAX_MEMBERS {
+            return Err(Reject::no("space member limit reached"));
+        }
+        if !f.target_known {
+            return Err(Reject::no("that person isn't on Zoen yet"));
+        }
+        if identity == author {
+            let Some((space, granted)) = &f.invite else {
+                return Err(Reject::no(if env.invite.is_some() {
+                    "invite expired or already used"
+                } else {
+                    "joining needs an invite"
+                }));
+            };
+            if space != env.space() {
+                return Err(Reject::no("invite is for another space"));
+            }
+            if role < *granted {
+                return Err(Reject::no("invite doesn't grant that role"));
+            }
+            if f.author_role.is_some() {
+                return Err(Reject::no("already a member"));
+            }
+            Effect::Add {
+                identity,
+                role,
+                by_invite: true,
+            }
+        } else {
+            if f.target_removed_at
+                .into_iter()
+                .chain(f.author_removed_at)
+                .any(|removed| env.seen().is_none_or(|seen| seen.seq < removed))
+            {
+                return Err(Reject::no(
+                    "member was removed after this membership review",
+                ));
+            }
+            if !f
+                .author_role
+                .is_some_and(|actor| actor.can_assign(f.target_role, role))
+            {
+                return Err(Reject::no(if f.target_role == Some(Role::Owner) {
+                    "owner role is protected"
+                } else {
+                    "only owners and admins add members"
+                }));
+            }
+            if f.kind == Some(SpaceKind::Direct) && f.member_count >= 2 && f.target_role.is_none() {
+                return Err(Reject::no("a direct chat has two people"));
+            }
+            Effect::Add {
+                identity,
+                role,
+                by_invite: false,
+            }
+        }
+    })
+}
+
+#[must_use]
 pub fn identity_key(identity: &str) -> bool {
     identity.len() == 64 && identity.bytes().all(|b| b.is_ascii_hexdigit())
 }
@@ -290,7 +302,7 @@ fn check_handshake(env: &Envelope, f: &Facts) -> Result<Option<Effect>, Reject> 
             Some((_, by)) if *by == device => Ok(None),
             _ => Err(Reject::no("a welcome follows its own commit")),
         },
-        _ => Ok(None),
+        SealedKind::Unspecified => Ok(None),
     }
 }
 
@@ -303,27 +315,35 @@ fn check_privacy(
     privacy: Option<Privacy>,
 ) -> Result<(), Reject> {
     let e2e = privacy == Some(Privacy::EndToEnd);
-    match (env.sealed_kind(), body) {
-        (Some(SealedKind::Unspecified), _) => Err(Reject::no("sealed event of an unknown kind")),
-        (Some(_), _) if !e2e => Err(Reject::no("only end-to-end spaces take sealed events")),
-        (Some(_), _) => Ok(()),
-        (None, Some(EventBody::Checkpoint { .. })) if !e2e => {
-            Err(Reject::no("checkpoints are for end-to-end spaces"))
-        }
-        (
-            None,
-            Some(
-                EventBody::MemberAdded { .. }
+    let sealed = env.sealed_kind();
+    if sealed == Some(SealedKind::Unspecified) {
+        return Err(Reject::no("sealed event of an unknown kind"));
+    }
+    if sealed.is_some() {
+        return if e2e {
+            Ok(())
+        } else {
+            Err(Reject::no("only end-to-end spaces take sealed events"))
+        };
+    }
+    if matches!(body, Some(EventBody::Checkpoint { .. })) && !e2e {
+        return Err(Reject::no("checkpoints are for end-to-end spaces"));
+    }
+    let clear_control = matches!(
+        body,
+        Some(
+            EventBody::MemberAdded { .. }
                 | EventBody::MemberRemoved { .. }
                 | EventBody::ProfileKeyShared { .. }
                 | EventBody::SpaceEncrypted
                 | EventBody::Checkpoint { .. }
-                | EventBody::DeviceJoining { .. },
-            ),
-        ) => Ok(()),
-        (None, _) if e2e => Err(Reject::no(protocol::SEAL_REQUIRED)),
-        (None, _) => Ok(()),
+                | EventBody::DeviceJoining { .. }
+        )
+    );
+    if e2e && !clear_control {
+        return Err(Reject::no(protocol::SEAL_REQUIRED));
     }
+    Ok(())
 }
 
 fn check_causal_link(env: &Envelope, f: &Facts, effect: &Effect) -> Result<(), Reject> {

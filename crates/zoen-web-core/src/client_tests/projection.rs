@@ -1,6 +1,70 @@
 //! Original whole test bodies, called by their unchanged registered facade.
 use super::*;
 
+fn append_personal_preference_evidence(
+    client: &mut Client<HostSigner>,
+    author: &Author,
+    other: &Author,
+    chat_space: &str,
+    prefs: &types::ChatPrefs,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut personal = SpaceLog::new("sp_my_personal");
+    clear(
+        &mut personal,
+        author,
+        EventBody::SpaceCreated {
+            title: "Personal".into(),
+            kind: SpaceKind::Personal,
+            privacy: Privacy::EndToEnd,
+        },
+        4,
+    )?;
+    clear(
+        &mut personal,
+        author,
+        EventBody::ChatPrefsSet {
+            space: chat_space.into(),
+            prefs: prefs.clone(),
+            operation: None,
+        },
+        5,
+    )?;
+    clear(
+        &mut personal,
+        other,
+        EventBody::ChatPrefsSet {
+            space: chat_space.into(),
+            prefs: types::ChatPrefs::default(),
+            operation: None,
+        },
+        6,
+    )?;
+    client.logs.insert(personal.space().into(), personal);
+    let mut impostor = SpaceLog::new("sp_someone_elses_personal");
+    clear(
+        &mut impostor,
+        other,
+        EventBody::SpaceCreated {
+            title: "Other".into(),
+            kind: SpaceKind::Personal,
+            privacy: Privacy::EndToEnd,
+        },
+        7,
+    )?;
+    clear(
+        &mut impostor,
+        author,
+        EventBody::ChatPrefsSet {
+            space: chat_space.into(),
+            prefs: types::ChatPrefs::default(),
+            operation: None,
+        },
+        8,
+    )?;
+    client.logs.insert(impostor.space().into(), impostor);
+    Ok(())
+}
+
 pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_preferences(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut client, author, other, mut chat, _) = web_fixture()?;
@@ -19,56 +83,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
         archived: true,
         muted_until_ms: Some(i64::MAX),
     };
-    let body = || EventBody::ChatPrefsSet {
-        space: chat.space().into(),
-        prefs: prefs.clone(),
-        operation: None,
-    };
-    let mut personal = SpaceLog::new("sp_my_personal");
-    clear(
-        &mut personal,
-        &author,
-        EventBody::SpaceCreated {
-            title: "Personal".into(),
-            kind: SpaceKind::Personal,
-            privacy: Privacy::EndToEnd,
-        },
-        4,
-    )?;
-    clear(&mut personal, &author, body(), 5)?;
-    clear(
-        &mut personal,
-        &other,
-        EventBody::ChatPrefsSet {
-            space: chat.space().into(),
-            prefs: Default::default(),
-            operation: None,
-        },
-        6,
-    )?;
-    client.logs.insert(personal.space().into(), personal);
-    let mut impostor = SpaceLog::new("sp_someone_elses_personal");
-    clear(
-        &mut impostor,
-        &other,
-        EventBody::SpaceCreated {
-            title: "Other".into(),
-            kind: SpaceKind::Personal,
-            privacy: Privacy::EndToEnd,
-        },
-        7,
-    )?;
-    clear(
-        &mut impostor,
-        &author,
-        EventBody::ChatPrefsSet {
-            space: chat.space().into(),
-            prefs: Default::default(),
-            operation: None,
-        },
-        8,
-    )?;
-    client.logs.insert(impostor.space().into(), impostor);
+    append_personal_preference_evidence(&mut client, &author, &other, chat.space(), &prefs)?;
     let profile = Identity {
         id: other.identity.clone(),
         kind: types::IdentityKind::Agent,
@@ -112,7 +127,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
         &author,
         EventBody::ChatPrefsSet {
             space: chat_id,
-            prefs: Default::default(),
+            prefs: types::ChatPrefs::default(),
             operation: None,
         },
         9,
@@ -137,7 +152,7 @@ pub(super) fn conversation_metadata_comes_from_logs_and_only_my_personal_log_con
             .conversations()
             .into_iter()
             .find(|chat| chat.id == space)
-            .unwrap();
+            .ok_or("missing authenticated test find value")?;
         assert_eq!(projected.privacy, privacy);
         assert!(!projected.prefs.pinned);
     }
@@ -183,7 +198,7 @@ pub(super) fn web_reaction_participants_replace_remove_and_ignore_invalid_reacti
     assert!(client
         .queue_annotation("sp_web_receipts", &target, react("👍"), 90)
         .err()
-        .unwrap()
+        .ok_or("missing authenticated test err value")?
         .contains("no longer available"));
     Ok(())
 }
@@ -201,7 +216,7 @@ pub(super) fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_en
                 90
             )
             .err()
-            .unwrap()
+            .ok_or("missing authenticated test err value")?
             .contains("32 bytes"));
     }
     Ok(())
@@ -222,9 +237,7 @@ pub(super) fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven
         bio: "Private directory text".into(),
         owner_proof: None,
     };
-    let cached = client
-        .directory_profiles(&serde_json::to_string(&vec![record.clone()]).unwrap())
-        .unwrap();
+    let cached = client.directory_profiles(&serde_json::to_string(&vec![record.clone()])?)?;
     assert_eq!(cached.result[0]["name"], "@person");
     assert_eq!(cached.result[0]["bio"], "");
     let agent = NativeSigner::from_secret(&[82; 32]);
@@ -233,16 +246,13 @@ pub(super) fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven
     record.name = "Verified agent".into();
     record.owner = Some(owner.identity.clone());
     // Public ownership metadata without the certified device proof has no authority.
-    client
-        .directory_profiles(&serde_json::to_string(&vec![record.clone()]).unwrap())
-        .unwrap();
+    client.directory_profiles(&serde_json::to_string(&vec![record.clone()])?)?;
     assert!(!client.saved.profiles.contains_key(&agent.id()));
     record.owner_proof = Some(Box::new(
-        event_log::agent_owner::authorize(&owner, &agent.id()).unwrap(),
+        event_log::agent_owner::authorize(&owner, &agent.id())
+            .ok_or("authenticated test cryptographic evidence missing")?,
     ));
-    client
-        .directory_profiles(&serde_json::to_string(&vec![record.clone()]).unwrap())
-        .unwrap();
+    client.directory_profiles(&serde_json::to_string(&vec![record.clone()])?)?;
     assert_eq!(
         client.saved.profiles[&agent.id()].owner.as_deref(),
         Some(owner.identity.as_str())
@@ -253,11 +263,10 @@ pub(super) fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven
     );
     record.owner = Some(other.identity.clone());
     record.owner_proof = Some(Box::new(
-        event_log::agent_owner::authorize(&other, &agent.id()).unwrap(),
+        event_log::agent_owner::authorize(&other, &agent.id())
+            .ok_or("authenticated test cryptographic evidence missing")?,
     ));
-    client
-        .directory_profiles(&serde_json::to_string(&vec![record]).unwrap())
-        .unwrap();
+    client.directory_profiles(&serde_json::to_string(&vec![record])?)?;
     assert_eq!(
         client.saved.profiles[&agent.id()].owner.as_deref(),
         Some(owner.identity.as_str())
@@ -268,24 +277,26 @@ pub(super) fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven
 pub(super) fn browser_typing_is_connection_local_and_requires_a_current_writing_member(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (mut client, author, mut log) = document_fixture()?;
-    let before = serde_json::to_string(&client.saved).unwrap();
+    let before = serde_json::to_string(&client.saved)?;
     assert!(matches!(
-        ClientFrame::decode(&client.typing_frame(log.space(), true).unwrap()).unwrap(),
+        ClientFrame::decode(&client.typing_frame(log.space(), true)?)
+            .map_err(|error| error.to_string())?,
         ClientFrame::Ephemeral {
             kind: protocol::EphemeralKind::Typing,
             ..
         }
     ));
     assert!(matches!(
-        ClientFrame::decode(&client.typing_frame(log.space(), false).unwrap()).unwrap(),
+        ClientFrame::decode(&client.typing_frame(log.space(), false)?)
+            .map_err(|error| error.to_string())?,
         ClientFrame::Ephemeral {
             kind: protocol::EphemeralKind::StoppedTyping,
             ..
         }
     ));
-    assert_eq!(serde_json::to_string(&client.saved).unwrap(), before);
+    assert_eq!(serde_json::to_string(&client.saved)?, before);
     client.synced = false;
-    assert!(client.typing_frame(log.space(), true).unwrap().is_empty());
+    assert_eq!(client.typing_frame(log.space(), true)?, Vec::<u8>::new());
     client.synced = true;
     let reader = clear(
         &mut log,
@@ -296,7 +307,7 @@ pub(super) fn browser_typing_is_connection_local_and_requires_a_current_writing_
         },
         10,
     )?;
-    client.receive(&reader, 11).unwrap();
-    assert!(client.typing_frame(log.space(), true).unwrap().is_empty());
+    client.receive(&reader, 11)?;
+    assert_eq!(client.typing_frame(log.space(), true)?, Vec::<u8>::new());
     Ok(())
 }

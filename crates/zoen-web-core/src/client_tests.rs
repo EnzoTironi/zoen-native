@@ -69,8 +69,7 @@ pub(super) fn sequence(
         0,
         String::new(),
         String::new(),
-    )
-    .unwrap();
+    )?;
     let event = log.sequence(outer)?;
     Ok(ServerFrame::Event {
         ev: Sequenced {
@@ -109,7 +108,8 @@ fn sealed(
     );
     sequence(
         log,
-        Envelope::new(content, sig, author.cert.clone(), None).unwrap(),
+        Envelope::new(content, sig, author.cert.clone(), None)
+            .ok_or("authenticated test cryptographic evidence missing")?,
     )
 }
 
@@ -121,8 +121,11 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls(
 }
 
 #[test]
-fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback() {
-    crypto_interop::invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback();
+fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    crypto_interop::invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback()?;
+
+    Ok(())
 }
 
 #[test]
@@ -149,7 +152,7 @@ fn web_fixture() -> std::result::Result<WebFixture, Box<dyn std::error::Error>> 
         &NativeSigner::from_secret(&[44; 32]),
         NativeSigner::from_secret(&[45; 32]),
     );
-    let client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let client = Client::new(account(&identity, &host.0), host, "")?;
     let mut log = SpaceLog::new("sp_web_receipts");
     clear(
         &mut log,
@@ -174,7 +177,12 @@ fn web_fixture() -> std::result::Result<WebFixture, Box<dyn std::error::Error>> 
         },
         2,
     )?;
-    let target = log.events().last().unwrap().hash.clone();
+    let target = log
+        .events()
+        .last()
+        .ok_or("missing authenticated test last value")?
+        .hash
+        .clone();
     Ok((client, author, other, log, target))
 }
 
@@ -184,7 +192,7 @@ fn annotate(
     target: &str,
     note: types::Annotation,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let now = log.next_seq() as i64 + 10;
+    let now = i64::try_from(log.next_seq())? + 10;
     clear(
         log,
         author,
@@ -219,10 +227,15 @@ fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption(
     Ok(())
 }
 
-fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
-    frames
+fn receipt_marks(
+    frames: &[Vec<u8>],
+) -> std::result::Result<Vec<(&'static str, u64)>, Box<dyn std::error::Error>> {
+    Ok(frames
         .iter()
-        .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+        .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string()))
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter_map(|frame| match frame {
             ClientFrame::Ephemeral {
                 kind: protocol::EphemeralKind::Delivered { seq },
                 ..
@@ -233,7 +246,7 @@ fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
             } => Some(("read", seq)),
             _ => None,
         })
-        .collect()
+        .collect())
 }
 
 #[test]
@@ -248,7 +261,7 @@ fn document_fixture(
     let identity = NativeSigner::from_secret(&[71; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
     let author = Author::device(&identity, host.0.clone());
-    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut client = Client::new(account(&identity, &host.0), host, "")?;
     let mut log = SpaceLog::new("sp_web_documents");
     let created = clear(
         &mut log,
@@ -260,13 +273,17 @@ fn document_fixture(
         },
         1,
     )?;
-    client.receive(&created, 2).unwrap();
-    client.receive(&ServerFrame::SyncDone.encode(), 3).unwrap();
+    client.receive(&created, 2)?;
+    client.receive(&ServerFrame::SyncDone.encode(), 3)?;
     Ok((client, author, log))
 }
 
-fn doc(client: &mut Client<HostSigner>, command: serde_json::Value, now: i64) -> DocumentResponse {
-    client.document_request(&command.to_string(), now).unwrap()
+fn doc(
+    client: &mut Client<HostSigner>,
+    command: &serde_json::Value,
+    now: i64,
+) -> std::result::Result<DocumentResponse, Box<dyn std::error::Error>> {
+    Ok(client.document_request(&command.to_string(), now)?)
 }
 
 fn confirm_documents(
@@ -276,9 +293,11 @@ fn confirm_documents(
     now: i64,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for frame in update.frames {
-        if let ClientFrame::Publish { env } = ClientFrame::decode(&frame).unwrap() {
+        if let ClientFrame::Publish { env } =
+            ClientFrame::decode(&frame).map_err(|error| error.to_string())?
+        {
             let frame = sequence(log, env)?;
-            client.receive(&frame, now).unwrap();
+            client.receive(&frame, now)?;
         }
     }
     Ok(())
@@ -398,28 +417,34 @@ fn actual_early_receipt_waits_for_confirmed_signed_membership_and_connection_buf
     Ok(())
 }
 
-fn attachment_frame(sealed: &crate::media::Sealed) -> Vec<u8> {
+fn attachment_frame(
+    sealed: &crate::media::Sealed,
+) -> std::result::Result<Vec<u8>, Box<dyn std::error::Error>> {
     let uploads = sealed
         .uploads
         .iter()
         .map(|upload| serde_json::json!({"blob":upload.blob,"len":upload.sealed.len()}))
         .collect::<Vec<_>>();
-    let head =
-        serde_json::to_vec(&serde_json::json!({"doc":sealed.doc,"uploads":uploads})).unwrap();
-    let mut frame = (head.len() as u32).to_le_bytes().to_vec();
+    let head = serde_json::to_vec(&serde_json::json!({"doc":sealed.doc,"uploads":uploads}))?;
+    let mut frame = u32::try_from(head.len())?.to_le_bytes().to_vec();
     frame.extend(head);
     for upload in &sealed.uploads {
         frame.extend(&upload.sealed);
     }
-    frame
+    Ok(frame)
 }
 
-fn issued_attachment(client: &mut Client<HostSigner>, space: &str) -> serde_json::Value {
-    let producer = client.attachment_producer(r#"{"op":"begin"}"#).unwrap();
-    let mutation = client
-        .attachment_producer(&serde_json::json!({"op":"issue","producer_id":producer}).to_string())
-        .unwrap();
-    serde_json::json!({"space_id":space,"mutation_id":mutation,"caption":"  Página 🗂️\nExact bytes.  ","reply_to":null,"thread":false})
+fn issued_attachment(
+    client: &mut Client<HostSigner>,
+    space: &str,
+) -> std::result::Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let producer = client.attachment_producer(r#"{"op":"begin"}"#)?;
+    let mutation = client.attachment_producer(
+        &serde_json::json!({"op":"issue","producer_id":producer}).to_string(),
+    )?;
+    Ok(
+        serde_json::json!({"space_id":space,"mutation_id":mutation,"caption":"  Página 🗂️\nExact bytes.  ","reply_to":null,"thread":false}),
+    )
 }
 
 #[test]

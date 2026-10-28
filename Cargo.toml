@@ -107,3 +107,24 @@ opt-level = 3
 lto = "thin"
 codegen-units = 4
 panic = "unwind"
+
+# Member manifests must opt in; scripts/check-rust-lint-policy.py enforces coverage.
+[workspace.lints.rust]
+unused_must_use = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+await_holding_lock = "deny"
+undocumented_unsafe_blocks = "deny"
+# Selected nursery rules; the entire experimental/restriction groups are not enabled.
+redundant_clone = "warn"
+significant_drop_in_scrutinee = "warn"

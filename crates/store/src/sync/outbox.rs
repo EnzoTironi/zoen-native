@@ -1,5 +1,5 @@
 //! Persisted enqueue order is independent of the signed wall-clock timestamp.
-use super::*;
+use super::{params, Event, OptionalExtension, OutboxHead, Pending, Result, Store};
 
 #[cfg(test)]
 mod tests;
@@ -8,6 +8,9 @@ impl Store {
     /// Upgrade the device-local outbox after a caller has validated its schema.
     /// Disk opens call this automatically; authenticated native images call it
     /// only after matching the exact supported previous schema.
+    ///
+    /// # Errors
+    /// Returns SQLite migration errors; a failed upgrade rolls back its schema and ordering changes.
     pub fn upgrade_outbox_order(&self) -> Result<()> {
         let ordered: bool = self.conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM pragma_table_info('outbox') WHERE name = 'queue_order')",
@@ -36,6 +39,9 @@ impl Store {
     }
 
     /// Queues a signed, unsequenced event. Same `client_id` twice is a no-op.
+    ///
+    /// # Errors
+    /// Returns JSON encoding or SQLite insertion errors; duplicate client IDs retain their original bytes.
     pub fn outbox_put(&self, e: &Event) -> Result<()> {
         self.conn.execute(
             "INSERT INTO outbox (client_id, space, json, created_ms, queue_order)
@@ -47,6 +53,9 @@ impl Store {
     }
 
     /// Everything still waiting (failed ones included), in enqueue order.
+    ///
+    /// # Errors
+    /// Returns SQLite/JSON decoding errors, including negative or oversized retry counts. Retained rows are not changed.
     pub fn outbox(&self) -> Result<Vec<Pending>> {
         let mut st = self.conn.prepare(
             "SELECT json, attempts, last_error, failed FROM outbox ORDER BY queue_order",
@@ -54,7 +63,7 @@ impl Store {
         let rows = st.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
-                r.get::<_, i64>(1)?,
+                r.get::<_, u32>(1)?,
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, i64>(3)?,
             ))
@@ -64,7 +73,7 @@ impl Store {
             let (json, attempts, last_error, failed) = row?;
             out.push(Pending {
                 event: serde_json::from_str(&json)?,
-                attempts: attempts as u32,
+                attempts,
                 last_error,
                 failed: failed != 0,
             });
@@ -74,6 +83,9 @@ impl Store {
 
     /// What is waiting, without the events themselves (in enqueue order): cheap enough to call
     /// after every write, then `outbox_get` only the entries that need work.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn outbox_heads(&self) -> Result<Vec<OutboxHead>> {
         let mut st = self.conn.prepare(
             "SELECT client_id, space, last_error, failed FROM outbox ORDER BY queue_order",
@@ -91,6 +103,9 @@ impl Store {
 
     /// Queued MLS handshakes (Commit, Welcome) not failed, in enqueue order: (client id,
     /// space, kind).
+    ///
+    /// # Errors
+    /// Returns SQLite errors or JSON decoding errors in retained handshake rows.
     pub fn outbox_handshakes(&self) -> Result<Vec<(String, String, String)>> {
         let mut st = self.conn.prepare(
             // Invalid bodies remain in the actual queue and its head reader.
@@ -105,6 +120,9 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    ///
+    /// # Errors
+    /// Returns SQLite errors or JSON decoding errors in the retained original.
     pub fn outbox_get(&self, client_id: &str) -> Result<Option<Event>> {
         Ok(match self.outbox_original_json(client_id)? {
             Some(json) => Some(serde_json::from_str(&json)?),
@@ -113,6 +131,9 @@ impl Store {
     }
 
     /// The retained original bytes, never an authority reconstructed from SQL columns.
+    ///
+    /// # Errors
+    /// Returns SQLite read errors; a missing original is `None` and malformed JSON remains unmodified.
     pub fn outbox_original_json(&self, client_id: &str) -> Result<Option<String>> {
         Ok(self
             .conn
@@ -124,22 +145,33 @@ impl Store {
             .optional()?)
     }
 
+    /// Removes exactly the queued client ID supplied by the confirmation owner.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn outbox_remove(&self, client_id: &str) -> Result<()> {
         self.conn
             .execute("DELETE FROM outbox WHERE client_id = ?1", [client_id])?;
         Ok(())
     }
 
+    /// Records one retry attempt and its refusal without replacing signed bytes.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn outbox_note(&self, client_id: &str, error: &str, failed: bool) -> Result<()> {
         self.conn.execute(
             "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = ?3 WHERE client_id = ?1",
-            params![client_id, error, failed as i64],
+            params![client_id, error, i64::from(failed)],
         )?;
         Ok(())
     }
 
     /// A refused creation cannot have any confirmed descendants. Fail its
     /// entire queued Space atomically, including transport-only invite metadata.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn outbox_refuse_space(&self, space: &str, error: &str) -> Result<()> {
         self.conn.execute_batch("SAVEPOINT refuse_space")?;
         let result = (|| -> Result<()> {
@@ -162,11 +194,15 @@ impl Store {
         result
     }
 
+    /// Counts queued originals that have not been permanently refused.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn outbox_len(&self) -> Result<u64> {
         Ok(self
             .conn
             .query_row("SELECT COUNT(*) FROM outbox WHERE failed = 0", [], |r| {
-                r.get::<_, i64>(0)
-            })? as u64)
+                r.get::<_, u64>(0)
+            })?)
     }
 }

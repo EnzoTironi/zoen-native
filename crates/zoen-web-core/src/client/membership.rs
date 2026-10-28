@@ -1,6 +1,11 @@
 //! Browser storage adapter for the shared MLS membership planner. Claims are
 //! journaled before consuming key packages, and recovery blobs gate publication.
-use super::*;
+use super::{
+    BTreeMap, BTreeSet, ChatPreferencesView, Client, ClientFrame, ConversationView, Deserialize,
+    DocumentResponse, Event, EventBody, GroupState, Op, OpenMlsProvider, Payload, PendingEnvelope,
+    Privacy, Reply, Role, Sealed, SealedKind, Serialize, SignedContent, Signer, SpaceKind,
+    SUITE_ID,
+};
 use mls::{
     leaf_name,
     reconciliation::{self, Owed},
@@ -51,8 +56,8 @@ impl Network {
         let devices_generation = self.devices_generation;
         *self = Self {
             clock,
-            read_capability,
             devices_generation,
+            read_capability,
             ..Default::default()
         };
     }

@@ -1,5 +1,5 @@
 //! Scheduling is ephemeral; only the existing verified logs supply durable cursors.
-use super::*;
+use super::{Client, ClientFrame, Cursor, Duration, Serialize, Signer, Update};
 use protocol::cursor_repair::CursorRepairPolicy;
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -33,14 +33,16 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
-    pub fn cursor_repair_config(&self) -> CursorRepairConfig {
+    /// # Errors
+    /// Returns an error if a configured repair duration exceeds the browser millisecond domain.
+    pub fn cursor_repair_config(&self) -> Result<CursorRepairConfig, String> {
         let policy = CursorRepairPolicy::DEFAULT;
-        CursorRepairConfig {
+        Ok(CursorRepairConfig {
             version: 1,
-            interval_ms: policy.interval.as_millis() as u64,
-            timeout_ms: policy.timeout.as_millis() as u64,
-            initial_inactivity_ms: policy.initial_inactivity.as_millis() as u64,
-        }
+            interval_ms: milliseconds(policy.interval)?,
+            timeout_ms: milliseconds(policy.timeout)?,
+            initial_inactivity_ms: milliseconds(policy.initial_inactivity)?,
+        })
     }
 
     pub(super) fn note_repair_clock(&mut self, now: Duration) -> Result<(), String> {
@@ -63,17 +65,24 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
-    pub(super) fn cursor_repair_status(&self) -> Option<CursorRepairStatus> {
+    pub(super) fn cursor_repair_status(&self) -> Result<Option<CursorRepairStatus>, String> {
         self.cursor_repair
             .as_ref()
-            .map(|repair| CursorRepairStatus {
-                admission_ms: repair.admission().map(|time| time.as_millis() as u64),
-                abort_deadline_ms: repair.abort_deadline().map(|time| time.as_millis() as u64),
+            .map(|repair| {
+                Ok(CursorRepairStatus {
+                    admission_ms: repair.admission().map(milliseconds).transpose()?,
+                    abort_deadline_ms: repair.abort_deadline().map(milliseconds).transpose()?,
+                })
             })
+            .transpose()
     }
 
     /// Called independently of UI/MLS maintenance, using the host monotonic clock.
     /// An already-expired dispatcher returns no Update and no outgoing effect.
+    ///
+    /// # Errors
+    /// Returns an error for invalid or backwards clock values, missing bootstrap,
+    /// too many outstanding requests, or failure to produce the client update.
     pub fn reconcile(&mut self, now: Duration) -> Result<CursorRepairTick, String> {
         self.note_repair_clock(now)?;
         let repair = self
@@ -101,5 +110,23 @@ impl<S: Signer> Client<S> {
         Ok(CursorRepairTick::Update {
             update: self.update(frames)?,
         })
+    }
+}
+
+fn milliseconds(duration: Duration) -> Result<u64, String> {
+    u64::try_from(duration.as_millis())
+        .map_err(|_| "reconciliation duration exceeds browser millisecond domain".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{milliseconds, Duration};
+
+    #[test]
+    fn exported_milliseconds_are_checked_without_wrapping() -> Result<(), String> {
+        assert_eq!(milliseconds(Duration::from_millis(60_001))?, 60_001);
+        assert_eq!(milliseconds(Duration::from_millis(u64::MAX))?, u64::MAX);
+        assert!(milliseconds(Duration::MAX).is_err());
+        Ok(())
     }
 }

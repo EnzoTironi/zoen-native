@@ -17,8 +17,7 @@ fn event(author: &Author) -> Result<types::Event, Box<dyn std::error::Error>> {
     )?)
 }
 #[test]
-fn native_decimal_boundary_is_exact_and_refuses_ambiguous_or_overflowing_integers(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn native_decimal_boundary_is_exact_and_refuses_ambiguous_or_overflowing_integers() {
     for value in [0, 9_007_199_254_740_993, u64::MAX] {
         assert_eq!(parse_u64(&value.to_string()).unwrap(), value);
     }
@@ -29,7 +28,6 @@ fn native_decimal_boundary_is_exact_and_refuses_ambiguous_or_overflowing_integer
     }
     assert_eq!(MAX_FRAME_BYTES, 1024 * 1024);
     assert_eq!(MAX_ENVELOPE_BYTES, 90 * 1024);
-    Ok(())
 }
 #[test]
 fn native_signed_event_bytes_genesis_chain_and_unknown_wire_fields_remain_compatible(
@@ -75,7 +73,7 @@ fn native_envelopes_refuse_bad_device_certificates_signatures_and_mutated_conten
             0 => bad.cert = Some("00".repeat(64)),
             1 => bad.sig = "00".repeat(64),
             _ => bad.content[0] ^= 1,
-        };
+        }
         let result = Envelope::new(bad.content, bad.sig, bad.cert, None);
         assert!(result.is_none_or(|env| env.verify().is_err()));
     }

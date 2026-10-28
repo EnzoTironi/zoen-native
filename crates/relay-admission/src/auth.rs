@@ -13,6 +13,7 @@ pub enum Provider {
     Google,
 }
 impl Provider {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Self::Apple => "apple",
@@ -98,6 +99,8 @@ pub struct Verified {
 }
 
 /// Parses only the bounded JWT header. Provider URLs always come from trusted config.
+/// # Errors
+/// Refuses malformed/oversized JWT headers, unsupported algorithms/types and invalid key identifiers.
 pub fn key_id(token: &str) -> Result<String, InvalidAssertion> {
     let (header, _, _) = segments(token)?;
     let parsed: Header =
@@ -113,6 +116,8 @@ pub fn key_id(token: &str) -> Result<String, InvalidAssertion> {
 }
 
 /// Shared bounded JWKS parsing; caching and HTTPS fetching remain host responsibilities.
+/// # Errors
+/// Refuses oversized/malformed key sets, empty sets, excessive keys and duplicate identifiers.
 pub fn key_set(bytes: &[u8]) -> Result<Vec<Jwk>, InvalidAssertion> {
     if bytes.len() > 65_536 {
         return Err(InvalidAssertion);
@@ -153,6 +158,8 @@ fn decode(value: &str, max: usize) -> Result<Vec<u8>, InvalidAssertion> {
     }
     Ok(result)
 }
+/// # Errors
+/// Refuses malformed or invalid signatures/keys, unsupported algorithms, provider/audience/presenter/nonce mismatches and invalid token lifetimes.
 pub fn verify_with_key(
     token: &str,
     key: &Jwk,
@@ -258,14 +265,14 @@ mod tests {
     fn claims() -> Value {
         json!({"iss":"https://accounts.google.com","sub":"provider-subject","aud":"audience","azp":"ios-client","iat":1000,"exp":1600,"nonce":"aa".repeat(32),"name":"Display hint"})
     }
-    fn signed(header: Value, claims: Value) -> String {
+    fn signed(header: &Value, claims: &Value) -> String {
         // Disposable synthetic key: never configured with either real provider.
         let key =
             RsaKeyPair::from_pkcs8(include_bytes!("auth/fixtures/rsa-test-only.pk8")).unwrap();
         let input = format!(
             "{}.{}",
-            B64.encode(serde_json::to_vec(&header).unwrap()),
-            B64.encode(serde_json::to_vec(&claims).unwrap())
+            B64.encode(serde_json::to_vec(header).unwrap()),
+            B64.encode(serde_json::to_vec(claims).unwrap())
         );
         let mut signature = vec![0; key.public().modulus_len()];
         key.sign(
@@ -277,14 +284,14 @@ mod tests {
         .unwrap();
         format!("{input}.{}", B64.encode(signature))
     }
-    fn token(claims: Value) -> String {
-        signed(json!({"alg":"RS256","kid":"test-key","typ":"JWT"}), claims)
+    fn token(claims: &Value) -> String {
+        signed(&json!({"alg":"RS256","kid":"test-key","typ":"JWT"}), claims)
     }
 
     #[test]
     fn real_rsa_assertions_require_nonce_audience_presenter_issuer_and_bounded_times() {
         let challenge = challenge(Provider::Google);
-        let valid = verify_with_key(&token(claims()), &key(), &challenge, 1_000_000).unwrap();
+        let valid = verify_with_key(&token(&claims()), &key(), &challenge, 1_000_000).unwrap();
         assert_eq!(valid.subject, "provider-subject");
         for (field, value) in [
             ("nonce", json!("wrong")),
@@ -299,21 +306,21 @@ mod tests {
             let mut claims = claims();
             claims[field] = value;
             assert!(
-                verify_with_key(&token(claims), &key(), &challenge, 1_000_000).is_err(),
+                verify_with_key(&token(&claims), &key(), &challenge, 1_000_000).is_err(),
                 "accepted wrong {field}"
             );
         }
         let mut multiple = claims();
         multiple["aud"] = json!(["audience", "other"]);
         multiple.as_object_mut().unwrap().remove("azp");
-        assert!(verify_with_key(&token(multiple), &key(), &challenge, 1_000_000).is_err());
+        assert!(verify_with_key(&token(&multiple), &key(), &challenge, 1_000_000).is_err());
         let mut apple = claims();
         apple["iss"] = json!("https://appleid.apple.com");
         apple.as_object_mut().unwrap().remove("azp");
         let mut apple_challenge = challenge;
         apple_challenge.provider = Provider::Apple;
         apple_challenge.presenter = None;
-        assert!(verify_with_key(&token(apple), &key(), &apple_challenge, 1_000_000).is_ok());
+        assert!(verify_with_key(&token(&apple), &key(), &apple_challenge, 1_000_000).is_ok());
     }
     #[test]
     fn android_google_assertions_require_the_android_presenter_even_with_a_shared_server_audience()
@@ -322,7 +329,7 @@ mod tests {
         android.presenter = Some("android-client");
         let mut android_claims = claims();
         android_claims["azp"] = json!("android-client");
-        let assertion = token(android_claims.clone());
+        let assertion = token(&android_claims);
         assert!(verify_with_key(&assertion, &key(), &android, 1_000_000).is_ok());
         // Both apps request the same backend audience. The authorized presenter
         // still separates Android credentials from iOS and browser credentials.
@@ -331,14 +338,11 @@ mod tests {
         );
         for presenter in [json!("ios-client"), json!("web-client"), Value::Null] {
             android_claims["azp"] = presenter;
-            assert!(
-                verify_with_key(&token(android_claims.clone()), &key(), &android, 1_000_000)
-                    .is_err()
-            );
+            assert!(verify_with_key(&token(&android_claims), &key(), &android, 1_000_000).is_err());
         }
         android_claims["azp"] = json!("android-client");
         android_claims["aud"] = json!("android-client");
-        assert!(verify_with_key(&token(android_claims), &key(), &android, 1_000_000).is_err());
+        assert!(verify_with_key(&token(&android_claims), &key(), &android, 1_000_000).is_err());
     }
     #[test]
     fn jwt_algorithms_header_urls_key_uses_and_signature_tampering_are_refused() {
@@ -350,13 +354,14 @@ mod tests {
             json!({"alg":"RS256","kid":"test-key","crit":["b64"],"b64":false}),
         ] {
             assert!(
-                verify_with_key(&signed(header, claims()), &key(), &challenge, 1_000_000).is_err()
+                verify_with_key(&signed(&header, &claims()), &key(), &challenge, 1_000_000)
+                    .is_err()
             );
         }
         let mut wrong = key();
         wrong.use_ = Some("enc".into());
-        assert!(verify_with_key(&token(claims()), &wrong, &challenge, 1_000_000).is_err());
-        let mut encoded = token(claims()).into_bytes();
+        assert!(verify_with_key(&token(&claims()), &wrong, &challenge, 1_000_000).is_err());
+        let mut encoded = token(&claims()).into_bytes();
         let last = encoded.len() - 2;
         encoded[last] = if encoded[last] == b'A' { b'B' } else { b'A' };
         assert!(verify_with_key(
@@ -374,7 +379,7 @@ mod tests {
         let mut first = claims();
         first["email"] = json!("shared@example.invalid");
         first["name"] = json!(format!("\n{}\u{7}", "é".repeat(110)));
-        let verified = verify_with_key(&token(first.clone()), &key(), &context, 1_000_000).unwrap();
+        let verified = verify_with_key(&token(&first), &key(), &context, 1_000_000).unwrap();
         assert_eq!(
             verified,
             Verified {
@@ -384,7 +389,7 @@ mod tests {
             }
         );
         first["sub"] = json!("another-provider-subject");
-        let second = verify_with_key(&token(first), &key(), &context, 1_000_000).unwrap();
+        let second = verify_with_key(&token(&first), &key(), &context, 1_000_000).unwrap();
         assert_eq!(second.subject, "another-provider-subject");
         assert!(serde_json::to_value(second).unwrap().get("email").is_none());
     }
@@ -395,7 +400,7 @@ mod tests {
             serde_json::from_str(include_str!("auth/fixtures/rsa-test-only.jwk.json")).unwrap();
         assert_eq!(
             key_set(
-                serde_json::to_string(&json!({"keys":[key.clone()]}))
+                serde_json::to_string(&json!({"keys":[key]}))
                     .unwrap()
                     .as_bytes()
             )
@@ -417,7 +422,7 @@ mod tests {
         }
         assert!(key_set(&vec![b' '; 65_537]).is_err());
         for kid in [String::new(), "a".repeat(129)] {
-            assert!(key_id(&signed(json!({"alg":"RS256","kid":kid}), claims())).is_err());
+            assert!(key_id(&signed(&json!({"alg":"RS256","kid":kid}), &claims())).is_err());
         }
         assert!(key_id(&"a".repeat(16_385)).is_err());
         assert!(key_id("a.b.c.extra").is_err());

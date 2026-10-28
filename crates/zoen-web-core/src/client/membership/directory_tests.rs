@@ -3,10 +3,10 @@ use crate::client::tests::{account, HostSigner};
 use event_log::Signer as NativeSigner;
 use protocol::complete_reads::{Device, Kind, Page};
 
-fn fixture() -> Client<HostSigner> {
+fn fixture() -> std::result::Result<Client<HostSigner>, Box<dyn std::error::Error>> {
     let root = NativeSigner::from_secret(&[201; 32]);
     let key = NativeSigner::from_secret(&[202; 32]);
-    let mut client = Client::new(account(&root, &key), HostSigner(key), "").unwrap();
+    let mut client = Client::new(account(&root, &key), HostSigner(key), "")?;
     client
         .saved
         .membership
@@ -15,12 +15,12 @@ fn fixture() -> Client<HostSigner> {
     client.view_now_ms = 1000;
     client.read_capability(true);
     assert!(matches!(
-        client.device_directory_begin().unwrap(),
+        client.device_directory_begin()?,
         Op::CompleteRead(_)
     ));
     client.membership_net.devices_requested = true;
     client.membership_net.devices_due = 16_000;
-    client
+    Ok(client)
 }
 fn page(client: &Client<HostSigner>, ordinal: u32, previous: &[u8], cut: u8) -> Page {
     let mut list = [
@@ -59,42 +59,40 @@ fn page(client: &Client<HostSigner>, ordinal: u32, previous: &[u8], cut: u8) -> 
     p
 }
 #[test]
-fn browser_pages_are_ephemeral_until_complete_and_cold_snapshot_retains_last_full_set() {
-    let mut client = fixture();
+fn browser_pages_are_ephemeral_until_complete_and_cold_snapshot_retains_last_full_set(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut client = fixture()?;
     let before = client.saved.membership.revoked.clone();
     let first = page(&client, 0, &[], 0);
     let mut outgoing = Vec::new();
-    client
-        .device_directory_reply(&Ok(Reply::CompletePage(first.clone())), &mut outgoing)
-        .unwrap();
+    client.device_directory_reply(&Ok(Reply::CompletePage(first.clone())), &mut outgoing);
     assert_eq!(client.saved.membership.revoked, before);
     assert_eq!(outgoing.len(), 1);
     assert!(
-        matches!(ClientFrame::decode(&outgoing[0]).unwrap(),ClientFrame::Req {id,op:Op::CompleteRead(request)} if id==client.membership_net.devices_request && request.ordinal==1)
+        matches!(ClientFrame::decode(&outgoing[0]).map_err(|error| error.to_string())?,ClientFrame::Req {id,op:Op::CompleteRead(request)} if id==client.membership_net.devices_request && request.ordinal==1)
     );
-    let snapshot = serde_json::to_string(&client.saved).unwrap();
-    let cold = Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+    let snapshot = serde_json::to_string(&client.saved)?;
+    let cold = Client::new(client.account.clone(), client.signer.clone(), &snapshot)?;
     assert_eq!(cold.saved.membership.revoked, before);
     let end = page(&client, 1, &first.digest, 0);
-    client
-        .device_directory_reply(&Ok(Reply::CompletePage(end)), &mut outgoing)
-        .unwrap();
+    client.device_directory_reply(&Ok(Reply::CompletePage(end)), &mut outgoing);
     let expected = BTreeSet::from([NativeSigner::from_secret(&[204; 32]).id()]);
     assert_eq!(client.saved.membership.revoked, expected);
-    let snapshot = serde_json::to_string(&client.saved).unwrap();
-    let cold = Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+    let snapshot = serde_json::to_string(&client.saved)?;
+    let cold = Client::new(client.account.clone(), client.signer.clone(), &snapshot)?;
     assert_eq!(cold.saved.membership.revoked, expected);
+
+    Ok(())
 }
 #[test]
-fn browser_missing_duplicate_foreign_device_and_error_pages_keep_the_old_directory() {
+fn browser_missing_duplicate_foreign_device_and_error_pages_keep_the_old_directory(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for cut in 0..5 {
-        let mut client = fixture();
+        let mut client = fixture()?;
         let before = client.saved.membership.revoked.clone();
         let first = page(&client, 0, &[], 0);
         let mut outgoing = Vec::new();
-        client
-            .device_directory_reply(&Ok(Reply::CompletePage(first.clone())), &mut outgoing)
-            .unwrap();
+        client.device_directory_reply(&Ok(Reply::CompletePage(first.clone())), &mut outgoing);
         let result = match cut {
             0 => Err("lost page".into()),
             1 | 2 => Ok(Reply::CompletePage(page(&client, 1, &first.digest, cut))),
@@ -106,75 +104,74 @@ fn browser_missing_duplicate_foreign_device_and_error_pages_keep_the_old_directo
                 Ok(Reply::CompletePage(p))
             }
         };
-        client
-            .device_directory_reply(&result, &mut outgoing)
-            .unwrap();
+        client.device_directory_reply(&result, &mut outgoing);
         assert_eq!(client.saved.membership.revoked, before, "cut{cut}");
         assert!(!client.membership_net.devices_requested);
     }
+
+    Ok(())
 }
 #[test]
-fn browser_reconnect_or_expired_page_cannot_revive_or_replace_old_complete_state() {
+fn browser_reconnect_or_expired_page_cannot_revive_or_replace_old_complete_state(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     for reconnect in [false, true] {
-        let mut client = fixture();
+        let mut client = fixture()?;
         let before = client.saved.membership.revoked.clone();
         let first = page(&client, 0, &[], 0);
         let mut outgoing = Vec::new();
-        client
-            .device_directory_reply(&Ok(Reply::CompletePage(first.clone())), &mut outgoing)
-            .unwrap();
+        client.device_directory_reply(&Ok(Reply::CompletePage(first.clone())), &mut outgoing);
         if reconnect {
             client.membership_net.restart();
         } else {
             client.view_now_ms = 16_001;
         }
-        client
-            .device_directory_reply(
-                &Ok(Reply::CompletePage(page(&client, 1, &first.digest, 0))),
-                &mut outgoing,
-            )
-            .unwrap();
+        client.device_directory_reply(
+            &Ok(Reply::CompletePage(page(&client, 1, &first.digest, 0))),
+            &mut outgoing,
+        );
         assert_eq!(client.saved.membership.revoked, before);
     }
+
+    Ok(())
 }
 
 #[test]
-fn browser_new_read_uses_a_new_correlation_and_rejects_late_old_terminal() {
-    let mut client = fixture();
+fn browser_new_read_uses_a_new_correlation_and_rejects_late_old_terminal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut client = fixture()?;
     let before = client.saved.membership.revoked.clone();
     let old_id = client.membership_net.devices_request;
     let first = page(&client, 0, &[], 0);
-    let mut old_terminal = first.clone();
+    let mut old_terminal = first;
     old_terminal.complete = true;
     old_terminal.digest = old_terminal.rolling_digest(&[]);
     client.membership_net.devices_requested = false;
     client.membership_net.devices_assembly = None;
-    client.device_directory_begin().unwrap();
+    client.device_directory_begin()?;
     client.membership_net.devices_requested = true;
     assert_ne!(client.membership_net.devices_request, old_id);
     let mut outgoing = Vec::new();
-    assert!(client
-        .membership_reply(
-            old_id,
-            &Ok(Reply::CompletePage(old_terminal)),
-            &mut outgoing
-        )
-        .unwrap());
+    assert!(client.membership_reply(
+        old_id,
+        &Ok(Reply::CompletePage(old_terminal)),
+        &mut outgoing
+    ));
     assert_eq!(client.saved.membership.revoked, before);
-    assert!(outgoing.is_empty());
+    assert_eq!(outgoing, Vec::<Vec<u8>>::new());
     assert!(client.membership_net.devices_assembly.is_some());
+
+    Ok(())
 }
 
 #[test]
-fn browser_fixed_deadline_cancels_the_accepted_snapshot_before_another_read_can_start() {
-    let mut client = fixture();
+fn browser_fixed_deadline_cancels_the_accepted_snapshot_before_another_read_can_start(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut client = fixture()?;
     let before = client.saved.membership.revoked.clone();
     let first = page(&client, 0, &[], 0);
     let mut frames = Vec::new();
     client.view_now_ms = 15_999;
-    client
-        .device_directory_reply(&Ok(Reply::CompletePage(first.clone())), &mut frames)
-        .unwrap();
+    client.device_directory_reply(&Ok(Reply::CompletePage(first.clone())), &mut frames);
     assert_eq!(
         client.membership_net.devices_due, 16_000,
         "deadline renewed per page"
@@ -183,12 +180,12 @@ fn browser_fixed_deadline_cancels_the_accepted_snapshot_before_another_read_can_
     client.synced = true;
     client.view_now_ms = 16_001;
     let old_id = client.membership_net.devices_request;
-    client.membership_frames(&mut frames).unwrap();
+    client.membership_frames(&mut frames)?;
     assert_eq!(frames.len(), 1);
     let ClientFrame::Req {
         id,
         op: Op::CompleteRead(cancel),
-    } = ClientFrame::decode(&frames[0]).unwrap()
+    } = ClientFrame::decode(&frames[0]).map_err(|error| error.to_string())?
     else {
         panic!("snapshot cancellation")
     };
@@ -199,4 +196,6 @@ fn browser_fixed_deadline_cancels_the_accepted_snapshot_before_another_read_can_
     assert_eq!(client.saved.membership.revoked, before);
     assert!(client.membership_net.devices_assembly.is_none());
     assert!(!client.membership_net.devices_requested);
+
+    Ok(())
 }

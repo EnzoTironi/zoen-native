@@ -1,7 +1,7 @@
-//! MLS state at rest: every key and value OpenMLS stores is sealed with the device's state key.
+//! MLS state at rest: every key and value `OpenMLS` stores is sealed with the device's state key.
 //!
 //! `openmls_sqlite_storage` serializes through a [`Codec`] with no instance, so the key
-//! can't live in the codec. Every OpenMLS call is synchronous, so the device puts its keys in
+//! can't live in the codec. Every `OpenMLS` call is synchronous, so the device puts its keys in
 //! a thread-local [`Scope`] for exactly the span of one call, and the codec fails closed
 //! outside one. Two devices in one process (tests, agents) never see each other's keys.
 //!
@@ -98,7 +98,7 @@ fn keys() -> Result<Keys, SealError> {
     KEYS.with(|k| *k.borrow()).ok_or(SealError::NoKey)
 }
 
-/// JSON (what OpenMLS's own codec uses), then XChaCha20-Poly1305 under a synthetic nonce.
+/// JSON (what `OpenMLS`'s own codec uses), then `XChaCha20-Poly1305` under a synthetic nonce.
 #[derive(Default)]
 pub struct SealedCodec;
 

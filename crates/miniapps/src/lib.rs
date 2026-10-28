@@ -130,6 +130,10 @@ fn push_log(state: &mut Value, who: &str, what: &str, now: i64) {
 }
 
 /// Resultado no formato `CallToolResult` do MCP.
+#[must_use]
 pub fn call_tool_result(text: &str, structured: &Value, is_error: bool) -> Value {
     json!({ "content": [{ "type": "text", "text": text }], "structuredContent": structured, "isError": is_error })
 }
+
+#[cfg(test)]
+mod domain_quality_tests;

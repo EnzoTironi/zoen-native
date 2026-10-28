@@ -1,4 +1,5 @@
 use super::*;
+use crate::client::{LinkedAccount, Privacy, Sealed, SealedKind, ServerFrame, SpaceKind, SUITE_ID};
 use event_log::{Author, Signer as NativeSigner};
 use openmls_traits::{signatures::SignerError, types::SignatureScheme};
 
@@ -6,7 +7,7 @@ use openmls_traits::{signatures::SignerError, types::SignatureScheme};
 struct HostSigner(NativeSigner);
 impl Signer for HostSigner {
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, SignerError> {
-        Ok(hex::decode(self.0.sign(payload)).unwrap())
+        hex::decode(self.0.sign(payload)).map_err(|_| SignerError::SigningError)
     }
     fn signature_scheme(&self) -> SignatureScheme {
         mls::SUITE.signature_algorithm()
@@ -33,7 +34,10 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
         name: "Owner".into(),
         handle: "owner".into(),
         relay: "http://localhost:8080".into(),
-        primary: author.device.clone().unwrap(),
+        primary: author
+            .device
+            .clone()
+            .ok_or("missing authenticated test cloned value")?,
         primary_hpke: String::new(),
         hpke_secret: hex::encode(private),
         link_secret: hex::encode([44; 32]),
@@ -75,7 +79,7 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
             &id,
             now,
             log.head().as_ref(),
-            Sealed::new(SealedKind::Application, SUITE_ID, vec![now as u8]),
+            Sealed::new(SealedKind::Application, SUITE_ID, vec![u8::try_from(now)?]),
         );
         let event = event_log::event_from_content(
             content,
@@ -84,8 +88,7 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
             0,
             String::new(),
             String::new(),
-        )
-        .unwrap();
+        )?;
         let event = log.sequence(event)?;
         inner.seq = event.seq;
         inner.sealed_wire = Some(event_log::content_hash_of(event));
@@ -111,70 +114,67 @@ fn history_ready_only_wakes_from_the_pinned_primary_authenticated_device_channel
         my_hpke_secret: String::new(),
         secret: f.account.link_secret.clone(),
     };
-    let sealed = peer.seal(&device_link::DeviceMsg::HistoryReady).unwrap();
-    let mut client = Client::new(f.account.clone(), f.signer, "").unwrap();
+    let sealed = peer
+        .seal(&device_link::DeviceMsg::HistoryReady)
+        .ok_or("history readiness sealing failed")?;
+    let mut client = Client::new(f.account.clone(), f.signer, "")?;
     for (from, to) in [
         ("wrong", f.account.device.as_str()),
         (f.account.primary.as_str(), "wrong"),
     ] {
-        let update = client
-            .receive(
-                &ServerFrame::DeviceMessage {
-                    from: from.into(),
-                    to: to.into(),
-                    sealed: sealed.clone(),
-                }
-                .encode(),
-                1,
-            )
-            .unwrap();
+        let update = client.receive(
+            &ServerFrame::DeviceMessage {
+                from: from.into(),
+                to: to.into(),
+                sealed: sealed.clone(),
+            }
+            .encode(),
+            1,
+        )?;
         assert!(!update.history_ready);
     }
     let mut forged = sealed.clone();
-    *forged.last_mut().unwrap() ^= 1;
+    *forged
+        .last_mut()
+        .ok_or("missing authenticated test last_mut value")? ^= 1;
     assert!(!client.history_hint(&f.account.primary, &f.account.device, &forged));
-    let update = client
-        .receive(
-            &ServerFrame::DeviceMessage {
-                from: f.account.primary,
-                to: f.account.device,
-                sealed,
-            }
-            .encode(),
-            2,
-        )
-        .unwrap();
+    let update = client.receive(
+        &ServerFrame::DeviceMessage {
+            from: f.account.primary,
+            to: f.account.device,
+            sealed,
+        }
+        .encode(),
+        2,
+    )?;
     assert!(update.history_ready);
     assert!(
-        !client.update(Vec::new()).unwrap().history_ready,
+        !client.update(Vec::new())?.history_ready,
         "wake hints are transient, not durable restore state"
     );
     assert!(client.saved.history.transfer.is_none());
     Ok(())
 }
 
-#[test]
-fn native_history_resumes_verifies_before_import_and_persists_before_cleanup(
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let f = fixture()?;
-    let mut client = Client::new(f.account.clone(), f.signer.clone(), "").unwrap();
-    client.logs.insert(f.log.space().into(), f.log.clone());
-    let status: serde_json::Value = serde_json::from_str(&client.history_status()).unwrap();
-    assert_eq!(status["initial_pending"], true);
-    assert_eq!(status["manifest_received"], false);
-    assert!(matches!(
-        client.history_start(5).unwrap().work,
-        HistoryWork::FetchManifest { .. }
-    ));
+struct SealedHistory {
+    manifest: HistoryBox,
+    chunks: Vec<Vec<u8>>,
+    sealed: Vec<u8>,
+}
+
+fn sealed_history(f: &Fixture) -> Result<SealedHistory, Box<dyn std::error::Error>> {
     let plain = serde_json::to_vec(&Bundle {
         events: f.opened.clone(),
-    })
-    .unwrap();
+    })?;
     let key = [45; 32];
     let chunks = plain
         .chunks(plain.len() / 2 + 1)
         .enumerate()
-        .map(|(n, chunk)| device_link::seal_chunk(&key, n as u32, chunk))
+        .map(|(n, chunk)| {
+            let n = u32::try_from(n)
+                .map_err(|_| "history fixture chunk index exceeds limit".to_owned())?;
+            device_link::seal_chunk(&key, n, chunk).map_err(|error| error.to_string())
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let manifest = HistoryBox {
         transfer: "ab".repeat(32),
@@ -188,45 +188,71 @@ fn native_history_resumes_verifies_before_import_and_persists_before_cleanup(
         &f.public,
         &[44; 32],
         "history",
-        &serde_json::to_vec(&manifest).unwrap(),
+        &serde_json::to_vec(&manifest)?,
     )
-    .unwrap();
+    .ok_or("authenticated history manifest sealing failed")?;
+    Ok(SealedHistory {
+        manifest,
+        chunks,
+        sealed,
+    })
+}
+
+#[test]
+fn native_history_resumes_verifies_before_import_and_persists_before_cleanup(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    let mut client = Client::new(f.account.clone(), f.signer.clone(), "")?;
+    client.logs.insert(f.log.space().into(), f.log.clone());
+    let status: serde_json::Value = serde_json::from_str(&client.history_status())?;
+    assert_eq!(status["initial_pending"], true);
+    assert_eq!(status["manifest_received"], false);
     assert!(matches!(
-        client.history_manifest(&sealed, 6).unwrap().work,
+        client.history_start(5)?.work,
+        HistoryWork::FetchManifest { .. }
+    ));
+    let SealedHistory {
+        manifest,
+        chunks,
+        sealed,
+    } = sealed_history(&f)?;
+    assert!(matches!(
+        client.history_manifest(&sealed, 6)?.work,
         HistoryWork::Download { index: 0, .. }
     ));
     let mut corrupt = chunks[0].clone();
-    *corrupt.last_mut().unwrap() ^= 1;
+    *corrupt
+        .last_mut()
+        .ok_or("missing authenticated test last_mut value")? ^= 1;
     assert!(client.history_chunk(0, &corrupt, 7).is_err());
     assert!(client
         .saved
         .history
         .transfer
         .as_ref()
-        .unwrap()
+        .ok_or("missing authenticated test as_ref value")?
         .chunks
         .is_empty());
-    let partial = client.history_chunk(0, &chunks[0], 8).unwrap();
+    let partial = client.history_chunk(0, &chunks[0], 8)?;
     let mut resumed = Client::new(
         f.account.clone(),
         f.signer.clone(),
         &partial.update.snapshot,
-    )
-    .unwrap();
-    let status: serde_json::Value = serde_json::from_str(&resumed.history_status()).unwrap();
+    )?;
+    let status: serde_json::Value = serde_json::from_str(&resumed.history_status())?;
     assert_eq!(status["initial_pending"], true);
     assert_eq!(status["manifest_received"], true);
     assert_eq!(status["chunks_received"], 1);
     assert_eq!(status["chunks_total"], 2);
-    resumed.history_start(9).unwrap();
-    let waiting = resumed.history_chunk(1, &chunks[1], 10).unwrap();
+    resumed.history_start(9)?;
+    let waiting = resumed.history_chunk(1, &chunks[1], 10)?;
     assert!(matches!(waiting.work, HistoryWork::WaitingSync));
     assert!(matches!(
         resumed.logs[f.log.space()].events()[1].body,
         EventBody::Sealed { .. }
     ));
     resumed.synced = true;
-    let restored = resumed.history_finish(11).unwrap();
+    let restored = resumed.history_finish(11)?;
     let HistoryWork::Complete {
         messages: 2,
         chunks: 2,
@@ -242,16 +268,16 @@ fn native_history_resumes_verifies_before_import_and_persists_before_cleanup(
         &cleanup.signature
     ));
     assert!(resumed.saved.history.transfer.is_none());
-    resumed.logs[f.log.space()].verify().unwrap();
+    resumed.logs[f.log.space()].verify()?;
     assert!(
         matches!(&resumed.logs[f.log.space()].events()[1].body,EventBody::MessagePosted {text,..} if text == "History 2")
     );
-    let mut reloaded = Client::new(f.account, f.signer, &restored.update.snapshot).unwrap();
-    let status: serde_json::Value = serde_json::from_str(&reloaded.history_status()).unwrap();
+    let mut reloaded = Client::new(f.account, f.signer, &restored.update.snapshot)?;
+    let status: serde_json::Value = serde_json::from_str(&reloaded.history_status())?;
     assert_eq!(status["initial_pending"], false);
     assert_eq!(status["chunks_received"], 2);
     assert!(matches!(
-        reloaded.history_finish(12).unwrap().work,
+        reloaded.history_finish(12)?.work,
         HistoryWork::Complete {
             messages: 2,
             cleanup: Some(_),
@@ -259,7 +285,7 @@ fn native_history_resumes_verifies_before_import_and_persists_before_cleanup(
         }
     ));
     assert!(matches!(
-        reloaded.history_cleaned(13).unwrap().work,
+        reloaded.history_cleaned(13)?.work,
         HistoryWork::Complete {
             messages: 2,
             cleanup: None,
@@ -273,7 +299,7 @@ fn native_history_resumes_verifies_before_import_and_persists_before_cleanup(
 fn one_mismatched_signed_inner_cannot_partially_replace_the_relay_log(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let f = fixture()?;
-    let mut client = Client::new(f.account, f.signer, "").unwrap();
+    let mut client = Client::new(f.account, f.signer, "")?;
     client.logs.insert(f.log.space().into(), f.log.clone());
     let original = f.log.events().to_vec();
     let event = &f.opened[1];
@@ -290,7 +316,7 @@ fn one_mismatched_signed_inner_cannot_partially_replace_the_relay_log(
         .import_history_events(vec![f.opened[0].clone(), forged])
         .is_err());
     assert_eq!(client.logs[f.log.space()].events(), original);
-    assert_eq!(client.import_history_events(f.opened.clone()).unwrap(), 2);
-    assert_eq!(client.import_history_events(f.opened).unwrap(), 0);
+    assert_eq!(client.import_history_events(f.opened.clone())?, 2);
+    assert_eq!(client.import_history_events(f.opened)?, 0);
     Ok(())
 }

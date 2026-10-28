@@ -34,8 +34,8 @@ fn open_schedule() -> Value {
     create(&args, &AGENT, at(7, 0)).unwrap().1
 }
 
-fn call(st: &Value, who: &Actor, tool: &str, args: Value, now: i64) -> Value {
-    apply(tool, &args, st.clone(), who, now).unwrap().state
+fn call(st: &Value, who: &Actor, tool: &str, args: &Value, now: i64) -> Value {
+    apply(tool, args, st.clone(), who, now).unwrap().state
 }
 
 fn book(st: &Value, who: &Actor, start: i64, now: i64) -> Value {
@@ -43,7 +43,7 @@ fn book(st: &Value, who: &Actor, start: i64, now: i64) -> Value {
         st,
         who,
         "schedule_book",
-        json!({"serviceId": "corte", "startMs": start}),
+        &json!({"serviceId": "corte", "startMs": start}),
         now,
     )
 }
@@ -73,7 +73,7 @@ fn an_agent_booking_is_found_again_by_its_source_message() {
     let args = json!({"serviceId": "corte", "startMs": at(10, 0),
             "forId": "carla", "forName": "Carla", "ref": "m1"});
     assert!(replayed("schedule_book", &args, &base).is_none());
-    let st = call(&base, &AGENT, "schedule_book", args.clone(), at(8, 0));
+    let st = call(&base, &AGENT, "schedule_book", &args, at(8, 0));
     assert!(replayed("schedule_book", &args, &st).is_some());
     // Another message, another client or another slot is a new request.
     let other = |k: &str, v: Value| {
@@ -85,7 +85,7 @@ fn an_agent_booking_is_found_again_by_its_source_message() {
     assert!(other("forId", json!("dani")).is_none());
     assert!(other("startMs", json!(at(11, 0))).is_none());
     // Only the agent's stamp counts.
-    let st = call(&base, &CARLA, "schedule_book", args.clone(), at(8, 0));
+    let st = call(&base, &CARLA, "schedule_book", &args, at(8, 0));
     assert!(replayed("schedule_book", &args, &st).is_none());
 }
 
@@ -94,7 +94,7 @@ fn the_agent_books_for_a_client_and_the_owner_note_names_them() {
     let base = open_schedule();
     let args = json!({"serviceId": "corte", "startMs": at(10, 0),
             "forId": "carla", "forName": "Carla"});
-    let st = call(&base, &AGENT, "schedule_book", args.clone(), at(8, 0));
+    let st = call(&base, &AGENT, "schedule_book", &args, at(8, 0));
     let b = booking(&st, "bot")[0];
     assert_eq!(
         (&b["forId"], &b["forName"]),
@@ -103,7 +103,7 @@ fn the_agent_books_for_a_client_and_the_owner_note_names_them() {
     let note = booking_change(&base, &st, "bot").expect("agent booking notifies");
     assert_eq!(note["booking"]["client"], "Carla");
     // A client can't book in someone else's name.
-    let st = call(&base, &DANI, "schedule_book", args, at(8, 0));
+    let st = call(&base, &DANI, "schedule_book", &args, at(8, 0));
     assert_eq!(booking(&st, "dani")[0]["forName"], "Dani");
     assert_eq!(
         booking_change(&base, &st, "dani").unwrap()["booking"]["client"],
@@ -116,7 +116,7 @@ fn a_client_sees_and_cancels_what_the_agent_booked_for_them() {
     let base = open_schedule();
     let args = json!({"serviceId": "corte", "startMs": at(10, 0),
             "forId": "carla", "forName": "Carla"});
-    let st = call(&base, &AGENT, "schedule_book", args, at(8, 0));
+    let st = call(&base, &AGENT, "schedule_book", &args, at(8, 0));
     let st = book(&st, &DANI, at(11, 0), at(8, 0));
     let id = booking(&st, "bot")[0]["id"].clone();
     // Carla sees hers with its events; Dani's stays busy-only, for both clients.
@@ -143,7 +143,7 @@ fn a_client_sees_and_cancels_what_the_agent_booked_for_them() {
     // Dani can't cancel it; Carla can, and the owner hears it from her.
     let cancel = json!({"bookingId": id});
     assert!(apply("schedule_cancel", &cancel, st.clone(), &DANI, at(9, 0)).is_err());
-    let done = call(&st, &CARLA, "schedule_cancel", cancel, at(9, 0));
+    let done = call(&st, &CARLA, "schedule_cancel", &cancel, at(9, 0));
     assert_eq!(booking(&done, "bot")[0]["status"], "cancelled");
     assert!(booking_change(&st, &done, "carla").is_some());
 }
@@ -169,7 +169,10 @@ fn two_devices_booking_the_same_slot_resolve_the_same_way_everywhere() {
         booking(&folded, "carla")[0]["id"],
         "fresh id"
     );
-    assert!(open_events(&folded, lost[0]["id"].as_str().unwrap()).is_empty());
+    assert_eq!(
+        open_events(&folded, lost[0]["id"].as_str().unwrap()),
+        [] as [String; 0]
+    );
     assert_eq!(busy(&folded, at(8, 0)).len(), 1, "the slot is held once");
     // Every device folds the same pair the same way.
     assert_eq!(reconcile(&carla, &dani, at(8, 0)), Some(folded.clone()));
@@ -208,7 +211,7 @@ fn a_stale_write_without_new_bookings_leaves_the_earlier_one_standing() {
         &base,
         &AGENT,
         "schedule_configure",
-        json!({"business": "Outro nome"}),
+        &json!({"business": "Outro nome"}),
         at(8, 0),
     );
     assert_eq!(reconcile(&carla, &renamed, at(8, 0)), Some(carla));
@@ -224,7 +227,7 @@ fn changing_hours_flags_bookings_left_outside_and_the_agent_can_resolve_them() {
 
     // The shop now closes at 15:00: Carla's 17:00 is flagged, Dani's 10:00 is not.
     let hours = json!({"weeklyHours": {"1": [["09:00", "15:00"]]}});
-    let applied = apply("schedule_configure", &hours, st.clone(), &AGENT, at(8, 5)).unwrap();
+    let applied = apply("schedule_configure", &hours, st, &AGENT, at(8, 5)).unwrap();
     assert!(
         applied.text.contains("17:00") && applied.comment.is_none(),
         "{:?} {:?}",
@@ -242,7 +245,7 @@ fn changing_hours_flags_bookings_left_outside_and_the_agent_can_resolve_them() {
         &st,
         &AGENT,
         "schedule_configure",
-        json!({"business": "Barbearia 2"}),
+        &json!({"business": "Barbearia 2"}),
         at(8, 6),
     );
     let n = again["events"]
@@ -258,10 +261,10 @@ fn changing_hours_flags_bookings_left_outside_and_the_agent_can_resolve_them() {
         &st,
         &AGENT,
         "schedule_resolve",
-        json!({"bookingId": late, "action": "adjust", "startMs": at(14, 0)}),
+        &json!({"bookingId": late, "action": "adjust", "startMs": at(14, 0)}),
         at(8, 7),
     );
-    assert!(open_events(&moved, &late).is_empty());
+    assert_eq!(open_events(&moved, &late), [] as [String; 0]);
     assert!(booking(&moved, "carla")[0].get("outsideHours").is_none());
 
     // Or the owner keeps it on purpose; later hour changes leave it alone.
@@ -269,7 +272,7 @@ fn changing_hours_flags_bookings_left_outside_and_the_agent_can_resolve_them() {
         &st,
         &AGENT,
         "schedule_resolve",
-        json!({"bookingId": late, "action": "keep"}),
+        &json!({"bookingId": late, "action": "keep"}),
         at(8, 7),
     );
     // Keeping answers the hours flag only; the booking request itself is still the
@@ -279,7 +282,7 @@ fn changing_hours_flags_bookings_left_outside_and_the_agent_can_resolve_them() {
         &kept,
         &AGENT,
         "schedule_configure",
-        json!({"weeklyHours": {"1": [["09:00", "14:00"]]}}),
+        &json!({"weeklyHours": {"1": [["09:00", "14:00"]]}}),
         at(8, 8),
     );
     assert!(!open_events(&later, &late).contains(&"outside_hours".to_string()));
@@ -289,7 +292,7 @@ fn changing_hours_flags_bookings_left_outside_and_the_agent_can_resolve_them() {
         &st,
         &AGENT,
         "schedule_configure",
-        json!({"weeklyHours": {"1": [["09:00", "18:00"]]}}),
+        &json!({"weeklyHours": {"1": [["09:00", "18:00"]]}}),
         at(8, 9),
     );
     assert!(!open_events(&reopened, &late).contains(&"outside_hours".to_string()));
@@ -305,14 +308,14 @@ fn rescheduling_closes_the_open_cancel_request() {
         &st,
         &AGENT,
         "schedule_resolve",
-        json!({"bookingId": id, "action": "confirm"}),
+        &json!({"bookingId": id, "action": "confirm"}),
         at(8, 1),
     );
     let st = call(
         &st,
         &CARLA,
         "schedule_cancel",
-        json!({"bookingId": id}),
+        &json!({"bookingId": id}),
         at(8, 2),
     );
     assert_eq!(open_events(&st, &id), ["cancel_request"]);
@@ -322,10 +325,10 @@ fn rescheduling_closes_the_open_cancel_request() {
         &st,
         &AGENT,
         "schedule_resolve",
-        json!({"bookingId": id, "action": "adjust", "startMs": at(11, 0)}),
+        &json!({"bookingId": id, "action": "adjust", "startMs": at(11, 0)}),
         at(8, 3),
     );
-    assert!(open_events(&st, &id).is_empty());
+    assert_eq!(open_events(&st, &id), [] as [String; 0]);
     let ev = st["events"]
         .as_array()
         .unwrap()
@@ -339,7 +342,7 @@ fn rescheduling_closes_the_open_cancel_request() {
         &st,
         &CARLA,
         "schedule_cancel",
-        json!({"bookingId": id}),
+        &json!({"bookingId": id}),
         at(8, 4),
     );
     assert_eq!(open_events(&st, &id), ["cancel_request"]);
@@ -349,7 +352,7 @@ fn rescheduling_closes_the_open_cancel_request() {
 fn recovery_receipt_requires_exact_agent_service_member_slot_note_and_source() {
     let base = open_schedule();
     let args = json!({"serviceId":"corte","startMs":at(10,0),"forId":"carla","forName":"Carla","ref":"source-exact","note":"reviewed request"});
-    let accepted = call(&base, &AGENT, "schedule_book", args.clone(), at(8, 0));
+    let accepted = call(&base, &AGENT, "schedule_book", &args, at(8, 0));
     let before = accepted.clone();
     assert!(
         crate::recover_tool_result("schedule", "schedule_book", &args, &accepted, &AGENT).is_some()

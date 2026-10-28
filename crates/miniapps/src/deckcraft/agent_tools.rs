@@ -1,4 +1,4 @@
-//! Shared, closed DeckCraft command schema. Models supply data, never authority.
+//! Shared, closed `DeckCraft` command schema. Models supply data, never authority.
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 #[derive(Clone, Debug)]
@@ -10,8 +10,9 @@ pub struct Definition {
 fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+#[must_use]
 pub fn tools() -> Vec<Definition> {
-    let base = json!({"artifactId":{"type":"string","minLength":1,"maxLength":128},"version":{"type":"integer","minimum":1,"maximum":4294967294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}});
+    let base = json!({"artifactId":{"type":"string","minLength":1,"maxLength":128},"version":{"type":"integer","minimum":1,"maximum":4_294_967_294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}});
     let mut out = vec![Definition{name:"read_deckcraft".into(),description:"Read this presentation's accepted version/hash, slide and shape IDs before editing. Isolated executor supports at most 512 KiB.".into(),parameters:json!({"type":"object","properties":{"artifactId":{"type":"string","minLength":1,"maxLength":128}},"required":["artifactId"],"additionalProperties":false})}];
     for (name, description, properties, required) in [
         (
@@ -46,11 +47,13 @@ pub fn tools() -> Vec<Definition> {
     }
     out
 }
+#[must_use]
 pub fn recognizes(tool: &str) -> bool {
     tools().iter().any(|t| t.name == tool)
 }
 /// Compact stable alias; the server mapping and required artifactId still
 /// retain/check the entire canonical ID, including its 72-character form.
+#[must_use]
 pub fn model_name(tool: &str, item: &str) -> Option<String> {
     let digest = hash(item.as_bytes());
     let name = format!("{tool}__{}", &digest[..40]);
@@ -63,6 +66,7 @@ pub fn model_name(tool: &str, item: &str) -> Option<String> {
         && name.len() <= 64)
         .then_some(name)
 }
+#[must_use]
 pub fn is_model_name(name: &str) -> bool {
     name.rsplit_once("__").is_some_and(|(tool, digest)| {
         recognizes(tool)
@@ -72,8 +76,10 @@ pub fn is_model_name(name: &str) -> bool {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
 }
-/// Compact JSON with recursively sorted object keys, independent of serde_json's
+/// Compact JSON with recursively sorted object keys, independent of `serde_json`'s
 /// map feature. Arrays, scalar values and the caller's frozen input are preserved.
+/// # Errors
+/// Returns an error if the recursively ordered JSON value cannot be serialized.
 pub fn canonical_json(value: &Value) -> serde_json::Result<String> {
     let mut sorted = value.clone();
     sorted.sort_all_objects();
@@ -82,6 +88,8 @@ pub fn canonical_json(value: &Value) -> serde_json::Result<String> {
 
 pub type ParsedCommand = (Option<u32>, Option<String>, Option<Value>);
 
+/// # Errors
+/// Refuses unknown tools, malformed or unexpected arguments, unsupported commands or missing exact artifact/version/hash bindings.
 pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
     let definition = tools()
         .into_iter()
@@ -115,8 +123,9 @@ pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
     let version = args
         .get("version")
         .and_then(Value::as_u64)
-        .filter(|n| *n >= 1 && *n < u32::MAX as u64)
-        .ok_or("An observed version is required")? as u32;
+        .filter(|n| *n >= 1 && *n < u64::from(u32::MAX))
+        .and_then(|version| u32::try_from(version).ok())
+        .ok_or("An observed version is required")?;
     let sha = args
         .get("sha256")
         .and_then(Value::as_str)
@@ -127,39 +136,8 @@ pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
         })
         .ok_or("An observed hash is required")?
         .to_owned();
-    for field in ["slideId", "id", "afterSlideId"] {
-        if allowed.contains_key(field)
-            && args
-                .get(field)
-                .and_then(Value::as_u64)
-                .is_none_or(|id| id > u32::MAX as u64)
-        {
-            return Err("A native slide/shape ID is required".into());
-        }
-    }
-    for field in ["text", "title", "body"] {
-        if allowed.contains_key(field)
-            && args
-                .get(field)
-                .and_then(Value::as_str)
-                .is_none_or(|text| text.len() > 8192)
-        {
-            return Err("Presentation text must be a string up to 8192 UTF-8 bytes".into());
-        }
-    }
-    for (field, values) in [
-        ("preset", &["rect", "ellipse", "roundRect"][..]),
-        ("layout", &["blank", "title", "titleAndContent"][..]),
-    ] {
-        if allowed.contains_key(field)
-            && args
-                .get(field)
-                .and_then(Value::as_str)
-                .is_none_or(|value| !values.contains(&value))
-        {
-            return Err("Unsupported presentation command variant".into());
-        }
-    }
+    validate_fields(args, allowed)?;
+
     let mut params = args.clone();
     params.remove("artifactId");
     params.remove("version");
@@ -192,4 +170,44 @@ pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
     let mut action = json!({"command":command,"params":params});
     action.sort_all_objects();
     Ok((Some(version), Some(sha), Some(action)))
+}
+
+fn validate_fields(
+    args: &serde_json::Map<String, Value>,
+    allowed: &serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    for field in ["slideId", "id", "afterSlideId"] {
+        if allowed.contains_key(field)
+            && args
+                .get(field)
+                .and_then(Value::as_u64)
+                .is_none_or(|id| id > u64::from(u32::MAX))
+        {
+            return Err("A native slide/shape ID is required".into());
+        }
+    }
+    for field in ["text", "title", "body"] {
+        if allowed.contains_key(field)
+            && args
+                .get(field)
+                .and_then(Value::as_str)
+                .is_none_or(|text| text.len() > 8192)
+        {
+            return Err("Presentation text must be a string up to 8192 UTF-8 bytes".into());
+        }
+    }
+    for (field, values) in [
+        ("preset", &["rect", "ellipse", "roundRect"][..]),
+        ("layout", &["blank", "title", "titleAndContent"][..]),
+    ] {
+        if allowed.contains_key(field)
+            && args
+                .get(field)
+                .and_then(Value::as_str)
+                .is_none_or(|value| !values.contains(&value))
+        {
+            return Err("Unsupported presentation command variant".into());
+        }
+    }
+    Ok(())
 }

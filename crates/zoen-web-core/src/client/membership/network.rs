@@ -1,22 +1,26 @@
-use super::*;
+use super::{
+    leaf_name, BTreeMap, ChatPreferencesView, Claim, Client, ClientFrame, ConversationView,
+    EventBody, Op, Owed, Privacy, Reply, Role, SealedKind, Signer, SpaceKind, CLAIM_REQUEST,
+    DEVICES_REQUEST_BASE,
+};
 impl<S: Signer> Client<S> {
     pub(in crate::client) fn membership_reply(
         &mut self,
         id: u64,
         result: &Result<Reply, String>,
         outgoing: &mut Vec<Vec<u8>>,
-    ) -> Result<bool, String> {
+    ) -> bool {
         if (DEVICES_REQUEST_BASE..=DEVICES_REQUEST_BASE + u64::from(u32::MAX)).contains(&id) {
             if self.membership_net.devices_requested && id == self.membership_net.devices_request {
-                self.device_directory_reply(result, outgoing)?;
+                self.device_directory_reply(result, outgoing);
             }
-            return Ok(true);
+            return true;
         }
         if id != CLAIM_REQUEST {
-            return Ok(false);
+            return false;
         }
         let Some((space, operation, _)) = self.membership_net.claiming.take() else {
-            return Ok(true);
+            return true;
         };
         if let Some(claim) = self
             .saved
@@ -37,7 +41,7 @@ impl<S: Signer> Client<S> {
         self.membership_net
             .retry
             .insert(space, self.view_now_ms.saturating_add(5000));
-        Ok(true)
+        true
     }
     pub(in crate::client) fn creating_views(&self) -> Vec<ConversationView> {
         self.saved
@@ -74,14 +78,16 @@ impl<S: Signer> Client<S> {
                         .keys()
                         .find(|id| **id != self.account.identity)
                         .and_then(|id| self.saved.profiles.get(id))
-                        .map(|person| {
-                            if person.name.is_empty() {
-                                format!("@{}", person.handle)
-                            } else {
-                                person.name.clone()
-                            }
-                        })
-                        .unwrap_or_else(|| "Conversa".into())
+                        .map_or_else(
+                            || "Conversa".into(),
+                            |person| {
+                                if person.name.is_empty() {
+                                    format!("@{}", person.handle)
+                                } else {
+                                    person.name.clone()
+                                }
+                            },
+                        )
                 } else {
                     title
                 };
@@ -230,176 +236,203 @@ impl<S: Signer> Client<S> {
             self.membership_net.devices_due = self.view_now_ms.saturating_add(15_000);
         }
         for space in self.logs.keys().cloned().collect::<Vec<_>>() {
-            if !self.metadata(&space).is_some_and(|(_, kind, privacy)| {
-                kind != SpaceKind::Personal && privacy == Privacy::EndToEnd
-            }) {
-                continue;
-            }
-            self.settle_membership(&space)?;
-            let Some(owed) = self.owed_membership(&space)? else {
-                self.membership_net.turns.remove(&space);
-                self.membership_net.retry.remove(&space);
-                continue;
-            };
-            let ahead = self
-                .roster(&space)
+            self.reconcile_space_membership(&space, frames)?;
+        }
+
+        Ok(())
+    }
+    fn reconcile_space_membership(
+        &mut self,
+        space: &str,
+        frames: &mut Vec<Vec<u8>>,
+    ) -> Result<(), String> {
+        if !self.metadata(space).is_some_and(|(_, kind, privacy)| {
+            kind != SpaceKind::Personal && privacy == Privacy::EndToEnd
+        }) {
+            return Ok(());
+        }
+        self.settle_membership(space)?;
+        let Some(owed) = self.owed_membership(space)? else {
+            self.membership_net.turns.remove(space);
+            self.membership_net.retry.remove(space);
+            return Ok(());
+        };
+        let ahead = i64::try_from(
+            self.roster(space)
                 .iter()
                 .filter(|(identity, role)| {
                     matches!(role, Role::Owner | Role::Admin)
                         && identity.as_str() < self.account.identity.as_str()
                 })
-                .count() as i64;
-            if ahead > 0 {
-                let due = self
-                    .membership_net
-                    .turns
-                    .entry(space.clone())
-                    .or_insert(self.view_now_ms.saturating_add(ahead.saturating_mul(400)));
-                if *due > self.view_now_ms {
-                    continue;
-                }
-            }
-            if self
+                .count(),
+        )
+        .map_err(|_| "membership roster exceeds scheduling limit")?;
+        if ahead > 0 {
+            let due = self
                 .membership_net
-                .retry
-                .get(&space)
-                .is_some_and(|at| *at > self.view_now_ms)
-                && self
-                    .saved
-                    .membership
-                    .claims
-                    .get(&space)
-                    .is_none_or(|claim| claim.records.is_none())
-            {
-                continue;
+                .turns
+                .entry(space.to_owned())
+                .or_insert(self.view_now_ms.saturating_add(ahead.saturating_mul(400)));
+            if *due > self.view_now_ms {
+                return Ok(());
             }
-            if self.recovery_recipients(&space).is_err() {
-                continue;
-            }
-            if owed.adds_nobody() {
-                if self.stage_membership(&space, &[], &owed.remove).is_err() {
-                    self.membership_net
-                        .retry
-                        .insert(space.clone(), self.view_now_ms.saturating_add(5000));
-                }
-                continue;
-            }
-            if self.membership_net.claiming.is_some() {
-                continue;
-            }
-            let epoch = self
-                .device()?
-                .epoch(&space)
-                .map_err(|error| error.to_string())?;
-            let saved = self
+        }
+        if self
+            .membership_net
+            .retry
+            .get(space)
+            .is_some_and(|at| *at > self.view_now_ms)
+            && self
                 .saved
                 .membership
                 .claims
-                .get(&space)
-                .filter(|claim| {
-                    claim.device == self.account.device
-                        && claim.epoch == epoch
-                        && claim.intent == owed
-                })
-                .cloned();
-            let claim = if let Some(saved) = saved {
-                saved
-            } else {
-                let Some(clock) = self.membership_net.clock else {
-                    continue;
-                };
-                if self
-                    .membership_net
-                    .retry
-                    .get(&space)
-                    .is_some_and(|at| *at > self.view_now_ms)
-                {
-                    continue;
-                }
-                let mut random = [0; 16];
-                getrandom::getrandom(&mut random).map_err(|error| error.to_string())?;
-                let mut value = ((clock.milliseconds() as u128) << 80)
-                    | (u128::from_be_bytes(random) & ((1u128 << 80) - 1));
-                let alphabet = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-                let mut operation = [0; 26];
-                for byte in operation.iter_mut().rev() {
-                    *byte = alphabet[(value & 31) as usize];
-                    value >>= 5;
-                }
-                Claim {
-                    operation: String::from_utf8(operation.to_vec())
-                        .map_err(|error| error.to_string())?,
-                    device: self.account.device.clone(),
-                    epoch,
-                    intent: owed.clone(),
-                    targets: owed.to_claim(),
-                    records: None,
-                }
-            };
-            self.saved
-                .membership
-                .claims
-                .insert(space.clone(), claim.clone());
-            if let Some(records) = claim.records {
-                let records = records
-                    .into_iter()
-                    .filter(|record| {
-                        mls::key_package_leaf(&record.data).is_ok_and(|leaf| {
-                            leaf.identity == record.identity
-                                && leaf.device == record.device
-                                && claim.targets.contains(&leaf.identity)
-                                && (owed.add.contains(&leaf.identity)
-                                    || owed
-                                        .add_devices
-                                        .contains(&(leaf.identity.clone(), leaf.device.clone())))
-                                && !owed
-                                    .remove
-                                    .contains(&leaf_name(&record.identity, &record.device))
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if owed.add.iter().any(|id| {
-                    claim.targets.contains(id)
-                        && !records.iter().any(|record| &record.identity == id)
-                }) {
-                    self.membership_net.stuck.insert(space.clone());
-                }
-                let packages = records
-                    .into_iter()
-                    .map(|record| record.data)
-                    .collect::<Vec<_>>();
-                if packages.is_empty() && owed.remove.is_empty() {
-                    self.saved.membership.claims.remove(&space);
-                    continue;
-                }
-                if self
-                    .stage_membership(&space, &packages, &owed.remove)
-                    .is_err()
-                {
-                    // Bad/noncontributory member keys cannot tear down the account.
-                    self.saved.membership.claims.remove(&space);
-                    self.membership_net
-                        .retry
-                        .insert(space.clone(), self.view_now_ms.saturating_add(5000));
-                }
-            } else {
-                self.membership_net.claiming = Some((
-                    space.clone(),
-                    claim.operation.clone(),
-                    self.view_now_ms.saturating_add(15_000),
-                ));
-                frames.push(
-                    ClientFrame::Req {
-                        id: CLAIM_REQUEST,
-                        op: Op::ClaimKeyPackages {
-                            ids: claim.targets,
-                            operation_id: Some(claim.operation),
-                        },
-                    }
-                    .encode(),
-                );
-            }
+                .get(space)
+                .is_none_or(|claim| claim.records.is_none())
+        {
+            return Ok(());
         }
+        if self.recovery_recipients(space).is_err() {
+            return Ok(());
+        }
+        if owed.adds_nobody() {
+            if self.stage_membership(space, &[], &owed.remove).is_err() {
+                self.membership_net
+                    .retry
+                    .insert(space.to_owned(), self.view_now_ms.saturating_add(5000));
+            }
+            return Ok(());
+        }
+        if self.membership_net.claiming.is_some() {
+            return Ok(());
+        }
+        let Some(claim) = self.membership_claim(space, &owed)? else {
+            return Ok(());
+        };
+        self.saved
+            .membership
+            .claims
+            .insert(space.to_owned(), claim.clone());
+        self.publish_membership_claim(space, &owed, claim, frames);
         Ok(())
+    }
+
+    fn membership_claim(&self, space: &str, owed: &Owed) -> Result<Option<Claim>, String> {
+        let epoch = self
+            .device()?
+            .epoch(space)
+            .map_err(|error| error.to_string())?;
+        let saved = self
+            .saved
+            .membership
+            .claims
+            .get(space)
+            .filter(|claim| {
+                claim.device == self.account.device && claim.epoch == epoch && &claim.intent == owed
+            })
+            .cloned();
+        let claim = if let Some(saved) = saved {
+            saved
+        } else {
+            let Some(clock) = self.membership_net.clock else {
+                return Ok(None);
+            };
+            if self
+                .membership_net
+                .retry
+                .get(space)
+                .is_some_and(|at| *at > self.view_now_ms)
+            {
+                return Ok(None);
+            }
+            let mut random = [0; 16];
+            getrandom::getrandom(&mut random).map_err(|error| error.to_string())?;
+            let mut value = (u128::try_from(clock.milliseconds())
+                .map_err(|_| "invalid membership claim clock")?
+                << 80)
+                | (u128::from_be_bytes(random) & ((1u128 << 80) - 1));
+            let alphabet = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+            let mut operation = [0; 26];
+            for byte in operation.iter_mut().rev() {
+                *byte = alphabet[(value & 31) as usize];
+                value >>= 5;
+            }
+            Claim {
+                operation: String::from_utf8(operation.to_vec())
+                    .map_err(|error| error.to_string())?,
+                device: self.account.device.clone(),
+                epoch,
+                intent: owed.clone(),
+                targets: owed.to_claim(),
+                records: None,
+            }
+        };
+        Ok(Some(claim))
+    }
+
+    fn publish_membership_claim(
+        &mut self,
+        space: &str,
+        owed: &Owed,
+        claim: Claim,
+        frames: &mut Vec<Vec<u8>>,
+    ) {
+        if let Some(records) = claim.records {
+            let records = records
+                .into_iter()
+                .filter(|record| {
+                    mls::key_package_leaf(&record.data).is_ok_and(|leaf| {
+                        leaf.identity == record.identity
+                            && leaf.device == record.device
+                            && claim.targets.contains(&leaf.identity)
+                            && (owed.add.contains(&leaf.identity)
+                                || owed
+                                    .add_devices
+                                    .contains(&(leaf.identity.clone(), leaf.device)))
+                            && !owed
+                                .remove
+                                .contains(&leaf_name(&record.identity, &record.device))
+                    })
+                })
+                .collect::<Vec<_>>();
+            if owed.add.iter().any(|id| {
+                claim.targets.contains(id) && !records.iter().any(|record| &record.identity == id)
+            }) {
+                self.membership_net.stuck.insert(space.to_owned());
+            }
+            let packages = records
+                .into_iter()
+                .map(|record| record.data)
+                .collect::<Vec<_>>();
+            if packages.is_empty() && owed.remove.is_empty() {
+                self.saved.membership.claims.remove(space);
+                return;
+            }
+            if self
+                .stage_membership(space, &packages, &owed.remove)
+                .is_err()
+            {
+                // Bad/noncontributory member keys cannot tear down the account.
+                self.saved.membership.claims.remove(space);
+                self.membership_net
+                    .retry
+                    .insert(space.to_owned(), self.view_now_ms.saturating_add(5000));
+            }
+        } else {
+            self.membership_net.claiming = Some((
+                space.to_owned(),
+                claim.operation.clone(),
+                self.view_now_ms.saturating_add(15_000),
+            ));
+            frames.push(
+                ClientFrame::Req {
+                    id: CLAIM_REQUEST,
+                    op: Op::ClaimKeyPackages {
+                        ids: claim.targets,
+                        operation_id: Some(claim.operation),
+                    },
+                }
+                .encode(),
+            );
+        }
     }
 }

@@ -1,7 +1,10 @@
-//! OpenAI Images through the same bounded Rig transport and admission authority.
+//! `OpenAI` Images through the same bounded Rig transport and admission authority.
 mod decoding;
 mod types;
-use crate::*;
+use crate::{
+    receipt, transport, validation, Admission, DispatchAuthority, DispatchDescriptor,
+    DispatchRequest, GatewayError, ModelGateway, Operation, OutputFailure, ProviderEvidence,
+};
 use rig_core::image_generation::ImageGenerationRequest as RigImage;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::wire::{Body, Mode, Wire};
@@ -13,11 +16,14 @@ pub use types::*;
 
 impl ModelGateway {
     /// Capability of this configured wire, not account access or a price grant.
+    #[must_use]
     pub fn supports_images(&self) -> bool {
         self.config.model.starts_with("gpt-image-")
             && url::Url::parse(&self.config.base_url)
                 .is_ok_and(|url| url.path().trim_end_matches('/') == "/v1")
     }
+    /// # Errors
+    /// Refuses unsupported image wires or invalid/budget-exceeding inputs and encoding failures, without admitting or sending.
     pub fn preflight_image(&self, request: &ImageRequest) -> Result<DispatchRequest, GatewayError> {
         self.prepare_image(request).map(|(_, admission)| admission)
     }
@@ -110,6 +116,8 @@ impl ModelGateway {
     }
     /// One admitted attempt. Cancellation/errors never release or reconstruct a
     /// financial hold; only the existing authority can reconcile that evidence.
+    /// # Errors
+    /// Refuses invalid/unsupported requests or non-fresh/failed admission. Provider output failures remain typed in the returned attempt.
     pub async fn generate_image(
         &self,
         request: ImageRequest,

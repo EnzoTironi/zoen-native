@@ -1,5 +1,11 @@
-use super::*;
+use super::{
+    json, BTreeSet, Client, Command, DocumentResponse, EventBody, KeyPackageClaimClock, Payload,
+    PendingEnvelope, Privacy, Role, Sealed, SignedContent, Signer, SpaceKind, Value,
+};
 impl<S: Signer> Client<S> {
+    ///
+    /// # Errors
+    /// Returns an error if a nonempty relay clock is not a valid server timestamp.
     pub fn claim_clock(&mut self, value: &str) -> Result<(), String> {
         self.membership_net.clock = if value.is_empty() {
             None
@@ -17,7 +23,7 @@ impl<S: Signer> Client<S> {
     pub(in crate::client) fn enqueue_control(
         &mut self,
         space: &str,
-        body: EventBody,
+        body: &EventBody,
         now: i64,
     ) -> Result<(), String> {
         let pending = self.clear_event(space, body, now)?;
@@ -57,7 +63,7 @@ impl<S: Signer> Client<S> {
     }
     pub(super) fn creating(
         &mut self,
-        title: String,
+        title: &str,
         kind: SpaceKind,
         privacy: Privacy,
         members: Vec<String>,
@@ -87,7 +93,7 @@ impl<S: Signer> Client<S> {
         );
         let pending = self.clear_event(
             &space,
-            EventBody::SpaceCreated {
+            &EventBody::SpaceCreated {
                 title,
                 kind,
                 privacy,
@@ -122,6 +128,11 @@ impl<S: Signer> Client<S> {
         Ok(role)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error while disconnected, for malformed or oversized requests,
+    /// missing conversation authority, invalid membership transitions, or failures
+    /// in signing, key-package handling, encryption or the resulting update.
     pub fn membership_request(
         &mut self,
         request: &str,
@@ -141,43 +152,18 @@ impl<S: Signer> Client<S> {
                 self.membership_net.devices_due = 0;
                 Value::Null
             }
-            Command::StartDirect { identity_id } => {
-                if identity_id == self.account.identity {
-                    return Err("Escolha outra pessoa para conversar.".into());
-                }
-                if let Some(space) = self
-                    .creating_views()
-                    .iter()
-                    .find(|view| view.kind == "direct" && view.roster.contains_key(&identity_id))
-                    .map(|view| view.id.clone())
-                {
-                    json!(space)
-                } else if let Some(space) = self.logs.keys().find(|space| {
-                    self.metadata(space)
-                        .is_some_and(|(_, kind, _)| kind == SpaceKind::Direct)
-                        && {
-                            let roster = self.roster(space);
-                            roster.len() == 2
-                                && roster.contains_key(&self.account.identity)
-                                && roster.contains_key(&identity_id)
-                        }
-                }) {
-                    json!(space)
-                } else {
-                    json!(self.creating(
-                        String::new(),
-                        SpaceKind::Direct,
-                        Privacy::EndToEnd,
-                        vec![identity_id],
-                        now
-                    )?)
-                }
-            }
+            Command::StartDirect { identity_id } => json!(self.direct_space(identity_id, now)?),
             Command::CreateGroup { title, member_ids } => {
-                json!(self.creating(title, SpaceKind::Group, Privacy::EndToEnd, member_ids, now)?)
+                json!(self.creating(
+                    &title,
+                    SpaceKind::Group,
+                    Privacy::EndToEnd,
+                    member_ids,
+                    now
+                )?)
             }
             Command::CreateCommunity { title } => json!(self.creating(
-                title,
+                &title,
                 SpaceKind::Community,
                 Privacy::Closed,
                 Vec::new(),
@@ -186,42 +172,15 @@ impl<S: Signer> Client<S> {
             Command::AddMember {
                 space_id,
                 identity_id,
+            } => {
+                self.add_browser_member(&space_id, identity_id, Role::Member, now)?;
+                Value::Null
             }
-            | Command::AddAdmin {
+            Command::AddAdmin {
                 space_id,
                 identity_id,
             } => {
-                let command: Value =
-                    serde_json::from_str(request).map_err(|error| error.to_string())?;
-                let role = if command["op"] == "add_admin" {
-                    Role::Admin
-                } else {
-                    Role::Member
-                };
-                self.require_admin(&space_id)?;
-                if identity_id == self.account.identity
-                    || event_log::parse_device_key(&identity_id).is_none()
-                    || !self.saved.profiles.contains_key(&identity_id)
-                {
-                    return Err("Pessoa não encontrada.".into());
-                }
-                let roster = self.roster(&space_id);
-                if self
-                    .metadata(&space_id)
-                    .is_some_and(|(_, kind, _)| kind == SpaceKind::Direct)
-                    && roster.len() >= 2
-                    && !roster.contains_key(&identity_id)
-                {
-                    return Err("Uma conversa direta tem duas pessoas.".into());
-                }
-                self.enqueue_control(
-                    &space_id,
-                    EventBody::MemberAdded {
-                        identity: identity_id,
-                        role,
-                    },
-                    now,
-                )?;
+                self.add_browser_member(&space_id, identity_id, Role::Admin, now)?;
                 Value::Null
             }
             Command::RemoveMember {
@@ -239,7 +198,7 @@ impl<S: Signer> Client<S> {
                 }
                 self.enqueue_control(
                     &space_id,
-                    EventBody::MemberRemoved {
+                    &EventBody::MemberRemoved {
                         identity: identity_id,
                     },
                     now,
@@ -252,7 +211,7 @@ impl<S: Signer> Client<S> {
                 }
                 self.enqueue_control(
                     &space_id,
-                    EventBody::MemberRemoved {
+                    &EventBody::MemberRemoved {
                         identity: self.account.identity.clone(),
                     },
                     now,
@@ -260,22 +219,7 @@ impl<S: Signer> Client<S> {
                 Value::Null
             }
             Command::EncryptChat { space_id } => {
-                let (_, kind, privacy) =
-                    self.metadata(&space_id).ok_or("Conversa não encontrada.")?;
-                if privacy != Privacy::EndToEnd {
-                    let role = self.roster(&space_id).get(&self.account.identity).copied();
-                    if privacy != Privacy::Closed
-                        || !matches!(kind, SpaceKind::Direct | SpaceKind::Group)
-                    {
-                        return Err("Espaços públicos continuam legíveis.".into());
-                    }
-                    if !matches!(role, Some(Role::Owner | Role::Admin))
-                        && !(kind == SpaceKind::Direct && role == Some(Role::Member))
-                    {
-                        return Err("Só quem administra o grupo ativa a criptografia.".into());
-                    }
-                    self.enqueue_control(&space_id, EventBody::SpaceEncrypted, now)?;
-                }
+                self.encrypt_browser_chat(&space_id, now)?;
                 Value::Null
             }
         };
@@ -286,5 +230,88 @@ impl<S: Signer> Client<S> {
             downloads: Vec::new(),
             uploads: self.pending_document_uploads(),
         })
+    }
+    fn add_browser_member(
+        &mut self,
+        space_id: &str,
+        identity_id: String,
+        role: Role,
+        now: i64,
+    ) -> Result<(), String> {
+        self.require_admin(space_id)?;
+        if identity_id == self.account.identity
+            || event_log::parse_device_key(&identity_id).is_none()
+            || !self.saved.profiles.contains_key(&identity_id)
+        {
+            return Err("Pessoa não encontrada.".into());
+        }
+        let roster = self.roster(space_id);
+        if self
+            .metadata(space_id)
+            .is_some_and(|(_, kind, _)| kind == SpaceKind::Direct)
+            && roster.len() >= 2
+            && !roster.contains_key(&identity_id)
+        {
+            return Err("Uma conversa direta tem duas pessoas.".into());
+        }
+        self.enqueue_control(
+            space_id,
+            &EventBody::MemberAdded {
+                identity: identity_id,
+                role,
+            },
+            now,
+        )?;
+        Ok(())
+    }
+
+    fn encrypt_browser_chat(&mut self, space_id: &str, now: i64) -> Result<(), String> {
+        let (_, kind, privacy) = self.metadata(space_id).ok_or("Conversa não encontrada.")?;
+        if privacy != Privacy::EndToEnd {
+            let role = self.roster(space_id).get(&self.account.identity).copied();
+            if privacy != Privacy::Closed || !matches!(kind, SpaceKind::Direct | SpaceKind::Group) {
+                return Err("Espaços públicos continuam legíveis.".into());
+            }
+            if !(matches!(role, Some(Role::Owner | Role::Admin))
+                || kind == SpaceKind::Direct && role == Some(Role::Member))
+            {
+                return Err("Só quem administra o grupo ativa a criptografia.".into());
+            }
+            self.enqueue_control(space_id, &EventBody::SpaceEncrypted, now)?;
+        }
+        Ok(())
+    }
+
+    fn direct_space(&mut self, identity_id: String, now: i64) -> Result<String, String> {
+        if identity_id == self.account.identity {
+            return Err("Escolha outra pessoa para conversar.".into());
+        }
+        if let Some(space) = self
+            .creating_views()
+            .iter()
+            .find(|view| view.kind == "direct" && view.roster.contains_key(&identity_id))
+            .map(|view| view.id.clone())
+        {
+            return Ok(space);
+        }
+        if let Some(space) = self.logs.keys().find(|space| {
+            self.metadata(space)
+                .is_some_and(|(_, kind, _)| kind == SpaceKind::Direct)
+                && {
+                    let roster = self.roster(space);
+                    roster.len() == 2
+                        && roster.contains_key(&self.account.identity)
+                        && roster.contains_key(&identity_id)
+                }
+        }) {
+            return Ok(space.clone());
+        }
+        self.creating(
+            "",
+            SpaceKind::Direct,
+            Privacy::EndToEnd,
+            vec![identity_id],
+            now,
+        )
     }
 }

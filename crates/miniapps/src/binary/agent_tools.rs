@@ -11,6 +11,7 @@ pub use deckcraft::agent_tools::{canonical_json, Definition, ParsedCommand};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+#[must_use]
 pub fn format(tool: &str) -> Option<Format> {
     if deckcraft::agent_tools::recognizes(tool) {
         Some(Format::Deckcraft)
@@ -26,6 +27,7 @@ pub fn format(tool: &str) -> Option<Format> {
         None
     }
 }
+#[must_use]
 pub fn tools_for(kind: Format) -> Vec<Definition> {
     match kind {
         Format::Deckcraft => deckcraft::agent_tools::tools(),
@@ -35,6 +37,7 @@ pub fn tools_for(kind: Format) -> Vec<Definition> {
         Format::Pdfcraft => pdfcraft_tools::tools(),
     }
 }
+#[must_use]
 pub fn tools() -> Vec<Definition> {
     let mut out = tools_for(Format::Deckcraft);
     out.extend(tools_for(Format::Gridcraft));
@@ -43,6 +46,8 @@ pub fn tools() -> Vec<Definition> {
     out.extend(tools_for(Format::Pdfcraft));
     out
 }
+/// # Errors
+/// Refuses unknown tools, malformed or unexpected arguments, unsupported commands or missing exact artifact/version/hash bindings.
 pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
     match format(tool) {
         Some(Format::Deckcraft) => deckcraft::agent_tools::command(tool, args),
@@ -53,9 +58,11 @@ pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
         None => Err("Unsupported binary App tool".into()),
     }
 }
+#[must_use]
 pub fn recognizes(tool: &str) -> bool {
     format(tool).is_some()
 }
+#[must_use]
 pub fn is_read(tool: &str) -> bool {
     matches!(
         tool,
@@ -66,6 +73,7 @@ pub fn is_read(tool: &str) -> bool {
             | "read_pdfcraft"
     )
 }
+#[must_use]
 pub fn model_name(tool: &str, item: &str) -> Option<String> {
     if format(tool) == Some(Format::Deckcraft) {
         return deckcraft::agent_tools::model_name(tool, item);
@@ -83,6 +91,7 @@ pub fn model_name(tool: &str, item: &str) -> Option<String> {
         && name.len() <= 64)
         .then_some(name)
 }
+#[must_use]
 pub fn is_model_name(name: &str) -> bool {
     name.rsplit_once("__").is_some_and(|(tool, digest)| {
         recognizes(tool)

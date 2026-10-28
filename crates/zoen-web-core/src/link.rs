@@ -32,6 +32,10 @@ pub struct LinkedAccount {
     pub profile_fields: String,
 }
 
+///
+/// # Errors
+/// Returns an error for an invalid device public key, unavailable randomness,
+/// or failed link key-pair generation.
 pub fn create_link(device: &str, relay: &str) -> Result<PendingLink, String> {
     event_log::parse_device_key(device).ok_or("invalid device public key")?;
     let mut secret = Zeroizing::new([0u8; 32]);
@@ -56,6 +60,11 @@ pub fn create_link(device: &str, relay: &str) -> Result<PendingLink, String> {
     })
 }
 
+///
+/// # Errors
+/// Returns an error for invalid ciphertext size, malformed pending secrets,
+/// failed decryption or identity decoding, a mismatched device certificate,
+/// or a relay different from the pending link.
 pub fn complete_link(pending: &PendingLink, sealed: &[u8]) -> Result<LinkedAccount, String> {
     if sealed.len() < 48 || sealed.len() > 65_536 {
         return Err("invalid identity box size".into());
@@ -122,42 +131,48 @@ mod tests {
     use super::*;
     use event_log::Signer;
 
-    fn phone_box(pending: &PendingLink, certified_device: &str) -> Vec<u8> {
+    fn phone_box(
+        pending: &PendingLink,
+        certified_device: &str,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let identity = Signer::from_secret(&[7; 32]);
         let cert = identity.sign(&event_log::device_cert_message(certified_device));
         let payload = serde_json::json!({ "identity_secret": hex::encode(identity.secret()),
             "agreement_secret": hex::encode([9;32]), "cert":cert, "name":"Test", "handle":"test",
             "relay": pending.relay, "primary": identity.id(), "primary_hpke": hex::encode([8;32]),
             "profile_key": hex::encode([2;32]), "profile_key_version":1, "profile_seen_version":1, "profile_fields":"" });
-        let code = pending.code.strip_prefix("zoen-link:1:").unwrap();
-        let pk = hex::decode(&code[64..128]).unwrap();
-        let secret = hex::decode(&pending.secret).unwrap();
-        device_link::seal(
+        let code = pending
+            .code
+            .strip_prefix("zoen-link:1:")
+            .ok_or("fixture link prefix missing")?;
+        let pk = hex::decode(&code[64..128])?;
+        let secret = hex::decode(&pending.secret)?;
+        Ok(device_link::seal(
             &pk,
-            &secret.as_slice().try_into().unwrap(),
+            &secret.as_slice().try_into()?,
             "identity",
-            &serde_json::to_vec(&payload).unwrap(),
+            &serde_json::to_vec(&payload)?,
         )
-        .unwrap()
+        .ok_or("fixture identity sealing failed")?)
     }
 
     #[test]
-    fn native_psk_box_certifies_only_this_browser_and_retains_no_identity_seed() {
+    fn native_psk_box_certifies_only_this_browser_and_retains_no_identity_seed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = Signer::from_secret(&[3; 32]).id();
-        let pending = create_link(&device, "http://localhost:8080").unwrap();
+        let pending = create_link(&device, "http://localhost:8080")?;
         assert_eq!(pending.code.len(), 204);
-        let linked = complete_link(&pending, &phone_box(&pending, &device)).unwrap();
+        let linked = complete_link(&pending, &phone_box(&pending, &device)?)?;
         assert_eq!(linked.device, device);
-        assert!(!serde_json::to_string(&linked)
-            .unwrap()
-            .contains("identity_secret"));
+        assert!(!serde_json::to_string(&linked)?.contains("identity_secret"));
         assert!(complete_link(
             &pending,
-            &phone_box(&pending, &Signer::from_secret(&[4; 32]).id())
+            &phone_box(&pending, &Signer::from_secret(&[4; 32]).id())?
         )
         .is_err());
-        let mut tampered = phone_box(&pending, &device);
-        *tampered.last_mut().unwrap() ^= 1;
+        let mut tampered = phone_box(&pending, &device)?;
+        *tampered.last_mut().ok_or("fixture ciphertext empty")? ^= 1;
         assert!(complete_link(&pending, &tampered).is_err());
+        Ok(())
     }
 }

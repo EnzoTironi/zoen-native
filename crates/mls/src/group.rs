@@ -155,7 +155,10 @@ pub(crate) fn check_roster(
 }
 
 pub(crate) fn unlisted(group: BTreeSet<String>, roster: &BTreeSet<String>) -> Result<(), MlsError> {
-    let extra: BTreeSet<String> = group.difference(roster).cloned().collect();
+    let extra: BTreeSet<String> = group
+        .into_iter()
+        .filter(|identity| !roster.contains(identity))
+        .collect();
     if extra.is_empty() {
         Ok(())
     } else {
