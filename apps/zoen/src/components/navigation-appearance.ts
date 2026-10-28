@@ -5,5 +5,5 @@ export const navigationGlassAppearance = {
   headerStyle: { backgroundColor: 'transparent' },
   headerLargeStyle: { backgroundColor: 'transparent' },
   headerShadowVisible: false,
-  scrollEdgeEffects: { top: 'automatic' as const, bottom: 'hidden' as const },
+  scrollEdgeEffects: { top: 'soft' as const, bottom: 'hidden' as const },
 };
