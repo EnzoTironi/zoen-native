@@ -23,6 +23,7 @@ export function preparePackage(app: string, directory: string) {
     '020+composer-public-codegen-spec',
     '021+composer-format-availability',
     '022+composer-native-accessibility',
+    '023+composer-escaped-inline-import',
   ].map((stage) => join(app, `patches/react-native-enriched-markdown+1.1.1+${stage}.patch`));
   const paths = new Set(
     patches.flatMap((patch) =>
@@ -87,6 +88,10 @@ export function preparePackage(app: string, directory: string) {
     () =>
       readFileSync(join(pkg, 'ios/input/EnrichedMarkdownTextInput.mm'), 'utf8').includes(
         '- (NSObject *)accessibilityElement',
+      ),
+    () =>
+      readFileSync(join(pkg, 'ios/input/ENRMInputParser.mm'), 'utf8').includes(
+        'size_t cursor=textStart - (escaped ? 1 : 0);',
       ),
   ];
   for (const [index, patch] of patches.entries())

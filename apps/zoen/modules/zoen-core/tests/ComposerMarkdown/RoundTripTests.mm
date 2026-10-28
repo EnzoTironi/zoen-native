@@ -6,6 +6,13 @@
 #import "ENRMComposerRanges.h"
 #import "ENRMComposerInputState.h"
 #import "ENRMComposerAvailability.h"
+#include "MD4CParser.hpp"
+
+static std::string viewerText(const std::shared_ptr<Markdown::MarkdownASTNode> &node) {
+  std::string text = node->content;
+  for (const auto &child : node->children) text += viewerText(child);
+  return text;
+}
 
 int main() { @autoreleasepool {
   NSError *error=nil;
@@ -84,7 +91,13 @@ int main() { @autoreleasepool {
   NSMutableArray *ranges=[NSMutableArray new];
   for (ENRMFormattingRange *range in styles.allRanges)
     [ranges addObject:@{@"type":@(range.type),@"start":@(range.range.location),@"length":@(range.range.length)}];
-  NSData *output=[NSJSONSerialization dataWithJSONObject:@{@"plain":text,@"markdown":markdown,@"types":types,@"ranges":ranges,
+  Markdown::MD4CParser viewer;
+  Markdown::Md4cFlags flags;
+  flags.hardSoftBreaks = true; flags.preserveBlankLines = true;
+  flags.latexMath = false; flags.noMedia = true;
+  std::string displayed = viewerText(viewer.parse(markdown.UTF8String, flags, true));
+  NSString *viewerPlain = [[NSString alloc] initWithBytes:displayed.data() length:displayed.size() encoding:NSUTF8StringEncoding];
+  NSData *output=[NSJSONSerialization dataWithJSONObject:@{@"plain":text,@"markdown":markdown,@"viewerPlain":viewerPlain,@"types":types,@"ranges":ranges,
     @"selection":@[@(selection.location),@(selection.length)],@"available":@(available)} options:0 error:&error];
   [undo removeAllActions]; recursiveRestore = nil;
   if(error)return 4;[[NSFileHandle fileHandleWithStandardOutput] writeData:output];return 0;
