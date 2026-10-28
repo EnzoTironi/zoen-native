@@ -71,6 +71,12 @@ actual connection cancels that deadline. Session ports use the Core TURN API wit
 account/device checks before and after its await. A fresh binding or next outgoing
 attempt retires this device's abandoned accepted call with a signed hangup, or its
 abandoned outgoing invitation with cancellation; it never revives media after crash.
+On a restart, both devices renew TURN through the same scoped credential path.
+The callee installs fresh credentials before applying the next-generation offer;
+the caller installs them before restarting ICE. Renewal rechecks the canonical
+call, exact native peer and generation after asynchronous work. Failed renewal
+ends through normal failure handling and retains relay-only policy. This addresses
+new allocations after REST credential expiry; it does not evict active allocations.
 Ending/membership changes discard derived SDP/ICE payloads while retaining durable
 canonical history. Reader-role changes retire media as well.
 
