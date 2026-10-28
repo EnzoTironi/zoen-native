@@ -174,7 +174,7 @@ pub fn dispatch(op: BrowserOp) -> Response {
     };
     match r {
         Ok(v) => Response::value(v),
-        Err(e) => Response::err(e),
+        Err(e) => Response::err(&e),
     }
 }
 

@@ -126,6 +126,7 @@ pub const TAKEOVER_IN_PROGRESS: &str = "TAKEOVER_IN_PROGRESS";
 pub const FIELD_NEEDS_OWNER: &str = "FIELD_NEEDS_OWNER";
 
 impl Response {
+    #[must_use]
     pub fn value(v: serde_json::Value) -> Self {
         Response {
             ok: true,
@@ -134,7 +135,7 @@ impl Response {
         }
     }
 
-    pub fn err(e: impl ToString) -> Self {
+    pub fn err(e: &(impl ToString + ?Sized)) -> Self {
         Response {
             ok: false,
             error: Some(e.to_string()),

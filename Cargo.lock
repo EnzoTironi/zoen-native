@@ -8218,6 +8218,7 @@ dependencies = [
  "fastrand",
  "futures-util",
  "hdrhistogram",
+ "num-traits",
  "protocol",
  "serde_json",
  "tokio",

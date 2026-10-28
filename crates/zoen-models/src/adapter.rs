@@ -39,7 +39,7 @@ fn strict_calls(value: &Value, request: &ModelRequest) -> Result<(), OutputFailu
         .flatten()
         .filter_map(|block| match block {
             OutputBlock::ToolCall { call_id, .. } => Some(call_id.as_str()),
-            _ => None,
+            OutputBlock::Text { .. } => None,
         })
         .collect();
     for call in calls {
