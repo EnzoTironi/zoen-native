@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { messageInfoNavigation } from './message-info-navigation.fixtures.ts';
 import * as messageCopyText from './message-copy-text.ts';
+import * as conversationScope from './conversation-scope.ts';
+import * as messageLinks from '../notifications/links.ts';
 const code = (
   await build({
     stdin: {
@@ -13,6 +16,7 @@ const code = (
         'utf8',
       ),
       loader: 'tsx',
+      resolveDir: fileURLToPath(new URL('../components/', import.meta.url)),
     },
     bundle: true,
     format: 'cjs',
@@ -24,7 +28,11 @@ const code = (
       {
         name: 'context-hook-ports',
         setup(builder) {
-          builder.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
+          builder.onResolve({ filter: /./ }, ({ path }) =>
+            ['./message-action-current', './message-link-actions'].includes(path)
+              ? undefined
+              : { path, external: true },
+          );
         },
       },
     ],
@@ -159,6 +167,8 @@ function fixture() {
       messageCard: () => null,
     },
     '../core/presentation': { messageText: () => '' },
+    '../core/conversation-scope': conversationScope,
+    '../notifications/links': messageLinks,
     '../media/share-message': {},
     '../i18n/index.ts': { t: (key: string) => key },
     '../home/access': { homeSpacesFor: () => new Set(['space']) },

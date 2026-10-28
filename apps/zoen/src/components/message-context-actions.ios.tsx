@@ -53,6 +53,7 @@ export function ExtractedMessageActions({
       ['selectMessages', t('chat.selectMessages'), !entry.deleted ? props.onSelect : undefined],
       ['select', t('chat.selectText'), request.textSelection ? props.onSelectText : undefined],
       ['copy', t('chat.copyText'), props.onCopy],
+      ['copyLink', t('chat.copyMessageLink'), props.onCopyLink],
       ['share', t('media.share'), props.onShare],
       [
         'recover',
@@ -109,6 +110,7 @@ export function ExtractedMessageActions({
           info: props.onInfo,
           forward: props.onForward,
           copy: props.onCopy,
+          copyLink: props.onCopyLink,
           select: props.onSelectText,
           selectMessages: props.onSelect,
           share: props.onShare,

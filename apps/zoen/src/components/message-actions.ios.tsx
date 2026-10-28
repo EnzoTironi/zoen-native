@@ -92,6 +92,7 @@ function SafeMessageActions(props: MessageActionsProps) {
         { label: t('messageInfo.title'), image: 'info.circle', run: current?.onInfo },
         { label: t('chat.selectMessages'), image: 'checkmark.circle', run: current?.onSelect },
         { label: t('chat.copyText'), image: 'doc.on.doc', run: current?.onCopy },
+        { label: t('chat.copyMessageLink'), image: 'link', run: current?.onCopyLink },
         { label: t('media.share'), image: 'square.and.arrow.up', run: current?.onShare },
         {
           label: t('media.prepareNewSend'),

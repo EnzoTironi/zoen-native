@@ -51,6 +51,7 @@ function fixture(
     recover?: boolean;
     quote?: boolean;
     info?: boolean;
+    copyLink?: boolean;
   } = {},
 ) {
   const result = deferred<string | null>(),
@@ -115,6 +116,7 @@ function fixture(
     onReact: (value: string | null) => calls.push(`react:${value}`),
     onMore: () => calls.push('more'),
     onInfo: options.info ? () => calls.push('info') : undefined,
+    onCopyLink: options.copyLink ? () => calls.push('copy-link') : undefined,
     onReply: () => calls.push('reply'),
     onThread: () => calls.push('thread'),
     onForward: () => calls.push('forward'),
@@ -222,6 +224,16 @@ test('actual compiled menu offers only supplied real actions and receives the sh
   assert.equal(f.configurations[0].reducedMotion, true);
   f.result.resolve(null);
   await tick();
+});
+test('copy message link is an admitted native action and waits for real native dismissal', async () => {
+  const f = fixture({ copyLink: true });
+  f.render();
+  await tick();
+  assert.ok(f.configurations[0].actions.some((row: any) => row.id === 'copyLink'));
+  assert.deepEqual(f.calls, []);
+  f.result.resolve('copyLink');
+  await tick();
+  assert.deepEqual(f.calls, ['close', 'copy-link']);
 });
 test('deleted messages cannot gain forward/edit/delete capabilities from native UI', async () => {
   const f = fixture({ deleted: true });

@@ -4,7 +4,7 @@ export function messageMayContainMarkdown(text: string, nativeMediaDisabled = fa
     (nativeMediaDisabled || !messageMarkdownMayLoadMedia(text)) &&
     (/[*_`~[\]|]|(?:^|\n) {0,3}(?:#{1,6}\s|>\s?|[-+]\s|\d{1,9}[.)]\s)/u.test(text) ||
       text.includes('\\') ||
-      /https?:\/\/|www\./iu.test(text) ||
+      /(?:https?|zoen):\/\/|www\./iu.test(text) ||
       (text.includes('@') && text.includes('.')))
   );
 }

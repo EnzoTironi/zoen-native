@@ -26,6 +26,7 @@ export type MessageActionsProps = Readonly<{
   onQuoteReview?: (entry: TimelineEntry, text: string, ranges: string) => Promise<ReplySelection>;
   onQuote?: (entry: TimelineEntry, selection: ReplySelection) => void;
   onCopy?: (entry: TimelineEntry) => void;
+  onCopyLink?: (entry: TimelineEntry) => void;
   onEdit?: (entry: TimelineEntry) => void;
   onRecover?: (entry: TimelineEntry) => void;
   onDelete?: (entry: TimelineEntry) => void;

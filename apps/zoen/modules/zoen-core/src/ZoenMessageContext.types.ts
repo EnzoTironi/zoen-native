@@ -3,6 +3,7 @@ export type MessageContextAction =
   | 'reply'
   | 'thread'
   | 'copy'
+  | 'copyLink'
   | 'select'
   | 'info'
   | 'selectMessages'

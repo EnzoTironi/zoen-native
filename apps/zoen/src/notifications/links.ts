@@ -1,11 +1,17 @@
 export type ZoenLink =
   | { kind: 'item' | 'chat'; id: string }
+  | { kind: 'message'; space: string; message: string }
   | { kind: 'invite'; code: string }
   | { kind: 'agent'; target: string };
 
 const id = /^[A-Za-z0-9_-]{1,128}$/;
 const invite = /^[0-9A-HJKMNP-TV-Z]{10}$/i;
 const agent = /^@?[A-Za-z0-9_.-]{1,128}$/;
+
+/** Addresses carry IDs only, never text, credentials or permission to read. */
+export function messageAddress(space: string, message: string): string | null {
+  return id.test(space) && id.test(message) ? `zoen://message/${space}/${message}` : null;
+}
 
 /** Only Zoen's own documented link shapes may enter application navigation. */
 export function parseZoenLink(value: string): ZoenLink | null {
@@ -30,17 +36,29 @@ export function parseZoenLink(value: string): ZoenLink | null {
     const path = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     let route: string;
     let target: string | undefined;
+    let arguments_: string[];
     if (url.protocol === 'zoen:') {
-      if (path.length !== 1) return null;
       route = url.hostname;
-      target = path[0];
+      arguments_ = path;
     } else if (
       url.protocol === 'https:' &&
       ['tryzoen.com', 'www.tryzoen.com'].includes(url.hostname)
     ) {
-      if (path.length !== 2) return null;
-      [route, target] = path;
+      [route, ...arguments_] = path;
     } else return null;
+    if (route === 'message') {
+      const [space, message] = arguments_;
+      return arguments_.length === 2 &&
+        space &&
+        message &&
+        messageAddress(space, message) &&
+        !url.pathname.includes('//') &&
+        !url.pathname.endsWith('/')
+        ? { kind: 'message', space, message }
+        : null;
+    }
+    if (arguments_.length !== 1) return null;
+    target = arguments_[0];
     if (!target) return null;
     if (['app', 'item'].includes(route) && id.test(target)) return { kind: 'item', id: target };
     if (route === 'chat' && id.test(target)) return { kind: 'chat', id: target };
@@ -119,6 +137,8 @@ export function nativeLinkPath(path: string): string {
       return `/item/${encodeURIComponent(link.id)}`;
     case 'chat':
       return `/chat/${encodeURIComponent(link.id)}`;
+    case 'message':
+      return `/message/${encodeURIComponent(link.space)}/${encodeURIComponent(link.message)}`;
     case 'invite':
       return `/open-link?kind=invite&target=${encodeURIComponent(link.code)}`;
     case 'agent':
