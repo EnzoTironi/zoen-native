@@ -34,7 +34,7 @@ for (const change of [undefined, 'identity', 'device', 'relay'] as const)
       const before = f.calls.length;
       await f.act(() => old.updateDraft({ type: 'text', value: 'stale callback' }));
       assert.equal(old.capture(), null);
-      await assert.rejects(old.send(), /sessão mudou/);
+      await assert.rejects(old.send(), { code: 'ERR_ZOEN_DRAFT_SCOPE_CHANGED' });
       assert.equal(f.calls.length, before);
       assert.equal(f.current().capture()?.text, 'New session canonical draft');
       assert.deepEqual(f.errors, []);
@@ -75,7 +75,7 @@ test('compiled composer hides text and refuses old controls on canonical convers
     const count = f.calls.length;
     await f.act(() => old.updateDraft({ type: 'text', value: 'revoked callback' }));
     assert.equal(old.capture(), null);
-    await assert.rejects(old.send(), /sessão mudou/);
+    await assert.rejects(old.send(), { code: 'ERR_ZOEN_DRAFT_SCOPE_CHANGED' });
     assert.equal(f.calls.length, count);
     assert.deepEqual(f.errors, []);
   } finally {

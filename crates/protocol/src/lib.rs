@@ -36,6 +36,7 @@ pub mod complete_reads;
 pub mod cursor_repair;
 pub mod experiments;
 pub mod links;
+pub mod message_edit;
 pub mod push;
 pub mod read_time;
 pub mod runtime_binding;

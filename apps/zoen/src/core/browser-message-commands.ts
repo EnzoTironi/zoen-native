@@ -93,13 +93,11 @@ export async function browserMessageCommand(
         command.emoji ? { React: { emoji: command.emoji } } : 'Unreact',
       );
       break;
-    case 'edit_message':
-      await messages.annotate(
-        command.space_id,
-        context.target(command.space_id, command.message_id),
-        { Edit: { text: command.text } },
-      );
+    case 'edit_message': {
+      const { op: _operation, ...review } = command;
+      await messages.editReviewed(review);
       break;
+    }
     case 'delete_message':
       await messages.annotate(
         command.space_id,

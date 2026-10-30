@@ -352,6 +352,7 @@ impl<S: Signer> Client<S> {
             _ => None,
         };
         Some(MessageView {
+            text_revision: Some(event_log::content_hash_of(event)),
             id: event.client_id.clone(),
             entry: None,
             seq: None,

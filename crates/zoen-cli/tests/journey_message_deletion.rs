@@ -317,9 +317,17 @@ async fn reviewed_shared_deletion_rejects_stale_or_foreign_sets_then_recovers_of
         bob.0.delete_messages(foreign),
         Err(CoreError::Forbidden { .. })
     ));
-    alice
-        .0
-        .edit_message(space.clone(), leaf.id.clone(), "Shared leaf revised".into())?;
+    let edit_request = serde_json::json!({
+        "op": "edit_message",
+        "expected_identity_id": stale.expected_identity_id,
+        "expected_device_id": stale.expected_device_id,
+        "space_id": space,
+        "message_id": leaf.id,
+        "expected_revision": leaf.text_revision,
+        "text": "Shared leaf revised"
+    })
+    .to_string();
+    alice.0.client_request(edit_request.clone()).await?;
     let rows = received(&bob.0, &space, |rows| {
         rows.iter()
             .any(|e| e.id == leaf.id && text(e) == "Shared leaf revised")
@@ -331,6 +339,10 @@ async fn reviewed_shared_deletion_rejects_stale_or_foreign_sets_then_recovers_of
     bob.0.wait_until_settled(20_000).await?;
     let source = alice.0.log_events(space.clone())?;
     let before = w.events_in(&space).await;
+    // The same app command reconciles an uncertain acknowledgement without
+    // publishing another edit; the following exact source checks cover both retries.
+    alice.0.client_request(edit_request.clone()).await?;
+    alice.0.wait_until_settled(20_000).await?;
     assert!(matches!(
         alice.0.delete_messages(stale),
         Err(CoreError::Stale { .. })
@@ -387,6 +399,10 @@ async fn reviewed_shared_deletion_rejects_stale_or_foreign_sets_then_recovers_of
     assert_eq!(alice.0.connection().pending, 0);
     drop(alice);
     let alice = Open::online(&w, "alice").await?;
+    assert!(
+        alice.0.client_request(edit_request).await.is_err(),
+        "a retired edit resurrected the deleted message"
+    );
     assert_eq!(alice.0.delete_messages(input)?, ids);
     alice.0.wait_until_settled(20_000).await?;
     assert_eq!(

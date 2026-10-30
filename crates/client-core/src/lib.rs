@@ -97,6 +97,8 @@ pub use universal_pages::UniversalSearchPage;
 mod message_info;
 pub use message_info::{MessageInfo, MessageInfoScope};
 mod message_deletion;
+mod message_edit;
+pub use message_edit::MessageEdit;
 mod message_drafts;
 pub use message_deletion::{MessageDeletion, MessageDeletionTarget};
 mod native_surfaces;

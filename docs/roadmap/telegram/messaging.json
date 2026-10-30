@@ -88,11 +88,17 @@
     "acceptance": "scoped",
     "evidence": [
       "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "apps/zoen/src/core/generated/TimelineEntry.ts",
+      "crates/client-core/src/message_edit.rs",
+      "crates/protocol/src/message_edit.rs",
+      "crates/zoen-web-core/src/client/message_edit.rs",
+      "apps/zoen/src/core/message-edit-react.test.ts",
+      "crates/zoen-cli/tests/journey_message_deletion.rs"
     ],
-    "gap": "Fechar edição de texto e legenda com falha/retomada sem editar uma mensagem aposentada.",
+    "gap": "Texto/legenda exigem conta, aparelho e revisão conhecidos; falhas preservam o rascunho e retries reconciliam conteúdo aceito. Restam rascunho de edição não confirmada após fechar o app, conflito remoto ainda não observado e aceite manual iPhone por Enzo.",
     "issues": [
-      172
+      172,
+      724
     ]
   },
   {

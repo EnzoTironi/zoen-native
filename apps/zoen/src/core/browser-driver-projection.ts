@@ -31,6 +31,7 @@ export function browserTimelineEntry(
     : undefined;
   return {
     id: message.id,
+    ...(message.text_revision ? { text_revision: message.text_revision } : {}),
     seq: message.seq ?? '0',
     author: persona(message.author, message.name),
     at_ms: String(message.at_ms),

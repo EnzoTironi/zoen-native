@@ -224,9 +224,8 @@ pub(super) enum Command {
         thread: bool,
     },
     EditMessage {
-        space_id: String,
-        message_id: String,
-        text: String,
+        #[serde(flatten)]
+        edit: crate::MessageEdit,
     },
     DeleteMessage {
         space_id: String,

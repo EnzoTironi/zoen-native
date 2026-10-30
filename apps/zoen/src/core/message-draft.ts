@@ -24,6 +24,7 @@ export type MessageDraft = {
 export type MessageDraftAttempt = {
   text: string;
   editingId: string | null;
+  editingRevision: string | null;
   replyId: string | null;
   contextRevision: number;
   textRevision: number;
@@ -61,6 +62,7 @@ export function captureMessageDraft(state: MessageDraft): MessageDraftAttempt {
   return {
     text: state.editing ? state.editText : state.text,
     editingId: state.editing?.id ?? null,
+    editingRevision: state.editing?.text_revision ?? state.editing?.id ?? null,
     replyId: state.reply?.id ?? null,
     contextRevision: state.contextRevision,
     textRevision: state.textRevision,
