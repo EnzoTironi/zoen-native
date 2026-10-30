@@ -3,16 +3,14 @@ use super::{encode, invalid, Client, Command, CoreError};
 impl Client {
     pub(super) fn dispatch_draft(&self, command: Command) -> Result<String, CoreError> {
         match command {
-            Command::ReviewSharedReply {
-                scope,
-                source_space_id,
-                message_id,
-                expected_source_revision,
-            } => {
-                let quote =
-                    self.lock()
-                        .review_shared_reply(&scope, &source_space_id, &message_id)?;
-                if quote.revision != expected_source_revision {
+            Command::ReviewSharedReply { scope, review } => {
+                let quote = self.lock().review_shared_reply(
+                    &scope,
+                    &review.source_space_id,
+                    &review.message_id,
+                    review.selection.as_ref(),
+                )?;
+                if quote.revision != review.expected_source_revision {
                     return Err(CoreError::Stale {
                         reason: crate::i18n::t(
                             "a mensagem original mudou",

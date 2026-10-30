@@ -75,6 +75,8 @@ function SafeMessageActions(props: MessageActionsProps) {
     image: ComponentProps<typeof Button>['systemImage'];
     run?: (entry: NonNullable<MessageActionsProps['entry']>) => void;
     destructive?: boolean;
+    disabled?: boolean;
+    keepOpen?: boolean;
   };
   const rawRows: ActionRow[] = entry
     ? [
@@ -115,10 +117,10 @@ function SafeMessageActions(props: MessageActionsProps) {
         },
       ]
     : [];
-  const rows = rawRows.filter((row) => row.run);
+  const rows: readonly ActionRow[] = current?.options ?? rawRows.filter((row) => row.run);
   const measurementKey = `${entry?.id ?? ''}:${current?.mode}:${more}:${Boolean(current?.error)}:${Boolean(current?.preview)}`;
   const estimatedHeight =
-    56 +
+    (current?.options ? 0 : 56) +
     (current?.mode === 'actions' ? rows.length * 48 + 10 : 0) +
     (more ? 238 : 0) +
     (current?.error ? 64 : 0) +
@@ -171,7 +173,7 @@ function SafeMessageActions(props: MessageActionsProps) {
       <VStack spacing={0}>
         {rows.map((row) => (
           <Button
-            key={row.image}
+            key={row.label}
             label={row.label}
             systemImage={row.image}
             role={row.destructive ? 'destructive' : undefined}
@@ -179,10 +181,13 @@ function SafeMessageActions(props: MessageActionsProps) {
               buttonStyle('plain'),
               foregroundStyle(row.destructive ? colors.danger : colors.text),
               frame({ minHeight: 48, maxWidth: Infinity, alignment: 'leading' }),
-              nativeDisabled(Boolean(current?.pending)),
+              nativeDisabled(Boolean(current?.pending || row.disabled)),
             ]}
             onPress={() => {
-              if (entry && !current?.pending) close(() => row.run?.(entry));
+              if (entry && !current?.pending && !row.disabled) {
+                if (row.keepOpen) row.run?.(entry);
+                else close(() => row.run?.(entry));
+              }
             }}
           />
         ))}
@@ -250,7 +255,7 @@ function SafeMessageActions(props: MessageActionsProps) {
             animated,
           ]}
         >
-          {entry ? (
+          {entry && !current?.options ? (
             <ReactionPalette
               reactions={entry.reactions}
               pending={current?.pending}
@@ -302,7 +307,21 @@ function SafeMessageActions(props: MessageActionsProps) {
             </Text>
           ) : null}
           {current?.preview ? (
-            <View style={{ maxHeight: 160, overflow: 'hidden' }}>{current.preview}</View>
+            current.options ? (
+              <ScrollView
+                style={{
+                  maxHeight: Math.max(
+                    120,
+                    window.height - insets.top - insets.bottom - rows.length * 48 - 120,
+                  ),
+                  flexShrink: 1,
+                }}
+              >
+                {current.preview}
+              </ScrollView>
+            ) : (
+              <View style={{ maxHeight: 160, overflow: 'hidden' }}>{current.preview}</View>
+            )
           ) : null}
           {current?.mode === 'actions' ? (
             <ScrollView

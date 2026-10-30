@@ -187,11 +187,11 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       enableTaskListItemToggle={false}
       streamingAnimation={false}
       onCodeBlockPress={({ code }) => {
-        if (selection?.active) return;
+        if (selection?.active || onQuoteSelection) return;
         void copyCode(code);
       }}
       onLinkPress={({ url }) => {
-        if (selection?.active) return;
+        if (selection?.active || onQuoteSelection) return;
         const target = messageMarkdownLink(url);
         if (target) void launchLink(target);
       }}

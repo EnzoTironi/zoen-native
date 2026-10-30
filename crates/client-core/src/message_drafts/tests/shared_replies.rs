@@ -30,7 +30,7 @@ fn shared_reply_survives_restart_and_lost_send_response_without_forwarding(
     let quote = f
         .engine
         .lock()
-        .review_shared_reply(&f.scope, &space, &source.id)?;
+        .review_shared_reply(&f.scope, &space, &source.id, None)?;
     let saved =
         f.engine
             .lock()
@@ -86,7 +86,7 @@ fn shared_reply_refuses_substitution_stale_revision_and_wrong_device_without_los
     let quote = f
         .engine
         .lock()
-        .review_shared_reply(&f.scope, &space, &source.id)?;
+        .review_shared_reply(&f.scope, &space, &source.id, None)?;
     let existing = save(&f, "0", "Keep my draft", None);
     for field in [
         "text",
@@ -113,12 +113,12 @@ fn shared_reply_refuses_substitution_stale_revision_and_wrong_device_without_los
     assert!(f
         .engine
         .lock()
-        .review_shared_reply(&wrong, &space, &source.id)
+        .review_shared_reply(&wrong, &space, &source.id, None)
         .is_err());
     assert!(f
         .engine
         .lock()
-        .review_shared_reply(&f.scope, &f.scope.space_id, &source.id)
+        .review_shared_reply(&f.scope, &f.scope.space_id, &source.id, None)
         .is_err());
     let saved =
         f.engine
@@ -173,7 +173,7 @@ fn source_membership_and_target_write_permission_are_rechecked_at_send(
         let quote = f
             .engine
             .lock()
-            .review_shared_reply(&f.scope, &space, &source.id)?;
+            .review_shared_reply(&f.scope, &space, &source.id, None)?;
         let saved = f
             .engine
             .lock()
@@ -214,7 +214,7 @@ fn receiving_shared_quote_requires_no_source_history_and_cannot_claim_local_quot
     let quote = f
         .engine
         .lock()
-        .review_shared_reply(&f.scope, &space, &source.id)?;
+        .review_shared_reply(&f.scope, &space, &source.id, None)?;
     let saved =
         f.engine
             .lock()

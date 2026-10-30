@@ -147,6 +147,10 @@ pub(crate) fn received_valid(state: &State, event: &Event, prefix: &[Event]) -> 
     if let EventBody::MessagePosted { reply: Some(r), .. } = &event.body {
         if let Some(shared) = &r.shared {
             return shared.is_well_formed()
+                && shared
+                    .selection
+                    .as_ref()
+                    .is_none_or(|q| q.source_id == r.to)
                 && shared.space_id != event.space
                 && !r.to.is_empty()
                 && r.to.len() <= 256

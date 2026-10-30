@@ -46,15 +46,18 @@
   {
     "id": "TG-messaging-selected-text-quotes",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "crates/client-core/src/selected_quotes.rs",
+      "crates/client-core/src/message_drafts/tests/selected_quotes.rs",
+      "apps/zoen/src/components/use-reply-options.ts",
+      "apps/zoen/src/core/reply-options-hook.test.ts"
     ],
-    "gap": "Selecionar trecho e preservar intervalo citado na resposta; ReplyQuote hoje transporta texto integral sem intervalo.",
+    "gap": "Seleção literal com intervalos UTF-16 e revisão assinada, aplicação e remoção no rascunho canônico. Aceite visual, gestos e teclado no iPhone adiado para Enzo.",
     "issues": [
-      172
+      172,
+      709
     ]
   },
   {
@@ -67,12 +70,15 @@
       "crates/client-core/src/message_drafts/tests/shared_replies.rs",
       "apps/zoen/src/app/reply/[space]/[message].tsx",
       "apps/zoen/src/core/shared-reply.test.ts",
-      "apps/zoen/src/core/shared-reply-render.test.ts"
+      "apps/zoen/src/core/shared-reply-render.test.ts",
+      "crates/client-core/src/message_drafts/tests/shared_selections.rs",
+      "apps/zoen/src/core/reply-options-hook.test.ts"
     ],
-    "gap": "Resposta de texto entre conversas prepara rascunho durável, preserva texto do destino e exige Enviar. Citação compartilhada não concede acesso à origem. Restam mídia, seleção parcial entre conversas, opções completas de resposta Telegram e aceite manual iPhone por Enzo.",
+    "gap": "Texto e citação parcial usam rascunho durável e exigem Enviar. Opções de resposta também disponíveis em threads, com navegação após fechamento da apresentação. Restam mídia e aceite visual/gestos/teclado no iPhone por Enzo.",
     "issues": [
       172,
-      705
+      705,
+      709
     ]
   },
   {

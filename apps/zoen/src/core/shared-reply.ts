@@ -18,8 +18,11 @@ export async function prepareSharedReply({
   requireCurrent();
   await channel.controller.activate(channel.scope);
   requireCurrent();
+  const replyRevision = channel.controller.getSnapshot(channel.scope).replyRevision;
   const quote = await review();
   requireCurrent();
+  if (channel.controller.getSnapshot(channel.scope).replyRevision !== replyRevision)
+    throw new Error('The reply changed while choosing its destination.');
   if (!channel.controller.setSharedReply(channel.scope, quote))
     throw new Error('The draft is busy. Try again when its send finishes.');
   await channel.controller.flush(channel.scope);

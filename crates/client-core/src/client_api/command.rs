@@ -158,11 +158,10 @@ pub(super) enum Command {
         limit: u32,
     },
     ReviewSharedReply {
-        expected_source_revision: String,
         #[serde(flatten)]
         scope: crate::message_drafts::DraftScope,
-        source_space_id: String,
-        message_id: String,
+        #[serde(flatten)]
+        review: crate::replies::external::SharedReplyReview,
     },
     ReviewReplySelection {
         #[serde(flatten)]
