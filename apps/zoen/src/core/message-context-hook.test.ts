@@ -175,7 +175,7 @@ function fixture() {
     '../home/access': { homeSpacesFor: () => new Set(['space']) },
     './dialogs': {
       useDialogs: () => ({
-        confirm: async () => true,
+        choose: async () => 'everyone',
         inform: (...value: unknown[]) => calls.push(value),
       }),
     },

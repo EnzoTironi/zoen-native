@@ -58,8 +58,9 @@ impl Engine {
         } else {
             None
         };
+        let private_error = self.private_message_view_error();
         let (last_preview, last_preview_is_markdown, last_author, last_delivery) =
-            match &s.integrity_error {
+            match s.integrity_error.as_ref().or(private_error.as_ref()) {
                 Some(err) => (
                     tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"),
                     false,
@@ -73,6 +74,7 @@ impl Engine {
             .entries
             .iter()
             .filter(|e| e.author != me && read_seq.is_none_or(|r| e.seq > r))
+            .filter(|e| self.visible_message(e))
             .filter(|e| matches!(e.body, EntryBody::Message { .. }))
             .count() as u32;
         let pending = self
@@ -112,7 +114,21 @@ impl Engine {
             last_preview,
             last_preview_is_markdown,
             last_author,
-            last_at_ms: s.last_at_ms,
+            last_at_ms: if self
+                .state
+                .deleted_for_self
+                .get(&me)
+                .is_some_and(|spaces| spaces.contains_key(id))
+            {
+                s.entries
+                    .iter()
+                    .filter(|entry| self.visible_message(entry))
+                    .map(|entry| entry.at_ms)
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                s.last_at_ms
+            },
             unread,
             last_delivery,
             pending_requests: pending,
@@ -154,8 +170,25 @@ impl Engine {
     }
 
     pub fn timeline(&self, space: &str) -> R<Vec<TimelineEntry>> {
+        self.check_private_message_view()?;
         let s = self.space_state(space)?;
-        let mut out: Vec<TimelineEntry> = s.entries.iter().map(|e| self.entry_dto(e)).collect();
+        let roots: std::collections::HashSet<&str> = s
+            .entries
+            .iter()
+            .filter(|entry| self.visible_message(entry))
+            .filter_map(|entry| match &entry.body {
+                EntryBody::Message {
+                    reply: Some(reply), ..
+                } if reply.thread => Some(reply.to.as_str()),
+                _ => None,
+            })
+            .collect();
+        let mut out: Vec<TimelineEntry> = s
+            .entries
+            .iter()
+            .filter(|entry| self.visible_message(entry) || roots.contains(entry.id()))
+            .map(|e| self.entry_dto(e))
+            .collect();
         crate::replies::count_thread_replies(&mut out);
         Ok(out)
     }
@@ -183,6 +216,9 @@ impl Engine {
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
+        if !self.visible_message(entry) {
+            return Err(not_found(&t("Mensagem", "Message")));
+        }
         if marks.deleted || (note.author_only() && *author != me) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -264,6 +300,9 @@ impl Engine {
             .iter()
             .find(|entry| entry.id() == target)
             .ok_or_else(|| not_found(&t("Mensagem", "Message")))?;
+        if !self.visible_message(source) {
+            return Err(not_found(&t("Mensagem", "Message")));
+        }
         let EntryBody::Message {
             text,
             attaches,

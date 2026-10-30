@@ -1,3 +1,4 @@
+import * as deleteMessageAction from '../components/delete-message-action.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -206,7 +207,8 @@ export async function chatSearchReactFixture(qa = false) {
       if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
       if (name === '../core/message-selection') return messageSelection;
       if (name === '../core/message-deletion') return messageDeletion;
-      if (name === './dialogs') return { useDialogs: () => ({ confirm: async () => false }) };
+      if (name === './dialogs') return { useDialogs: () => ({ choose: async () => null }) };
+      if (name === './delete-message-action') return deleteMessageAction;
       if (name === '../i18n') return ports['../i18n/index.ts'];
       assert.ok(name in ports, name);
       return ports[name];

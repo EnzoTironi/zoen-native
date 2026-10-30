@@ -84,7 +84,7 @@ impl Engine {
         let EntryBody::Message { marks, .. } = &source.body else {
             return Err(unavailable());
         };
-        if marks.deleted {
+        if marks.deleted || !self.visible_message(source) {
             return Err(unavailable());
         }
         self.validate_reply_selection(source_space, Some(message_id), selection)?;
@@ -164,6 +164,7 @@ impl Engine {
             && self.space_state(&shared.space_id).ok().is_some_and(|s| {
                 s.entries.iter().any(|e| {
                     e.id() == message_id
+                        && self.visible_message(e)
                         && matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted)
                 })
             });

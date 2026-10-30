@@ -194,6 +194,9 @@ impl Engine {
             if !matches!(&entry.body, EntryBody::Message { marks, .. } if !marks.deleted) {
                 return Err(stale());
             }
+            if !self.visible_message(entry) && scope.thread_root_id.is_none() {
+                return Err(stale());
+            }
             if let Some(root) = &scope.thread_root_id {
                 if self.reply_ref(&scope.space_id, target, true)?.to != *root {
                     return Err(stale());

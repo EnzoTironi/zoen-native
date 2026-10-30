@@ -3,6 +3,7 @@ import { defineFeature } from '../catalog.ts';
 export const messageSelection = defineFeature(
   {
     selectMessages: 'Select',
+    deleteOnThisDevice: 'Delete on this device',
     messageSelectionLimit: 'Select up to 100 messages. Deselect a message to choose another.',
     forwardSelectionProgress: '%{accepted} of %{count} forwarded',
     forwardSelectionReview: 'Review remaining messages',
@@ -16,6 +17,7 @@ export const messageSelection = defineFeature(
   },
   {
     selectMessages: 'Selecionar',
+    deleteOnThisDevice: 'Apagar deste aparelho',
     messageSelectionLimit:
       'Selecione até 100 mensagens. Desmarque uma mensagem para escolher outra.',
     forwardSelectionProgress: '%{accepted} de %{count} encaminhadas',

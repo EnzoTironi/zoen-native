@@ -15,6 +15,9 @@ impl State {
         if !crate::app_resources::event_valid(self, e, identities) {
             return Projection::Refused;
         }
+        if !self.private_message_deletion_valid(&e.space, &e.author, &e.body) {
+            return Projection::Refused;
+        }
         // Scoped prompts must use the discriminator old consumers cannot dispatch.
         if matches!(&e.body, EventBody::MessagePosted {reply: Some(reply), ..} if reply.artifact.is_some())
         {
@@ -196,6 +199,9 @@ impl State {
                 if mine {
                     self.chat_prefs.insert(space.clone(), prefs.clone());
                 }
+            }
+            EventBody::MessagesDeletedForSelf { space, messages } => {
+                self.apply_private_message_deletion(&e.author, space, messages);
             }
             EventBody::MessageAnnotated { target, note } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {

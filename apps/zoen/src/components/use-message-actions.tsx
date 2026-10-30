@@ -2,7 +2,7 @@ import type { ReplySelection } from '../core/generated/ReplySelection';
 import { messageInfoAction } from './message-info-navigation';
 import { copyMessageLink } from './message-link-actions';
 import { currentMessageAction } from './message-action-current';
-import { canDeleteMessage, deleteMessageAction } from './delete-message-action';
+import { canDeleteMessage, bindMessageDeletion } from './delete-message-action';
 import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -52,12 +52,13 @@ export function useMessageActions({
   const client = useClient();
   const { store, snapshot, mode } = client;
   const infoEpoch = store.sessionEpoch;
-  const { confirm, inform } = useDialogs();
+  const { choose, inform } = useDialogs();
   const scope = `${mode}:${snapshot?.account?.identity_id ?? snapshot?.me?.id}:${snapshot?.account?.device_id}:${spaceId}`;
   const latest = useRef({ entries, disabled, scope });
   const focused = useRef(true);
   const mounted = useRef(false);
   const pending = useRef(false);
+  const confirmation = useRef<AbortController | null>(null);
   const profileEpoch = useRef(0);
   const profileAttempt = useRef<{ epoch: number; scope: string; messageId: string } | null>(null);
   const openAttempt = useRef<{
@@ -103,6 +104,7 @@ export function useMessageActions({
       setBusy(pending.current);
       return () => {
         focused.current = false;
+        confirmation.current?.abort();
         ++profileEpoch.current;
         profileAttempt.current = null;
         openAttempt.current = null;
@@ -158,10 +160,19 @@ export function useMessageActions({
     }
   };
   const thread = (entry: TimelineEntry) => {
-    const value = current(entry);
-    if (value && !value.deleted) openAttempt.current = null;
-    if (value && !value.deleted && onThread) onThread(value);
-    else if (value && !value.deleted)
+    const value = currentMessageAction(
+      store,
+      spaceId,
+      scope,
+      focused.current,
+      latest.current,
+      entry,
+      true,
+    );
+    if (!value) return;
+    openAttempt.current = null;
+    if (onThread) onThread(value);
+    else
       router.push({
         pathname: '/thread/[space]/[root]',
         params: { space: spaceId, root: value.in_thread ?? value.id },
@@ -525,25 +536,16 @@ export function useMessageActions({
           }
           onDelete={
             canDeleteMessage(store, spaceId, selected)
-              ? () => {
-                  const entry = selected;
-                  if (pending.current || store.sessionEpoch !== infoEpoch || !current(entry))
-                    return;
-                  const activation = profileEpoch.current;
-                  pending.current = true;
-                  setBusy(true);
-                  void deleteMessageAction(
-                    store,
-                    spaceId,
-                    () => (profileEpoch.current === activation ? current(entry) : undefined),
-                    confirm,
-                  )
-                    .catch(() => {})
-                    .finally(() => {
-                      pending.current = false;
-                      if (mounted.current) setBusy(false);
-                    });
-                }
+              ? () =>
+                  bindMessageDeletion(store, spaceId, selected, choose, {
+                    epoch: infoEpoch,
+                    pending,
+                    mounted,
+                    activation: profileEpoch,
+                    confirmation,
+                    resolve: current,
+                    setBusy,
+                  })()
               : undefined
           }
           onShare={

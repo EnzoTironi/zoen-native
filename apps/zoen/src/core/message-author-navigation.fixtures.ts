@@ -13,7 +13,7 @@ import type {
 } from '../components/message-actions.types';
 import type { ClientState } from './store';
 import type { Snapshot, TimelineEntry } from './types';
-import type { DialogOptions } from '../components/dialog-types';
+import type { DialogChoiceOptions } from '../components/dialog-types';
 
 export const require = createRequire(import.meta.url);
 export const { transformSync } = require('@babel/core') as {
@@ -165,7 +165,7 @@ export type Actions = {
   selectedId: string | null;
   panel: { props: MessageActionsProps & { selectedEmoji?: string } };
 };
-export type Route = { pathname: string; params: { id: string } };
+export type Route = { pathname: string; params: Record<string, string> };
 export type Read = { op: string; space_id: string; message_id: string };
 
 export function fixture() {
@@ -174,7 +174,7 @@ export function fixture() {
   let options: Options = { spaceId, entries: [message()], disabled: false };
   let read: (command: Read) => Promise<TimelineEntry> = async () => message();
   let mutate: () => Promise<unknown> = async () => undefined;
-  let confirm: (options: DialogOptions) => Promise<boolean> = () =>
+  let choose: (options: DialogChoiceOptions) => Promise<string | null> = () =>
     assert.fail('Profile navigation must not ask for mutation confirmation');
   let push: (route: Route) => void = () => {};
   let keyboardVisible = false;
@@ -186,7 +186,7 @@ export function fixture() {
   const mutations: unknown[] = [];
   const routes: Route[] = [];
   const alerts: unknown[][] = [];
-  const confirmations: DialogOptions[] = [];
+  const confirmations: DialogChoiceOptions[] = [];
   const writes: unknown[] = [];
   const listeners = new Set<() => void>();
   const slots: Slot[] = [];
@@ -291,7 +291,7 @@ export function fixture() {
       router: {
         push: (route: Route) => {
           push(route);
-          routes.push({ pathname: route.pathname, params: { id: route.params.id } });
+          routes.push({ pathname: route.pathname, params: { ...route.params } });
         },
       },
       useFocusEffect: undefined,
@@ -315,9 +315,9 @@ export function fixture() {
     '../i18n/index.ts': { t: (key: string) => key, locale: 'en' },
     './dialogs': {
       useDialogs: () => ({
-        confirm: (options: DialogOptions) => {
+        choose: (options: DialogChoiceOptions) => {
           confirmations.push(options);
-          return confirm(options);
+          return choose(options);
         },
         inform: (...args: unknown[]) => {
           alerts.push(args);
@@ -360,6 +360,7 @@ export function fixture() {
   runInNewContext(bundled.outputFiles[0]!.text, {
     module,
     exports: module.exports,
+    AbortController,
     // Driver and router errors belong to the same JS realm as the hook in-app.
     Error,
     require: (name: string) => {
@@ -393,8 +394,8 @@ export function fixture() {
     alerts,
     confirmations,
     store,
-    confirm: (next: typeof confirm) => {
-      confirm = next;
+    choose: (next: typeof choose) => {
+      choose = next;
     },
     writes,
     render,

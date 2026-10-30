@@ -68,6 +68,12 @@ pub enum EventBody {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         operation: Option<ChatPrefsOperation>,
     },
+    /// Private, monotonic removal from the author's local view. Valid only in
+    /// that identity's Personal log; it never changes the source conversation.
+    MessagesDeletedForSelf {
+        space: SpaceId,
+        messages: Vec<String>,
+    },
     /// An edit, delete for everyone or reaction on an earlier message (see [`crate::annotation`]).
     MessageAnnotated {
         target: String,

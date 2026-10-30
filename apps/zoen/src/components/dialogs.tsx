@@ -1,35 +1,39 @@
-import { t } from '../i18n/index.ts';
 import { Alert } from 'react-native';
 import type { ReactNode } from 'react';
+import { t } from '../i18n/index.ts';
 import type { Dialogs } from './dialog-types';
+import { nativeDialogs } from './native-dialogs';
 
 const dialogs: Dialogs = {
-  confirm: (options) =>
+  ...nativeDialogs,
+  choose: ({ title, choices, signal }) =>
     new Promise((resolve) => {
+      if (signal?.aborted) {
+        resolve(null);
+        return;
+      }
+      let settled = false;
+      const finish = (value: string | null) => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', cancel);
+        resolve(value);
+      };
+      const cancel = () => finish(null);
+      signal?.addEventListener('abort', cancel, { once: true });
       Alert.alert(
-        options.title,
-        options.message,
+        title,
+        undefined,
         [
-          {
-            text: options.cancelLabel ?? t('common.cancel'),
-            style: 'cancel',
-            onPress: () => resolve(false),
-          },
-          {
-            text: options.confirmLabel ?? t('common.continue'),
-            style: options.destructive ? 'destructive' : 'default',
-            onPress: () => resolve(true),
-          },
+          ...choices.map((choice) => ({
+            text: choice.label,
+            style: choice.destructive ? ('destructive' as const) : ('default' as const),
+            onPress: () => finish(choice.id),
+          })),
+          { text: t('common.cancel'), style: 'cancel', onPress: cancel },
         ],
-        { cancelable: true, onDismiss: () => resolve(false) },
+        { cancelable: true, onDismiss: cancel },
       );
-    }),
-  inform: (title, message) =>
-    new Promise((resolve) => {
-      Alert.alert(title, message, [{ text: t('common.oK'), onPress: resolve }], {
-        cancelable: true,
-        onDismiss: resolve,
-      });
     }),
 };
 export function DialogsProvider({ children }: { children: ReactNode }) {

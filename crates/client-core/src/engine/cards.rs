@@ -130,6 +130,9 @@ impl Engine {
     }
 
     pub(super) fn entry_voice(&self, e: &Entry) -> Option<VoiceNoteDto> {
+        if !self.visible_message(e) {
+            return None;
+        }
         let EntryBody::Message {
             text,
             attaches,
@@ -258,32 +261,37 @@ impl Engine {
         for r in &mut reactions {
             r.mine = r.people.iter().any(|p| p.id == me);
         }
-        TimelineEntry {
-            text_revision: matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted)
-                .then(|| {
-                    marks
-                        .text_revision
-                        .clone()
-                        .unwrap_or_else(|| e.id().to_string())
-                }),
-            media: (!marks.deleted)
-                .then(|| marks.media.as_ref().map(MessageMediaDto::from))
-                .flatten(),
-            edited: marks.edited,
-            deleted: marks.deleted,
-            forwarded: marks.forwarded,
-            reactions,
-            id: e.id().to_string(),
-            seq: e.seq,
-            author: self.persona(&e.author),
-            at_ms: e.at_ms,
-            kind,
-            delivery: self.delivery(e),
-            voice: self.entry_voice(e),
-            reply_to,
-            in_thread,
-            thread_replies: 0,
-        }
+        self.redact_deleted_for_self(
+            e,
+            TimelineEntry {
+                text_revision:
+                    matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted).then(
+                        || {
+                            marks
+                                .text_revision
+                                .clone()
+                                .unwrap_or_else(|| e.id().to_string())
+                        },
+                    ),
+                media: (!marks.deleted)
+                    .then(|| marks.media.as_ref().map(MessageMediaDto::from))
+                    .flatten(),
+                edited: marks.edited,
+                deleted: marks.deleted,
+                forwarded: marks.forwarded,
+                reactions,
+                id: e.id().to_string(),
+                seq: e.seq,
+                author: self.persona(&e.author),
+                at_ms: e.at_ms,
+                kind,
+                delivery: self.delivery(e),
+                voice: self.entry_voice(e),
+                reply_to,
+                in_thread,
+                thread_replies: 0,
+            },
+        )
     }
 
     pub(super) fn preview(
@@ -291,6 +299,9 @@ impl Engine {
         s: &SpaceState,
     ) -> (String, bool, Option<Persona>, Option<Delivery>) {
         for e in s.entries.iter().rev() {
+            if !self.visible_message(e) {
+                continue;
+            }
             let mut markdown = false;
             let text = match &e.body {
                 EntryBody::Message { marks, .. } if marks.deleted => {

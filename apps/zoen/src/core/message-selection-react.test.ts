@@ -1,3 +1,4 @@
+import * as deleteMessageAction from '../components/delete-message-action.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -9,7 +10,7 @@ import * as selection from './message-selection.ts';
 import * as deletion from './message-deletion.ts';
 import { conversationScope } from './conversation-scope.ts';
 import type { TimelineEntry } from './types';
-import type { DialogOptions } from '../components/dialog-types';
+import type { DialogChoiceOptions } from '../components/dialog-types';
 import type { useMessageSelection } from '../components/use-message-selection';
 
 const compiled = await build({
@@ -37,8 +38,8 @@ function fixture() {
   const space = state.snapshot.conversations[0]!.id;
   const listeners = new Set<() => void>();
   const commands: unknown[] = [];
-  const confirmations: DialogOptions[] = [];
-  let answer: (value: boolean) => void = () => {};
+  const confirmations: DialogChoiceOptions[] = [];
+  let answer: (value: string | null) => void = () => {};
   let fail = false;
   const store = {
     sessionEpoch: 1,
@@ -66,6 +67,7 @@ function fixture() {
   };
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
+    AbortController,
     exports: module.exports,
     require(name: string) {
       if (name === 'react') return host.react;
@@ -84,12 +86,13 @@ function fixture() {
       if (name === '../core/conversation-scope') return { conversationScope };
       if (name === '../core/message-selection') return selection;
       if (name === '../core/message-deletion') return deletion;
+      if (name === './delete-message-action') return deleteMessageAction;
       if (name === './dialogs')
         return {
           useDialogs: () => ({
-            confirm: (options: DialogOptions) => {
+            choose: (options: DialogChoiceOptions) => {
               confirmations.push(options);
-              return new Promise<boolean>((resolve) => {
+              return new Promise<string | null>((resolve) => {
                 answer = resolve;
               });
             },
@@ -115,7 +118,8 @@ function fixture() {
     opened,
     commands,
     confirmations,
-    answer: (value: boolean) => answer(value),
+    answer: (value: boolean | string) =>
+      answer(typeof value === 'boolean' ? (value ? 'everyone' : null) : value),
     fail: () => {
       fail = true;
     },
@@ -258,7 +262,7 @@ test('real hook confirms the exact owned set once and clears only after successf
   selected.remove();
   selected.remove();
   assert.equal(f.confirmations.length, 1);
-  assert.equal(f.confirmations[0]!.destructive, true);
+  assert.ok(f.confirmations[0]!.choices.every((choice) => choice.destructive));
   assert.equal(f.render().pending, true);
   assert.deepEqual(f.commands, []);
   f.answer(true);
@@ -266,6 +270,7 @@ test('real hook confirms the exact owned set once and clears only after successf
   assert.deepEqual(f.commands, [
     {
       op: 'delete_messages',
+      for_me: false,
       expected_identity_id: draftSession().account!.identity_id,
       expected_device_id: draftSession().account!.device_id,
       space_id: draftSession().conversations[0]!.id,
@@ -337,3 +342,22 @@ for (const change of [
     assert.equal(f.listeners.size, 0);
     assert.equal(f.render().pending, false);
   });
+
+test('a mixed selection in a read-only conversation deletes only from this device', async () => {
+  const f = fixture();
+  f.entries[1]!.author = { ...f.entries[1]!.author, id: 'peer', is_me: false };
+  f.readOnly();
+  for (const entry of f.entries) f.render().toggle(entry);
+  const selected = f.render();
+  assert.equal(selected.canDelete, true);
+  selected.remove();
+  assert.deepEqual(
+    f.confirmations[0]!.choices.map((choice) => choice.id),
+    ['for_me'],
+  );
+  f.answer('for_me');
+  await settleDeletion();
+  assert.equal(f.commands.length, 1);
+  assert.equal((f.commands[0] as { for_me: boolean }).for_me, true);
+  assert.equal(f.render().count, 0);
+});

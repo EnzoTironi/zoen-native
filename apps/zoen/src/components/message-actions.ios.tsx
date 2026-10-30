@@ -110,9 +110,9 @@ function SafeMessageActions(props: MessageActionsProps) {
           run: entry.author.is_me && !entry.deleted ? current?.onEdit : undefined,
         },
         {
-          label: t('chat.deleteForEveryone'),
+          label: t('chat.delete'),
           image: 'trash',
-          run: entry.author.is_me && !entry.deleted ? current?.onDelete : undefined,
+          run: !entry.deleted ? current?.onDelete : undefined,
           destructive: true,
         },
       ]

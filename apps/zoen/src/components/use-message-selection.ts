@@ -14,7 +14,7 @@ import { useClient } from '../core/provider';
 import type { TimelineEntry } from '../core/types';
 import { confirmMessageDeletion, messageDeletionTargets } from '../core/message-deletion';
 import { useDialogs } from './dialogs';
-import { t } from '../i18n';
+import { chooseMessageDeletion } from './delete-message-action';
 
 export function useMessageSelection(
   spaceId: string,
@@ -24,7 +24,8 @@ export function useMessageSelection(
 ) {
   const client = useClient();
   const { store } = client;
-  const { confirm } = useDialogs();
+  const { choose } = useDialogs();
+  const confirmation = useRef<AbortController | null>(null);
   const deleting = useRef(false);
   const [pending, setPending] = useState(false);
   const scope = conversationScope(client, store.sessionEpoch, spaceId);
@@ -40,6 +41,7 @@ export function useMessageSelection(
       focused.current = true;
       return () => {
         focused.current = false;
+        confirmation.current?.abort();
         setSelection(null);
       };
     }, []),
@@ -94,8 +96,7 @@ export function useMessageSelection(
     canForward: client.mode === 'account' && active,
     canDelete:
       client.mode === 'account' &&
-      canWrite() &&
-      Boolean(messageDeletionTargets(messages, account?.identity_id)),
+      Boolean(messageDeletionTargets(messages, account?.identity_id, true)),
     pending,
     toggle,
     cancel: () => setSelection(null),
@@ -119,19 +120,18 @@ export function useMessageSelection(
       if (deleting.current || !account || client.mode !== 'account') return;
       deleting.current = true;
       setPending(true);
+      const controller = new AbortController();
+      confirmation.current = controller;
       void confirmMessageDeletion({
         identity: account.identity_id,
         device: account.device_id,
         space: spaceId,
-        resolve: () => (canWrite() ? resolve() : []),
+        resolve,
+        canDeleteEveryone: canWrite,
+        signal: controller.signal,
         subscribe: (listener) => store.subscribe(listener),
-        confirm: (count) =>
-          confirm({
-            title: t('chat.deleteSelectedMessages', { count }),
-            message: t('chat.selectedMessagesRemovedForEveryone'),
-            confirmLabel: t('chat.delete'),
-            destructive: true,
-          }),
+        confirm: (count, everyone, signal) =>
+          chooseMessageDeletion(choose, count, everyone, signal),
         send: (value) => store.request({ op: 'delete_messages', ...value }),
       })
         .then((accepted) => {
@@ -141,6 +141,7 @@ export function useMessageSelection(
           // The canonical store surfaces command failures and retains selection for retry.
         })
         .finally(() => {
+          if (confirmation.current === controller) confirmation.current = null;
           deleting.current = false;
           setPending(false);
         });

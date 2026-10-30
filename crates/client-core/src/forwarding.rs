@@ -132,7 +132,9 @@ impl Engine {
             .iter()
             .find(|e| e.id() == scope.message_id)
             .ok_or_else(stale)?;
-        if !matches!(&source.body, EntryBody::Message { marks, .. } if !marks.deleted) {
+        if !self.visible_message(source)
+            || !matches!(&source.body, EntryBody::Message { marks, .. } if !marks.deleted)
+        {
             return Err(stale());
         }
         let message = self.entry_dto(source);

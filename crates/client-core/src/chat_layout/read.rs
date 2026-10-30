@@ -30,6 +30,7 @@ impl Engine {
             .get(space)?
             .entries
             .iter()
+            .filter(|entry| self.visible_message(entry))
             .map(|entry| entry.seq)
             .filter(|seq| *seq > 0)
             .max()
@@ -53,7 +54,18 @@ impl Engine {
         target: Option<u64>,
         expected_manual_revision: Option<&str>,
     ) -> R<Option<u64>> {
+        self.check_private_message_view()?;
         self.space_state(space)?;
+        if target.is_some_and(|seq| {
+            self.state.spaces.get(space).is_some_and(|state| {
+                state
+                    .entries
+                    .iter()
+                    .any(|entry| entry.seq == seq && !self.visible_message(entry))
+            })
+        }) {
+            return Err(invalid());
+        }
         if let Some(account) = &self.net.account {
             self.chat_mute_owner(space, &account.identity, &account.device)?;
         }

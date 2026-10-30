@@ -218,7 +218,7 @@ test('actual compiled menu offers only supplied real actions and receives the sh
   await tick();
   assert.deepEqual(
     f.configurations[0].actions.map((value: any) => value.id),
-    ['reply', 'thread', 'forward', 'copy', 'share'],
+    ['reply', 'thread', 'forward', 'copy', 'share', 'delete'],
   );
   assert.deepEqual(f.configurations[0].theme, f.theme);
   assert.equal(f.configurations[0].reducedMotion, true);
