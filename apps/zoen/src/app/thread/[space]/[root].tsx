@@ -172,6 +172,9 @@ export default function Thread() {
                 onForward={selection.forward}
                 canCopy={selection.canCopy}
                 canForward={selection.canForward}
+                canDelete={selection.canDelete}
+                onDelete={selection.remove}
+                pending={selection.pending}
               />
             ) : (
               <MessageComposer

@@ -232,6 +232,10 @@ pub(super) enum Command {
         space_id: String,
         message_id: String,
     },
+    DeleteMessages {
+        #[serde(flatten)]
+        selection: crate::MessageDeletion,
+    },
     React {
         space_id: String,
         message_id: String,

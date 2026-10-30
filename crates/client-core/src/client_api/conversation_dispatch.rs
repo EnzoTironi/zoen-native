@@ -18,7 +18,7 @@ impl Client {
             AgentEnrollmentStatus, AgentStatus, AppCurrentShareContext, AppEditTargets,
             CallHistory, ChatLayout, ConfirmForward, ConfirmForwardBatch, ControlAgent,
             CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
-            DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            DeleteMessages, DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
             FinishForwardBatch, ForwardBatchReview, ForwardBatchStatus, ForwardMessage,
             ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
@@ -192,6 +192,7 @@ impl Client {
                 space_id,
                 message_id,
             } => encode(&self.delete_message(space_id, message_id)?),
+            DeleteMessages { selection } => encode(&self.delete_messages(selection)?),
             React {
                 space_id,
                 message_id,

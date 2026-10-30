@@ -10,6 +10,9 @@ export const messageSelection = defineFeature(
     notForwarded: 'Not forwarded',
     stopRemainingForwarding: 'Stop remaining',
     selectedMessages: { one: '%{count} message selected', other: '%{count} messages selected' },
+    deleteSelectedMessages: { one: 'Delete %{count} message?', other: 'Delete %{count} messages?' },
+    selectedMessagesRemovedForEveryone:
+      'These messages will be removed for everyone in this conversation.',
   },
   {
     selectMessages: 'Selecionar',
@@ -24,5 +27,11 @@ export const messageSelection = defineFeature(
       one: '%{count} mensagem selecionada',
       other: '%{count} mensagens selecionadas',
     },
+    deleteSelectedMessages: {
+      one: 'Apagar %{count} mensagem?',
+      other: 'Apagar %{count} mensagens?',
+    },
+    selectedMessagesRemovedForEveryone:
+      'Estas mensagens serão removidas para todos nesta conversa.',
   },
 );

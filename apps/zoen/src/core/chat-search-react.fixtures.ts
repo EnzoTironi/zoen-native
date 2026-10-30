@@ -15,6 +15,7 @@ import * as initialEnd from './initial-timeline-end.ts';
 import * as activity from './live-activity.ts';
 import * as conversationScope from './conversation-scope.ts';
 import * as messageSelection from './message-selection.ts';
+import * as messageDeletion from './message-deletion.ts';
 import type { useChatController } from '../components/use-chat-controller.ts';
 import type { TimelinePage } from './generated/TimelinePage';
 import type { MessageSearchPage } from './generated/MessageSearchPage';
@@ -204,6 +205,9 @@ export async function chatSearchReactFixture(qa = false) {
       if (name === 'react-native') return { Keyboard: { dismiss() {} } };
       if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
       if (name === '../core/message-selection') return messageSelection;
+      if (name === '../core/message-deletion') return messageDeletion;
+      if (name === './dialogs') return { useDialogs: () => ({ confirm: async () => false }) };
+      if (name === '../i18n') return ports['../i18n/index.ts'];
       assert.ok(name in ports, name);
       return ports[name];
     },

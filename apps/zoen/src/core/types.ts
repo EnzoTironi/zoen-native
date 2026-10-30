@@ -127,6 +127,7 @@ type Results = {
   snapshot: Snapshot;
   timeline: TimelinePage;
   send_message: TimelineEntry;
+  delete_messages: string[];
   message_info: MessageInfo;
   forward_batch_status: ForwardBatchReview | null;
   forward_batch_review: ForwardBatchReview;
