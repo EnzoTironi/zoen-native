@@ -10,6 +10,11 @@ const noAction = () => {};
 export function ReplyOptions({ options }: { options: ReturnType<typeof useReplyOptions> }) {
   const { colors } = useTheme();
   const { entry, selection, selecting } = options;
+  const canQuote =
+    entry?.text_revision &&
+    !entry.deleted &&
+    'Message' in entry.kind &&
+    entry.kind.Message.text.trim().length > 0;
   return (
     <MessageActions
       entry={entry}
@@ -48,13 +53,17 @@ export function ReplyOptions({ options }: { options: ReturnType<typeof useReplyO
         ) : undefined
       }
       options={[
-        {
-          label: t(selection ? 'replyOptions.change' : 'replyOptions.select'),
-          image: 'text.cursor',
-          run: options.select,
-          keepOpen: true,
-          disabled: selecting || !entry?.text_revision || !('Message' in entry.kind),
-        },
+        ...(canQuote
+          ? [
+              {
+                label: t(selection ? 'replyOptions.change' : 'replyOptions.select'),
+                image: 'text.cursor' as const,
+                run: options.select,
+                keepOpen: true,
+                disabled: selecting,
+              },
+            ]
+          : []),
         { label: t('replyOptions.apply'), image: 'checkmark', run: options.apply, keepOpen: true },
         ...(options.canMove
           ? [
