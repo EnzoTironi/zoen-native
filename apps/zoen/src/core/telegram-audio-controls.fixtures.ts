@@ -230,7 +230,7 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
     '../core/conversation-search': { conversationQueryFits: () => true },
     '../media/MediaComposer': { MediaComposer: 'MediaComposer' },
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
-    './message-context': { MessageContext: 'MessageContext' },
+    './composer-reply-context': { ComposerReplyContext: 'MessageContext' },
     './use-semantic-message-preview': {
       useSemanticMessagePreview: ({ text }: { text: string }) => ({ text }),
     },

@@ -3,8 +3,19 @@
 use crate::{
     engine::{Engine, EntryBody, R},
     message_drafts::DraftScope,
-    CoreError, ReplyQuote, TimelineEntry,
+    CoreError, ReplyQuote, ReplySelection, TimelineEntry,
 };
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub(crate) struct SharedReplyReview {
+    pub expected_source_revision: String,
+    pub source_space_id: String,
+    pub message_id: String,
+    #[serde(default)]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub selection: Option<ReplySelection>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -16,6 +27,9 @@ pub struct SharedReplyDraft {
     pub author_id: String,
     pub author_name: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub selection: Option<ReplySelection>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -31,6 +45,7 @@ impl SharedReplyDraft {
             author_id: self.author_id.clone(),
             author_name: self.author_name.clone(),
             text: self.text.clone(),
+            selection: self.selection.as_ref().map(ReplySelection::signed),
         }
     }
 }
@@ -48,6 +63,7 @@ impl Engine {
         scope: &DraftScope,
         source_space: &str,
         message_id: &str,
+        selection: Option<&ReplySelection>,
     ) -> R<SharedReplyDraft> {
         self.validate_private_draft_scope(scope)?;
         if scope.thread_root_id.is_some()
@@ -71,13 +87,15 @@ impl Engine {
         if marks.deleted {
             return Err(unavailable());
         }
+        self.validate_reply_selection(source_space, Some(message_id), selection)?;
         let quote = SharedReplyDraft {
             space_id: source_space.into(),
             message_id: source.id().into(),
             revision: marks.text_revision.as_deref().unwrap_or(source.id()).into(),
             author_id: source.author.clone(),
             author_name: self.persona(&source.author).name,
-            text: self.quote_text(source),
+            text: selection.map_or_else(|| self.quote_text(source), |quote| quote.text.clone()),
+            selection: selection.cloned(),
         };
         if !quote.signed().is_well_formed() {
             return Err(unavailable());
@@ -89,7 +107,13 @@ impl Engine {
         scope: &DraftScope,
         quote: &SharedReplyDraft,
     ) -> R<()> {
-        if self.review_shared_reply(scope, &quote.space_id, &quote.message_id)? != *quote {
+        if self.review_shared_reply(
+            scope,
+            &quote.space_id,
+            &quote.message_id,
+            quote.selection.as_ref(),
+        )? != *quote
+        {
             return Err(unavailable());
         }
         Ok(())
@@ -147,7 +171,7 @@ impl Engine {
             id: message_id.into(),
             author,
             text: shared.text.clone(),
-            selection: None,
+            selection: shared.selection.as_ref().map(ReplySelection::from),
             origin: Some(ReplyOrigin {
                 space_id: shared.space_id.clone(),
                 available,

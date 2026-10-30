@@ -163,8 +163,8 @@ export async function composerSafeAreaFixture(searching = true, noResults = fals
         }),
     },
     '../media/attachment-reply-context': { AttachmentReplyContext: children },
-    './message-context': {
-      MessageContext: (props: Props) =>
+    './composer-reply-context': {
+      ComposerReplyContext: (props: Props) =>
         React.createElement(Action, {
           name: 'xmark',
           testID: 'cancel-reply',

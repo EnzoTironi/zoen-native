@@ -16,7 +16,7 @@ import { MediaComposer } from '../media/MediaComposer';
 import type { AttachmentComposerField } from '../media/attachment-composer';
 import { AttachmentReplyContext } from '../media/attachment-reply-context';
 import type { TimelineEntry } from '../core/types';
-import { MessageContext } from './message-context';
+import { ComposerReplyContext } from './composer-reply-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
 import { ComposerGlassContainer, ComposerGlassSurface } from './composer-glass';
@@ -119,7 +119,6 @@ export function MessageComposer({
     entry?: TimelineEntry;
     quote?: ReplySelection | null;
     shared?: SharedReplyDraft | null;
-    onMove?: () => void;
     onCancel: () => void;
   };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
@@ -343,11 +342,12 @@ export function MessageComposer({
             }
           />
         ) : !files && context ? (
-          <MessageContext
+          <ComposerReplyContext
             entry={context.entry}
             quote={context.quote}
             shared={context.shared}
-            onMove={context.onMove}
+            spaceId={spaceId}
+            threadRootId={threadRootId}
             editing={editing}
             onCancel={context.onCancel}
           />

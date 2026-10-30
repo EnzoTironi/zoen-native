@@ -338,7 +338,7 @@ export function fixture(
     '../core/telegram-audio-presentation': { composerVerticalInsets },
     '../media/MediaComposer': { MediaComposer: 'MediaComposer' },
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
-    './message-context': { MessageContext: 'MessageContext' },
+    './composer-reply-context': { ComposerReplyContext: 'MessageContext' },
     './composer-action': { ComposerAction: 'ComposerAction' },
     './composer-glass': {
       ComposerGlassContainer: 'ComposerGlassContainer',

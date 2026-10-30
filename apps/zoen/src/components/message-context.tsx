@@ -16,14 +16,14 @@ export function MessageContext({
   editing = false,
   quote,
   shared,
-  onMove,
+  onOptions,
   onCancel,
 }: {
   entry?: TimelineEntry;
   editing?: boolean;
   quote?: ReplySelection | null;
   shared?: SharedReplyDraft | null;
-  onMove?: () => void;
+  onOptions?: () => void;
   onCancel?: () => void;
 }) {
   const { presentation: p, reducedMotion } = useTheme();
@@ -121,14 +121,19 @@ export function MessageContext({
         style={{ flex: 1, alignSelf: 'stretch', paddingLeft: 10, paddingTop: 7 }}
       >
         <Pressable
-          disabled={!onMove}
-          onPress={onMove}
-          accessibilityRole={onMove ? 'button' : undefined}
-          accessibilityLabel={onMove ? t('chat.replyInAnotherChat') : undefined}
+          disabled={!onOptions}
+          onPress={onOptions}
+          accessibilityRole={onOptions ? 'button' : undefined}
+          accessibilityLabel={onOptions ? t('replyOptions.title') : undefined}
         >
           <Text
             numberOfLines={1}
-            style={{ color: p.chat.input.action, fontSize: 15, lineHeight: 18, fontWeight: '500' }}
+            style={{
+              color: p.chat.input.action,
+              fontSize: 15,
+              lineHeight: 18,
+              fontWeight: '500',
+            }}
           >
             {editing
               ? t('chat.editMessage')

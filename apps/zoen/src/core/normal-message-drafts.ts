@@ -232,6 +232,19 @@ export class NormalMessageDrafts {
     this.schedule(record);
     return true;
   }
+  isPersisted(scope: NormalDraftScope): boolean {
+    const record = this.record(scope);
+    return (
+      !this.retirement &&
+      record.state.loaded &&
+      !record.intent &&
+      !record.failedSave &&
+      sameContent(content(record.state), record.persisted)
+    );
+  }
+  hasPendingSend(scope: NormalDraftScope): boolean {
+    return this.record(scope).intent !== null;
+  }
   setReply(
     scope: NormalDraftScope,
     replyTo: string | null,
@@ -266,7 +279,17 @@ export class NormalMessageDrafts {
     this.publish(record, {
       replyTo: null,
       replyQuote: null,
-      sharedReply: Object.freeze({ ...quote }),
+      sharedReply: Object.freeze({
+        ...quote,
+        ...(quote.selection
+          ? {
+              selection: {
+                ...quote.selection,
+                spans: quote.selection.spans.map((span) => ({ ...span })),
+              },
+            }
+          : {}),
+      }),
       replyRevision: record.state.replyRevision + 1,
     });
     this.schedule(record);
