@@ -55,7 +55,7 @@ fn selected_draft_cold_recovery_exact_once_and_post_send_edit_delete_snapshot(
     );
     assert_eq!(counts(&client), before);
     assert_eq!(
-        sent.entry
+        visible_acceptance(&sent)
             .reply_to
             .as_ref()
             .ok_or("quote")?
@@ -68,7 +68,7 @@ fn selected_draft_cold_recovery_exact_once_and_post_send_edit_delete_snapshot(
     let timeline = client.timeline(scope.space_id.clone())?;
     let received = timeline
         .iter()
-        .find(|e| e.id == sent.entry.id)
+        .find(|e| e.id == visible_acceptance(&sent).id)
         .ok_or("reply missing")?;
     assert_eq!(
         received.reply_to.as_ref().ok_or("snapshot")?.text,
@@ -243,8 +243,14 @@ fn selected_thread_draft_preserves_child_and_rejects_foreign_root_scope(
         .engine
         .lock()
         .send_message_draft(&scope, &draft.revision)?;
-    assert_eq!(sent.entry.in_thread.as_deref(), Some(root.id.as_str()));
-    let selected = sent.entry.reply_to.as_ref().ok_or("child quote")?;
+    assert_eq!(
+        visible_acceptance(&sent).in_thread.as_deref(),
+        Some(root.id.as_str())
+    );
+    let selected = visible_acceptance(&sent)
+        .reply_to
+        .as_ref()
+        .ok_or("child quote")?;
     assert_eq!(selected.id, child.id);
     assert_eq!(selected.selection, Some(quote));
     Ok(())

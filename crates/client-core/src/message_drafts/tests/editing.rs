@@ -94,7 +94,7 @@ fn confirmation_consumes_only_the_edit_and_cold_retry_never_duplicates(
         .send_message_edit_draft(&f.scope, &saved.revision)?;
     assert!(accepted.draft.edit.is_none());
     assert!(
-        matches!(&accepted.entry.kind, crate::EntryKind::Message { text, .. } if text == "Correction")
+        matches!(&visible_acceptance(&accepted).kind, crate::EntryKind::Message { text, .. } if text == "Correction")
     );
     assert_eq!(accepted.draft.text, "Normal draft");
     assert_eq!(accepted.draft.reply_to.as_deref(), Some(source.id.as_str()));

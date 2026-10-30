@@ -21,6 +21,13 @@ export type NormalDraftSnapshot = Readonly<{
   shared_reply?: SharedReplyDraft | null;
   edit?: MessageDraftEdit | null;
 }>;
+export type DraftMessageReference = Readonly<{ id: string; text_revision: string | null }>;
+export type DraftAcceptance = Readonly<{
+  message_id: string;
+  text_revision: string | null;
+  entry: TimelineEntry | null;
+  draft: NormalDraftSnapshot;
+}>;
 export type NormalDraftPort = {
   load(scope: NormalDraftScope): Promise<NormalDraftSnapshot>;
   save(
@@ -32,14 +39,8 @@ export type NormalDraftPort = {
     sharedReply?: SharedReplyDraft | null,
     edit?: MessageDraftEdit | null,
   ): Promise<NormalDraftSnapshot>;
-  sendEdit?(
-    scope: NormalDraftScope,
-    expectedRevision: string,
-  ): Promise<{ entry: TimelineEntry; draft: NormalDraftSnapshot }>;
-  send(
-    scope: NormalDraftScope,
-    expectedRevision: string,
-  ): Promise<{ entry: TimelineEntry; draft: NormalDraftSnapshot }>;
+  sendEdit?(scope: NormalDraftScope, expectedRevision: string): Promise<DraftAcceptance>;
+  send(scope: NormalDraftScope, expectedRevision: string): Promise<DraftAcceptance>;
 };
 export class NormalDraftFailure extends Error {
   readonly kind: 'closed' | 'notLoaded' | 'empty' | 'load' | 'save' | 'send' | 'conflict';
@@ -78,7 +79,7 @@ export type SendIntent = Content & {
   textRevision: number;
   replyRevision: number;
   persistedRevision: string | null;
-  work: Promise<TimelineEntry> | null;
+  work: Promise<DraftMessageReference> | null;
 };
 export type DraftRecord = {
   state: NormalDraftState;

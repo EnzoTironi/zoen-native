@@ -59,10 +59,15 @@ export async function messageDraftReactFixture(open = true) {
     if (command.op === 'send_message_edit_draft') {
       assert.equal(command.expected_revision, String(revision));
       assert.ok(edit);
-      const entry = { id: edit.message_id };
+      const entry = { id: edit.message_id, text_revision: 'accepted-source-revision' };
       edit = undefined;
       ++revision;
-      return { entry, draft: draftValue() };
+      return {
+        message_id: entry.id,
+        text_revision: entry.text_revision ?? null,
+        entry,
+        draft: draftValue(),
+      };
     }
     throw Error(`Unexpected draft operation ${command.op}`);
   };

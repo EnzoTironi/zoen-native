@@ -60,7 +60,10 @@ fn shared_selection_recovers_and_sends_once_without_private_history(
     );
     assert_eq!(counts(&client), before);
     let mut engine = client.lock();
-    let event = engine.store.outbox_get(&sent.entry.id)?.ok_or("event")?;
+    let event = engine
+        .store
+        .outbox_get(&visible_acceptance(&sent).id)?
+        .ok_or("event")?;
     engine.state.spaces.remove(&space);
     assert!(crate::selected_quotes::received_valid(
         &engine.state,
@@ -70,7 +73,7 @@ fn shared_selection_recovers_and_sends_once_without_private_history(
     let face = engine
         .timeline(&scope.space_id)?
         .into_iter()
-        .find(|e| e.id == sent.entry.id)
+        .find(|e| e.id == visible_acceptance(&sent).id)
         .and_then(|e| e.reply_to)
         .ok_or("quote")?;
     assert_eq!(face.selection, Some(selection));

@@ -49,13 +49,13 @@ fn shared_reply_survives_restart_and_lost_send_response_without_forwarding(
     assert_eq!(client.lock().message_draft(&scope)?, saved);
     let before_send = counts(&client);
     let sent = client.lock().send_message_draft(&scope, &saved.revision)?;
-    let face = sent.entry.reply_to.as_ref().ok_or("quote")?;
+    let face = visible_acceptance(&sent).reply_to.as_ref().ok_or("quote")?;
     assert_eq!(face.text, quote.text);
     assert_eq!(face.id, source.id);
     assert!(face.selection.is_none(), "not a verified local selection");
     assert_eq!(face.origin.as_ref().ok_or("origin")?.space_id, space);
     assert!(face.origin.as_ref().ok_or("origin")?.available);
-    assert!(!sent.entry.forwarded);
+    assert!(!visible_acceptance(&sent).forwarded);
     assert_eq!(counts(&client), (before_send.0, before_send.1 + 1));
     drop(client);
     let client = Client::open(name.into(), "en".into())?;
@@ -70,7 +70,7 @@ fn shared_reply_survives_restart_and_lost_send_response_without_forwarding(
     let after = client.timeline(scope.space_id.clone())?;
     let persisted = after
         .iter()
-        .find(|e| e.id == sent.entry.id)
+        .find(|e| e.id == visible_acceptance(&sent).id)
         .ok_or("reply")?;
     let face = persisted.reply_to.as_ref().ok_or("snapshot")?;
     assert_eq!(face.text, quote.text);
@@ -225,7 +225,10 @@ fn receiving_shared_quote_requires_no_source_history_and_cannot_claim_local_quot
         .lock()
         .send_message_draft(&f.scope, &saved.revision)?;
     let mut e = f.engine.lock();
-    let event = e.store.outbox_get(&sent.entry.id)?.ok_or("sent event")?;
+    let event = e
+        .store
+        .outbox_get(&visible_acceptance(&sent).id)?
+        .ok_or("sent event")?;
     e.state.spaces.remove(&space);
     assert!(crate::selected_quotes::received_valid(
         &e.state,
@@ -235,7 +238,7 @@ fn receiving_shared_quote_requires_no_source_history_and_cannot_claim_local_quot
     let entry = e
         .timeline(&f.scope.space_id)?
         .into_iter()
-        .find(|x| x.id == sent.entry.id)
+        .find(|x| x.id == visible_acceptance(&sent).id)
         .ok_or("entry")?;
     let face = entry.reply_to.ok_or("quote")?;
     assert_eq!(face.text, quote.text);

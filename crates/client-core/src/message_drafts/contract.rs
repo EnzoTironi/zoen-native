@@ -23,7 +23,12 @@ pub struct MessageDraftDto {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct MessageDraftSendResult {
-    pub entry: TimelineEntry,
+    /// Identity proven by the sealed accepted receipt, independent of visibility.
+    pub message_id: String,
+    /// The revision accepted by this operation; never a later observed edit.
+    pub text_revision: Option<String>,
+    /// Optional current visible projection, not the authority for acceptance.
+    pub entry: Option<TimelineEntry>,
     pub draft: MessageDraftDto,
 }
 #[derive(Debug, Clone, Deserialize)]

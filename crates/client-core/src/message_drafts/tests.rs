@@ -144,7 +144,10 @@ async fn thread_send_revalidates_reply_membership_device_and_account() {
         .lock()
         .send_message_draft(&scope, &draft.revision)
         .unwrap();
-    assert_eq!(accepted.entry.in_thread.as_deref(), Some(root.id.as_str()));
+    assert_eq!(
+        visible_acceptance(&accepted).in_thread.as_deref(),
+        Some(root.id.as_str())
+    );
     for device in [false, true] {
         let mut foreign = f.scope.clone();
         if device {
@@ -380,7 +383,10 @@ fn accepted_retry_is_checked_before_changed_reply_or_writer_preflight() {
         .lock()
         .send_message_draft(&f.scope, &draft.revision)
         .unwrap();
-    assert_eq!(retry.entry.id, accepted.entry.id);
+    assert_eq!(
+        visible_acceptance(&retry).id,
+        visible_acceptance(&accepted).id
+    );
     assert_eq!(counts(&f.engine), before);
     let current = save(&f, &retry.draft.revision, "New, unaccepted text", None);
     assert!(matches!(
@@ -441,3 +447,12 @@ mod shared_replies;
 mod shared_selections;
 
 mod editing;
+
+mod receipt_visibility;
+
+fn visible_acceptance(result: &MessageDraftSendResult) -> &TimelineEntry {
+    result
+        .entry
+        .as_ref()
+        .expect("this assertion requires a still-visible accepted source")
+}

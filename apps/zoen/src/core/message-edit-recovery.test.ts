@@ -19,6 +19,7 @@ const edit: MessageDraftEdit = {
 };
 function fixture() {
   let value: NormalDraftSnapshot = { revision: '0', text: '', reply_to: null };
+  let projection: TimelineEntry | null | undefined;
   let serial = 0,
     mutations = 0;
   let receipt: { revision: string; entry: TimelineEntry } | null = null;
@@ -63,15 +64,24 @@ function fixture() {
         value = { ...value, revision: String(++serial), edit: undefined };
       }
       await hooks.after?.();
-      return { entry: receipt.entry, draft: copy() };
+      return {
+        message_id: receipt.entry.id,
+        text_revision: receipt.entry.text_revision ?? null,
+        entry: projection === undefined ? receipt.entry : projection,
+        draft: copy(),
+      };
     },
   };
   return {
+    port,
     drafts: new NormalMessageDrafts(port),
     reopen: () => new NormalMessageDrafts(port),
     hooks,
     calls,
     stored: copy,
+    project: (entry: TimelineEntry | null) => {
+      projection = entry;
+    },
     mutations: () => mutations,
   };
 }
@@ -283,5 +293,67 @@ test('newer typing in the same editor adopts only its own acknowledged revision'
   assert.ok(Object.isFrozen(f.drafts.getSnapshot(main).edit));
   assert.equal(f.stored().edit?.source_revision, accepted.text_revision);
   assert.notEqual(f.stored().edit?.source_revision, edit.source_revision);
+  assert.equal(f.mutations(), 1);
+});
+
+for (const hidden of [false, true])
+  test(`a reconciled edit uses its accepted stamp, independently of ${hidden ? 'a hidden message' : 'a later observed edit'}`, async () => {
+    const f = fixture();
+    await f.drafts.activate(main);
+    f.drafts.setEdit(main, edit);
+    f.hooks.after = async () => {
+      throw new Error('lost acknowledgement');
+    };
+    await assert.rejects(f.drafts.sendEdit(main), kind('send'));
+    f.drafts.setEditText(main, 'Continued private typing');
+    f.project(
+      hidden
+        ? null
+        : ({ id: edit.message_id, text_revision: 'later-observed-r3' } as TimelineEntry),
+    );
+    f.hooks.after = undefined;
+    await f.drafts.retry(main);
+    assert.equal(f.stored().edit?.source_revision, 'accepted-r2');
+    assert.equal(f.stored().edit?.base_text, edit.text);
+    assert.equal(f.stored().edit?.text, 'Continued private typing');
+    assert.equal(f.mutations(), 1);
+  });
+
+test('a legacy unstamped receipt cannot borrow a visible revision for continued typing', async () => {
+  const f = fixture();
+  const send = f.port.sendEdit;
+  assert.ok(send);
+  f.port.sendEdit = async (...args) => ({ ...(await send(...args)), text_revision: null });
+  await f.drafts.activate(main);
+  f.drafts.setEdit(main, edit);
+  f.hooks.after = async () => {
+    throw new Error('lost acknowledgement');
+  };
+  await assert.rejects(f.drafts.sendEdit(main), kind('send'));
+  f.drafts.setEditText(main, 'Keep without guessing a revision');
+  f.project({ id: edit.message_id, text_revision: 'later-visible-r3' } as TimelineEntry);
+  f.hooks.after = undefined;
+  await f.drafts.retry(main);
+  assert.equal(f.stored().edit?.source_revision, edit.source_revision);
+  assert.equal(f.stored().edit?.base_text, edit.base_text);
+  assert.equal(f.stored().edit?.text, 'Keep without guessing a revision');
+  assert.equal(f.mutations(), 1);
+});
+
+test('a substituted acceptance cannot consume the editor and its original retry stays exact once', async () => {
+  const f = fixture();
+  const send = f.port.sendEdit;
+  assert.ok(send);
+  f.port.sendEdit = async (...args) => ({
+    ...(await send(...args)),
+    message_id: 'another-message',
+  });
+  await f.drafts.activate(main);
+  f.drafts.setEdit(main, edit);
+  await assert.rejects(f.drafts.sendEdit(main), /Invalid draft acceptance/);
+  assert.equal(f.drafts.getSnapshot(main).edit?.text, edit.text);
+  f.port.sendEdit = send;
+  await f.drafts.retry(main);
+  assert.equal(f.drafts.getSnapshot(main).edit, null);
   assert.equal(f.mutations(), 1);
 });
