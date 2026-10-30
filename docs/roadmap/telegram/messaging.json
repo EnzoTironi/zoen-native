@@ -148,12 +148,17 @@
     "acceptance": "scoped",
     "evidence": [
       "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "apps/zoen/src/core/generated/TimelineEntry.ts",
+      "crates/client-core/src/message_deletion.rs",
+      "crates/client-core/src/message_deletion/tests.rs",
+      "apps/zoen/src/components/delete-message-action.ts"
     ],
-    "gap": "Qualificar remoção nos dois clientes, offline e recuperação; ação atual limita-se à própria autoria.",
+    "gap": "Remoção global continua limitada à própria autoria. Exclusão individual e em lote validam a versão revisada e mantêm rollback/retomada sem duplicação. Restam exclusão local, qualificação entre dois clientes e aceite manual no iPhone.",
     "issues": [
       172,
-      176
+      176,
+      712,
+      714
     ]
   },
   {
@@ -251,12 +256,18 @@
       "apps/zoen/src/components/use-message-selection.ts",
       "apps/zoen/src/components/message-selection-toolbar.tsx",
       "crates/client-core/src/forwarding/batch.rs",
-      "apps/zoen/src/core/thread-message-selection.test.ts"
+      "apps/zoen/src/core/thread-message-selection.test.ts",
+      "crates/client-core/src/message_deletion.rs",
+      "crates/client-core/src/message_deletion/tests.rs",
+      "apps/zoen/src/core/message-deletion.test.ts",
+      "apps/zoen/src/core/message-delete-action-react.test.ts"
     ],
-    "gap": "Seleção, cópia e encaminhamento durável em lote existem na conversa e na thread, com retomada por item. Exclusão em lote ainda falta; aceite manual permanece pendente.",
+    "gap": "Seleção, cópia, encaminhamento durável e exclusão revisada da própria autoria funcionam na conversa e thread. Exclusão usa transação única, revisões exatas e tombstones sem duplicação; menu individual compartilha o contrato. Restam exclusão local de mensagens de outros autores e aceite manual iPhone por Enzo.",
     "issues": [
       172,
-      670
+      670,
+      712,
+      714
     ]
   },
   {
