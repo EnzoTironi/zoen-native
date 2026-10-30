@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { messageDraftReactFixture } from './message-draft-react.fixtures.ts';
-import { entry } from './store.fixtures.ts';
+import { entry as stubEntry } from './store.fixtures.ts';
+const entry = (id: string) => ({
+  ...stubEntry(id),
+  kind: { Message: { text: 'Original', card: null } },
+  voice: null,
+});
 
 for (const fails of [false, true])
   test(`compiled edit carries the opened revision and preserves the normal draft: ${fails ? 'storage refusal' : 'accepted'}`, async () => {
@@ -11,10 +16,12 @@ for (const fails of [false, true])
       const original = f.current().messageDraft.text;
       const normalOperation = f.driver.operation;
       f.driver.operation = async (command) => {
-        if (command.op !== 'edit_message') return normalOperation(command);
-        f.calls.push(structuredClone(command));
-        if (fails) throw new Error('storage refused');
-        return null;
+        if (command.op !== 'send_message_edit_draft') return normalOperation(command);
+        if (fails) {
+          f.calls.push(structuredClone(command));
+          throw new Error('storage refused');
+        }
+        return normalOperation(command);
       };
       await f.act(() =>
         f.current().updateDraft({
@@ -30,22 +37,30 @@ for (const fails of [false, true])
       if (fails)
         await f.act(() => assert.rejects(f.current().sendEdit(attempt), /storage refused/));
       else await f.act(() => f.current().sendEdit(attempt));
-      const request = f.calls.find((c) => c.op === 'edit_message');
+      const saved = f.calls.filter((c) => c.op === 'save_message_draft').at(-1);
+      assert.deepEqual(saved.edit, {
+        message_id: 'source',
+        source_revision: 'opened-revision',
+        base_text: 'Original text',
+        text: 'User correction 😀',
+        is_caption: false,
+      });
+      const request = f.calls.find((c) => c.op === 'send_message_edit_draft');
       assert.deepEqual(request, {
-        op: 'edit_message',
+        op: 'send_message_edit_draft',
         expected_identity_id: f.snapshot.account!.identity_id,
         expected_device_id: f.snapshot.account!.device_id,
         space_id: f.snapshot.conversations[0]!.id,
-        message_id: 'source',
-        expected_revision: 'opened-revision',
-        text: 'User correction 😀',
+        thread_root_id: null,
+        expected_revision: String(Number(saved.expected_revision) + 1),
       });
       assert.equal(f.current().messageDraft.text, original);
-      assert.equal(f.current().messageDraft.editText, 'User correction 😀');
+      assert.equal(f.current().messageDraft.editText, fails ? 'User correction 😀' : '');
       assert.equal(f.calls.filter((c) => c.op === 'send_message_draft').length, 0);
-      if (!fails) await f.act(() => f.current().updateDraft({ type: 'accepted', attempt }));
       assert.equal(f.current().messageDraft.text, original);
       assert.equal(Boolean(f.current().messageDraft.editing), fails);
+      // Close may drain the same explicitly requested, still ambiguous edit.
+      f.driver.operation = normalOperation;
       assert.deepEqual(f.errors, []);
     } finally {
       await f.close();

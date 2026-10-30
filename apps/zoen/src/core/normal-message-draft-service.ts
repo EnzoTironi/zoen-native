@@ -1,17 +1,14 @@
-import type { SharedReplyDraft } from './generated/SharedReplyDraft';
-import type { ReplySelection } from './generated/ReplySelection';
 import { homeOwnerFor, homeSpacesFor } from '../home/access.ts';
-import { NormalMessageDrafts, type NormalDraftScope } from './normal-message-drafts.ts';
+import {
+  NormalMessageDrafts,
+  type NormalDraftScope,
+  type NormalDraftSnapshot,
+} from './normal-message-drafts.ts';
+import { sameEdit } from './normal-message-draft-types.ts';
 import type { ClientStore } from './store.ts';
 import type { TimelineEntry } from './types.ts';
 
-type DraftValue = {
-  revision: string;
-  text: string;
-  reply_to: string | null;
-  reply_quote?: ReplySelection | null;
-  shared_reply?: SharedReplyDraft | null;
-};
+type DraftValue = NormalDraftSnapshot;
 export type NormalDraftChannel = Readonly<{
   scope: NormalDraftScope;
   controller: NormalMessageDrafts;
@@ -100,7 +97,7 @@ export class NormalMessageDraftService {
         native(scope)
           ? this.store.driver.request({ op: 'message_draft', ...target(scope) })
           : read(scope),
-      save: async (scope, expectedRevision, text, replyTo, replyQuote, sharedReply) => {
+      save: async (scope, expectedRevision, text, replyTo, replyQuote, sharedReply, edit) => {
         if (native(scope))
           return this.store.driver.request({
             op: 'save_message_draft',
@@ -110,15 +107,56 @@ export class NormalMessageDraftService {
             reply_to: replyTo,
             reply_quote: replyQuote ?? null,
             shared_reply: sharedReply ?? undefined,
+            edit: edit ?? undefined,
           });
         if (replyQuote || sharedReply)
           throw new Error('Quoted replies require the signed-in native account.');
         const current = read(scope);
         if (current.revision !== expectedRevision) throw new Error('Draft changed.');
-        if (current.text === text && current.reply_to === replyTo) return current;
-        const next = { revision: String(++revision), text, reply_to: replyTo };
+        if (current.text === text && current.reply_to === replyTo && sameEdit(current.edit, edit))
+          return current;
+        const next = {
+          revision: String(++revision),
+          text,
+          reply_to: replyTo,
+          ...(edit ? { edit } : {}),
+        };
         volatile.set(scopeKey(scope), next);
         return next;
+      },
+      sendEdit: async (scope, expectedRevision) => {
+        if (native(scope))
+          return this.store.driver.request({
+            op: 'send_message_edit_draft',
+            ...target(scope),
+            expected_revision: expectedRevision,
+          });
+        const key = scopeKey(scope),
+          receipt = receipts.get(key);
+        if (receipt?.revision === expectedRevision)
+          return { entry: receipt.entry, draft: read(scope) };
+        const current = read(scope),
+          edit = current.edit;
+        if (current.revision !== expectedRevision || !edit) throw new Error('Draft changed.');
+        await this.store.driver.request({
+          op: 'edit_message',
+          expected_identity_id: scope.owner.identityId,
+          expected_device_id: scope.owner.deviceId,
+          space_id: scope.spaceId,
+          message_id: edit.message_id,
+          expected_revision: edit.source_revision,
+          text: edit.text,
+        });
+        const entry = await this.store.driver.request({
+          op: 'message',
+          space_id: scope.spaceId,
+          message_id: edit.message_id,
+        });
+        const { edit: _edit, ...rest } = current;
+        const draft = { ...rest, revision: String(++revision) };
+        volatile.set(key, draft);
+        receipts.set(key, { revision: expectedRevision, entry });
+        return { entry, draft };
       },
       send: async (scope, expectedRevision) => {
         if (native(scope))
@@ -140,7 +178,12 @@ export class NormalMessageDraftService {
           reply_to: current.reply_to ?? scope.threadRootId,
           thread: Boolean(scope.threadRootId),
         });
-        const draft = { revision: String(++revision), text: '', reply_to: null };
+        const draft = {
+          revision: String(++revision),
+          text: '',
+          reply_to: null,
+          ...(current.edit ? { edit: current.edit } : {}),
+        };
         volatile.set(key, draft);
         receipts.set(key, { revision: expectedRevision, entry });
         return { entry, draft };

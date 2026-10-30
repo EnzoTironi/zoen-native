@@ -93,12 +93,17 @@
       "crates/protocol/src/message_edit.rs",
       "crates/zoen-web-core/src/client/message_edit.rs",
       "apps/zoen/src/core/message-edit-react.test.ts",
-      "crates/zoen-cli/tests/journey_message_deletion.rs"
+      "crates/zoen-cli/tests/journey_message_deletion.rs",
+      "crates/client-core/src/message_drafts/editing.rs",
+      "crates/client-core/src/message_drafts/tests/editing.rs",
+      "apps/zoen/src/core/message-edit-recovery.test.ts",
+      "crates/zoen-cli/tests/journey_message_deletion/edit_recovery.rs"
     ],
-    "gap": "Texto/legenda exigem conta, aparelho e revisão conhecidos; falhas preservam o rascunho e retries reconciliam conteúdo aceito. Restam rascunho de edição não confirmada após fechar o app, conflito remoto ainda não observado e aceite manual iPhone por Enzo.",
+    "gap": "Texto/legenda usam conta, aparelho e revisão conhecidos; rascunhos de edição recuperam localmente no registro criptografado do compositor, sem publicar ao reabrir. Confirmação/consumo são atômicos e preservam digitação posterior. Restam conflito remoto ainda não observado, recuperação durável Web e aceite manual iPhone por Enzo; não equivale a CAS global ou rascunho cloud.",
     "issues": [
       172,
-      724
+      724,
+      727
     ]
   },
   {

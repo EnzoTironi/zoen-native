@@ -235,6 +235,7 @@ fn decode(request: &str) -> Result<Command, CoreError> {
                 Command::MessageDraft { .. }
                     | Command::SaveMessageDraft { .. }
                     | Command::SendMessageDraft { .. }
+                    | Command::SendMessageEditDraft { .. }
             ))
     {
         return Err(invalid("Application request is too large."));

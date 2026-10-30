@@ -12,6 +12,7 @@ fn source(f: &Fixture) -> Result<(String, TimelineEntry), CoreError> {
 }
 fn content(quote: SharedReplyDraft) -> DraftContent {
     DraftContent {
+        edit: None,
         text: "My answer".into(),
         reply_to: None,
         reply_quote: None,

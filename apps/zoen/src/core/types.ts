@@ -147,6 +147,7 @@ type Results = {
   message_draft: MessageDraftDto;
   save_message_draft: MessageDraftDto;
   send_message_draft: MessageDraftSendResult;
+  send_message_edit_draft: MessageDraftSendResult;
   recover_failed_media_draft: Omit<MediaDraftDto, 'assets'> & {
     assets: (Omit<MediaDraftDto['assets'][number], 'size'> & { size: string })[];
   };

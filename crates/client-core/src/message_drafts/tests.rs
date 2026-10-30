@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Client, PrivacyDto, SecretVault};
+use crate::{Client, PrivacyDto, SecretVault, TimelineEntry};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -439,3 +439,5 @@ mod selected_quotes;
 
 mod shared_replies;
 mod shared_selections;
+
+mod editing;

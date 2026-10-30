@@ -27,10 +27,10 @@ impl Client {
             ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
             RequestAccountPolicyOptions, RequestAppEdit, RequestOwnerPolicyOptions, RespondCall,
             ReviewOwnerPolicy, ReviewReplySelection, ReviewSharedReply, RevokeAgentInvite,
-            SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft, SetChatMute,
-            SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping, ShareAppCurrent,
-            Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy,
-            Thread, Timeline, UniversalSearch, UniversalSearchPage,
+            SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft, SendMessageEditDraft,
+            SetChatMute, SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping,
+            ShareAppCurrent, Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect,
+            SubmitOwnerPolicy, Thread, Timeline, UniversalSearch, UniversalSearchPage,
         };
         match command {
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
@@ -151,6 +151,7 @@ impl Client {
             command @ (MessageDraft { .. }
             | SaveMessageDraft { .. }
             | SendMessageDraft { .. }
+            | SendMessageEditDraft { .. }
             | ReviewReplySelection { .. }
             | ReviewSharedReply { .. }) => self.dispatch_draft(command),
             RecoverFailedMediaDraft {

@@ -107,8 +107,7 @@ export default function Thread() {
     const attempt = normalDraft.capture();
     if (!attempt) return;
     const text = attempt.text;
-    if ((!text.trim() && !(editing && messageCard(editing)?.kind_id === 'file')) || sending.current)
-      return;
+    if ((!text.trim() && !editing?.isCaption) || sending.current) return;
     sending.current = true;
     store.setTyping(space, false);
     setBusy(true);
@@ -116,7 +115,6 @@ export default function Thread() {
     try {
       if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
-      updateDraft({ type: 'accepted', attempt });
     } catch (reason) {
       if (normalDraft.isCurrent(attempt))
         setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
@@ -176,7 +174,14 @@ export default function Thread() {
                 context={
                   normalDraft.replyTo || editing
                     ? {
-                        entry: editing ?? reply ?? undefined,
+                        entry: editing ? undefined : (reply ?? undefined),
+                        edit: editing
+                          ? {
+                              id: editing.id,
+                              revision: editing.text_revision,
+                              text: normalDraft.messageDraft.editBaseText,
+                            }
+                          : undefined,
                         quote: editing ? undefined : normalDraft.replyQuote,
                         onCancel: () => updateDraft({ type: 'cancel' }),
                       }
@@ -188,7 +193,7 @@ export default function Thread() {
                 replyTo={normalDraft.replyTo ?? root}
                 thread
                 editing={Boolean(editing)}
-                allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
+                allowEmptyEdit={Boolean(editing?.isCaption)}
                 value={editing ? editDraft : draft}
                 draft={
                   editing

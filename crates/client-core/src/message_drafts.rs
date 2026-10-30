@@ -3,13 +3,19 @@ use crate::{
     engine::{Engine, EntryBody, R},
     i18n::t,
     replies::external::SharedReplyDraft,
-    CoreError, TimelineEntry,
+    CoreError,
 };
 use hkdf::Hkdf;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
+
+mod contract;
+pub(crate) use contract::{DraftContent, DraftScope};
+pub use contract::{MessageDraftDto, MessageDraftSendResult};
+mod editing;
+pub use editing::MessageDraftEdit;
 
 pub const MESSAGE_DRAFT_REVISION_ZERO: &str = "0";
 const DOMAIN: &[u8] = b"zoen.message.draft.v1";
@@ -19,26 +25,6 @@ const MAX_RETAINED_BYTES: usize = 64 << 20;
 const MAX_PLAIN_BYTES: usize = crate::client_api::MAX_REQUEST_BYTES + 16 * 1024;
 const MAX_CIPHER_BYTES: usize = (MAX_PLAIN_BYTES + 40).div_ceil(3) * 4 + 3;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
-#[serde(deny_unknown_fields)]
-pub struct MessageDraftDto {
-    pub revision: String,
-    pub text: String,
-    pub reply_to: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "client-types", ts(optional))]
-    pub reply_quote: Option<crate::ReplySelection>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "client-types", ts(optional))]
-    pub shared_reply: Option<SharedReplyDraft>,
-}
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
-pub struct MessageDraftSendResult {
-    pub entry: TimelineEntry,
-    pub draft: MessageDraftDto,
-}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Receipt {
@@ -50,6 +36,8 @@ struct Receipt {
 struct Record {
     draft: MessageDraftDto,
     last_accepted: Option<Receipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_accepted_edit: Option<Receipt>,
 }
 impl Default for Record {
     fn default() -> Self {
@@ -57,32 +45,15 @@ impl Default for Record {
             draft: MessageDraftDto {
                 revision: MESSAGE_DRAFT_REVISION_ZERO.into(),
                 text: String::new(),
+                edit: None,
                 reply_to: None,
                 reply_quote: None,
                 shared_reply: None,
             },
             last_accepted: None,
+            last_accepted_edit: None,
         }
     }
-}
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
-pub(crate) struct DraftScope {
-    pub expected_identity_id: String,
-    pub expected_device_id: String,
-    pub space_id: String,
-    pub thread_root_id: Option<String>,
-}
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
-pub(crate) struct DraftContent {
-    pub text: String,
-    pub reply_to: Option<String>,
-    #[serde(default)]
-    pub reply_quote: Option<crate::ReplySelection>,
-    #[serde(default)]
-    #[cfg_attr(feature = "client-types", ts(optional))]
-    pub shared_reply: Option<SharedReplyDraft>,
 }
 struct StorageScope {
     id: String,
@@ -273,6 +244,14 @@ impl Engine {
             record.draft.shared_reply.as_ref(),
         )
         .map_err(|_| storage_error())?;
+        Self::validate_edit_shape(record.draft.edit.as_ref()).map_err(|_| storage_error())?;
+        if record.last_accepted_edit.as_ref().is_some_and(|r| {
+            !valid_revision(&r.input_revision)
+                || r.input_revision == MESSAGE_DRAFT_REVISION_ZERO
+                || !valid_id(&r.message_id)
+        }) {
+            return Err(storage_error());
+        }
         Ok(record)
     }
     fn persist_message_draft(&self, storage: &StorageScope, record: &Record) -> R<()> {
@@ -324,6 +303,7 @@ impl Engine {
             expected,
             DraftContent {
                 text,
+                edit: None,
                 reply_to,
                 reply_quote,
                 shared_reply: None,
@@ -355,6 +335,7 @@ impl Engine {
     ) -> R<MessageDraftDto> {
         let DraftContent {
             text,
+            edit,
             reply_to,
             reply_quote,
             shared_reply,
@@ -371,13 +352,17 @@ impl Engine {
             reply_quote.as_ref(),
             shared_reply.as_ref(),
         )?;
+        // Private user work survives stale, deleted or unloaded sources. Scope,
+        // encryption, CAS and quotas protect storage; publication reauthorizes.
+        Self::validate_edit_shape(edit.as_ref())?;
         self.validate_draft_reply(
             scope,
             reply_to.as_deref(),
             reply_quote.as_ref(),
             shared_reply.as_ref(),
         )?;
-        if (!text.is_empty() || reply_to.is_some())
+        if (!text.is_empty() || reply_to.is_some() || edit.is_some())
+            && record.draft.edit == edit
             && record.draft.text == text
             && record.draft.reply_to == reply_to
             && record.draft.reply_quote == reply_quote
@@ -388,6 +373,7 @@ impl Engine {
         record.draft = MessageDraftDto {
             revision: types::new_id("draft")?,
             text,
+            edit,
             reply_to,
             reply_quote,
             shared_reply,
@@ -483,10 +469,12 @@ impl Engine {
                 draft: MessageDraftDto {
                     revision: types::new_id("draft")?,
                     text: String::new(),
+                    edit: record.draft.edit.clone(),
                     reply_to: None,
                     reply_quote: None,
                     shared_reply: None,
                 },
+                last_accepted_edit: record.last_accepted_edit.clone(),
                 last_accepted: Some(Receipt {
                     input_revision: expected.into(),
                     message_id: entry.id.clone(),

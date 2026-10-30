@@ -79,6 +79,7 @@ pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_reject
     for case in [
         "normal",
         "reply",
+        "edit",
         "media",
         "normal_revision",
         "media_revision",
@@ -103,6 +104,29 @@ pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_reject
                     .lock()
                     .save_message_draft(&f.scope.normal(), "0", String::new(), Some(root.id))
                     .unwrap();
+            }
+            "edit" => {
+                let source = f
+                    .engine
+                    .send_message(f.scope.space_id.clone(), "Original".into())?;
+                let draft = f.engine.lock().save_message_draft_content(
+                    &f.scope.normal(),
+                    "0",
+                    crate::message_drafts::DraftContent {
+                        text: String::new(),
+                        reply_to: None,
+                        reply_quote: None,
+                        shared_reply: None,
+                        edit: Some(crate::message_drafts::MessageDraftEdit {
+                            message_id: source.id,
+                            source_revision: source.text_revision.expect("signed source"),
+                            base_text: "Original".into(),
+                            text: "Private correction".into(),
+                            is_caption: false,
+                        }),
+                    },
+                )?;
+                normal_revision = draft.revision;
             }
             "media" => {
                 save(

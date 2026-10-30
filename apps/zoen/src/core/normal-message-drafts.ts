@@ -1,115 +1,28 @@
+import type { MessageDraftEdit } from './generated/MessageDraftEdit';
 import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { ReplySelection } from './generated/ReplySelection';
 import type { TimelineEntry } from './types';
-
-export type NormalDraftScope = Readonly<{
-  owner: Readonly<{
-    identityId: string;
-    deviceId: string;
-    sessionEpoch: number;
-    mode: 'account' | 'demo';
-  }>;
-  spaceId: string;
-  threadRootId: string | null;
-}>;
-export type NormalDraftSnapshot = Readonly<{
-  revision: string;
-  text: string;
-  reply_to: string | null;
-  reply_quote?: ReplySelection | null;
-  shared_reply?: SharedReplyDraft | null;
-}>;
-export type NormalDraftPort = {
-  load(scope: NormalDraftScope): Promise<NormalDraftSnapshot>;
-  save(
-    scope: NormalDraftScope,
-    expectedRevision: string,
-    text: string,
-    replyTo: string | null,
-    replyQuote?: ReplySelection | null,
-    sharedReply?: SharedReplyDraft | null,
-  ): Promise<NormalDraftSnapshot>;
-  send(
-    scope: NormalDraftScope,
-    expectedRevision: string,
-  ): Promise<{ entry: TimelineEntry; draft: NormalDraftSnapshot }>;
-};
-export class NormalDraftFailure extends Error {
-  readonly kind: 'closed' | 'notLoaded' | 'empty' | 'load' | 'save' | 'send' | 'conflict';
-  constructor(kind: NormalDraftFailure['kind'], cause?: unknown) {
-    super(cause instanceof Error ? cause.message : `Message draft ${kind}`, { cause });
-    this.name = 'NormalDraftFailure';
-    this.kind = kind;
-  }
-}
-export type NormalDraftState = Readonly<{
-  scope: NormalDraftScope;
-  text: string;
-  replyTo: string | null;
-  replyQuote: ReplySelection | null;
-  sharedReply: SharedReplyDraft | null;
-  textRevision: number;
-  replyRevision: number;
-  persistedRevision: string;
-  loaded: boolean;
-  loading: boolean;
-  saving: boolean;
-  sending: boolean;
-  error: NormalDraftFailure | null;
-}>;
-type Content = Pick<NormalDraftSnapshot, 'text' | 'reply_to' | 'reply_quote' | 'shared_reply'>;
-type SendIntent = Content & {
-  textRevision: number;
-  replyRevision: number;
-  persistedRevision: string | null;
-  work: Promise<TimelineEntry> | null;
-};
-type DraftRecord = {
-  state: NormalDraftState;
-  persisted: NormalDraftSnapshot;
-  load: Promise<void> | null;
-  autosave: Promise<void> | null;
-  failedSave: { baseline: NormalDraftSnapshot; content: Content } | null;
-  intent: SendIntent | null;
-};
-const emptySnapshot = (): NormalDraftSnapshot => ({ revision: '0', text: '', reply_to: null });
-const sameContent = (a: Content, b: Content) =>
-  a.text === b.text &&
-  a.reply_to === b.reply_to &&
-  JSON.stringify(a.reply_quote ?? null) === JSON.stringify(b.reply_quote ?? null) &&
-  JSON.stringify(a.shared_reply ?? null) === JSON.stringify(b.shared_reply ?? null);
-const content = (state: NormalDraftState): Content => ({
-  text: state.text,
-  reply_to: state.replyTo,
-  ...(state.replyQuote ? { reply_quote: state.replyQuote } : {}),
-  ...(state.sharedReply ? { shared_reply: state.sharedReply } : {}),
-});
-const keyFor = (scope: NormalDraftScope) =>
-  JSON.stringify([
-    scope.owner.mode,
-    scope.owner.identityId,
-    scope.owner.deviceId,
-    scope.owner.sessionEpoch,
-    scope.spaceId,
-    scope.threadRootId,
-  ]);
-function checked(value: NormalDraftSnapshot): NormalDraftSnapshot {
-  if (
-    typeof value.revision !== 'string' ||
-    !value.revision.length ||
-    value.revision.length > 256 ||
-    typeof value.text !== 'string' ||
-    (value.reply_to !== null && typeof value.reply_to !== 'string')
-  )
-    throw new Error('Invalid message draft response');
-  return {
-    revision: value.revision,
-    text: value.text,
-    reply_to: value.reply_to,
-    ...(value.reply_quote ? { reply_quote: value.reply_quote } : {}),
-    ...(value.shared_reply ? { shared_reply: value.shared_reply } : {}),
-  };
-}
+import {
+  NormalDraftFailure,
+  emptySnapshot,
+  sameContent,
+  content,
+  keyFor,
+  checked,
+  type NormalDraftScope,
+  type NormalDraftPort,
+  type NormalDraftState,
+  type DraftRecord,
+  type Content,
+  type SendIntent,
+} from './normal-message-draft-types.ts';
+export { NormalDraftFailure } from './normal-message-draft-types.ts';
+export type {
+  NormalDraftScope,
+  NormalDraftPort,
+  NormalDraftState,
+  NormalDraftSnapshot,
+} from './normal-message-draft-types.ts';
 
 /** Session-owned, memory-only projection. The native port owns durable ciphertext.
  * Retiring this instance is permanent; a new session receives a new controller. */
@@ -141,6 +54,9 @@ export class NormalMessageDrafts {
       state: {
         scope: captured,
         text: '',
+        edit: null,
+        editRevision: 0,
+        editContextRevision: 0,
         replyTo: null,
         replyQuote: null,
         sharedReply: null,
@@ -197,6 +113,7 @@ export class NormalMessageDrafts {
         this.publish(record, {
           loaded: true,
           text: value.text,
+          edit: value.edit ?? null,
           replyTo: value.reply_to,
           replyQuote: value.reply_quote ?? null,
           sharedReply: value.shared_reply ?? null,
@@ -232,6 +149,27 @@ export class NormalMessageDrafts {
     this.schedule(record);
     return true;
   }
+  setEdit(scope: NormalDraftScope, edit: MessageDraftEdit | null): boolean {
+    const record = this.record(scope);
+    if (this.retirement || !record.state.loaded) return false;
+    this.publish(record, {
+      edit: edit ? Object.freeze({ ...edit }) : null,
+      editRevision: record.state.editRevision + 1,
+      editContextRevision: record.state.editContextRevision + 1,
+    });
+    this.schedule(record);
+    return true;
+  }
+  setEditText(scope: NormalDraftScope, text: string): boolean {
+    const record = this.record(scope);
+    if (this.retirement || !record.state.loaded || !record.state.edit) return false;
+    this.publish(record, {
+      edit: Object.freeze({ ...record.state.edit, text }),
+      editRevision: record.state.editRevision + 1,
+    });
+    this.schedule(record);
+    return true;
+  }
   isPersisted(scope: NormalDraftScope): boolean {
     const record = this.record(scope);
     return (
@@ -257,6 +195,8 @@ export class NormalMessageDrafts {
       ? { ...replyQuote, spans: replyQuote.spans.map((span) => ({ ...span })) }
       : null;
     this.publish(record, {
+      edit: null,
+      editContextRevision: record.state.editContextRevision + 1,
       replyTo,
       replyQuote: frozenQuote,
       sharedReply: null,
@@ -277,6 +217,8 @@ export class NormalMessageDrafts {
     )
       return false;
     this.publish(record, {
+      edit: null,
+      editContextRevision: record.state.editContextRevision + 1,
       replyTo: null,
       replyQuote: null,
       sharedReply: Object.freeze({
@@ -351,6 +293,7 @@ export class NormalMessageDrafts {
           target.reply_to,
           target.reply_quote ?? null,
           target.shared_reply ?? null,
+          target.edit ?? null,
         ),
       );
       this.requireDraining();
@@ -410,6 +353,8 @@ export class NormalMessageDrafts {
         record.state.sending ||
         record.state.saving ||
         record.state.error ||
+        record.state.edit ||
+        record.persisted.edit ||
         record.state.text ||
         record.state.replyTo ||
         record.persisted.text ||
@@ -425,6 +370,7 @@ export class NormalMessageDrafts {
         record.state.textRevision === textRevision &&
         record.state.replyRevision === replyRevision &&
         record.persisted.revision === revision &&
+        !record.state.edit &&
         !record.state.text &&
         !record.state.replyTo;
       return work(revision, current);
@@ -432,13 +378,26 @@ export class NormalMessageDrafts {
   }
 
   send(scope: NormalDraftScope): Promise<TimelineEntry> {
+    return this.startSend(scope, 'message');
+  }
+  sendEdit(scope: NormalDraftScope): Promise<TimelineEntry> {
+    return this.startSend(scope, 'edit');
+  }
+  private startSend(scope: NormalDraftScope, mode: SendIntent['kind']): Promise<TimelineEntry> {
     const record = this.record(scope);
     try {
       this.requireOpen(record);
-      if (record.intent) return this.sendIntent(record, record.intent);
-      if (!record.state.text.trim()) throw new NormalDraftFailure('empty');
+      if (record.intent) {
+        if (record.intent.kind !== mode) throw new NormalDraftFailure('conflict');
+        return this.sendIntent(record, record.intent);
+      }
+      if (mode === 'edit' ? !record.state.edit : !record.state.text.trim())
+        throw new NormalDraftFailure('empty');
       const intent: SendIntent = {
         ...content(record.state),
+        kind: mode,
+        editRevision: record.state.editRevision,
+        editContextRevision: record.state.editContextRevision,
         textRevision: record.state.textRevision,
         replyRevision: record.state.replyRevision,
         persistedRevision: null,
@@ -461,18 +420,53 @@ export class NormalMessageDrafts {
           intent.persistedRevision = record.persisted.revision;
         }
         this.requireDraining();
-        const result = await this.port.send(record.state.scope, intent.persistedRevision);
+        const send = intent.kind === 'edit' ? this.port.sendEdit : this.port.send;
+        if (!send)
+          throw new NormalDraftFailure('send', new Error('Edit draft transport unavailable'));
+        const result = await send.call(this.port, record.state.scope, intent.persistedRevision);
         this.requireDraining();
         record.persisted = checked(result.draft);
         record.intent = null;
+        const exactEdit =
+          intent.kind === 'edit' &&
+          record.state.editRevision === intent.editRevision &&
+          record.state.editContextRevision === intent.editContextRevision;
+        // Only our own accepted revision may advance the basis beneath newer
+        // typing in the same editor. Another selected editor is independent.
+        const continuedEdit =
+          intent.kind === 'edit' &&
+          !exactEdit &&
+          record.state.editContextRevision === intent.editContextRevision &&
+          record.state.edit &&
+          result.entry.text_revision &&
+          intent.edit
+            ? Object.freeze({
+                ...record.state.edit,
+                source_revision: result.entry.text_revision,
+                base_text: intent.edit.text,
+              })
+            : null;
+        const edit = exactEdit ? null : (continuedEdit ?? record.state.edit);
         this.publish(record, {
-          text: record.state.textRevision === intent.textRevision ? '' : record.state.text,
+          text:
+            intent.kind === 'message' && record.state.textRevision === intent.textRevision
+              ? ''
+              : record.state.text,
+          edit,
+          editContextRevision:
+            record.state.editContextRevision + (exactEdit || continuedEdit ? 1 : 0),
           replyTo:
-            record.state.replyRevision === intent.replyRevision ? null : record.state.replyTo,
+            intent.kind === 'message' && record.state.replyRevision === intent.replyRevision
+              ? null
+              : record.state.replyTo,
           replyQuote:
-            record.state.replyRevision === intent.replyRevision ? null : record.state.replyQuote,
+            intent.kind === 'message' && record.state.replyRevision === intent.replyRevision
+              ? null
+              : record.state.replyQuote,
           sharedReply:
-            record.state.replyRevision === intent.replyRevision ? null : record.state.sharedReply,
+            intent.kind === 'message' && record.state.replyRevision === intent.replyRevision
+              ? null
+              : record.state.sharedReply,
           persistedRevision: record.persisted.revision,
           error: null,
         });
@@ -524,6 +518,8 @@ export class NormalMessageDrafts {
         record.state = {
           ...record.state,
           text: '',
+          edit: null,
+          editContextRevision: record.state.editContextRevision + 1,
           replyTo: null,
           replyQuote: null,
           sharedReply: null,

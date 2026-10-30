@@ -37,6 +37,14 @@ impl Client {
                 scope,
                 expected_revision,
             } => encode(&self.lock().send_message_draft(&scope, &expected_revision)?),
+            Command::SendMessageEditDraft {
+                scope,
+                expected_revision,
+            } => encode(
+                &self
+                    .lock()
+                    .send_message_edit_draft(&scope, &expected_revision)?,
+            ),
             _ => Err(invalid("Invalid draft command.")),
         }
     }
