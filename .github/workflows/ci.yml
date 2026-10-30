@@ -29,6 +29,7 @@ jobs:
     outputs:
       documentation_only: ${{ steps.scope.outputs.documentation_only }}
       frontend_only: ${{ steps.scope.outputs.frontend_only }}
+      has_documentation: ${{ steps.scope.outputs.has_documentation }}
       run_rust: ${{ steps.scope.outputs.run_rust }}
       photo_helper_only: ${{ steps.scope.outputs.photo_helper_only }}
       run_photo_helper: ${{ steps.scope.outputs.run_photo_helper }}
@@ -55,7 +56,7 @@ jobs:
 
   documentation-integrity:
     needs: change-scope
-    if: needs.change-scope.outputs.documentation_only == 'true'
+    if: needs.change-scope.outputs.documentation_only == 'true' || needs.change-scope.outputs.has_documentation == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:

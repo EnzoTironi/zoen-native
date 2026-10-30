@@ -11,6 +11,7 @@ import subprocess
 import sys
 from urllib.parse import unquote, urlsplit
 from ci_static_documents import validate as validate_static_documents
+from ci_ui_scope import ui_document_paths
 
 
 # Exact human-maintained prose, not a blanket *.md exception. Adding an entry
@@ -50,7 +51,10 @@ def frontend_path(path):
             and not any("generated" in part.lower() or part == "vendor" for part in parts)
             and not name.endswith(".d.ts")
             and not name.startswith("native-")
-            and not any(marker in name for marker in (".native.", ".ios.", ".android."))
+            and ".native." not in name
+            and (not any(marker in name for marker in (".ios.", ".android."))
+                 or (parts[:4] == ("apps", "zoen", "src", "components")
+                     and name.endswith(".tsx")))
             and path not in ("apps/zoen/src/core/types.ts", "apps/zoen/src/core/driver.ts"))
 
 
@@ -98,6 +102,8 @@ def frontend_reference_readers(tree, paths, reader=None):
     locations = [reader] if reader else [".", ":(exclude)apps/zoen/src/**",
         ":(exclude)*.md", ":(exclude)" + SELF, ":(exclude)" + TEST,
         ":(exclude)scripts/tests/test_ci_frontend_scope.py",
+        ":(exclude)scripts/ci_ui_scope.py",
+        ":(exclude)scripts/tests/test_ci_ui_scope.py",
         ":(exclude)scripts/tests/test_ci_frontend_readers_scope.py", ":(exclude)" + DISJOINT_TEST]
     search = subprocess.run(command + [tree, "--", *locations],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -199,7 +205,8 @@ def git(*args):
 
 
 def classify(base, head, event, candidate=None):
-    result = {"documentation_only": False, "frontend_only": False, "photo_helper_only": False, "run_photo_helper": False, "run_rust": True,
+    result = {"documentation_only": False, "frontend_only": False,
+              "has_documentation": False, "documentation_paths": [], "photo_helper_only": False, "run_photo_helper": False, "run_rust": True,
               "reason": "full-suite default", "paths": []}
     if event != "pull_request":
         result["reason"] = "Only pull requests may use the documentation lane"
@@ -253,9 +260,16 @@ def classify(base, head, event, candidate=None):
                               reason="Standalone photo Swift only; required rust check awaits SDK/pixel qualification",
                               validation="Application Rust shards omitted; the stable rust check requires real macOS pixel and iPhoneSimulator SDK qualification. Other applicable checks remain selected.")
                 return result
-            validate_frontend(base, head, ancestor, changes)
+            partition = ui_document_paths(changes, frontend_path)
+            if partition is None:
+                raise ValueError("Not exclusively reviewed frontend/static inputs")
+            frontend, documents = partition
+            if documents:
+                validate_static_documents(git, base, head, documents)
+            validate_frontend(base, head, ancestor, frontend)
             result.update(frontend_only=True, run_rust=False,
-                          reason="Verified frontend-only PR; client/Expo and local integrity remain selected")
+                          has_documentation=bool(documents), documentation_paths=documents,
+                          reason="Verified frontend/static inputs; client/Expo and local integrity remain selected")
             return result
         # Both endpoints matter: removal of a consumer on this branch must not
         # conceal a dependency. Search all other non-Markdown tracked text,
@@ -318,14 +332,14 @@ def main():
     args = parser.parse_args()
     result = classify(args.base, args.head, args.event, args.candidate)
     if args.check_documents:
-        if not result["documentation_only"]:
+        if not (result["documentation_only"] or result["has_documentation"]):
             raise ValueError("Documentation lane is not applicable: " + result["reason"])
-        validate_documents(args.head, result["paths"])
+        validate_documents(args.head, result["documentation_paths"] or result["paths"])
         result["validation"] = "UTF-8, 20,000-byte limit and local link targets passed; Rust and integration tests were not executed"
     print(json.dumps(result, indent=2))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-            for key in ("documentation_only", "frontend_only", "photo_helper_only", "run_photo_helper", "run_rust"):
+            for key in ("documentation_only", "frontend_only", "has_documentation", "photo_helper_only", "run_photo_helper", "run_rust"):
                 output.write(key + "=" + str(result[key]).lower() + "\n")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
