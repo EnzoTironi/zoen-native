@@ -13,6 +13,7 @@ import { useSemanticMessagePreview } from './use-semantic-message-preview';
 /** The quote belongs to the composer, so keyboard and quote always move together. */
 export function MessageContext({
   entry,
+  edit,
   editing = false,
   quote,
   shared,
@@ -20,6 +21,7 @@ export function MessageContext({
   onCancel,
 }: {
   entry?: TimelineEntry;
+  edit?: { id: string; revision?: string; text: string };
   editing?: boolean;
   quote?: ReplySelection | null;
   shared?: SharedReplyDraft | null;
@@ -28,20 +30,22 @@ export function MessageContext({
 }) {
   const { presentation: p, reducedMotion } = useTheme();
   const literalSelection = editing ? null : quote;
-  const source = shared
-    ? shared.text
-    : literalSelection
-      ? literalSelection.text
-      : entry
-        ? entry.voice
-          ? t('media.voiceMessage')
-          : messageText(entry)
-        : t('chat.messageUnavailable');
+  const source = edit
+    ? edit.text
+    : shared
+      ? shared.text
+      : literalSelection
+        ? literalSelection.text
+        : entry
+          ? entry.voice
+            ? t('media.voiceMessage')
+            : messageText(entry)
+          : t('chat.messageUnavailable');
   const preview = useSemanticMessagePreview({
     owner: JSON.stringify([
       editing,
-      entry?.id,
-      entry?.text_revision,
+      edit?.id ?? entry?.id,
+      edit?.revision ?? entry?.text_revision,
       quote?.source_id,
       quote?.revision,
       shared?.message_id,
@@ -51,10 +55,11 @@ export function MessageContext({
     literal: Boolean(
       shared ||
       literalSelection ||
-      !entry ||
-      entry.voice ||
-      !('Message' in entry.kind) ||
-      entry.kind.Message.text.length === 0,
+      (!edit &&
+        (!entry ||
+          entry.voice ||
+          !('Message' in entry.kind) ||
+          entry.kind.Message.text.length === 0)),
     ),
   });
   return (
@@ -107,7 +112,7 @@ export function MessageContext({
         }}
       />
       <Animated.View
-        key={`${editing ? 'edit' : 'reply'}:${shared?.message_id ?? entry?.id ?? 'missing'}`}
+        key={`${editing ? 'edit' : 'reply'}:${shared?.message_id ?? edit?.id ?? entry?.id ?? 'missing'}`}
         entering={
           reducedMotion
             ? undefined

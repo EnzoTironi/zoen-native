@@ -112,7 +112,8 @@ async function fixture(
       text: 'Preserved normal draft',
       reply_to: 'quoted-message',
     }),
-    save: async (_scope, revision, text, reply_to, reply_quote) => ({
+    save: async (_scope, revision, text, reply_to, reply_quote, _shared, edit) => ({
+      ...(edit ? { edit } : {}),
       revision: `${revision}x`,
       text,
       reply_to,

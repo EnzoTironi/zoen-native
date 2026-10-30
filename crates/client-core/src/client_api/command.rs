@@ -5,6 +5,7 @@ use super::{
 use crate::{
     app_resources::{Install, Update},
     forwarding::*,
+    message_drafts::{DraftContent, DraftScope},
     owner_policy::OwnerPolicyScope,
     sites::{SiteReview, SiteScope},
 };
@@ -159,29 +160,34 @@ pub(super) enum Command {
     },
     ReviewSharedReply {
         #[serde(flatten)]
-        scope: crate::message_drafts::DraftScope,
+        scope: DraftScope,
         #[serde(flatten)]
         review: crate::replies::external::SharedReplyReview,
     },
     ReviewReplySelection {
         #[serde(flatten)]
-        scope: crate::message_drafts::DraftScope,
+        scope: DraftScope,
         selection: crate::ReplySelection,
     },
     MessageDraft {
         #[serde(flatten)]
-        scope: crate::message_drafts::DraftScope,
+        scope: DraftScope,
     },
     SaveMessageDraft {
         #[serde(flatten)]
-        scope: crate::message_drafts::DraftScope,
+        scope: DraftScope,
         expected_revision: String,
         #[serde(flatten)]
-        content: crate::message_drafts::DraftContent,
+        content: DraftContent,
     },
     SendMessageDraft {
         #[serde(flatten)]
-        scope: crate::message_drafts::DraftScope,
+        scope: DraftScope,
+        expected_revision: String,
+    },
+    SendMessageEditDraft {
+        #[serde(flatten)]
+        scope: DraftScope,
         expected_revision: String,
     },
     RecoverFailedMediaDraft {

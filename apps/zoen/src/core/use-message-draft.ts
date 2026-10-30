@@ -4,7 +4,6 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -15,20 +14,19 @@ import { useClient } from './provider';
 import {
   canConsumeMediaReply,
   initialMessageDraft,
-  messageDraftReducer,
   projectMessageDraft,
   type MessageDraftAction,
   type MessageDraftAttempt,
 } from './message-draft';
+import { messageCard } from './message-presentation';
 import type { TimelineEntry, TimelinePage } from './types';
 
-const empty = initialMessageDraft();
 const subscribeEmpty = () => () => {};
 const readEmpty = () => null;
 const scopeChanged = () =>
   Object.assign(new Error(t('chat.editSessionChanged')), { code: 'ERR_ZOEN_DRAFT_SCOPE_CHANGED' });
 
-/** Normal text is durable; edit/search/caption/recording state remains independent. */
+/** The canonical composer owns normal text, reply and reviewed edit independently. */
 export function useMessageDraft(spaceId: string, threadRootId: string | null = null) {
   const client = useClient();
   const { store, snapshot, timelines } = client;
@@ -40,33 +38,35 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
         : null,
     [client, spaceId, threadRootId],
   );
+  const mounted = useRef<typeof channel>(null);
+  useLayoutEffect(() => {
+    mounted.current = channel;
+    return () => {
+      mounted.current = null;
+    };
+  }, [channel]);
   const normal = useSyncExternalStore(
     channel?.controller.subscribe ?? subscribeEmpty,
     channel ? () => channel.controller.getSnapshot(channel.scope) : readEmpty,
     channel ? () => channel.controller.getSnapshot(channel.scope) : readEmpty,
   );
-  const [transient, dispatch] = useReducer(
-    (
-      state: { channel: typeof channel; value: typeof empty },
-      action: { channel: typeof channel; action: MessageDraftAction },
-    ) => ({
-      channel: action.channel,
-      value: messageDraftReducer(
-        state.channel === action.channel ? state.value : initialMessageDraft(),
-        action.action,
-      ),
+  const edit = useMemo(
+    () => ({
+      ...initialMessageDraft(),
+      editing: normal?.edit
+        ? {
+            id: normal.edit.message_id,
+            text_revision: normal.edit.source_revision,
+            isCaption: normal.edit.is_caption,
+          }
+        : null,
+      editText: normal?.edit?.text ?? '',
+      editBaseText: normal?.edit?.base_text ?? '',
+      contextRevision: normal?.editContextRevision ?? 0,
+      editRevision: normal?.editRevision ?? 0,
     }),
-    { channel, value: initialMessageDraft() },
+    [normal],
   );
-  const edit = transient.channel === channel ? transient.value : empty;
-  const transientNow = useRef({ channel, value: edit });
-  useLayoutEffect(() => {
-    const current = { channel, value: edit };
-    transientNow.current = current;
-    return () => {
-      if (transientNow.current === current) transientNow.current = { channel: null, value: empty };
-    };
-  }, [channel, edit]);
   const [quote, setQuote] = useState<{
     channel: typeof channel;
     id: string;
@@ -156,21 +156,11 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
   }, [channel, replyTo, replyRevision, snapshot, page, spaceId, store]);
 
   function updateDraft(action: MessageDraftAction) {
-    if (!channel || !store.messageDrafts.isCurrent(channel)) return;
-    function changeTransient(action: MessageDraftAction) {
-      const previous = transientNow.current;
-      transientNow.current = {
-        channel,
-        value: messageDraftReducer(
-          previous.channel === channel ? previous.value : initialMessageDraft(),
-          action,
-        ),
-      };
-      dispatch({ channel, action });
-    }
+    if (!channel || mounted.current !== channel || !store.messageDrafts.isCurrent(channel)) return;
     switch (action.type) {
       case 'text':
-        if (edit.editing) changeTransient(action);
+        if (channel.controller.getSnapshot(channel.scope).edit)
+          channel.controller.setEditText(channel.scope, action.value);
         else channel.controller.setText(channel.scope, action.value);
         break;
       case 'reply':
@@ -183,21 +173,26 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
             page: current.timelines[spaceId],
             entry: action.entry.deleted ? null : action.entry,
           });
-          changeTransient({ type: 'cancel' });
         }
         break;
-      case 'edit':
-        changeTransient(action);
+      case 'edit': {
+        const old = channel.controller.getSnapshot(channel.scope).edit;
+        channel.controller.setEdit(channel.scope, {
+          message_id: action.entry.id,
+          source_revision: action.entry.text_revision ?? action.entry.id,
+          base_text: action.text,
+          text:
+            old?.message_id === action.entry.id && old.text !== old.base_text
+              ? old.text
+              : action.text,
+          is_caption: messageCard(action.entry)?.kind_id === 'file' && !action.entry.voice,
+        });
         break;
+      }
       case 'cancel':
-        if (edit.editing) changeTransient(action);
+        if (channel.controller.getSnapshot(channel.scope).edit)
+          channel.controller.setEdit(channel.scope, null);
         else channel.controller.setReply(channel.scope, null);
-        break;
-      case 'media-accepted':
-        // Media completion uses the independently captured fences below.
-        break;
-      case 'accepted':
-        if (action.attempt.editingId) changeTransient(action);
         break;
     }
   }
@@ -209,33 +204,29 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
     replyQuote: normal?.replyQuote ?? null,
     sharedReply: normal?.sharedReply ?? null,
     capture: (): MessageDraftAttempt | null => {
-      if (!channel || !store.messageDrafts.isCurrent(channel)) return null;
-      const transient = transientNow.current;
-      if (transient.channel !== channel) return null;
+      if (!channel || mounted.current !== channel || !store.messageDrafts.isCurrent(channel))
+        return null;
       const normal = channel.controller.getSnapshot(channel.scope);
       if (!normal.loaded) return null;
       return {
-        text: transient.value.editing ? transient.value.editText : normal.text,
-        editingId: transient.value.editing?.id ?? null,
-        editingRevision:
-          transient.value.editing?.text_revision ?? transient.value.editing?.id ?? null,
+        text: normal.edit ? normal.edit.text : normal.text,
+        editingId: normal.edit?.message_id ?? null,
+        editingRevision: normal.edit?.source_revision ?? null,
         replyId: normal.replyTo,
-        contextRevision: transient.value.contextRevision,
+        contextRevision: normal.editContextRevision,
         textRevision: normal.textRevision,
-        editRevision: transient.value.editRevision,
+        editRevision: normal.editRevision,
       };
     },
     mediaAccepted: () => {
       if (!channel || !normal || !store.messageDrafts.isCurrent(channel)) return;
       const current = channel.controller.getSnapshot(channel.scope);
-      const transient = transientNow.current;
       if (
-        transient.channel === channel &&
         canConsumeMediaReply(
           {
             replyRevision: current.replyRevision,
-            editContextRevision: transient.value.contextRevision,
-            editing: Boolean(transient.value.editing),
+            editContextRevision: current.editContextRevision,
+            editing: Boolean(current.edit),
           },
           {
             replyRevision: normal.replyRevision,
@@ -250,15 +241,16 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
     error: normal?.error ?? null,
     rejected,
     retry: () => {
-      if (channel && store.messageDrafts.isCurrent(channel))
+      if (channel && mounted.current === channel && store.messageDrafts.isCurrent(channel))
         void channel.controller.retry(channel.scope).catch(() => {});
     },
     flush: () => {
-      if (channel && store.messageDrafts.isCurrent(channel))
+      if (channel && mounted.current === channel && store.messageDrafts.isCurrent(channel))
         void channel.controller.flush(channel.scope).catch(() => {});
     },
     send: async () => {
-      if (!channel || !store.messageDrafts.isCurrent(channel)) throw scopeChanged();
+      if (!channel || mounted.current !== channel || !store.messageDrafts.isCurrent(channel))
+        throw scopeChanged();
       const entry = await channel.controller.send(channel.scope);
       // Acceptance already consumed exactly its draft. Refresh failure must not
       // turn a committed send into another send attempt.
@@ -266,37 +258,32 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
       return entry;
     },
     isCurrent: (attempt?: MessageDraftAttempt) => {
-      const current = transientNow.current;
-      return Boolean(
-        channel &&
-        current.channel === channel &&
-        store.messageDrafts.isCurrent(channel) &&
-        (!attempt?.editingId ||
-          (current.value.editing?.id === attempt.editingId &&
-            current.value.contextRevision === attempt.contextRevision)),
+      if (!channel || mounted.current !== channel || !store.messageDrafts.isCurrent(channel))
+        return false;
+      const current = channel.controller.getSnapshot(channel.scope);
+      return (
+        !attempt?.editingId ||
+        (current.edit?.message_id === attempt.editingId &&
+          current.editContextRevision === attempt.contextRevision)
       );
     },
     sendEdit: async (attempt: MessageDraftAttempt) => {
-      if (!channel || !store.messageDrafts.isCurrent(channel)) throw scopeChanged();
-      const current = transientNow.current;
+      if (!channel || mounted.current !== channel || !store.messageDrafts.isCurrent(channel))
+        throw scopeChanged();
+      const current = channel.controller.getSnapshot(channel.scope);
       if (
-        current.channel !== channel ||
         !attempt.editingId ||
         !attempt.editingRevision ||
-        current.value.editing?.id !== attempt.editingId ||
-        current.value.contextRevision !== attempt.contextRevision ||
-        current.value.editRevision !== attempt.editRevision
+        current.edit?.message_id !== attempt.editingId ||
+        current.edit.source_revision !== attempt.editingRevision ||
+        current.editContextRevision !== attempt.contextRevision ||
+        current.editRevision !== attempt.editRevision ||
+        current.edit.text !== attempt.text
       )
         throw new Error(t('chat.editChanged'));
-      await store.request({
-        op: 'edit_message',
-        expected_identity_id: channel.scope.owner.identityId,
-        expected_device_id: channel.scope.owner.deviceId,
-        space_id: spaceId,
-        message_id: attempt.editingId,
-        expected_revision: attempt.editingRevision,
-        text: attempt.text,
-      });
+      const entry = await channel.controller.sendEdit(channel.scope);
+      if (store.messageDrafts.isCurrent(channel)) void store.refresh().catch(() => {});
+      return entry;
     },
   };
 }

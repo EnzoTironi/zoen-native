@@ -1,6 +1,4 @@
-import type { SharedReplyDraft } from '../core/generated/SharedReplyDraft';
-import type { ReplySelection } from '../core/generated/ReplySelection';
-import { createRef, type ReactNode, type Ref } from 'react';
+import { createRef, type ReactNode, type Ref, type ComponentProps } from 'react';
 import { Text, View, Pressable, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardMotion } from './keyboard-motion';
@@ -15,7 +13,6 @@ import { conversationQueryFits, type ConversationSearchState } from '../core/con
 import { MediaComposer } from '../media/MediaComposer';
 import type { AttachmentComposerField } from '../media/attachment-composer';
 import { AttachmentReplyContext } from '../media/attachment-reply-context';
-import type { TimelineEntry } from '../core/types';
 import { ComposerReplyContext } from './composer-reply-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
@@ -115,12 +112,10 @@ export function MessageComposer({
   mediaEnabled?: boolean;
   suspended?: boolean;
   search?: ComposerSearchMode;
-  context?: {
-    entry?: TimelineEntry;
-    quote?: ReplySelection | null;
-    shared?: SharedReplyDraft | null;
-    onCancel: () => void;
-  };
+  context?: Pick<
+    ComponentProps<typeof ComposerReplyContext>,
+    'entry' | 'edit' | 'quote' | 'shared'
+  > & { onCancel: () => void };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
   const { colors, scheme, presentation: p, reducedMotion } = useTheme();
@@ -185,7 +180,7 @@ export function MessageComposer({
           spaceId,
           threadRootId ?? null,
           search ? 'search' : files ? 'caption' : editing ? 'edit' : 'normal',
-          files?.mutationId ?? (editing ? (context?.entry?.id ?? null) : null),
+          files?.mutationId ?? (editing ? (context?.edit?.id ?? context?.entry?.id ?? null) : null),
           sessionScope,
         ])}
         testID="message-input"
@@ -467,7 +462,9 @@ export function MessageComposer({
             >
               {t(
                 draft.rejected
-                  ? 'chat.draftSendRejected'
+                  ? editing
+                    ? 'chat.editCouldNotBeSaved'
+                    : 'chat.draftSendRejected'
                   : draft.ready
                     ? 'chat.draftSaveFailed'
                     : 'chat.draftLoadFailed',

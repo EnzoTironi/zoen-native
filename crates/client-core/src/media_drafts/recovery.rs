@@ -54,6 +54,7 @@ impl Engine {
                 || !previous.assets.is_empty()
                 || previous.attempted
                 || normal.revision != expected_message
+                || normal.edit.is_some()
                 || !normal.text.is_empty()
                 || normal.reply_to.is_some()
             {

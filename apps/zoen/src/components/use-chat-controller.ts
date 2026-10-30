@@ -26,7 +26,6 @@ import {
 import type { UniversalHit } from '../core/generated/UniversalHit';
 import { InitialTimelineEnd } from '../core/initial-timeline-end';
 import { chatActivityLabel } from '../core/live-activity';
-import { messageCard } from '../core/message-presentation';
 import { messageText } from '../core/presentation';
 import { useClient } from '../core/provider';
 import type { TimelineEntry } from '../core/types';
@@ -482,15 +481,13 @@ export function useChatController() {
     const attempt = normalDraft.capture();
     if (!attempt) return;
     const text = attempt.text;
-    if (!text.trim() && !(attempt.editingId && editing && messageCard(editing)?.kind_id === 'file'))
-      return;
+    if (!text.trim() && !(attempt.editingId && editing?.isCaption)) return;
     sendingNow.current = true;
     store.setTyping(id, false);
     setSending(true);
     try {
       if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
-      updateDraft({ type: 'accepted', attempt });
     } catch (reason) {
       if (normalDraft.isCurrent(attempt))
         void inform(

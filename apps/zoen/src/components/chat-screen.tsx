@@ -144,7 +144,14 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                 context={
                   !searchState.active && (normalDraft.replyTo || normalDraft.sharedReply || editing)
                     ? {
-                        entry: editing ?? reply ?? undefined,
+                        entry: editing ? undefined : (reply ?? undefined),
+                        edit: editing
+                          ? {
+                              id: editing.id,
+                              revision: editing.text_revision,
+                              text: normalDraft.messageDraft.editBaseText,
+                            }
+                          : undefined,
                         quote: editing ? undefined : normalDraft.replyQuote,
                         shared: editing ? undefined : normalDraft.sharedReply,
                         onCancel: () => updateDraft({ type: 'cancel' }),
@@ -158,7 +165,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                 value={searchState.active ? searchState.query : composerText}
                 sending={sending}
                 editing={Boolean(editing) && !searchState.active}
-                allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
+                allowEmptyEdit={Boolean(editing?.isCaption)}
                 replyTo={normalDraft.replyTo}
                 draft={
                   searchState.active || editing
