@@ -158,9 +158,10 @@
       "apps/zoen/src/core/message-deletion-dialog-react.test.ts",
       "apps/zoen/src/components/message-actions-model.ts",
       "apps/zoen/src/core/message-actions-model.test.ts",
-      "apps/zoen/src/core/message-accessibility-row-actions.cases.ts"
+      "apps/zoen/src/core/message-accessibility-row-actions.cases.ts",
+      "crates/zoen-cli/tests/journey_message_deletion.rs"
     ],
-    "gap": "Exclusão global restrita à própria autoria. Remoção local inclui mensagens recebidas e placeholders, com alcance confirmado e histórico privado. Restam replicação privada (#176), qualificação entre dois clientes e aceite manual iPhone por Enzo.",
+    "gap": "Exclusão global restrita à própria autoria. Dois clientes MLS reais comprovam remoção local, seleção desatualizada, exclusão offline e retomada sem duplicação. Restam replicação privada (#176) e aceite manual iPhone por Enzo.",
     "issues": [
       172,
       176,
@@ -277,7 +278,8 @@
       "apps/zoen/src/core/message-deletion-dialog-react.test.ts",
       "apps/zoen/src/components/message-actions-model.ts",
       "apps/zoen/src/core/message-actions-model.test.ts",
-      "apps/zoen/src/core/message-accessibility-row-actions.cases.ts"
+      "apps/zoen/src/core/message-accessibility-row-actions.cases.ts",
+      "crates/zoen-cli/tests/journey_message_deletion.rs"
     ],
     "gap": "Seleção mista, placeholders e exclusão atômica compartilham o contrato individual; encaminhar e copiar exigem conteúdo disponível. Restam replicação privada (#176) e aceite manual iPhone por Enzo.",
     "issues": [

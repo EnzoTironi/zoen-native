@@ -153,6 +153,10 @@ impl World {
         .env("DATABASE_URL", &self.db_url)
         .env("ZOEN_FDB_CELL", &self.cell)
         .env("ZOEN_BLOB_DIR", self.dir.join("blobs"))
+        // Readiness requires this child's listening event, not just an open port.
+        // An inherited RUST_LOG=warn must not suppress that acknowledgement.
+        // Explicit per-World tracing overrides below still take precedence.
+        .env("RUST_LOG", "info,sqlx=warn,tower_http=warn")
         .env_remove("ZOEN_NATS_URL")
         .env_remove("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP")
         .stdout(log.try_clone().unwrap())
