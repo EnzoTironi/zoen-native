@@ -233,6 +233,7 @@ async fn malformed_wire_and_rejected_signature_do_not_poison_following_messages_
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )?)?,
             &mut head,

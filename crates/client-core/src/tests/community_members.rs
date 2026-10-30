@@ -62,6 +62,7 @@ fn ordinary_messages_keep_review_but_target_and_actor_role_or_rejoin_aba_do_not(
         attaches: None,
         reply: None,
         forwarded: false,
+        forwarded_author: None,
         media: None,
     })?;
     assert_eq!(f.context()?.revision, first.revision);
@@ -251,6 +252,7 @@ fn refusal_is_exact_writer_target_and_membership_cut_not_unrelated_or_old_histor
             attaches: None,
             reply: None,
             forwarded: false,
+            forwarded_author: None,
             media: None,
         })?;
         assert!(f.context()?.removal_failed);

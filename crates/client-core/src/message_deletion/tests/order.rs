@@ -12,6 +12,7 @@ fn interleaved_received_and_own_acknowledgements_keep_the_replay_order() -> Test
             media: None,
             reply: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let initial = timeline(&f)?;

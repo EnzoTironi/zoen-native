@@ -12,6 +12,9 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !crate::forwarding::metadata_valid(&e.body) {
+            return Projection::Refused;
+        }
         if !crate::app_resources::event_valid(self, e, identities) {
             return Projection::Refused;
         }
@@ -129,6 +132,7 @@ impl State {
                 attaches,
                 reply,
                 forwarded,
+                forwarded_author,
                 media,
                 ..
             } => {
@@ -166,6 +170,7 @@ impl State {
                         marks: MessageMarks {
                             text_revision: Some(event_log::content_hash_of(e)),
                             forwarded: *forwarded,
+                            forwarded_author: forwarded_author.clone(),
                             media: media.clone(),
                             ..Default::default()
                         },

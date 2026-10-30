@@ -1,3 +1,4 @@
+import { forwarding } from './forwarding.ts';
 import { defineFeature } from '../catalog.ts';
 import { quoteCollapse } from './quote-collapse.ts';
 import { messageSelection } from './message-selection.ts';
@@ -5,6 +6,7 @@ import { messageSelection } from './message-selection.ts';
 export const chat = defineFeature(
   {
     ...messageSelection.en,
+    ...forwarding.en,
     ...quoteCollapse.en,
     selectText: 'Select text',
     quoteSelection: 'Quote',
@@ -59,7 +61,6 @@ export const chat = defineFeature(
     touchAndHoldToReplyOrSeeActions: 'Touch and hold to reply or see actions',
     goToQuotedMessage: 'Go to quoted message',
     tryAgainInAMoment: 'Try again in a moment.',
-    forwarded: 'Forwarded',
     deletedMessage: 'Deleted message',
     editMessage: 'Edit message',
     cancel: 'Cancel',
@@ -75,7 +76,6 @@ export const chat = defineFeature(
     sendMessage: 'Send message',
     reply: 'Reply',
     openReplies: 'Open replies',
-    forward: 'Forward',
     copyText: 'Copy text',
     like: 'Like ♥',
     edit: 'Edit',
@@ -83,15 +83,8 @@ export const chat = defineFeature(
     deleteMessage: 'Delete message?',
     theMessageWillBeRemovedForEveryoneIn: 'The message will be removed for everyone in this chat.',
     delete: 'Delete',
-    forwardTo: 'Forward to…',
     searchChats2: 'Search chats',
     noChatsFound: 'No chats found',
-    startAnotherChatToForwardThisMessage: 'Start another chat to forward this message.',
-    theMessageCouldNotBeForwarded: 'The message could not be forwarded.',
-    reviewForwardAgain: 'The message changed. Choose a chat to review it again.',
-    alreadyForwarded: 'Already forwarded',
-    forwardAgain: 'Forward again',
-    forwardRequiresAccount: 'Use your account to forward messages',
     peopleCouldNotBeFoundOnTheServer: 'People could not be found on the server.',
     person: 'Person',
     group: 'Group',
@@ -231,6 +224,7 @@ export const chat = defineFeature(
   },
   {
     ...messageSelection['pt-BR'],
+    ...forwarding['pt-BR'],
     ...quoteCollapse['pt-BR'],
     selectText: 'Selecionar texto',
     quoteSelection: 'Citar',
@@ -285,7 +279,6 @@ export const chat = defineFeature(
     touchAndHoldToReplyOrSeeActions: 'Mantenha pressionado para responder ou ver ações',
     goToQuotedMessage: 'Ir à mensagem citada',
     tryAgainInAMoment: 'Tente novamente em instantes.',
-    forwarded: 'Encaminhada',
     deletedMessage: 'Mensagem apagada',
     editMessage: 'Editar mensagem',
     cancel: 'Cancelar',
@@ -301,7 +294,6 @@ export const chat = defineFeature(
     sendMessage: 'Enviar mensagem',
     reply: 'Responder',
     openReplies: 'Abrir respostas',
-    forward: 'Encaminhar',
     copyText: 'Copiar texto',
     like: 'Curtir ♥',
     edit: 'Editar',
@@ -310,15 +302,8 @@ export const chat = defineFeature(
     theMessageWillBeRemovedForEveryoneIn:
       'A mensagem será removida para todas as pessoas desta conversa.',
     delete: 'Apagar',
-    forwardTo: 'Encaminhar para…',
     searchChats2: 'Buscar conversa',
     noChatsFound: 'Nenhuma conversa encontrada',
-    startAnotherChatToForwardThisMessage: 'Comece outra conversa para encaminhar esta mensagem.',
-    theMessageCouldNotBeForwarded: 'Não foi possível encaminhar.',
-    reviewForwardAgain: 'A mensagem mudou. Escolha uma conversa para revisá-la novamente.',
-    alreadyForwarded: 'Já encaminhada',
-    forwardAgain: 'Encaminhar novamente',
-    forwardRequiresAccount: 'Use sua conta para encaminhar mensagens',
     peopleCouldNotBeFoundOnTheServer: 'Não foi possível buscar pessoas no servidor.',
     person: 'Pessoa',
     group: 'Grupo',

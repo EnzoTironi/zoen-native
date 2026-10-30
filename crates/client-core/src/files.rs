@@ -6,6 +6,9 @@
 //! forty megabytes. Equality is visible only inside one file's own history: another file
 //! has another key. Previews (thumbnails) are made by the device and travel the same way.
 
+mod forwarding;
+pub(crate) use forwarding::ForwardFileInput;
+
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
     XChaCha20Poly1305, XNonce,

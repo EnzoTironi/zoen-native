@@ -213,64 +213,6 @@
     ]
   },
   {
-    "id": "TG-messaging-message-forwarding",
-    "scope": "active",
-    "implementation": "partial",
-    "acceptance": "scoped",
-    "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
-    ],
-    "gap": "Qualificar atribuição da origem e envio real; DTO distingue forwarded mas não expõe autoria original.",
-    "issues": [
-      172
-    ]
-  },
-  {
-    "id": "TG-messaging-forward-without-sender-or-caption",
-    "scope": "active",
-    "implementation": "missing",
-    "acceptance": "pending",
-    "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
-    ],
-    "gap": "Revisar ocultação de autoria/legenda antes de encaminhar, com proteção de conteúdo.",
-    "issues": [
-      172
-    ]
-  },
-  {
-    "id": "TG-messaging-forward-to-several-destinations",
-    "scope": "active",
-    "implementation": "missing",
-    "acceptance": "pending",
-    "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
-    ],
-    "gap": "Selecionar vários destinos e mostrar resultado individual sem repetir os já aceitos.",
-    "issues": [
-      172
-    ]
-  },
-  {
-    "id": "TG-messaging-change-forwarding-destination",
-    "scope": "active",
-    "implementation": "partial",
-    "acceptance": "scoped",
-    "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "crates/client-core/src/forwarding/batch.rs",
-      "apps/zoen/src/core/forward-message.test.ts"
-    ],
-    "gap": "Escolher destino apenas prepara a revisão; Enviar é explícito. Lotes reavaliam itens pendentes e preservam recibos dos aceitos ao mudar destino. Restam integração visual equivalente nas variantes e aceite manual.",
-    "issues": [
-      172,
-      670
-    ]
-  },
-  {
     "id": "TG-messaging-multi-message-selection",
     "scope": "active",
     "implementation": "partial",

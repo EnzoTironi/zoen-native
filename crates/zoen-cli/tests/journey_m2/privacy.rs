@@ -140,6 +140,7 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext(
         reply: None,
         media: None,
         forwarded: false,
+        forwarded_author: None,
     };
     let refused = mallory.publish_body(space, seen, clear).await.unwrap_err();
     assert_eq!(refused, protocol::SEAL_REQUIRED);

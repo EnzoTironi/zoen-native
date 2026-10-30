@@ -252,6 +252,7 @@ impl<S: Signer> Client<S> {
                     attaches: Some(item.clone()),
                     reply,
                     forwarded: false,
+                    forwarded_author: None,
                     media: request
                         .options
                         .metadata(
@@ -410,6 +411,7 @@ impl<S: Signer> Client<S> {
                 attaches: Some(item.clone()),
                 reply: reply.clone(),
                 forwarded: false,
+                forwarded_author: None,
                 media: request
                     .options
                     .metadata(

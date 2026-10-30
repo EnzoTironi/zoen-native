@@ -108,6 +108,7 @@ pub(super) fn seed(e: &mut Engine, turma: &str, cast: &Cast, t0: i64) -> R<()> {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     e.append_at(
@@ -210,6 +211,7 @@ pub(super) fn seed(e: &mut Engine, turma: &str, cast: &Cast, t0: i64) -> R<()> {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
 
@@ -275,6 +277,7 @@ pub(super) fn seed(e: &mut Engine, turma: &str, cast: &Cast, t0: i64) -> R<()> {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
 

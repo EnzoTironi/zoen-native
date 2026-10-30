@@ -97,6 +97,7 @@ test('actual Expo Info ignores typing/other chats and retires canonical, members
       scope: calls.find((call) => call.op === 'message_info').scope,
       author: snapshot.conversations[0]!.members[0]!,
       sent_at_ms: '1000',
+      forwarded: false,
       edited: false,
       edited_at_ms: null,
       delivery: 'Sent',

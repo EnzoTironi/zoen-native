@@ -112,6 +112,7 @@ impl DeviceCore {
                         reply: None,
                         media: None,
                         forwarded: false,
+                        forwarded_author: None,
                     },
                 )
                 .map_err(|_| NativeError::Storage)?;

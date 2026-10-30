@@ -249,6 +249,7 @@ async fn genuinely_advancing_replay_pages_outlive_one_inactivity_window_then_flu
                         reply: None,
                         media: None,
                         forwarded: false,
+                        forwarded_author: None,
                     },
                 )?)?,
                 &mut head,

@@ -224,12 +224,14 @@ fn same_media_group(first: &Event, second: &Event) -> bool {
             media: Some(first),
             reply: first_reply,
             forwarded: false,
+            forwarded_author: None,
             ..
         },
         EventBody::MessagePosted {
             media: Some(second),
             reply: second_reply,
             forwarded: false,
+            forwarded_author: None,
             ..
         },
     ) = (&first.body, &second.body)

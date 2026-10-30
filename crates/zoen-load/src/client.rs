@@ -319,6 +319,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                         reply: None,
                         media: None,
                         forwarded: false,
+                        forwarded_author: None,
                     },
                 )?;
                 let env = Envelope::plain(&e)?;

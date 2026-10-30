@@ -325,20 +325,22 @@ impl Engine {
         if marks.deleted {
             return Err(not_found(&t("Mensagem", "Message")));
         }
+        let forwarded_author = self.forwarded_author(source);
         let media = marks.media.as_ref().map(types::MessageMedia::without_group);
         let (text, attaches) = (text.clone(), attaches.clone());
         // Resolve the canonical entry, including old Android markers. Its current
         // audio and metadata are copied; source item/reply/thread ids never travel.
         if from_space != to_space {
             if let Some(voice) = self.entry_voice(source) {
-                return self.forward_file_message(
+                return self.forward_file_message(crate::files::ForwardFileInput {
                     from_space,
-                    &voice.item_id,
+                    item_id: &voice.item_id,
                     to_space,
-                    "",
-                    Some(&voice),
-                    None,
-                );
+                    caption: "",
+                    voice: Some(&voice),
+                    media: None,
+                    forwarded_author,
+                });
             }
             if text.starts_with("⟦voice:") {
                 return Err(CoreError::Invalid {
@@ -350,7 +352,7 @@ impl Engine {
             }
             if let Some(item) = attaches.as_deref() {
                 if self.state.items.get(item).is_some_and(|item| item.space==from_space && matches!(&item.current().content,ItemContent::App(app) if app.app=="excalidraw")) {
-                    return self.forward_app_document(from_space,item,to_space,&text);
+                    return self.forward_app_document(from_space,item,to_space,&text,forwarded_author);
                 }
                 if !self.state.items.get(item).is_some_and(|item| {
                     item.space == from_space
@@ -363,7 +365,15 @@ impl Engine {
                         ),
                     });
                 }
-                return self.forward_file_message(from_space, item, to_space, &text, None, media);
+                return self.forward_file_message(crate::files::ForwardFileInput {
+                    from_space,
+                    item_id: item,
+                    to_space,
+                    caption: &text,
+                    voice: None,
+                    media,
+                    forwarded_author,
+                });
             }
         }
         let appended = self.append(
@@ -376,6 +386,7 @@ impl Engine {
                 reply: None,
                 media,
                 forwarded: true,
+                forwarded_author,
             },
         )?;
         let s = self.space_state(to_space)?;
@@ -461,6 +472,7 @@ impl Engine {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let s = self.space_state(space)?;

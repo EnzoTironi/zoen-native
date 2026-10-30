@@ -162,6 +162,7 @@ fn recovery_requeries_history_and_rejects_call_query_or_cursor_substitution() ->
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?
         .client_id;

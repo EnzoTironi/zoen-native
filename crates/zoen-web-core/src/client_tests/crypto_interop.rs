@@ -88,6 +88,7 @@ pub(super) fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let plaintext = InnerEvent {

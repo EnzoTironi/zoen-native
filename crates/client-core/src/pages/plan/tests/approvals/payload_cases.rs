@@ -116,6 +116,7 @@ pub(super) fn waiting_approval_holds_later_denial_grants_messages_and_usage_in_o
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         })
         .unwrap();
     assert!(fixture.engine.state.grants.is_empty());

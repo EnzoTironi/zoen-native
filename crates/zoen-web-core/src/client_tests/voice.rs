@@ -37,6 +37,7 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let root = log.events().last().unwrap().hash.clone();
@@ -51,6 +52,7 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
         transcript: "See you there".into(),
         reply: Some(ReplyRef::inline(&root)),
         forwarded: false,
+        forwarded_author: None,
     });
     let post = |item: &str, doc: FileDoc| EventBody::ItemCreated {
         item: item.into(),
@@ -120,6 +122,7 @@ pub(super) fn native_voice_replies_versions_and_reverts_stay_on_the_original_pos
             reply: None,
             media: None,
             forwarded: true,
+            forwarded_author: None,
         },
     )?;
     let assert_attachment = |client: &Client<HostSigner>, expected: &FileDoc| {

@@ -72,6 +72,7 @@ fn post(id: &str, text: &str, reply: Option<ReplyRef>) -> EventBody {
         reply,
         media: None,
         forwarded: false,
+        forwarded_author: None,
     }
 }
 

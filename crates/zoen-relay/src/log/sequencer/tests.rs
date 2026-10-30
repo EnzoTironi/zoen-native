@@ -64,6 +64,7 @@ fn envelope(
         reply: None,
         media: None,
         forwarded: false,
+        forwarded_author: None,
     };
     Ok(Envelope::plain(&author.sign_event(
         space,

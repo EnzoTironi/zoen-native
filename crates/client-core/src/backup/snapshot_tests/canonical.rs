@@ -111,6 +111,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     reply,
                     media: None,
                     forwarded: i == 3,
+                    forwarded_author: None,
                 },
             )?;
         }
@@ -180,6 +181,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )?;
         }
@@ -216,6 +218,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     source.store.outbox_put(&pending).unwrap();

@@ -32,6 +32,7 @@ fn sample() -> Result<(SpaceLog, Signer, Signer), Box<dyn std::error::Error>> {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     log.append(
@@ -44,6 +45,7 @@ fn sample() -> Result<(SpaceLog, Signer, Signer), Box<dyn std::error::Error>> {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     Ok((log, enzo, marina))
@@ -106,6 +108,7 @@ fn tampered_content_is_detected() -> Result<(), Box<dyn std::error::Error>> {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?));
         Ok(())
@@ -129,6 +132,7 @@ fn a_view_that_disagrees_with_the_signed_bytes_is_rejected(
         reply: None,
         media: None,
         forwarded: false,
+        forwarded_author: None,
     };
     assert_eq!(
         SpaceLog::from_events("sp_paraty", events).unwrap_err(),
@@ -150,6 +154,7 @@ fn rehashed_tamper_fails_signature() -> Result<(), Box<dyn std::error::Error>> {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?));
         Ok(())
@@ -241,6 +246,7 @@ fn a_sequencer_cannot_move_an_event_before_what_its_author_saw(
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let mut forked = SpaceLog::new("sp_paraty");
@@ -286,6 +292,7 @@ fn words_signed_on_one_history_do_not_verify_on_another() -> Result<(), Box<dyn 
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let mut fake = SpaceLog::new("sp_fork");
@@ -300,6 +307,7 @@ fn words_signed_on_one_history_do_not_verify_on_another() -> Result<(), Box<dyn 
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let answer = Author::root(enzo.clone()).sign_event(
@@ -314,6 +322,7 @@ fn words_signed_on_one_history_do_not_verify_on_another() -> Result<(), Box<dyn 
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let mut shown = answer;
@@ -347,6 +356,7 @@ fn only_creation_and_self_join_may_skip_the_causal_link() -> Result<(), Box<dyn 
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let mut e = blind;
@@ -456,6 +466,7 @@ fn device_keys_sign_for_their_identity() -> Result<(), Box<dyn std::error::Error
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     log.sequence(e)?;
@@ -497,6 +508,7 @@ fn relay_sequenced_events_are_accepted_in_order_only() -> Result<(), Box<dyn std
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?)?
         .clone();

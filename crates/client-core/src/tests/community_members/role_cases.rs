@@ -155,6 +155,7 @@ fn role_review_binds_desired_role_current_actor_target_device_and_membership_aba
         media: None,
         reply: None,
         forwarded: false,
+        forwarded_author: None,
     })?;
     assert_eq!(choice(&f.context()?, "reader")?, reader);
     for who in [&f.member, &f.identity] {

@@ -328,6 +328,7 @@ fn older_page_requires_matching_peer_request_space_and_signed_relay_record(
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let (content, sig) = author.sign_sealed(
@@ -472,6 +473,7 @@ fn older_page_requires_matching_peer_request_space_and_signed_relay_record(
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     large.seq = outer.seq;

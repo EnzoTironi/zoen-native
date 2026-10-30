@@ -68,6 +68,7 @@ pub(super) fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();
@@ -145,6 +146,7 @@ pub(super) fn rejected_outer_signature_keeps_the_own_event_pending(
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     engine.store.outbox_put(&own).unwrap();

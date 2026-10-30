@@ -103,6 +103,7 @@ impl Engine {
             dto.reply_to = None;
             dto.reactions.clear();
             dto.forwarded = false;
+            dto.forwarded_author = None;
             dto.edited = false;
         }
         dto

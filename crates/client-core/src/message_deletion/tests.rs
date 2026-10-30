@@ -252,6 +252,7 @@ fn changed_last_message_or_foreign_author_refuses_the_entire_set() -> TestResult
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )?;
             let row = timeline(&f)?

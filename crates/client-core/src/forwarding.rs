@@ -8,8 +8,10 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod attribution;
 mod batch;
 mod storage;
+pub(crate) use attribution::metadata_valid;
 pub use batch::{ForwardBatchReview, ForwardBatchScope, ForwardBatchSource};
 #[cfg(test)]
 mod tests;
@@ -144,6 +146,7 @@ impl Engine {
             &scope.source_space,
             &message.id,
             &message.author.id,
+            &self.forwarded_author(source),
             message.at_ms,
             &message.kind,
             &message.voice,

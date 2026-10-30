@@ -156,6 +156,7 @@ impl Engine {
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )?;
             e.item(&item)

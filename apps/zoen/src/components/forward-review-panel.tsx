@@ -1,3 +1,4 @@
+import { messageForwardLabel } from '../core/message-presentation';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import type { TimelineEntry } from '../core/types';
@@ -105,7 +106,7 @@ export function ForwardReviewPanel({
               <View style={{ gap: 3 }}>
                 {entry.author.name ? (
                   <Text style={{ color: p.list.accent, fontSize: 15, fontWeight: '600' }}>
-                    {entry.author.name}
+                    {entry.forwarded ? messageForwardLabel(entry) : entry.author.name}
                   </Text>
                 ) : null}
                 {sourceTitle ? (

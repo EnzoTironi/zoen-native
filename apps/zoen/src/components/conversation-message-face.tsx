@@ -1,5 +1,9 @@
 import { Text, View } from 'react-native';
-import { isSystemMessage, messageCanInteract } from '../core/message-presentation';
+import {
+  isSystemMessage,
+  messageCanInteract,
+  messageForwardAuthor,
+} from '../core/message-presentation';
 import { t } from '../i18n/index.ts';
 import { MessageMedia } from '../media/MediaAttachment';
 import { MiniappMessageCard } from '../miniapps/message-card';
@@ -249,13 +253,17 @@ export function renderConversationMessage(context: MessageFace) {
                       style={{
                         color: attachment && !voice && !appCard ? colors.secondary : ink,
                         opacity: 0.7,
-                        fontSize: 12,
-                        fontStyle: 'italic',
+                        fontSize: Math.floor((messageFontSize * 14) / 17),
                         paddingHorizontal: attachment ? 12 : 0,
                         paddingVertical: 4,
                       }}
                     >
                       {t('chat.forwarded')}
+                      {messageForwardAuthor(entry) ? (
+                        <Text
+                          style={{ fontWeight: '500' }}
+                        >{`\n${messageForwardAuthor(entry)}`}</Text>
+                      ) : null}
                     </Text>
                   ) : null}
                   {!voice && !standaloneAppCard && card?.kind_id !== 'file' && text.trim() ? (

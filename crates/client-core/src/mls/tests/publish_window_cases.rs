@@ -83,6 +83,7 @@ pub(super) fn publish_window_keeps_a_reordered_burst_decryptable(
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )
             .unwrap();
@@ -274,6 +275,7 @@ pub(super) fn publish_window_lets_the_next_space_through(
                         reply: None,
                         media: None,
                         forwarded: false,
+                        forwarded_author: None,
                     },
                 )
                 .unwrap(),
@@ -291,6 +293,7 @@ pub(super) fn publish_window_lets_the_next_space_through(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();

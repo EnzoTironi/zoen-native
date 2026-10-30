@@ -49,6 +49,7 @@ pub(super) fn actual_public_receive_emits_delivery_and_mark_read_replays_after_s
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         50,
     )?;

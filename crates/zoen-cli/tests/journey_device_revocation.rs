@@ -125,6 +125,7 @@ async fn revoke_live_sockets(
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     syncing
@@ -152,6 +153,7 @@ async fn revoke_live_sockets(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .await

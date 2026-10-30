@@ -279,6 +279,7 @@ impl Engine {
                 edited: marks.edited,
                 deleted: marks.deleted,
                 forwarded: marks.forwarded,
+                forwarded_author: (!marks.deleted).then_some(marks.forwarded_author).flatten(),
                 reactions,
                 id: e.id().to_string(),
                 seq: e.seq,

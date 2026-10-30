@@ -1,3 +1,4 @@
+import * as messagePresentation from './message-presentation.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -349,6 +350,7 @@ for (const mode of [
       '../profile/profile-avatar': ports['../../../profile/profile-avatar'],
       './primitives': ports['../../../components/primitives'],
       './forward-message-preview': { ForwardMessagePreview: host('Preview') },
+      '../core/message-presentation': messagePresentation,
     });
     ports['../../../components/chat-destinations'] = load(destinationsCode, {
       'react/jsx-runtime': jsxRuntime,

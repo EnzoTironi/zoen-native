@@ -154,6 +154,7 @@ pub(crate) struct MessageMarks {
     pub edited: bool,
     pub deleted: bool,
     pub forwarded: bool,
+    pub forwarded_author: Option<String>,
     pub media: Option<types::MessageMedia>,
     /// One reaction per person, in the order people first reacted.
     pub reactions: Vec<(IdentityId, String)>,

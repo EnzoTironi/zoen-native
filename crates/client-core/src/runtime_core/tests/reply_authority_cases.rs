@@ -41,7 +41,7 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
     );
     assert!(matches!(
         &pending[0].event.body,
-        EventBody::MessagePosted { message, text, attaches: None, reply: None, media: None, forwarded: false, }
+        EventBody::MessagePosted { message, text, attaches: None, reply: None, media: None, forwarded: false, forwarded_author: None, }
             if message == prepared.message() && text == "Retained model result\n"
     ));
     assert_eq!(cold.engine.outbox_envelopes(), vec![envelope.clone()]);
@@ -57,7 +57,7 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
     let received = fixture.owner.logs[SPACE].events().last().unwrap();
     assert!(matches!(
         &received.body,
-        EventBody::MessagePosted { message, text, attaches: None, reply: None, media: None, forwarded: false, }
+        EventBody::MessagePosted { message, text, attaches: None, reply: None, media: None, forwarded: false, forwarded_author: None, }
             if message == prepared.message() && text == "Retained model result\n"
     ));
     cold.ingest(vec![frame.clone()]).unwrap();

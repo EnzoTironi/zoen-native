@@ -102,6 +102,7 @@ impl Fixture {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let plaintext = InnerEvent {
