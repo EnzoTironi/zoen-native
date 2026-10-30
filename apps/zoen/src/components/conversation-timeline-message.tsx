@@ -2,7 +2,7 @@ import { useRenderedMessageText } from './use-rendered-message-text';
 import { messageMayContainMarkdown } from '../core/message-markdown';
 import type { MiniappTimelineActivity } from '../core/conversation-timeline';
 import {
-  messageCanInteract,
+  messageCanSelect,
   messageHasStandaloneAppCard,
   sameMessageDay,
 } from '../core/message-presentation';
@@ -76,7 +76,7 @@ export function ConversationTimelineMessage({
   ) : (
     <ConversationMessage {...message} accessibilityText={accessibilityText} />
   );
-  const selectable = selection && messageCanInteract(message.entry);
+  const selectable = selection && messageCanSelect(message.entry);
   const selectionContent = selectable ? (
     <Pressable
       accessibilityRole="checkbox"

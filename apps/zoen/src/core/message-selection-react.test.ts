@@ -1,3 +1,4 @@
+import * as messagePresentation from './message-presentation.ts';
 import * as deleteMessageAction from '../components/delete-message-action.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -85,6 +86,7 @@ function fixture() {
         };
       if (name === '../core/conversation-scope') return { conversationScope };
       if (name === '../core/message-selection') return selection;
+      if (name === '../core/message-presentation') return messagePresentation;
       if (name === '../core/message-deletion') return deletion;
       if (name === './delete-message-action') return deleteMessageAction;
       if (name === './dialogs')
@@ -359,5 +361,30 @@ test('a mixed selection in a read-only conversation deletes only from this devic
   await settleDeletion();
   assert.equal(f.commands.length, 1);
   assert.equal((f.commands[0] as { for_me: boolean }).for_me, true);
+  assert.equal(f.render().count, 0);
+});
+
+test('mixed live and removed leaves delete the complete reviewed set locally and cannot forward', async () => {
+  const f = fixture();
+  f.entries[1]!.deleted = true;
+  f.entries[1]!.text_revision = undefined;
+  f.entries[1]!.thread_replies = 0;
+  for (const entry of f.entries) f.render().toggle(entry);
+  const selected = f.render();
+  assert.equal(selected.count, 2);
+  assert.equal(selected.canForward, false);
+  selected.forward();
+  assert.deepEqual(f.opened, []);
+  selected.remove();
+  assert.deepEqual(
+    f.confirmations[0]!.choices.map((choice) => choice.id),
+    ['for_me'],
+  );
+  f.answer('for_me');
+  await settleDeletion();
+  assert.deepEqual((f.commands[0] as { targets: unknown }).targets, [
+    { message_id: 'a', expected_revision: 'revision-a' },
+    { message_id: 'b', expected_revision: 'b' },
+  ]);
   assert.equal(f.render().count, 0);
 });

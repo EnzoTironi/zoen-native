@@ -1,3 +1,4 @@
+import { messageCanInteract } from '../core/message-presentation';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -93,7 +94,7 @@ export function useMessageSelection(
     count: messages.length,
     limitReached: messages.length >= MAX_SELECTED_MESSAGES,
     canCopy: Boolean(text),
-    canForward: client.mode === 'account' && active,
+    canForward: client.mode === 'account' && active && messages.every(messageCanInteract),
     canDelete:
       client.mode === 'account' &&
       Boolean(messageDeletionTargets(messages, account?.identity_id, true)),
@@ -106,7 +107,7 @@ export function useMessageSelection(
     },
     forward: () => {
       const values = resolve();
-      if (client.mode !== 'account' || !values.length) return;
+      if (client.mode !== 'account' || !values.length || !values.every(messageCanInteract)) return;
       router.push({
         pathname: '/forward-selection/[space]',
         params: {

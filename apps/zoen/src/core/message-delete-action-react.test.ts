@@ -214,3 +214,59 @@ test('a redacted thread parent opens its remaining replies without enabling reac
   assert.deepEqual(f.mutations, []);
   f.unmount();
 });
+
+test('a deleted leaf offers device-only removal using its stable identity as the terminal revision', async () => {
+  const f = fixture();
+  const removed = message({
+    deleted: true,
+    text_revision: undefined,
+    thread_replies: 0,
+    kind: { Message: { text: '', card: null } },
+  });
+  await f.render({ entries: [removed] }).open(removed, 'actions');
+  const menu = f.render().panel.props;
+  assert.equal(typeof menu.onDelete, 'function');
+  for (const name of ['onEdit', 'onForward', 'onCopy', 'onInfo', 'onShare'] as const)
+    assert.equal(menu[name], undefined, name);
+  f.choose(async (options) => {
+    assert.deepEqual(
+      Array.from(options.choices, (choice) => choice.id),
+      ['for_me'],
+    );
+    return 'for_me';
+  });
+  menu.onDelete!(removed);
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.mutations)), [
+    {
+      op: 'delete_messages',
+      for_me: true,
+      expected_identity_id: 'alice',
+      expected_device_id: 'phone',
+      space_id: spaceId,
+      targets: [{ message_id: removed.id, expected_revision: removed.id }],
+    },
+  ]);
+  f.unmount();
+});
+
+for (const change of ['edited', 'removed', 'new-thread-reply'] as const)
+  test(`a retained menu cannot reacquire a changed source after ${change}`, async () => {
+    const { f, own, action } = await opened();
+    f.choose(async () => 'for_me');
+    const updated =
+      change === 'edited'
+        ? { ...own, text_revision: 'edited-source' }
+        : {
+            ...own,
+            deleted: true,
+            text_revision: undefined,
+            thread_replies: change === 'new-thread-reply' ? 1 : 0,
+          };
+    f.render({ entries: [updated] });
+    action(own);
+    await settle();
+    assert.deepEqual(f.confirmations, []);
+    assert.deepEqual(f.mutations, []);
+    f.unmount();
+  });

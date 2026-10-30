@@ -17,15 +17,18 @@ export function messageDeletionTargets(
   const targets: MessageDeletionTarget[] = [];
   for (const entry of entries) {
     if (
-      entry.deleted ||
+      (entry.deleted && (!forMe || entry.thread_replies !== 0)) ||
       (!forMe && (!entry.author?.is_me || entry.author.id !== identity)) ||
       !('Message' in entry.kind) ||
-      !entry.text_revision ||
+      (!entry.deleted && !entry.text_revision) ||
       ids.has(entry.id)
     )
       return null;
     ids.add(entry.id);
-    targets.push({ message_id: entry.id, expected_revision: entry.text_revision });
+    targets.push({
+      message_id: entry.id,
+      expected_revision: entry.deleted ? entry.id : entry.text_revision!,
+    });
   }
   return targets;
 }
