@@ -2,6 +2,7 @@ import type { ReplySelection } from '../core/generated/ReplySelection';
 import { messageInfoAction } from './message-info-navigation';
 import { copyMessageLink } from './message-link-actions';
 import { currentMessageAction } from './message-action-current';
+import { canDeleteMessage, deleteMessageAction } from './delete-message-action';
 import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -523,22 +524,25 @@ export function useMessageActions({
               : undefined
           }
           onDelete={
-            selected?.author.is_me && !selected.deleted
+            canDeleteMessage(store, spaceId, selected)
               ? () => {
                   const entry = selected;
-                  if (!current(entry)) return;
-                  void confirm({
-                    title: t('chat.deleteMessage'),
-                    message: t('chat.theMessageWillBeRemovedForEveryoneIn'),
-                    confirmLabel: t('chat.delete'),
-                    destructive: true,
-                  }).then((accepted) => {
-                    const value = current(entry);
-                    if (accepted && value?.author.is_me && !value.deleted)
-                      void store
-                        .request({ op: 'delete_message', space_id: spaceId, message_id: value.id })
-                        .catch(() => {});
-                  });
+                  if (pending.current || store.sessionEpoch !== infoEpoch || !current(entry))
+                    return;
+                  const activation = profileEpoch.current;
+                  pending.current = true;
+                  setBusy(true);
+                  void deleteMessageAction(
+                    store,
+                    spaceId,
+                    () => (profileEpoch.current === activation ? current(entry) : undefined),
+                    confirm,
+                  )
+                    .catch(() => {})
+                    .finally(() => {
+                      pending.current = false;
+                      if (mounted.current) setBusy(false);
+                    });
                 }
               : undefined
           }

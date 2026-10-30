@@ -13,6 +13,7 @@ import type {
 } from '../components/message-actions.types';
 import type { ClientState } from './store';
 import type { Snapshot, TimelineEntry } from './types';
+import type { DialogOptions } from '../components/dialog-types';
 
 export const require = createRequire(import.meta.url);
 export const { transformSync } = require('@babel/core') as {
@@ -127,7 +128,7 @@ export function clientState(): ClientState {
         unlocked: true,
         setup_pending: false,
       },
-      conversations: [{ id: spaceId, members: [author('alice'), author()] }],
+      conversations: [{ id: spaceId, can_write: true, members: [author('alice'), author()] }],
     } as unknown as Snapshot,
     timelines: {},
     notice: null,
@@ -148,6 +149,7 @@ export type Effect = () => void | (() => void);
 export type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
 export type Options = { spaceId: string; entries: readonly TimelineEntry[]; disabled: boolean };
 export type Actions = {
+  busy: boolean;
   profile(entry: TimelineEntry): Promise<void>;
   react(entry: TimelineEntry, emoji: string | null): Promise<void>;
   open(
@@ -172,6 +174,8 @@ export function fixture() {
   let options: Options = { spaceId, entries: [message()], disabled: false };
   let read: (command: Read) => Promise<TimelineEntry> = async () => message();
   let mutate: () => Promise<unknown> = async () => undefined;
+  let confirm: (options: DialogOptions) => Promise<boolean> = () =>
+    assert.fail('Profile navigation must not ask for mutation confirmation');
   let push: (route: Route) => void = () => {};
   let keyboardVisible = false;
   let dismiss: () => Promise<void> = async () => {
@@ -182,6 +186,7 @@ export function fixture() {
   const mutations: unknown[] = [];
   const routes: Route[] = [];
   const alerts: unknown[][] = [];
+  const confirmations: DialogOptions[] = [];
   const writes: unknown[] = [];
   const listeners = new Set<() => void>();
   const slots: Slot[] = [];
@@ -220,6 +225,8 @@ export function fixture() {
     });
   };
   const store = {
+    sessionEpoch: 1,
+    isSessionRetiring: false,
     getSnapshot: () => live,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
@@ -308,7 +315,10 @@ export function fixture() {
     '../i18n/index.ts': { t: (key: string) => key, locale: 'en' },
     './dialogs': {
       useDialogs: () => ({
-        confirm: () => assert.fail('Profile navigation must not ask for mutation confirmation'),
+        confirm: (options: DialogOptions) => {
+          confirmations.push(options);
+          return confirm(options);
+        },
         inform: (...args: unknown[]) => {
           alerts.push(args);
           return Promise.resolve();
@@ -381,6 +391,11 @@ export function fixture() {
     mutations,
     routes,
     alerts,
+    confirmations,
+    store,
+    confirm: (next: typeof confirm) => {
+      confirm = next;
+    },
     writes,
     render,
     state: () => live,
