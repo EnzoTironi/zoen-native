@@ -45,8 +45,8 @@ FRONTEND_CONTRACTS = {
     "crates/zoen-agentd/src/citizen/codex.rs": "4d5e32fb4677abf8e2429b7a8867c50ca7e9998dc2d073dc8e0d6e4f9def41df",
     "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
     "Cargo.toml": "6abf6b794f912e0e95fcb66d5ea6f89a176b04a1b2b8714d1c21f40f091827bb",
-    ".github/workflows/ci.yml": "b9bf8de050fcf1585ab0da8e2107d205eda1111ce0bf2ba06b2d6e3588d6e67e",
-    ".github/workflows/expo.yml": "cdf7ecf20dc72c12c564792c95043bd25e28adf59d3e18851594f815ab3e1520",
+    ".github/workflows/ci.yml": "d0c3ec2dee2c876396c5c576ff1b3ee64efc4c262f55e168e7e84730ec22025a",
+    ".github/workflows/expo.yml": "ef1e1404e180c34f62bd0b9f82aaa7f660860e9fcad1e43a7f96d74240c4ecf7",
     # Android installer and its invoked fixtures are real workflow inputs.
     "scripts/install-android-sdk.py": "aff7527c4fb23ca29e9d9eeace380837e9a23eb20b88d5499e33fd4e30cf1144",
     "scripts/test-install-android-sdk.py": "986a43af641273820ad8d50ca62a1b52e0f64bf70066b836c04dd08da82244cd",
