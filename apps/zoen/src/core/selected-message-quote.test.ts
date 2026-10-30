@@ -55,7 +55,12 @@ test('quote survives existing draft CAS, cold load and unknown ACK without autom
   let stored: NormalDraftSnapshot = { revision: '0', text: '', reply_to: null };
   let revision = 0,
     sends = 0;
-  let accepted: { entry: TimelineEntry; draft: NormalDraftSnapshot } | null = null;
+  let accepted: {
+    message_id: string;
+    text_revision: string | null;
+    entry: TimelineEntry;
+    draft: NormalDraftSnapshot;
+  } | null = null;
   const port = {
     load: async () => structuredClone(stored),
     save: async (
@@ -85,7 +90,12 @@ test('quote survives existing draft CAS, cold load and unknown ACK without autom
         reply_to: null,
         reply_quote: null,
       };
-      accepted = { entry, draft: structuredClone(stored) };
+      accepted = {
+        message_id: entry.id,
+        text_revision: entry.text_revision ?? null,
+        entry,
+        draft: structuredClone(stored),
+      };
       throw new Error('unknown ACK');
     },
   };

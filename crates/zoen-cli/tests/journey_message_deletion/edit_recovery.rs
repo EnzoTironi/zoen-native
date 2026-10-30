@@ -91,5 +91,22 @@ async fn cold_correction_is_private_until_confirmed_and_peer_receives_exactly_on
             .await?,
     )?;
     assert_eq!(current, accepted["draft"]);
+    // A lost acknowledgement may be retried after the sender hid the source.
+    // The receiver still has the message; local presentation cannot revoke its receipt.
+    let current_source = find(&alice.0.timeline(space.clone())?, &source.id)?;
+    alice
+        .0
+        .delete_messages(deletion(&alice.0, &space, &[current_source], true)?)?;
+    let before_retry = alice.0.log_events(space.clone())?;
+    let hidden: serde_json::Value =
+        serde_json::from_str(&alice.0.client_request(commit.to_string()).await?)?;
+    assert_eq!(hidden["message_id"], source.id);
+    assert_eq!(hidden["text_revision"], accepted["text_revision"]);
+    assert!(hidden["entry"].is_null());
+    assert_eq!(alice.0.log_events(space.clone())?, before_retry);
+    assert_eq!(
+        text(&find(&bob.0.timeline(space.clone())?, &source.id)?),
+        "Cold recovered correction"
+    );
     Ok(())
 }

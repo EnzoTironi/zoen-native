@@ -63,15 +63,7 @@ impl Engine {
             .as_ref()
             .filter(|r| r.input_revision == expected)
         {
-            let entry = self
-                .timeline(&scope.space_id)?
-                .into_iter()
-                .find(|e| e.id == receipt.message_id)
-                .ok_or_else(stale)?;
-            return Ok(MessageDraftSendResult {
-                entry,
-                draft: record.draft,
-            });
+            return Ok(self.message_draft_acceptance(scope, receipt, record.draft));
         }
         if record.draft.revision != expected {
             return Err(stale());
@@ -93,17 +85,11 @@ impl Engine {
             record.last_accepted_edit = Some(Receipt {
                 input_revision: expected.into(),
                 message_id: id.clone(),
+                text_revision: engine.draft_source_revision(&scope.space_id, &id),
             });
             engine.persist_message_draft(&storage, &record)?;
-            let entry = engine
-                .timeline(&scope.space_id)?
-                .into_iter()
-                .find(|entry| entry.id == id)
-                .ok_or_else(stale)?;
-            Ok(MessageDraftSendResult {
-                entry,
-                draft: record.draft,
-            })
+            let receipt = record.last_accepted_edit.as_ref().ok_or_else(stale)?;
+            Ok(engine.message_draft_acceptance(scope, receipt, record.draft))
         })
     }
 }

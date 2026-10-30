@@ -6,7 +6,6 @@ import {
 } from './normal-message-drafts.ts';
 import { sameEdit } from './normal-message-draft-types.ts';
 import type { ClientStore } from './store.ts';
-import type { TimelineEntry } from './types.ts';
 
 type DraftValue = NormalDraftSnapshot;
 export type NormalDraftChannel = Readonly<{
@@ -80,7 +79,10 @@ export class NormalMessageDraftService {
     // Deferred Web and demo retain their existing volatile behavior. They never
     // write plaintext drafts to preferences, localStorage or another database.
     const volatile = new Map<string, DraftValue>();
-    const receipts = new Map<string, { revision: string; entry: TimelineEntry }>();
+    const receipts = new Map<
+      string,
+      { revision: string; message_id: string; text_revision: string | null }
+    >();
     let revision = 0;
     const read = (scope: NormalDraftScope): DraftValue =>
       volatile.get(scopeKey(scope)) ?? { revision: '0', text: '', reply_to: null };
@@ -134,7 +136,12 @@ export class NormalMessageDraftService {
         const key = scopeKey(scope),
           receipt = receipts.get(key);
         if (receipt?.revision === expectedRevision)
-          return { entry: receipt.entry, draft: read(scope) };
+          return {
+            message_id: receipt.message_id,
+            text_revision: receipt.text_revision,
+            entry: null,
+            draft: read(scope),
+          };
         const current = read(scope),
           edit = current.edit;
         if (current.revision !== expectedRevision || !edit) throw new Error('Draft changed.');
@@ -147,16 +154,15 @@ export class NormalMessageDraftService {
           expected_revision: edit.source_revision,
           text: edit.text,
         });
-        const entry = await this.store.driver.request({
-          op: 'message',
-          space_id: scope.spaceId,
-          message_id: edit.message_id,
-        });
         const { edit: _edit, ...rest } = current;
         const draft = { ...rest, revision: String(++revision) };
         volatile.set(key, draft);
-        receipts.set(key, { revision: expectedRevision, entry });
-        return { entry, draft };
+        receipts.set(key, {
+          revision: expectedRevision,
+          message_id: edit.message_id,
+          text_revision: null,
+        });
+        return { message_id: edit.message_id, text_revision: null, entry: null, draft };
       },
       send: async (scope, expectedRevision) => {
         if (native(scope))
@@ -168,7 +174,12 @@ export class NormalMessageDraftService {
         const key = scopeKey(scope);
         const receipt = receipts.get(key);
         if (receipt?.revision === expectedRevision)
-          return { entry: receipt.entry, draft: read(scope) };
+          return {
+            message_id: receipt.message_id,
+            text_revision: receipt.text_revision,
+            entry: null,
+            draft: read(scope),
+          };
         const current = read(scope);
         if (current.revision !== expectedRevision) throw new Error('Draft changed.');
         const entry = await this.store.driver.request({
@@ -185,8 +196,12 @@ export class NormalMessageDraftService {
           ...(current.edit ? { edit: current.edit } : {}),
         };
         volatile.set(key, draft);
-        receipts.set(key, { revision: expectedRevision, entry });
-        return { entry, draft };
+        receipts.set(key, {
+          revision: expectedRevision,
+          message_id: entry.id,
+          text_revision: entry.text_revision ?? null,
+        });
+        return { message_id: entry.id, text_revision: entry.text_revision ?? null, entry, draft };
       },
     });
   }

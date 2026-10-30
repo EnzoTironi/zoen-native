@@ -163,7 +163,12 @@ export function fixture(kind = 'article') {
       assert.equal(expected, stored.revision);
       sends++;
       stored = { revision: String(++revision), text: '', reply_to: null };
-      return { entry: { id: 'synthetic-message' } as TimelineEntry, draft: { ...stored } };
+      return {
+        message_id: 'synthetic-message',
+        text_revision: null,
+        entry: { id: 'synthetic-message' } as TimelineEntry,
+        draft: { ...stored },
+      };
     },
   });
   const channel = { scope, controller };

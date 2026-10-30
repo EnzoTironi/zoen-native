@@ -1,7 +1,6 @@
 import type { MessageDraftEdit } from './generated/MessageDraftEdit';
 import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { ReplySelection } from './generated/ReplySelection';
-import type { TimelineEntry } from './types';
 import {
   NormalDraftFailure,
   emptySnapshot,
@@ -15,6 +14,7 @@ import {
   type DraftRecord,
   type Content,
   type SendIntent,
+  type DraftMessageReference,
 } from './normal-message-draft-types.ts';
 export { NormalDraftFailure } from './normal-message-draft-types.ts';
 export type {
@@ -377,13 +377,16 @@ export class NormalMessageDrafts {
     });
   }
 
-  send(scope: NormalDraftScope): Promise<TimelineEntry> {
+  send(scope: NormalDraftScope): Promise<DraftMessageReference> {
     return this.startSend(scope, 'message');
   }
-  sendEdit(scope: NormalDraftScope): Promise<TimelineEntry> {
+  sendEdit(scope: NormalDraftScope): Promise<DraftMessageReference> {
     return this.startSend(scope, 'edit');
   }
-  private startSend(scope: NormalDraftScope, mode: SendIntent['kind']): Promise<TimelineEntry> {
+  private startSend(
+    scope: NormalDraftScope,
+    mode: SendIntent['kind'],
+  ): Promise<DraftMessageReference> {
     const record = this.record(scope);
     try {
       this.requireOpen(record);
@@ -409,7 +412,7 @@ export class NormalMessageDrafts {
       return Promise.reject(cause);
     }
   }
-  private sendIntent(record: DraftRecord, intent: SendIntent): Promise<TimelineEntry> {
+  private sendIntent(record: DraftRecord, intent: SendIntent): Promise<DraftMessageReference> {
     if (intent.work) return intent.work;
     const task = this.enqueue(async () => {
       this.requireDraining();
@@ -425,6 +428,12 @@ export class NormalMessageDrafts {
           throw new NormalDraftFailure('send', new Error('Edit draft transport unavailable'));
         const result = await send.call(this.port, record.state.scope, intent.persistedRevision);
         this.requireDraining();
+        if (
+          !result.message_id ||
+          (result.entry && result.entry.id !== result.message_id) ||
+          (intent.kind === 'edit' && result.message_id !== intent.edit?.message_id)
+        )
+          throw new Error('Invalid draft acceptance');
         record.persisted = checked(result.draft);
         record.intent = null;
         const exactEdit =
@@ -438,11 +447,11 @@ export class NormalMessageDrafts {
           !exactEdit &&
           record.state.editContextRevision === intent.editContextRevision &&
           record.state.edit &&
-          result.entry.text_revision &&
+          result.text_revision &&
           intent.edit
             ? Object.freeze({
                 ...record.state.edit,
-                source_revision: result.entry.text_revision,
+                source_revision: result.text_revision,
                 base_text: intent.edit.text,
               })
             : null;
@@ -470,7 +479,7 @@ export class NormalMessageDrafts {
           persistedRevision: record.persisted.revision,
           error: null,
         });
-        return result.entry;
+        return Object.freeze({ id: result.message_id, text_revision: result.text_revision });
       } catch (cause) {
         const rejected =
           typeof cause === 'object' &&

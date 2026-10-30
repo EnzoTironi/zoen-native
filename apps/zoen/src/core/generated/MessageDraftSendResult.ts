@@ -2,4 +2,16 @@
 import type { MessageDraftDto } from "./MessageDraftDto";
 import type { TimelineEntry } from "./TimelineEntry";
 
-export type MessageDraftSendResult = { entry: TimelineEntry, draft: MessageDraftDto, };
+export type MessageDraftSendResult = { 
+/**
+ * Identity proven by the sealed accepted receipt, independent of visibility.
+ */
+message_id: string, 
+/**
+ * The revision accepted by this operation; never a later observed edit.
+ */
+text_revision: string | null, 
+/**
+ * Optional current visible projection, not the authority for acceptance.
+ */
+entry: TimelineEntry | null, draft: MessageDraftDto, };

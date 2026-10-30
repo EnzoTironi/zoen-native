@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
+mod acceptance;
 mod contract;
 pub(crate) use contract::{DraftContent, DraftScope};
 pub use contract::{MessageDraftDto, MessageDraftSendResult};
@@ -30,6 +31,8 @@ const MAX_CIPHER_BYTES: usize = (MAX_PLAIN_BYTES + 40).div_ceil(3) * 4 + 3;
 struct Receipt {
     input_revision: String,
     message_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    text_revision: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -93,6 +96,15 @@ fn valid_revision(id: &str) -> bool {
         && id
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+impl Receipt {
+    fn valid(&self) -> bool {
+        valid_revision(&self.input_revision)
+            && self.input_revision != MESSAGE_DRAFT_REVISION_ZERO
+            && valid_id(&self.message_id)
+            && self.text_revision.as_deref().is_none_or(valid_id)
+    }
 }
 
 impl Engine {
@@ -228,11 +240,7 @@ impl Engine {
                 .reply_to
                 .as_deref()
                 .is_some_and(|id| !valid_id(id))
-            || record.last_accepted.as_ref().is_some_and(|r| {
-                !valid_revision(&r.input_revision)
-                    || r.input_revision == MESSAGE_DRAFT_REVISION_ZERO
-                    || !valid_id(&r.message_id)
-            })
+            || record.last_accepted.as_ref().is_some_and(|r| !r.valid())
         {
             return Err(storage_error());
         }
@@ -245,11 +253,11 @@ impl Engine {
         )
         .map_err(|_| storage_error())?;
         Self::validate_edit_shape(record.draft.edit.as_ref()).map_err(|_| storage_error())?;
-        if record.last_accepted_edit.as_ref().is_some_and(|r| {
-            !valid_revision(&r.input_revision)
-                || r.input_revision == MESSAGE_DRAFT_REVISION_ZERO
-                || !valid_id(&r.message_id)
-        }) {
+        if record
+            .last_accepted_edit
+            .as_ref()
+            .is_some_and(|r| !r.valid())
+        {
             return Err(storage_error());
         }
         Ok(record)
@@ -396,15 +404,7 @@ impl Engine {
             .as_ref()
             .filter(|r| r.input_revision == expected)
         {
-            let entry = self
-                .timeline(&scope.space_id)?
-                .into_iter()
-                .find(|entry| entry.id == receipt.message_id)
-                .ok_or_else(stale)?;
-            return Ok(MessageDraftSendResult {
-                entry,
-                draft: record.draft,
-            });
+            return Ok(self.message_draft_acceptance(scope, receipt, record.draft));
         }
         if record.draft.revision != expected || expected == MESSAGE_DRAFT_REVISION_ZERO {
             return Err(stale());
@@ -478,11 +478,14 @@ impl Engine {
                 last_accepted: Some(Receipt {
                     input_revision: expected.into(),
                     message_id: entry.id.clone(),
+                    text_revision: entry.text_revision.clone(),
                 }),
             };
             engine.persist_message_draft(&storage, &cleared)?;
             Ok(MessageDraftSendResult {
-                entry,
+                message_id: entry.id.clone(),
+                text_revision: entry.text_revision.clone(),
+                entry: Some(entry),
                 draft: cleared.draft,
             })
         })
