@@ -363,12 +363,20 @@ impl Engine {
         // Private user work survives stale, deleted or unloaded sources. Scope,
         // encryption, CAS and quotas protect storage; publication reauthorizes.
         Self::validate_edit_shape(edit.as_ref())?;
-        self.validate_draft_reply(
-            scope,
-            reply_to.as_deref(),
-            reply_quote.as_ref(),
-            shared_reply.as_ref(),
-        )?;
+        // The encrypted record already owns this exact reviewed context. New
+        // private typing must survive source loss; changing the context and
+        // publishing still require the live source independently.
+        let retained_reply = record.draft.reply_to == reply_to
+            && record.draft.reply_quote == reply_quote
+            && record.draft.shared_reply == shared_reply;
+        if !retained_reply {
+            self.validate_draft_reply(
+                scope,
+                reply_to.as_deref(),
+                reply_quote.as_ref(),
+                shared_reply.as_ref(),
+            )?;
+        }
         if (!text.is_empty() || reply_to.is_some() || edit.is_some())
             && record.draft.edit == edit
             && record.draft.text == text

@@ -456,3 +456,5 @@ fn visible_acceptance(result: &MessageDraftSendResult) -> &TimelineEntry {
         .as_ref()
         .expect("this assertion requires a still-visible accepted source")
 }
+
+mod retained_replies;
