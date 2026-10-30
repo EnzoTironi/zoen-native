@@ -174,10 +174,19 @@ identifiers. Taps accept only the current device's strict local metadata and a
 current member space. Cold-start notification responses are read once and stale
 callbacks are discarded. A remote payload cannot supply an arbitrary URL.
 
-`+native-intent` accepts documented `zoen://app`, `chat`, `join` and `agent` links
+`+native-intent` accepts documented `zoen://app`, `chat`, `message`, `join` and `agent` links
 and HTTPS links on `tryzoen.com`. Capability invitations reach a preview screen
 before joining. Browser `/a`, `/join` and `/app` routes use the same UI. Universal
 link association/hosting still require the matching deployment configuration.
+
+`zoen://message/<space>/<message>` contains only IDs. The message menu copies this
+address; pasted links use the existing Markdown URL recognizer without rewriting
+signed text. Code spans and fenced code remain literal. The registered native
+scheme opens the resolver after an explicit tap and resolves the actual thread
+through the canonical message read. The route requires current membership and retires on session or
+access changes. A link cannot join, send, approve, or unlock history. Missing or
+deleted messages offer retry without opening unrelated content. Thread targets
+include album children and disable automatic bottom-follow while reading.
 
 Boundary tests live in `src/core/notifications.test.ts` and `deep-links.test.ts`.
 They prove input bounds, serialized rotations, acknowledgement timing, account

@@ -434,16 +434,20 @@
   {
     "id": "TG-messaging-message-links",
     "scope": "active",
-    "implementation": "partial",
-    "acceptance": "scoped",
+    "implementation": "present",
+    "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/app/search.tsx",
-      "apps/zoen/src/core/conversation-search.ts",
-      "apps/zoen/src/core/chat-search-react.test.ts"
+      "apps/zoen/src/notifications/links.ts",
+      "apps/zoen/src/core/message-link.ts",
+      "apps/zoen/src/components/message-link-actions.ts",
+      "apps/zoen/src/app/message/[space]/[message].tsx",
+      "apps/zoen/src/core/message-link.test.ts",
+      "apps/zoen/src/core/message-link-route.test.ts"
     ],
-    "gap": "Compartilhar e resolver link autenticado para mensagem; salto interno por ID já existe, URL externa não foi qualificada.",
+    "gap": "Menu copia endereço zoen:// sem texto ou credenciais; abertura resolve conversa/thread pelo núcleo, revalida sessão/acesso e revela mensagem ou filho do álbum. Restam aceite manual iPhone por Enzo e associação/publicação de universal links HTTPS no lançamento.",
     "issues": [
-      172
+      172,
+      707
     ]
   },
   {

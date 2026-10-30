@@ -96,6 +96,14 @@ export function MessageActions(props: MessageActionsProps) {
                 onPress={() => run(props.onCopy)}
               />
             ) : null}
+            {props.onCopyLink ? (
+              <NativeButton
+                secondary
+                label={t('chat.copyMessageLink')}
+                disabled={props.pending}
+                onPress={() => run(props.onCopyLink)}
+              />
+            ) : null}
             {entry?.author.is_me && props.onEdit ? (
               <NativeButton
                 secondary

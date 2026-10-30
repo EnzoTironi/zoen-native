@@ -34,6 +34,7 @@ test('ordinary messages keep measured text while Markdown candidates reach the r
     '||spoiler||',
     'See https://example.invalid/help',
     'HTTP://example.invalid',
+    'Veja zoen://message/read-chat/message.',
     'Visit www.example.invalid.',
     'Email person@example.invalid',
   ])
@@ -47,6 +48,7 @@ test('Markdown links admit explicit user navigation but reject executable and lo
     'mailto:person@example.com',
     'tel:+5511999999999',
     'zoen://page/example',
+    'zoen://message/read-chat/message',
   ])
     assert.equal(messageMarkdownLink(url), new URL(url).href);
   for (const url of [
@@ -326,6 +328,7 @@ test('bare links stay passive until the native link gesture crosses the existing
   const f = fixture();
   for (const text of [
     'https://example.invalid/help',
+    'zoen://message/read-chat/message',
     'www.example.invalid',
     'person@example.invalid',
   ]) {

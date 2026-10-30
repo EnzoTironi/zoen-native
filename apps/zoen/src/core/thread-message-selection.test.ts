@@ -32,7 +32,7 @@ function find(value: unknown, type: string): Element | undefined {
   const element = value as Element;
   return element.type === type ? element : find(element.props?.children, type);
 }
-function fixture(active = true) {
+function fixture(active = true, jump?: string, individual = false) {
   const host = hookHost();
   const calls: string[] = [];
   const routes: unknown[] = [];
@@ -96,7 +96,7 @@ function fixture(active = true) {
           router: { push: (route: unknown) => routes.push(JSON.parse(JSON.stringify(route))) },
           Stack: { Screen: 'Screen' },
           useFocusEffect: host.useFocusEffect,
-          useLocalSearchParams: () => ({ space: 'space', root: 'root-message' }),
+          useLocalSearchParams: () => ({ space: 'space', root: 'root-message', jump }),
         };
       if (name === 'expo-router/react-navigation') return { useHeaderHeight: () => 44 };
       if (name === 'react-native-safe-area-context')
@@ -124,9 +124,10 @@ function fixture(active = true) {
       if (name.endsWith('/message-presentation')) return { messageCard: () => null };
       if (name.endsWith('/conversation-timeline'))
         return {
-          projectConversationTimeline: () => [
-            { key: 'album', entry: entries[0], album: { entries } },
-          ],
+          projectConversationTimeline: () =>
+            individual
+              ? entries.map((entry) => ({ key: entry.id, entry }))
+              : [{ key: 'album', entry: entries[0], album: { entries } }],
         };
       if (name.endsWith('/use-message-draft'))
         return {
@@ -269,4 +270,28 @@ test('thread quote navigation checks current source membership and session at th
   f.state.snapshot.account.unlocked = false;
   open('source-message', 'source');
   assert.equal(f.routes.length, 1, 'Locking the account must prevent origin navigation');
+});
+
+test('message links reveal an album child and suppress automatic bottom following', () => {
+  const separate = fixture(false, 'reply', true);
+  assert.equal(separate.list.props.initialScrollIndex, 1);
+  const f = fixture(false, 'reply');
+  assert.equal(f.list.props.initialScrollIndex, 0);
+  assert.equal(
+    (f.list.props.maintainVisibleContentPosition as any).autoscrollToBottomThreshold,
+    undefined,
+  );
+  const rows = f.list.props.data as unknown[];
+  const rendered = (f.list.props.renderItem as (value: unknown) => unknown)({
+    item: rows[0],
+    index: 0,
+  });
+  assert.equal(find(rendered, 'Message')!.props.highlighted, true);
+  assert.ok(find(f.viewport.props.composer, 'Composer'));
+  const missing = fixture(false, 'missing');
+  assert.equal(missing.list.props.initialScrollIndex, undefined);
+  assert.equal(
+    find(missing.viewport.props.composer, 'Text')!.props.children,
+    'chat.messageUnavailable',
+  );
 });

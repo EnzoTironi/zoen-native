@@ -1,0 +1,29 @@
+diff --git a/node_modules/react-native-enriched-markdown/cpp/md4c/md4c.c b/node_modules/react-native-enriched-markdown/cpp/md4c/md4c.c
+--- a/node_modules/react-native-enriched-markdown/cpp/md4c/md4c.c
++++ b/node_modules/react-native-enriched-markdown/cpp/md4c/md4c.c
+@@ -3486,7 +3486,8 @@
+                     /* In the order from the most frequently used, arguably. */
+                     { _T("http"), 4,    _T("//"), 2 },
+                     { _T("https"), 5,   _T("//"), 2 },
+-                    { _T("ftp"), 3,     _T("//"), 2 }
++                    { _T("ftp"), 3,     _T("//"), 2 },
++                    { _T("zoen"), 4,    _T("//"), 2 }
+                 };
+                 int scheme_index;
+ 
+@@ -4541,10 +4542,12 @@
+             return;
+     }
+ 
+-    /* Scan for hostname segment. Hostname is mandatory and requires at least two
+-     * components delimited with a dot. */
++    /* Zoen routes use a single-label authority; network hosts retain the
++     * existing requirement for two dot-delimited components. */
++    int host_components = (opener->ch == ':' && end - beg == 7 &&
++            md_ascii_eq(STR(beg), _T("zoen://"), 7)) ? 1 : 2;
+     if(md_analyze_permissive_autolink_segment(ctx, end, line_end, &end, false,
+-            _T('.'), NULL, _T("-_"), &right_cursor) < 2)
++            _T('.'), NULL, _T("-_"), &right_cursor) < host_components)
+         return;
+ 
+     if(opener->ch != '@') {

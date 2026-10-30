@@ -40,6 +40,13 @@ patch applicability whenever changing the pinned `1.22.7` dependency.
 
 ## Markdown patch sequence
 
+`036+message-link-autolinks` adds the registered `zoen://` scheme to MD4C's
+existing bare-URL recognizer. Message text and source offsets remain unchanged;
+code spans and fenced code stay literal. Native link presses still pass through
+Zoen's URL and session/membership boundaries. The compiled parser regression in
+`message-link-autolinks.test.ts` covers punctuation, code and explicit links.
+Remove this patch when the maintained parser provides equivalent custom schemes.
+
 The app's existing `postinstall` runs `patch-package --error-on-fail`.
 `react-native-enriched-markdown@1.1.1` uses the numeric sequence supported by
 the pinned `patch-package@8.0.1`:

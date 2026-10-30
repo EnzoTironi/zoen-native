@@ -1,5 +1,7 @@
 import type { ReplySelection } from '../core/generated/ReplySelection';
 import { messageInfoAction } from './message-info-navigation';
+import { copyMessageLink } from './message-link-actions';
+import { currentMessageAction } from './message-action-current';
 import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -108,21 +110,8 @@ export function useMessageActions({
     }, []),
   );
   const current = useCallback(
-    (entry: TimelineEntry) => {
-      const state = store.getSnapshot();
-      if (
-        !focused.current ||
-        latest.current.disabled ||
-        latest.current.scope !== scope ||
-        state.phase !== 'ready' ||
-        !homeSpacesFor(state).has(spaceId) ||
-        `${state.mode}:${state.snapshot?.account?.identity_id ?? state.snapshot?.me?.id}:${state.snapshot?.account?.device_id}:${spaceId}` !==
-          scope
-      )
-        return undefined;
-      const value = latest.current.entries.find((value) => value.id === entry.id);
-      return value && messageCanInteract(value) ? value : undefined;
-    },
+    (entry: TimelineEntry) =>
+      currentMessageAction(store, spaceId, scope, focused.current, latest.current, entry),
     [scope, spaceId, store],
   );
   const quote = useMessageQuoteSelection(
@@ -470,6 +459,11 @@ export function useMessageActions({
           onInfo={
             selected && mode === 'account'
               ? () => messageInfoAction(store, spaceId, selected, current, infoEpoch)()
+              : undefined
+          }
+          onCopyLink={
+            selected && !selected.deleted && 'Message' in selected.kind && mode === 'account'
+              ? () => copyMessageLink(store, spaceId, selected, current, infoEpoch, inform)
               : undefined
           }
           onQuoteReview={quote.review}

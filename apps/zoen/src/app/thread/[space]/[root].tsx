@@ -37,7 +37,11 @@ import { ConversationTimelineMessage as ConversationMessage } from '../../../com
 import { useMessageActions } from '../../../components/use-message-actions';
 
 export default function Thread() {
-  const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
+  const { space, root, jump } = useLocalSearchParams<{
+    space: string;
+    root: string;
+    jump?: string;
+  }>();
   const { store, snapshot, notice, mode } = useClient();
   const owner = JSON.stringify([
     mode,
@@ -72,6 +76,11 @@ export default function Thread() {
     [entries, items, space, root, selection.active],
   );
   const { colors } = useTheme();
+  const jumpIndex = jump
+    ? rows.findIndex(
+        (row) => row.entry.id === jump || row.album?.entries.some((entry) => entry.id === jump),
+      )
+    : -1;
   const normalDraft = useMessageDraft(space, root);
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
@@ -147,13 +156,13 @@ export default function Thread() {
       <ConversationViewport
         composer={
           <>
-            {failure || error || notice ? (
+            {failure || error || notice || (jump && entries && jumpIndex < 0) ? (
               <Text
                 accessibilityRole="alert"
                 selectable
                 style={{ color: colors.danger, padding: 16 }}
               >
-                {failure ?? error ?? notice}
+                {failure ?? error ?? notice ?? t('chat.messageUnavailable')}
               </Text>
             ) : null}
             {selection.active ? (
@@ -219,7 +228,7 @@ export default function Thread() {
           ) : !entries ? (
             <Loading />
           ) : (
-            <QuoteLayoutTransition key={`${owner}:${space}:${root}`} list={list}>
+            <QuoteLayoutTransition key={`${owner}:${space}:${root}:${jump ?? ''}`} list={list}>
               {(active, commit, cancel, reading) => (
                 <FlashList
                   style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
@@ -233,6 +242,7 @@ export default function Thread() {
                   onScrollBeginDrag={cancel}
                   extraData={selection.ids}
                   data={rows}
+                  initialScrollIndex={jumpIndex >= 0 ? jumpIndex : undefined}
                   keyExtractor={(row) => row.key}
                   keyboardDismissMode="interactive"
                   keyboardShouldPersistTaps="handled"
@@ -246,7 +256,7 @@ export default function Thread() {
                   maintainVisibleContentPosition={{
                     disabled: active,
                     startRenderingFromBottom: false,
-                    autoscrollToBottomThreshold: reading ? undefined : 0.15,
+                    autoscrollToBottomThreshold: jump || reading ? undefined : 0.15,
                   }}
                   renderItem={({ item: { entry, activity, album }, index }) => (
                     <QuoteMotionView>
@@ -263,6 +273,10 @@ export default function Thread() {
                         disabled={selection.active}
                         spaceId={space}
                         entry={entry}
+                        highlighted={Boolean(
+                          jump &&
+                          (entry.id === jump || album?.entries.some((child) => child.id === jump)),
+                        )}
                         activity={activity}
                         album={album}
                         previous={index > 1 ? rows[index - 1]?.entry : undefined}
