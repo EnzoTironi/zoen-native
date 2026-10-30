@@ -1,3 +1,4 @@
+import { messageCanInteract } from './message-presentation.ts';
 import * as deleteMessageAction from '../components/delete-message-action.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -124,7 +125,7 @@ export async function chatSearchReactFixture(qa = false) {
     '../core/initial-timeline-end': initialEnd,
     '../core/live-activity': activity,
     '../core/conversation-scope': conversationScope,
-    '../core/message-presentation': { messageCard: () => null },
+    '../core/message-presentation': { messageCard: () => null, messageCanInteract },
     '../core/presentation': { messageText: () => '' },
     '../core/provider': {
       useClient: () => ({

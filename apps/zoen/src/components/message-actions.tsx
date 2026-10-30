@@ -1,3 +1,4 @@
+import { messageMenuActions } from './message-actions-model';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { NativeButton } from './primitives';
 import { ReactionPalette } from './reaction-palette';
@@ -36,7 +37,7 @@ export function MessageActions(props: MessageActionsProps) {
           onPress={props.onClose}
           style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.28)' }}
         />
-        {entry && !props.options ? (
+        {entry && !props.options && !entry?.deleted ? (
           <ReactionPalette
             reactions={entry.reactions}
             pending={props.pending}
@@ -74,85 +75,16 @@ export function MessageActions(props: MessageActionsProps) {
           </>
         ) : props.mode === 'actions' ? (
           <View style={{ backgroundColor: colors.surface, padding: 12, borderRadius: 20, gap: 6 }}>
-            {props.onRecover &&
-            entry?.author.is_me &&
-            !entry.deleted &&
-            entry.delivery === 'Failed' ? (
+            {messageMenuActions(props).map((action) => (
               <NativeButton
-                secondary
-                label={t('media.prepareNewSend')}
+                key={action.id}
+                secondary={!action.destructive}
+                destructive={action.destructive}
+                label={action.label}
                 disabled={props.pending}
-                onPress={() => run(props.onRecover)}
+                onPress={() => run(action.run)}
               />
-            ) : null}
-            <NativeButton
-              secondary
-              label={t('chat.reply')}
-              disabled={props.pending}
-              onPress={() => run(props.onReply)}
-            />
-            <NativeButton
-              secondary
-              label={t('chat.openReplies')}
-              disabled={props.pending}
-              onPress={() => run(props.onThread)}
-            />
-            {props.onForward ? (
-              <NativeButton
-                secondary
-                label={t('chat.forward')}
-                disabled={props.pending}
-                onPress={() => run(props.onForward)}
-              />
-            ) : null}
-            {props.onInfo ? (
-              <NativeButton
-                secondary
-                label={t('messageInfo.title')}
-                disabled={props.pending}
-                onPress={() => run(props.onInfo)}
-              />
-            ) : null}
-            {props.onSelect ? (
-              <NativeButton
-                secondary
-                label={t('chat.selectMessages')}
-                disabled={props.pending}
-                onPress={() => run(props.onSelect)}
-              />
-            ) : null}
-            {props.onCopy ? (
-              <NativeButton
-                secondary
-                label={t('chat.copyText')}
-                disabled={props.pending}
-                onPress={() => run(props.onCopy)}
-              />
-            ) : null}
-            {props.onCopyLink ? (
-              <NativeButton
-                secondary
-                label={t('chat.copyMessageLink')}
-                disabled={props.pending}
-                onPress={() => run(props.onCopyLink)}
-              />
-            ) : null}
-            {entry?.author.is_me && props.onEdit ? (
-              <NativeButton
-                secondary
-                label={t('chat.edit')}
-                disabled={props.pending}
-                onPress={() => run(props.onEdit)}
-              />
-            ) : null}
-            {!entry?.deleted && props.onDelete ? (
-              <NativeButton
-                destructive
-                label={t('chat.delete')}
-                disabled={props.pending}
-                onPress={() => run(props.onDelete)}
-              />
-            ) : null}
+            ))}
           </View>
         ) : null}
       </View>

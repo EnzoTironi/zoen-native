@@ -394,7 +394,7 @@ export function MessageInteraction({
   }
   function finish(expectedEpoch: number, expectedActivation: number, intent: MessageSwipeIntent) {
     if (admitted(expectedEpoch, expectedActivation) && fired.get())
-      (intent === 'reply' ? lifetime.current.onReply : lifetime.current.onThread)();
+      (intent === 'reply' ? lifetime.current.onReply : lifetime.current.onThread)?.();
   }
   const pan = usePanGesture({
     enabled: !disabled,
@@ -520,15 +520,23 @@ export function MessageInteraction({
             <Animated.View
               accessible={grouped}
               accessibilityLabel={accessibilityLabel}
-              accessibilityRole={grouped ? (onActions && !disabled ? 'button' : 'text') : undefined}
+              accessibilityRole={
+                grouped
+                  ? (onActions || onThread || onReply) && !disabled
+                    ? 'button'
+                    : 'text'
+                  : undefined
+              }
               accessibilityState={grouped ? { disabled } : undefined}
               accessibilityHint={grouped && !disabled ? actionsAccessibilityLabel : undefined}
-              onAccessibilityTap={grouped && !disabled ? onActions : undefined}
+              onAccessibilityTap={
+                grouped && !disabled ? (onActions ?? onThread ?? onReply) : undefined
+              }
               accessibilityActions={
                 grouped && !disabled
                   ? [
-                      { name: 'reply', label: t('chat.reply') },
-                      { name: 'thread', label: t('chat.openReplies') },
+                      ...(onReply ? [{ name: 'reply', label: t('chat.reply') }] : []),
+                      ...(onThread ? [{ name: 'thread', label: t('chat.openReplies') }] : []),
                       ...(onQuote ? [{ name: 'quote', label: t('chat.goToQuotedMessage') }] : []),
                       ...(onActions && actionsAccessibilityLabel
                         ? [{ name: 'actions', label: actionsAccessibilityLabel }]
@@ -539,8 +547,8 @@ export function MessageInteraction({
               onAccessibilityAction={(event) => {
                 if (!grouped || disabled) return;
                 const name = event.nativeEvent.actionName;
-                if (name === 'reply') onReply();
-                else if (name === 'thread') onThread();
+                if (name === 'reply') onReply?.();
+                else if (name === 'thread') onThread?.();
                 else if (name === 'actions' && actionsAccessibilityLabel) onActions?.();
                 else if (name === 'quote') onQuote?.();
               }}

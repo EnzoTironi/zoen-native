@@ -1,3 +1,4 @@
+import { messageMenuActions } from './message-actions-model';
 import { selectedMessageQuote } from '../core/selected-message-quote';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { randomUUID } from 'expo-crypto';
@@ -5,7 +6,6 @@ import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import type { MessageActionsProps } from './message-actions.types';
 import type {
-  MessageContextAction,
   MessageContextEmoji,
   MessageContextSelection,
 } from '../../modules/zoen-core/src/ZoenMessageContext.types';
@@ -43,28 +43,7 @@ export function ExtractedMessageActions({
     const visual = appearance.current;
     let live = true;
     const initial = entry.id;
-    const callbacks: ReadonlyArray<
-      readonly [MessageContextAction, string, MessageActionsProps['onReply'] | undefined]
-    > = [
-      ['reply', t('chat.reply'), props.onReply],
-      ['thread', t('chat.openReplies'), props.onThread],
-      ['info', t('messageInfo.title'), props.onInfo],
-      ['forward', t('chat.forward'), !entry.deleted ? props.onForward : undefined],
-      ['selectMessages', t('chat.selectMessages'), !entry.deleted ? props.onSelect : undefined],
-      ['select', t('chat.selectText'), request.textSelection ? props.onSelectText : undefined],
-      ['copy', t('chat.copyText'), props.onCopy],
-      ['copyLink', t('chat.copyMessageLink'), props.onCopyLink],
-      ['share', t('media.share'), props.onShare],
-      [
-        'recover',
-        t('media.prepareNewSend'),
-        entry.author.is_me && !entry.deleted && entry.delivery === 'Failed'
-          ? props.onRecover
-          : undefined,
-      ],
-      ['edit', t('chat.edit'), entry.author.is_me && !entry.deleted ? props.onEdit : undefined],
-      ['delete', t('chat.delete'), !entry.deleted ? props.onDelete : undefined],
-    ];
+    const actions = messageMenuActions(props);
     const current = () =>
       live &&
       latest.current.entry?.id === initial &&
@@ -89,6 +68,10 @@ export function ExtractedMessageActions({
         cancelQuote();
         props.onClose();
       } else if (value.startsWith('reaction:')) {
+        if (entry.deleted) {
+          props.onClose();
+          return;
+        }
         const selected = value.slice('reaction:'.length);
         props.onReact(
           entry.reactions.some((reaction) => reaction.mine && reaction.emoji === selected)
@@ -96,25 +79,17 @@ export function ExtractedMessageActions({
             : selected,
         );
       } else if (value === 'more') {
+        if (entry.deleted) {
+          props.onClose();
+          return;
+        }
         props.onClose();
         props.onMore?.();
       } else {
         props.onClose();
-        const run = {
-          reply: props.onReply,
-          thread: props.onThread,
-          info: props.onInfo,
-          forward: props.onForward,
-          copy: props.onCopy,
-          copyLink: props.onCopyLink,
-          select: props.onSelectText,
-          selectMessages: props.onSelect,
-          share: props.onShare,
-          edit: props.onEdit,
-          recover: props.onRecover,
-          delete: props.onDelete,
-        }[value as MessageContextAction];
-        run?.(entry);
+        messageMenuActions(props)
+          .find((action) => action.id === value)
+          ?.run(entry);
       }
     }
     const detachSelection = request.textSelection?.bind({
@@ -144,21 +119,22 @@ export function ExtractedMessageActions({
     });
     void owner
       .open({
-        actions:
-          props.mode === 'actions'
-            ? callbacks.filter(([, , run]) => run).map(([id, label]) => ({ id, label }))
-            : [],
-        reactions: emoji.map((value) => ({
-          emoji: value,
-          label: t(
-            entry.reactions.some((reaction) => reaction.mine && reaction.emoji === value)
-              ? 'chat.removeReaction'
-              : 'chat.reactWithEmoji',
-            { emoji: value },
-          ),
-          selected: entry.reactions.some((reaction) => reaction.mine && reaction.emoji === value),
-        })),
-        moreLabel: props.onMore ? t('chat.moreReactions') : undefined,
+        actions: props.mode === 'actions' ? actions.map(({ id, label }) => ({ id, label })) : [],
+        reactions: entry.deleted
+          ? []
+          : emoji.map((value) => ({
+              emoji: value,
+              label: t(
+                entry.reactions.some((reaction) => reaction.mine && reaction.emoji === value)
+                  ? 'chat.removeReaction'
+                  : 'chat.reactWithEmoji',
+                { emoji: value },
+              ),
+              selected: entry.reactions.some(
+                (reaction) => reaction.mine && reaction.emoji === value,
+              ),
+            })),
+        moreLabel: !entry.deleted && props.onMore ? t('chat.moreReactions') : undefined,
         theme: visual.context,
         reducedMotion: visual.reducedMotion,
         incoming: !entry.author.is_me,

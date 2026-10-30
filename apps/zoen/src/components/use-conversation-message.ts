@@ -20,6 +20,7 @@ import { messageMayContainMarkdown } from '../core/message-markdown';
 import {
   largeEmojiFontSize,
   messageCanInteract,
+  messageCanSelect,
   messageCard,
   messageHasStandaloneAppCard,
   messagesAreGrouped,
@@ -340,7 +341,8 @@ export function useConversationMessage({
     .filter(Boolean)
     .join('. ');
   const open = (mode: MessageActionMode, emoji?: string, nativeSource?: MessageContextRequest) => {
-    if (disabled || !messageCanInteract(entry)) return;
+    if (disabled || !(mode === 'actions' ? messageCanSelect(entry) : messageCanInteract(entry)))
+      return;
     // The keyboard can move this row before the popover is presented. Measure
     // only after it closes, and reject a row recycled while that was pending.
     const measureAnchor = () =>
@@ -375,20 +377,39 @@ export function useConversationMessage({
     ? { accessible: false }
     : {
         accessible: true,
-        accessibilityRole: entry.deleted ? ('text' as const) : ('button' as const),
+        accessibilityRole: messageCanSelect(entry) ? ('button' as const) : ('text' as const),
         accessibilityLabel: accessibilityMessageLabel,
         accessibilityHint:
-          disabled || !messageCanInteract(entry)
+          disabled || !messageCanSelect(entry)
             ? undefined
             : t('chat.touchAndHoldToReplyOrSeeActions'),
-        onPress: () => open('reactions'),
+        onPress: () => open(entry.deleted ? 'actions' : 'reactions'),
         onLongPress: () => open('actions'),
         onAccessibilityTap: () => open('actions'),
         delayLongPress: 350,
-        disabled: disabled || !messageCanInteract(entry),
+        disabled: disabled || !messageCanSelect(entry),
       };
 
+  const rowInteraction = {
+    messageId: entry.id,
+    mine,
+    disabled: disabled || !(messageCanSelect(entry) || entry.thread_replies > 0),
+    swipeEnabled: !albumContent && messageCanInteract(entry),
+    accessibilityLabel: !attachment ? accessibilityMessageLabel : undefined,
+    onReply: !entry.deleted ? () => onReply(entry) : undefined,
+    onThread: !entry.deleted || entry.thread_replies > 0 ? () => onThread(entry) : undefined,
+    onActions: messageCanSelect(entry) ? () => open('actions') : undefined,
+    actionsAccessibilityLabel: messageCanSelect(entry)
+      ? t('chat.messageActions', { name: entry.author.name })
+      : t('chat.viewReplies', { count: entry.thread_replies }),
+    onQuote:
+      !entry.deleted && entry.reply_to && entry.reply_to.origin?.available !== false
+        ? openQuote
+        : undefined,
+  };
+
   return {
+    rowInteraction,
     entry,
     revealAnchor,
     onStatusLayout,

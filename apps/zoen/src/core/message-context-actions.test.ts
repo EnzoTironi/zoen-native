@@ -1,3 +1,4 @@
+import { messageMenuActions } from '../components/message-actions-model.ts';
 import { selectedMessageQuote } from './selected-message-quote.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -149,6 +150,7 @@ function fixture(
   };
   const module = { exports: {} as { ExtractedMessageActions(props: any): unknown } };
   const ports: Record<string, unknown> = {
+    './message-actions-model': { messageMenuActions },
     react: {
       useRef: (value: unknown) => (refs[cursor++] ??= { current: value }),
       useLayoutEffect: (effect: () => void) => layouts.push(effect),
@@ -241,7 +243,7 @@ test('deleted messages cannot gain forward/edit/delete capabilities from native 
   await tick();
   assert.deepEqual(
     f.configurations[0].actions.map((value: any) => value.id),
-    ['reply', 'thread', 'copy', 'share'],
+    [],
   );
   f.result.resolve('delete');
   await tick();

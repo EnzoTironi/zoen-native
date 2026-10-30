@@ -77,6 +77,11 @@ export function messageCanInteract(entry: TimelineEntry) {
   return !entry.deleted && 'Message' in entry.kind;
 }
 
+/** A removed parent must retain access to its unselected replies. */
+export function messageCanSelect(entry: TimelineEntry) {
+  return 'Message' in entry.kind && (!entry.deleted || entry.thread_replies === 0);
+}
+
 /** Selection only; the core rechecks the signed Failed outbox and both drafts. */
 export function messageCanRecoverMedia(entry: TimelineEntry) {
   return (

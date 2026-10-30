@@ -169,3 +169,12 @@ test('mixed authors and readers can choose local deletion but cannot escalate to
     if (sent.length) assert.equal((sent[0] as { for_me: boolean }).for_me, true);
   }
 });
+
+test('terminal placeholders can be removed locally while parents with visible replies retain their anchor', () => {
+  const leaf = { ...entry('gone'), deleted: true, text_revision: undefined, thread_replies: 0 };
+  assert.deepEqual(messageDeletionTargets([leaf], 'owner', true), [
+    { message_id: 'gone', expected_revision: 'gone' },
+  ]);
+  assert.equal(messageDeletionTargets([leaf], 'owner'), null);
+  assert.equal(messageDeletionTargets([{ ...leaf, thread_replies: 1 }], 'owner', true), null);
+});

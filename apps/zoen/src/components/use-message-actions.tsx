@@ -1,7 +1,7 @@
 import type { ReplySelection } from '../core/generated/ReplySelection';
 import { messageInfoAction } from './message-info-navigation';
 import { copyMessageLink } from './message-link-actions';
-import { currentMessageAction } from './message-action-current';
+import { currentMessageAction, resolveMessageAuthor } from './message-action-current';
 import { canDeleteMessage, bindMessageDeletion } from './delete-message-action';
 import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -13,7 +13,7 @@ import { useClient } from '../core/provider';
 import {
   messageCanEdit,
   messageCanSelectText,
-  messageCanInteract,
+  messageCanSelect,
   messageCanRecoverMedia,
   messageCard,
 } from '../core/message-presentation';
@@ -113,8 +113,8 @@ export function useMessageActions({
     }, []),
   );
   const current = useCallback(
-    (entry: TimelineEntry) =>
-      currentMessageAction(store, spaceId, scope, focused.current, latest.current, entry),
+    (entry: TimelineEntry, purpose: 'content' | 'delete' | 'thread' = 'content') =>
+      currentMessageAction(store, spaceId, scope, focused.current, latest.current, entry, purpose),
     [scope, spaceId, store],
   );
   const quote = useMessageQuoteSelection(
@@ -145,7 +145,10 @@ export function useMessageActions({
       ? (entries.find((entry) => entry.id === selection.id) ?? null)
       : null;
   const selected =
-    homeSpacesFor(client).has(spaceId) && candidate && messageCanInteract(candidate)
+    homeSpacesFor(client).has(spaceId) &&
+    candidate &&
+    messageCanSelect(candidate) &&
+    (!candidate.deleted || !selection?.nativeSource)
       ? candidate
       : null;
   const close = () => {
@@ -160,15 +163,7 @@ export function useMessageActions({
     }
   };
   const thread = (entry: TimelineEntry) => {
-    const value = currentMessageAction(
-      store,
-      spaceId,
-      scope,
-      focused.current,
-      latest.current,
-      entry,
-      true,
-    );
+    const value = current(entry, 'thread');
     if (!value) return;
     openAttempt.current = null;
     if (onThread) onThread(value);
@@ -191,21 +186,10 @@ export function useMessageActions({
       Boolean(current(value));
     let navigated = false;
     try {
-      // Resolve the signed author again; recycled rows and late reads grant no route authority.
-      const canonical = await store.driver.request({
-        op: 'message',
-        space_id: spaceId,
-        message_id: attempt.messageId,
-      });
-      if (!active()) return;
-      if (
-        canonical.id !== attempt.messageId ||
-        !messageCanInteract(canonical) ||
-        !canonical.author.id.trim()
-      )
-        throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
+      const author = await resolveMessageAuthor(store, spaceId, attempt.messageId, active);
+      if (!author) return;
       close();
-      router.push({ pathname: '/person/[id]', params: { id: canonical.author.id } });
+      router.push({ pathname: '/person/[id]', params: { id: author } });
       navigated = true;
     } catch (reason) {
       if (active())
@@ -274,10 +258,12 @@ export function useMessageActions({
       measureAnchor?: MeasureMessageAnchor,
       nativeSource?: MessageContextRequest,
     ) => {
-      const value = current(entry);
+      const purpose = actionMode === 'actions' ? 'delete' : 'content';
+      const value = current(entry, purpose);
       if (
         !mounted.current ||
         !value ||
+        (value.deleted && Boolean(nativeSource)) ||
         pending.current ||
         profileAttempt.current ||
         (nativeSource && !nativeSource.current())
@@ -298,7 +284,7 @@ export function useMessageActions({
             nativeSource.binding,
             nativeSource.gestureId,
           );
-          const canonical = current(value);
+          const canonical = current(value, purpose);
           if (
             admitted &&
             mounted.current &&
@@ -321,7 +307,7 @@ export function useMessageActions({
             mounted.current &&
             openAttempt.current === attempt &&
             nativeSource.current() &&
-            current(value)
+            current(value, purpose)
           )
             void inform(
               t('chat.thisCouldNotBeCompleted'),
@@ -351,7 +337,7 @@ export function useMessageActions({
         openAttempt.current === attempt &&
         profileEpoch.current === attempt.epoch &&
         !pending.current &&
-        Boolean(current(value)) &&
+        Boolean(current(value, purpose)) &&
         (!nativeSource || nativeSource.current());
       try {
         // A native modal hides the keyboard. Finish that movement before
@@ -453,7 +439,11 @@ export function useMessageActions({
           mode={selection?.mode === 'reactions' ? 'reactions' : 'actions'}
           anchor={selection?.anchor}
           nativeSource={selection?.nativeSource}
-          isCurrent={() => Boolean(selected && current(selected))}
+          isCurrent={() =>
+            Boolean(
+              selected && current(selected, selection?.mode === 'actions' ? 'delete' : 'content'),
+            )
+          }
           pending={busy}
           error={failure?.scope === scope && failure.id === selected?.id ? failure.text : undefined}
           onClose={close}
@@ -469,7 +459,7 @@ export function useMessageActions({
             if (selected) reply(selected);
           }}
           onInfo={
-            selected && mode === 'account'
+            selected && !selected.deleted && mode === 'account'
               ? () => messageInfoAction(store, spaceId, selected, current, infoEpoch)()
               : undefined
           }
@@ -481,10 +471,10 @@ export function useMessageActions({
           onQuoteReview={quote.review}
           onQuote={quote.accept}
           onSelect={
-            selected && !selected.deleted && onSelect
+            selected && messageCanSelect(selected) && onSelect
               ? () => {
-                  const value = current(selected);
-                  if (value && !value.deleted) onSelect(value);
+                  const value = current(selected, 'delete');
+                  if (value && messageCanSelect(value)) onSelect(value);
                 }
               : undefined
           }
@@ -543,7 +533,7 @@ export function useMessageActions({
                     mounted,
                     activation: profileEpoch,
                     confirmation,
-                    resolve: current,
+                    resolve: (entry) => current(entry, 'delete'),
                     setBusy,
                   })()
               : undefined

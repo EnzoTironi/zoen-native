@@ -1,3 +1,4 @@
+import { messageCanSelect } from './message-presentation.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -162,6 +163,7 @@ function fixture() {
       useClient: () => ({ store, snapshot: state.snapshot, mode: state.mode }),
     },
     '../core/message-presentation': {
+      messageCanSelect,
       messageCanInteract: () => true,
       messageCanRecoverMedia: () => false,
       messageCanEdit: () => false,

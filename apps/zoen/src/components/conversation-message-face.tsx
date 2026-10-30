@@ -35,13 +35,10 @@ export function renderConversationMessage(context: MessageFace) {
     open,
     albumPart,
     fileCaption,
-    onReply,
-    onThread,
     JSON,
     spaceId,
     reducedMotion,
     bubble,
-    accessibilityMessageLabel,
     accessibilityText,
     replyPreview,
     formattedText,
@@ -62,6 +59,7 @@ export function renderConversationMessage(context: MessageFace) {
     attachmentWidth,
     Bubble,
     bubbleInteraction,
+    rowInteraction,
     textMinWidth,
     textCorners,
     voice,
@@ -127,22 +125,7 @@ export function renderConversationMessage(context: MessageFace) {
           </View>
         ) : null}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <MessageInteraction
-            messageId={entry.id}
-            mine={mine}
-            disabled={disabled || !messageCanInteract(entry)}
-            swipeEnabled={!albumContent}
-            accessibilityLabel={!attachment ? accessibilityMessageLabel : undefined}
-            onReply={() => onReply(entry)}
-            onThread={() => onThread(entry)}
-            onActions={() => open('actions')}
-            actionsAccessibilityLabel={t('chat.messageActions', { name: entry.author.name })}
-            onQuote={
-              !entry.deleted && entry.reply_to && entry.reply_to.origin?.available !== false
-                ? openQuote
-                : undefined
-            }
-          >
+          <MessageInteraction {...rowInteraction}>
             <View style={{ width: '100%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
               <MessageContextSource
                 ownerKey={JSON.stringify([spaceId, entry.id])}

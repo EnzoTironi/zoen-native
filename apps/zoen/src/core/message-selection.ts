@@ -1,4 +1,4 @@
-import { messageCanInteract } from './message-presentation.ts';
+import { messageCanSelect } from './message-presentation.ts';
 import { copyableMessageText } from './message-copy-text.ts';
 import type { TimelineEntry } from './types';
 
@@ -14,7 +14,7 @@ export function selectedMessages(
 ): TimelineEntry[] {
   if (!scope || selection?.scope !== scope) return [];
   const ids = new Set(selection.ids);
-  return entries.filter((entry) => ids.has(entry.id) && messageCanInteract(entry));
+  return entries.filter((entry) => ids.has(entry.id) && messageCanSelect(entry));
 }
 
 export function toggleMessageSelection(
@@ -23,7 +23,7 @@ export function toggleMessageSelection(
   entries: readonly TimelineEntry[],
   id: string,
 ): MessageSelection {
-  if (!scope || !entries.some((entry) => entry.id === id && messageCanInteract(entry)))
+  if (!scope || !entries.some((entry) => entry.id === id && messageCanSelect(entry)))
     return selection;
   const ids = selectedMessages(selection, scope, entries).map((entry) => entry.id);
   if (!ids.includes(id) && ids.length >= MAX_SELECTED_MESSAGES) return selection;

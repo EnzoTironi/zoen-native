@@ -155,16 +155,20 @@
       "crates/client-core/src/message_deletion/private.rs",
       "crates/client-core/src/message_deletion/tests/private/projections.rs",
       "apps/zoen/src/components/dialogs.ios.tsx",
-      "apps/zoen/src/core/message-deletion-dialog-react.test.ts"
+      "apps/zoen/src/core/message-deletion-dialog-react.test.ts",
+      "apps/zoen/src/components/message-actions-model.ts",
+      "apps/zoen/src/core/message-actions-model.test.ts",
+      "apps/zoen/src/core/message-accessibility-row-actions.cases.ts"
     ],
-    "gap": "Exclusão individual e em lote compartilha confirmação de alcance e validação atômica. A própria autoria pode ser removida globalmente; mensagens recebidas e seleções mistas podem ser removidas deste aparelho pelo histórico Personal assinado, inclusive por leitores. Busca, citações, threads, previews e não lidas respeitam essa remoção. Restam replicação privada entre dispositivos (#176), qualificação de exclusão entre dois clientes e aceite manual iPhone por Enzo; testes e build não demonstram paridade visual.",
+    "gap": "Exclusão global restrita à própria autoria. Remoção local inclui mensagens recebidas e placeholders, com alcance confirmado e histórico privado. Restam replicação privada (#176), qualificação entre dois clientes e aceite manual iPhone por Enzo.",
     "issues": [
       172,
       176,
       712,
       714,
       717,
-      718
+      718,
+      720
     ]
   },
   {
@@ -270,16 +274,20 @@
       "crates/client-core/src/message_deletion/private.rs",
       "crates/client-core/src/message_deletion/tests/private/projections.rs",
       "apps/zoen/src/components/dialogs.ios.tsx",
-      "apps/zoen/src/core/message-deletion-dialog-react.test.ts"
+      "apps/zoen/src/core/message-deletion-dialog-react.test.ts",
+      "apps/zoen/src/components/message-actions-model.ts",
+      "apps/zoen/src/core/message-actions-model.test.ts",
+      "apps/zoen/src/core/message-accessibility-row-actions.cases.ts"
     ],
-    "gap": "Exclusão individual e em lote compartilha confirmação de alcance e validação atômica. A própria autoria pode ser removida globalmente; mensagens recebidas e seleções mistas podem ser removidas deste aparelho pelo histórico Personal assinado, inclusive por leitores. Busca, citações, threads, previews e não lidas respeitam essa remoção. Restam replicação privada entre dispositivos (#176), qualificação de exclusão entre dois clientes e aceite manual iPhone por Enzo; testes e build não demonstram paridade visual.",
+    "gap": "Seleção mista, placeholders e exclusão atômica compartilham o contrato individual; encaminhar e copiar exigem conteúdo disponível. Restam replicação privada (#176) e aceite manual iPhone por Enzo.",
     "issues": [
       172,
       670,
       712,
       714,
       717,
-      718
+      718,
+      720
     ]
   },
   {
