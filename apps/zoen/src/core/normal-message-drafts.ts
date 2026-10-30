@@ -8,6 +8,8 @@ import {
   content,
   keyFor,
   checked,
+  immutableReplySelection,
+  immutableSharedReply,
   type NormalDraftScope,
   type NormalDraftPort,
   type NormalDraftState,
@@ -191,14 +193,11 @@ export class NormalMessageDrafts {
     const record = this.record(scope);
     if (this.retirement || !record.state.loaded) return false;
     if (replyQuote && replyQuote.source_id !== replyTo) return false;
-    const frozenQuote = replyQuote
-      ? { ...replyQuote, spans: replyQuote.spans.map((span) => ({ ...span })) }
-      : null;
     this.publish(record, {
       edit: null,
       editContextRevision: record.state.editContextRevision + 1,
       replyTo,
-      replyQuote: frozenQuote,
+      replyQuote: immutableReplySelection(replyQuote),
       sharedReply: null,
       replyRevision: record.state.replyRevision + 1,
     });
@@ -221,17 +220,7 @@ export class NormalMessageDrafts {
       editContextRevision: record.state.editContextRevision + 1,
       replyTo: null,
       replyQuote: null,
-      sharedReply: Object.freeze({
-        ...quote,
-        ...(quote.selection
-          ? {
-              selection: {
-                ...quote.selection,
-                spans: quote.selection.spans.map((span) => ({ ...span })),
-              },
-            }
-          : {}),
-      }),
+      sharedReply: immutableSharedReply(quote),
       replyRevision: record.state.replyRevision + 1,
     });
     this.schedule(record);

@@ -129,6 +129,25 @@ export const keyFor = (scope: NormalDraftScope) =>
     scope.spaceId,
     scope.threadRootId,
   ]);
+export function immutableReplySelection(
+  value: ReplySelection | null | undefined,
+): ReplySelection | null {
+  if (!value) return null;
+  const copy = { ...value, spans: value.spans.map((span) => Object.freeze({ ...span })) };
+  Object.freeze(copy.spans);
+  return Object.freeze(copy);
+}
+export function immutableSharedReply(
+  value: SharedReplyDraft | null | undefined,
+): SharedReplyDraft | null {
+  if (!value) return null;
+  return Object.freeze({
+    ...value,
+    ...(value.selection
+      ? { selection: immutableReplySelection(value.selection) ?? undefined }
+      : {}),
+  });
+}
 export function checked(value: NormalDraftSnapshot): NormalDraftSnapshot {
   if (
     typeof value.revision !== 'string' ||
@@ -151,7 +170,7 @@ export function checked(value: NormalDraftSnapshot): NormalDraftSnapshot {
     revision: value.revision,
     text: value.text,
     reply_to: value.reply_to,
-    ...(value.reply_quote ? { reply_quote: value.reply_quote } : {}),
-    ...(value.shared_reply ? { shared_reply: value.shared_reply } : {}),
+    ...(value.reply_quote ? { reply_quote: immutableReplySelection(value.reply_quote) } : {}),
+    ...(value.shared_reply ? { shared_reply: immutableSharedReply(value.shared_reply) } : {}),
   };
 }

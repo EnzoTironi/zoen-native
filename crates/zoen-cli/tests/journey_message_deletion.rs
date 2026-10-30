@@ -5,6 +5,8 @@ mod common;
 mod edit_recovery;
 #[path = "../src/file_vault.rs"]
 mod file_vault;
+#[path = "journey_message_deletion/retained_reply.rs"]
+mod retained_reply;
 
 use client_core::{
     Client, CoreError, EntryKind, MessageDeletion, MessageDeletionTarget, TimelineEntry,
