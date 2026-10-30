@@ -300,6 +300,8 @@ pub(crate) struct State {
     pub(crate) waiting_spaces: HashSet<SpaceId>,
     /// My per-chat prefs (pin, archive, mute), from my Personal Space.
     pub(crate) chat_prefs: HashMap<SpaceId, types::ChatPrefs>,
+    /// Derived only from signed Personal events, keyed by owner and source Space.
+    pub(crate) deleted_for_self: HashMap<IdentityId, HashMap<SpaceId, HashSet<String>>>,
 }
 
 // ───────────────────────────── motor ─────────────────────────────
@@ -328,6 +330,7 @@ pub struct Engine {
 
 pub(crate) type R<T> = Result<T, CoreError>;
 
+mod entry_order;
 mod errors;
 
 fn not_found(what: &str) -> CoreError {

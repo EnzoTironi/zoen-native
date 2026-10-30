@@ -22,19 +22,20 @@ async function opened() {
 
 test('the compiled single-message menu uses the reviewed batch command and prevents duplicate confirmations', async () => {
   const { f, own, action } = await opened();
-  const answer = deferred<boolean>();
-  f.confirm(() => answer.promise);
+  const answer = deferred<string | null>();
+  f.choose(() => answer.promise);
   action(own);
   action(own);
   assert.equal(f.confirmations.length, 1);
-  assert.equal(f.confirmations[0]!.destructive, true);
+  assert.ok(f.confirmations[0]!.choices.every((choice) => choice.destructive));
   assert.equal(f.render().busy, true);
   assert.deepEqual(f.mutations, []);
-  answer.resolve(true);
+  answer.resolve('everyone');
   await settle();
   assert.deepEqual(JSON.parse(JSON.stringify(f.mutations)), [
     {
       op: 'delete_messages',
+      for_me: false,
       expected_identity_id: 'alice',
       expected_device_id: 'phone',
       space_id: spaceId,
@@ -61,8 +62,8 @@ for (const change of [
 ] as const)
   test(`an individual deletion confirmation retires after ${change}`, async () => {
     const { f, own, action } = await opened();
-    const answer = deferred<boolean>();
-    f.confirm(() => answer.promise);
+    const answer = deferred<string | null>();
+    f.choose(() => answer.promise);
     action(own);
     if (change === 'edit') f.render({ entries: [{ ...own, text_revision: 'source-v2' }] });
     if (change === 'deleted') f.render({ entries: [{ ...own, deleted: true }] });
@@ -92,7 +93,7 @@ for (const change of [
       f.update(() => prior);
     }
     if (change === 'unmount') f.unmount();
-    answer.resolve(change !== 'cancel');
+    answer.resolve(change === 'cancel' ? null : 'everyone');
     await settle();
     assert.deepEqual(f.mutations, []);
     f.unmount();
@@ -100,7 +101,7 @@ for (const change of [
 
 test('a failed individual delete releases the action lock and requires fresh confirmation to retry', async () => {
   const { f, own, action } = await opened();
-  f.confirm(async () => true);
+  f.choose(async () => 'everyone');
   f.mutate(async () => {
     throw new Error('storage unavailable');
   });
@@ -118,7 +119,7 @@ test('a failed individual delete releases the action lock and requires fresh con
 
 test('held delete controls cannot start a confirmation in a new same-owner session', async () => {
   const { f, own, action } = await opened();
-  f.confirm(async () => true);
+  f.choose(async () => 'everyone');
   f.store.sessionEpoch++;
   action(own);
   await settle();
@@ -127,10 +128,22 @@ test('held delete controls cannot start a confirmation in a new same-owner sessi
   f.unmount();
 });
 
-for (const reason of ['reader', 'locked', 'foreign', 'missing-revision'] as const)
+for (const reason of ['locked', 'missing-revision'] as const)
   test(`the current single-message menu omits deletion for ${reason}`, async () => {
     const { f, own } = await opened();
-    if (reason === 'reader')
+    if (reason === 'locked') f.update(account({ unlocked: false }));
+    const entry = reason === 'missing-revision' ? { ...own, text_revision: undefined } : own;
+    assert.equal(f.render({ entries: [entry] }).panel.props.onDelete, undefined);
+    assert.deepEqual(f.confirmations, []);
+    assert.deepEqual(f.mutations, []);
+    f.unmount();
+  });
+
+for (const reader of [false, true])
+  test(`received messages offer only private deletion, including reader=${reader}`, async () => {
+    const f = fixture();
+    const received = message({ text_revision: 'received-v1' });
+    if (reader)
       f.update((state) => ({
         ...state,
         snapshot: {
@@ -141,15 +154,63 @@ for (const reason of ['reader', 'locked', 'foreign', 'missing-revision'] as cons
           })),
         },
       }));
-    if (reason === 'locked') f.update(account({ unlocked: false }));
-    const entry =
-      reason === 'foreign'
-        ? { ...own, author: author('other') }
-        : reason === 'missing-revision'
-          ? { ...own, text_revision: undefined }
-          : own;
-    assert.equal(f.render({ entries: [entry] }).panel.props.onDelete, undefined);
-    assert.deepEqual(f.confirmations, []);
-    assert.deepEqual(f.mutations, []);
+    f.read(async () => received);
+    await f.render({ entries: [received] }).open(received, 'actions');
+    f.choose(async (options) => {
+      assert.deepEqual(
+        Array.from(options.choices, (choice) => choice.id),
+        ['for_me'],
+      );
+      return 'for_me';
+    });
+    f.render().panel.props.onDelete!(received);
+    await settle();
+    assert.equal(f.mutations.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.mutations[0])), {
+      op: 'delete_messages',
+      for_me: true,
+      expected_identity_id: 'alice',
+      expected_device_id: 'phone',
+      space_id: spaceId,
+      targets: [{ message_id: received.id, expected_revision: 'received-v1' }],
+    });
     f.unmount();
   });
+
+test('the native confirmation is aborted on blur and cannot outlive the conversation', async () => {
+  const { f, own, action } = await opened();
+  let signal: AbortSignal | undefined;
+  const answer = deferred<string | null>();
+  f.choose((options) => {
+    signal = options.signal;
+    return answer.promise;
+  });
+  action(own);
+  assert.equal(signal?.aborted, false);
+  f.blur();
+  assert.equal(signal?.aborted, true);
+  answer.resolve('for_me');
+  await settle();
+  assert.deepEqual(f.mutations, []);
+  f.unmount();
+});
+
+test('a redacted thread parent opens its remaining replies without enabling reactions or deletion', async () => {
+  const f = fixture();
+  const root = message({
+    deleted: true,
+    thread_replies: 2,
+    kind: { Message: { text: '', card: null } },
+  });
+  const hook = f.render({ entries: [root] });
+  hook.thread(root);
+  assert.equal(f.routes.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.routes[0])), {
+    pathname: '/thread/[space]/[root]',
+    params: { space: spaceId, root: root.id },
+  });
+  await hook.open(root, 'reactions');
+  assert.equal(f.render().panel.props.entry, null);
+  assert.deepEqual(f.mutations, []);
+  f.unmount();
+});

@@ -132,6 +132,7 @@ impl Engine {
             return Err(invalid());
         };
         if marks.deleted
+            || !self.visible_message(source)
             || q.revision != marks.text_revision.as_deref().unwrap_or(source.id())
             || !matches(text, &q.signed())
         {

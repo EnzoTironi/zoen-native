@@ -1,4 +1,6 @@
 use super::*;
+mod order;
+mod private;
 use crate::{PrivacyDto, SecretVault, TimelineEntry};
 use std::{
     collections::HashMap,
@@ -96,6 +98,7 @@ fn fixture(path: &str) -> TestResult<Fixture> {
         founder,
         unrelated,
         input: MessageDeletion {
+            for_me: None,
             expected_identity_id: account.identity_id,
             expected_device_id: account.device_id,
             space_id: space,

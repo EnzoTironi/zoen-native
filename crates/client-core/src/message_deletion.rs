@@ -3,6 +3,7 @@
 use crate::{engine::EntryBody, i18n::t, Client, CoreError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+mod private;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -20,6 +21,9 @@ pub struct MessageDeletion {
     pub expected_device_id: String,
     pub space_id: String,
     pub targets: Vec<MessageDeletionTarget>,
+    #[serde(default)]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub for_me: Option<bool>,
 }
 
 fn valid_id(value: &str) -> bool {
@@ -40,6 +44,7 @@ impl Client {
     pub fn delete_messages(&self, input: MessageDeletion) -> Result<Vec<String>, CoreError> {
         let mut engine = self.lock();
         engine.native_surface_owner(&input.expected_identity_id, &input.expected_device_id)?;
+        engine.check_private_message_view()?;
         let mut ids = HashSet::new();
         if !valid_id(&input.space_id)
             || input.targets.is_empty()
@@ -53,6 +58,9 @@ impl Client {
             return Err(CoreError::Invalid {
                 reason: t("seleção de mensagens inválida", "invalid message selection"),
             });
+        }
+        if input.for_me.unwrap_or(false) {
+            return engine.delete_messages_for_self(&input);
         }
         if !engine
             .state
@@ -84,6 +92,9 @@ impl Client {
             // A terminal deletion needs no further write or historical text access.
             // Every still-live entry must match the version actually confirmed.
             if !marks.deleted {
+                if engine.deleted_for_self(&input.space_id, &target.message_id) {
+                    return Err(changed());
+                }
                 if marks.text_revision.as_deref().unwrap_or(entry.id()) != target.expected_revision
                 {
                     return Err(changed());

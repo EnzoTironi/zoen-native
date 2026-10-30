@@ -149,6 +149,9 @@ impl Engine {
             end,
         )?;
         let outcome = scoped.apply_checked(event, &self.identities, &context);
+        if let Some(space) = scoped.spaces.get_mut(&event.space) {
+            space.settle_confirmed_tail(event.seq);
+        }
         self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
         Ok(outcome)
     }

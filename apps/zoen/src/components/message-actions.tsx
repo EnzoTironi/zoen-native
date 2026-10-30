@@ -145,10 +145,10 @@ export function MessageActions(props: MessageActionsProps) {
                 onPress={() => run(props.onEdit)}
               />
             ) : null}
-            {entry?.author.is_me && props.onDelete ? (
+            {!entry?.deleted && props.onDelete ? (
               <NativeButton
                 destructive
-                label={t('chat.deleteForEveryone')}
+                label={t('chat.delete')}
                 disabled={props.pending}
                 onPress={() => run(props.onDelete)}
               />

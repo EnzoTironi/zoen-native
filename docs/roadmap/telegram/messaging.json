@@ -151,14 +151,20 @@
       "apps/zoen/src/core/generated/TimelineEntry.ts",
       "crates/client-core/src/message_deletion.rs",
       "crates/client-core/src/message_deletion/tests.rs",
-      "apps/zoen/src/components/delete-message-action.ts"
+      "apps/zoen/src/components/delete-message-action.ts",
+      "crates/client-core/src/message_deletion/private.rs",
+      "crates/client-core/src/message_deletion/tests/private/projections.rs",
+      "apps/zoen/src/components/dialogs.ios.tsx",
+      "apps/zoen/src/core/message-deletion-dialog-react.test.ts"
     ],
-    "gap": "Remoção global continua limitada à própria autoria. Exclusão individual e em lote validam a versão revisada e mantêm rollback/retomada sem duplicação. Restam exclusão local, qualificação entre dois clientes e aceite manual no iPhone.",
+    "gap": "Exclusão individual e em lote compartilha confirmação de alcance e validação atômica. A própria autoria pode ser removida globalmente; mensagens recebidas e seleções mistas podem ser removidas deste aparelho pelo histórico Personal assinado, inclusive por leitores. Busca, citações, threads, previews e não lidas respeitam essa remoção. Restam replicação privada entre dispositivos (#176), qualificação de exclusão entre dois clientes e aceite manual iPhone por Enzo; testes e build não demonstram paridade visual.",
     "issues": [
       172,
       176,
       712,
-      714
+      714,
+      717,
+      718
     ]
   },
   {
@@ -260,14 +266,20 @@
       "crates/client-core/src/message_deletion.rs",
       "crates/client-core/src/message_deletion/tests.rs",
       "apps/zoen/src/core/message-deletion.test.ts",
-      "apps/zoen/src/core/message-delete-action-react.test.ts"
+      "apps/zoen/src/core/message-delete-action-react.test.ts",
+      "crates/client-core/src/message_deletion/private.rs",
+      "crates/client-core/src/message_deletion/tests/private/projections.rs",
+      "apps/zoen/src/components/dialogs.ios.tsx",
+      "apps/zoen/src/core/message-deletion-dialog-react.test.ts"
     ],
-    "gap": "Seleção, cópia, encaminhamento durável e exclusão revisada da própria autoria funcionam na conversa e thread. Exclusão usa transação única, revisões exatas e tombstones sem duplicação; menu individual compartilha o contrato. Restam exclusão local de mensagens de outros autores e aceite manual iPhone por Enzo.",
+    "gap": "Exclusão individual e em lote compartilha confirmação de alcance e validação atômica. A própria autoria pode ser removida globalmente; mensagens recebidas e seleções mistas podem ser removidas deste aparelho pelo histórico Personal assinado, inclusive por leitores. Busca, citações, threads, previews e não lidas respeitam essa remoção. Restam replicação privada entre dispositivos (#176), qualificação de exclusão entre dois clientes e aceite manual iPhone por Enzo; testes e build não demonstram paridade visual.",
     "issues": [
       172,
       670,
       712,
-      714
+      714,
+      717,
+      718
     ]
   },
   {

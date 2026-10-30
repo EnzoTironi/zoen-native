@@ -33,7 +33,7 @@ impl Engine {
         let EntryBody::Message { marks, .. } = &entry.body else {
             return Err(invalid());
         };
-        if marks.deleted {
+        if marks.deleted || !self.visible_message(entry) {
             return Err(invalid());
         }
         let edited_at_ms = if marks.edited {

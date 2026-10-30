@@ -63,11 +63,7 @@ export function ExtractedMessageActions({
           : undefined,
       ],
       ['edit', t('chat.edit'), entry.author.is_me && !entry.deleted ? props.onEdit : undefined],
-      [
-        'delete',
-        t('chat.deleteForEveryone'),
-        entry.author.is_me && !entry.deleted ? props.onDelete : undefined,
-      ],
+      ['delete', t('chat.delete'), !entry.deleted ? props.onDelete : undefined],
     ];
     const current = () =>
       live &&

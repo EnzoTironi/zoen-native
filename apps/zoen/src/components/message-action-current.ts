@@ -10,10 +10,12 @@ export function currentMessageAction(
   focused: boolean,
   latest: { entries: readonly TimelineEntry[]; disabled: boolean; scope: string },
   entry: TimelineEntry,
+  deletedThreadRoot = false,
 ): TimelineEntry | undefined {
   const state = store.getSnapshot();
   if (
     !focused ||
+    store.isSessionRetiring ||
     latest.disabled ||
     latest.scope !== scope ||
     state.phase !== 'ready' ||
@@ -23,5 +25,13 @@ export function currentMessageAction(
   )
     return undefined;
   const value = latest.entries.find((value) => value.id === entry.id);
-  return value && messageCanInteract(value) ? value : undefined;
+  return value &&
+    (messageCanInteract(value) ||
+      (deletedThreadRoot &&
+        value.deleted &&
+        'Message' in value.kind &&
+        !value.in_thread &&
+        value.thread_replies > 0))
+    ? value
+    : undefined;
 }

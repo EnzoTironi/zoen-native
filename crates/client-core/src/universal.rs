@@ -146,6 +146,9 @@ impl Engine {
     /// Search the readable conversation entry, never opaque app state or the
     /// referenced item's mutable title. Activity notes keep their historical text.
     fn searchable_entry_text(&self, entry: &Entry) -> Option<String> {
+        if !self.visible_message(entry) {
+            return None;
+        }
         let body = match &entry.body {
             EntryBody::Message {
                 text,
@@ -176,6 +179,7 @@ impl Engine {
     }
 
     fn fill_index(&self) -> R<()> {
+        self.check_private_message_view()?;
         let st = &self.store;
         st.index_clear()?;
         st.recent_attachments_reset()?;
@@ -301,6 +305,7 @@ impl Engine {
         cursor: Option<&str>,
         limit: u32,
     ) -> R<MessageSearchPage> {
+        self.check_private_message_view()?;
         let invalid = || CoreError::Invalid {
             reason: "Busca inválida ou desatualizada. Reinicie a busca.".into(),
         };
@@ -385,6 +390,7 @@ impl Engine {
         kinds: &[String],
         limit: u32,
     ) -> R<UniversalResults> {
+        self.check_private_message_view()?;
         let started = std::time::Instant::now();
         if self.index_dirty {
             self.reindex()?;
