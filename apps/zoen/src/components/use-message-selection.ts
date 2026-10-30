@@ -12,6 +12,9 @@ import {
 } from '../core/message-selection';
 import { useClient } from '../core/provider';
 import type { TimelineEntry } from '../core/types';
+import { confirmMessageDeletion, messageDeletionTargets } from '../core/message-deletion';
+import { useDialogs } from './dialogs';
+import { t } from '../i18n';
 
 export function useMessageSelection(
   spaceId: string,
@@ -21,6 +24,9 @@ export function useMessageSelection(
 ) {
   const client = useClient();
   const { store } = client;
+  const { confirm } = useDialogs();
+  const deleting = useRef(false);
+  const [pending, setPending] = useState(false);
   const scope = conversationScope(client, store.sessionEpoch, spaceId);
   const binding = scope && JSON.stringify([scope, threadRootId]);
   const [selection, setSelection] = useState<MessageSelection>(null);
@@ -74,6 +80,11 @@ export function useMessageSelection(
       ? selectedMessages(selection, binding, latest.current.entries)
       : [];
   const text = selectedMessageText(messages);
+  const account = client.snapshot?.account;
+  const canWrite = () =>
+    store
+      .getSnapshot()
+      .snapshot?.conversations.some((chat) => chat.id === spaceId && chat.can_write) === true;
   return {
     active,
     ids: new Set(messages.map((entry) => entry.id)),
@@ -81,6 +92,11 @@ export function useMessageSelection(
     limitReached: messages.length >= MAX_SELECTED_MESSAGES,
     canCopy: Boolean(text),
     canForward: client.mode === 'account' && active,
+    canDelete:
+      client.mode === 'account' &&
+      canWrite() &&
+      Boolean(messageDeletionTargets(messages, account?.identity_id)),
+    pending,
     toggle,
     cancel: () => setSelection(null),
     copy: () => {
@@ -98,6 +114,36 @@ export function useMessageSelection(
           selectionScope: scope!,
         },
       });
+    },
+    remove: () => {
+      if (deleting.current || !account || client.mode !== 'account') return;
+      deleting.current = true;
+      setPending(true);
+      void confirmMessageDeletion({
+        identity: account.identity_id,
+        device: account.device_id,
+        space: spaceId,
+        resolve: () => (canWrite() ? resolve() : []),
+        subscribe: (listener) => store.subscribe(listener),
+        confirm: (count) =>
+          confirm({
+            title: t('chat.deleteSelectedMessages', { count }),
+            message: t('chat.selectedMessagesRemovedForEveryone'),
+            confirmLabel: t('chat.delete'),
+            destructive: true,
+          }),
+        send: (value) => store.request({ op: 'delete_messages', ...value }),
+      })
+        .then((accepted) => {
+          if (accepted) setSelection((value) => (value === selection ? null : value));
+        })
+        .catch(() => {
+          // The canonical store surfaces command failures and retains selection for retry.
+        })
+        .finally(() => {
+          deleting.current = false;
+          setPending(false);
+        });
     },
   };
 }

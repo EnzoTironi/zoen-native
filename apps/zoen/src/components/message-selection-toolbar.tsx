@@ -11,12 +11,18 @@ export function MessageSelectionToolbar({
   onForward,
   canCopy,
   canForward,
+  canDelete,
+  onDelete,
+  pending,
 }: {
   count: number;
   onCopy: () => void;
   onForward: () => void;
   canCopy: boolean;
   canForward: boolean;
+  canDelete: boolean;
+  onDelete: () => void;
+  pending: boolean;
 }) {
   const { presentation: p } = useTheme();
   return (
@@ -32,17 +38,24 @@ export function MessageSelectionToolbar({
       }}
     >
       <IconButton
+        testID="message-selection-delete"
+        name="trash"
+        label={t('chat.deleteSelectedMessages', { count })}
+        disabled={pending || !count || !canDelete}
+        onPress={onDelete}
+      />
+      <IconButton
         testID="message-selection-copy"
         name="doc.on.doc"
         label={t('chat.copyText')}
-        disabled={!count || !canCopy}
+        disabled={pending || !count || !canCopy}
         onPress={onCopy}
       />
       <IconButton
         testID="message-selection-forward"
         name="arrowshape.turn.up.right"
         label={t('chat.forward')}
-        disabled={!count || !canForward}
+        disabled={pending || !count || !canForward}
         onPress={onForward}
       />
     </View>

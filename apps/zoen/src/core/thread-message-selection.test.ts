@@ -62,6 +62,9 @@ function fixture(active = true, jump?: string, individual = false) {
     limitReached: true,
     canCopy: true,
     canForward: true,
+    canDelete: true,
+    pending: false,
+    remove: () => calls.push('delete'),
     toggle,
     cancel: () => calls.push('cancel'),
     copy: () => calls.push('copy'),
@@ -219,6 +222,9 @@ test('thread selection replaces composition and exposes native count and Cancel 
   const f = fixture();
   assert.equal(find(f.viewport.props.composer, 'Composer'), undefined);
   const toolbar = find(f.viewport.props.composer, 'SelectionToolbar')!;
+  assert.equal(toolbar.props.canDelete, true);
+  assert.equal(toolbar.props.pending, false);
+  (toolbar.props.onDelete as () => void)();
   (toolbar.props.onCopy as () => void)();
   (toolbar.props.onForward as () => void)();
   const options = find(f.tree, 'Screen')!.props.options as {
@@ -231,7 +237,7 @@ test('thread selection replaces composition and exposes native count and Cancel 
   assert.equal(options.headerTitle().props.count, 1);
   assert.equal(options.unstable_headerLeftItems().length, 0);
   options.unstable_headerRightItems()[0]!.onPress();
-  assert.deepEqual(f.calls, ['copy', 'forward', 'cancel']);
+  assert.deepEqual(f.calls, ['delete', 'copy', 'forward', 'cancel']);
 });
 
 test('ordinary thread keeps existing album projection, composer and message actions', () => {
