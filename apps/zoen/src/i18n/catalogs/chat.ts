@@ -9,6 +9,7 @@ export const chat = defineFeature(
     selectText: 'Select text',
     quoteSelection: 'Quote',
     quoteTextReplyOnly: 'Remove the quote to attach media.',
+    replyInAnotherChat: 'Reply in Another Chat',
     quoteSelectionUnavailable:
       'This passage cannot be quoted. Try a smaller selection or reopen the message.',
     all: 'All',
@@ -230,6 +231,7 @@ export const chat = defineFeature(
     selectText: 'Selecionar texto',
     quoteSelection: 'Citar',
     quoteTextReplyOnly: 'Remova a citação para anexar mídia.',
+    replyInAnotherChat: 'Responder em outra conversa',
     quoteSelectionUnavailable:
       'Não foi possível citar este trecho. Selecione um trecho menor ou reabra a mensagem.',
     all: 'Todas',

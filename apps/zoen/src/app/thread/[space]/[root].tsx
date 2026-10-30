@@ -1,3 +1,4 @@
+import { homeSpacesFor } from '../../../home/access';
 import { t } from '../../../i18n/index.ts';
 import { QuoteLayoutTransition } from '../../../components/quote-layout-transition';
 import { QuoteMotionView } from '../../../components/quote-layout-context';
@@ -276,7 +277,15 @@ export default function Thread() {
                         onReact={(message, emoji) => {
                           void actions.react(message, emoji);
                         }}
-                        onQuote={(messageId) => {
+                        onQuote={(messageId, sourceSpace) => {
+                          if (sourceSpace) {
+                            if (homeSpacesFor(store.getSnapshot()).has(sourceSpace))
+                              router.push({
+                                pathname: '/chat/[id]',
+                                params: { id: sourceSpace, jump: messageId },
+                              });
+                            return;
+                          }
                           const target = rows.findIndex(
                             (row) =>
                               row.entry.id === messageId ||

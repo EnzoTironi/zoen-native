@@ -1,3 +1,4 @@
+import { useReplyDestinationFocus } from '../core/use-reply-destination-focus';
 import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
@@ -39,7 +40,11 @@ import { useTheme } from '../theme';
 
 const revealQaEnabled = process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA === '1';
 export function useChatController() {
-  const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
+  const { id, jump, compose } = useLocalSearchParams<{
+    id: string;
+    jump?: string;
+    compose?: string;
+  }>();
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors } = useTheme();
   const home = useHome();
@@ -55,6 +60,11 @@ export function useChatController() {
   const list = useRef<FlashListRef<ConversationTimelineRow>>(null);
   const focused = useRef(false);
   const normalDraft = useMessageDraft(id);
+  useReplyDestinationFocus(
+    `${id}:${compose ?? ''}`,
+    Boolean(compose && normalDraft.ready && normalDraft.sharedReply),
+    input,
+  );
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
   const [sending, setSending] = useState(false);

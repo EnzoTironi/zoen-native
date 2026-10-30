@@ -157,35 +157,32 @@ pub(super) enum Command {
         #[serde(default = "page_size")]
         limit: u32,
     },
+    ReviewSharedReply {
+        expected_source_revision: String,
+        #[serde(flatten)]
+        scope: crate::message_drafts::DraftScope,
+        source_space_id: String,
+        message_id: String,
+    },
     ReviewReplySelection {
-        expected_identity_id: String,
-        expected_device_id: String,
-        space_id: String,
-        thread_root_id: Option<String>,
+        #[serde(flatten)]
+        scope: crate::message_drafts::DraftScope,
         selection: crate::ReplySelection,
     },
     MessageDraft {
-        expected_identity_id: String,
-        expected_device_id: String,
-        space_id: String,
-        thread_root_id: Option<String>,
+        #[serde(flatten)]
+        scope: crate::message_drafts::DraftScope,
     },
     SaveMessageDraft {
-        expected_identity_id: String,
-        expected_device_id: String,
-        space_id: String,
-        thread_root_id: Option<String>,
+        #[serde(flatten)]
+        scope: crate::message_drafts::DraftScope,
         expected_revision: String,
-        text: String,
-        reply_to: Option<String>,
-        #[serde(default)]
-        reply_quote: Option<crate::ReplySelection>,
+        #[serde(flatten)]
+        content: crate::message_drafts::DraftContent,
     },
     SendMessageDraft {
-        expected_identity_id: String,
-        expected_device_id: String,
-        space_id: String,
-        thread_root_id: Option<String>,
+        #[serde(flatten)]
+        scope: crate::message_drafts::DraftScope,
         expected_revision: String,
     },
     RecoverFailedMediaDraft {

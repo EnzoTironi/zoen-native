@@ -43,11 +43,12 @@ async function compile(path: string) {
     })
   ).outputFiles[0]!.text;
 }
-const [previewCode, mediaCode, routeCode, panelCode] = await Promise.all([
+const [previewCode, mediaCode, routeCode, panelCode, destinationsCode] = await Promise.all([
   compile('../components/forward-message-preview.tsx'),
   compile('../media/MediaAttachment.tsx'),
   compile('../app/forward/[space]/[message].tsx'),
   compile('../components/forward-review-panel.tsx'),
+  compile('../components/chat-destinations.tsx'),
 ]);
 function load(code: string, ports: Record<string, unknown>) {
   const module = { exports: {} as Record<string, any> };
@@ -348,6 +349,16 @@ for (const mode of [
       '../profile/profile-avatar': ports['../../../profile/profile-avatar'],
       './primitives': ports['../../../components/primitives'],
       './forward-message-preview': { ForwardMessagePreview: host('Preview') },
+    });
+    ports['../../../components/chat-destinations'] = load(destinationsCode, {
+      'react/jsx-runtime': jsxRuntime,
+      'react-native': ports['react-native'],
+      '@shopify/flash-list': ports['@shopify/flash-list'],
+      '../saved-messages/conversation-avatar': ports['../../../saved-messages/conversation-avatar'],
+      '../saved-messages/presentation': ports['../../../saved-messages/presentation'],
+      '../theme': ports['../../../theme'],
+      '../i18n': ports['../../../i18n/index.ts'],
+      './primitives': ports['../../../components/primitives'],
     });
     const route = load(routeCode, ports);
     try {

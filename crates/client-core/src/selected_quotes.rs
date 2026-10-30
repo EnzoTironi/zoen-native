@@ -144,12 +144,27 @@ impl Engine {
 /// Use the authenticated existing prefix to validate an old observed source even if
 /// a concurrent edit was ordered before this reply. Never persist a parallel history.
 pub(crate) fn received_valid(state: &State, event: &Event, prefix: &[Event]) -> bool {
+    if let EventBody::MessagePosted { reply: Some(r), .. } = &event.body {
+        if let Some(shared) = &r.shared {
+            return shared.is_well_formed()
+                && shared.space_id != event.space
+                && !r.to.is_empty()
+                && r.to.len() <= 256
+                && !r.to.chars().any(char::is_control)
+                && !r.thread
+                && r.quote.is_none()
+                && r.artifact.is_none()
+                && state.writer(&event.space, &event.author);
+        }
+    }
     let (reply, quote) = match &event.body {
         EventBody::MessagePosted { reply: Some(r), .. } => match &r.quote {
             Some(q) => (r, q),
             None => return true,
         },
-        EventBody::AppEditRequested { reply, .. } => return reply.quote.is_none(),
+        EventBody::AppEditRequested { reply, .. } => {
+            return reply.quote.is_none() && reply.shared.is_none()
+        }
         _ => return true,
     };
     if reply.artifact.is_some() || !state.writer(&event.space, &event.author) {

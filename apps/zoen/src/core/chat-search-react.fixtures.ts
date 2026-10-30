@@ -164,6 +164,28 @@ export async function chatSearchReactFixture(qa = false) {
     },
   });
   ports['../core/use-conversation-search'] = hook.exports;
+  const replyFocusFile = new URL('./use-reply-destination-focus.ts', import.meta.url);
+  const replyFocusCode = transformSync(readFileSync(replyFocusFile, 'utf8'), {
+    filename: replyFocusFile.pathname,
+    babelrc: false,
+    configFile: false,
+    presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+    plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+    caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
+  }).code as string;
+  const replyFocus = { exports: {} };
+  runInNewContext(replyFocusCode, {
+    module: replyFocus,
+    exports: replyFocus.exports,
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
+    require(name: string) {
+      if (name.startsWith('@babel/runtime/helpers/')) return require(name);
+      assert.ok(name in ports, name);
+      return ports[name];
+    },
+  });
+  ports['../core/use-reply-destination-focus'] = replyFocus.exports;
   const selectionFile = new URL('../components/use-message-selection.ts', import.meta.url);
   const selectionCode = transformSync(readFileSync(selectionFile, 'utf8'), {
     filename: selectionFile.pathname,

@@ -1,11 +1,10 @@
 import { t, formatLocale } from '../../../i18n/index.ts';
-import { ConversationAvatar } from '../../../saved-messages/conversation-avatar';
+import { ChatDestinations } from '../../../components/chat-destinations';
 import { conversationTitle } from '../../../saved-messages/presentation';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { FlashList } from '@shopify/flash-list';
 import { useHeaderHeight } from 'expo-router/react-navigation';
-import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ForwardReviewPanel } from '../../../components/forward-review-panel';
 import { useClient } from '../../../core/provider';
@@ -202,42 +201,12 @@ export default function Forward() {
           }}
         />
       ) : (
-        <FlashList
-          contentInsetAdjustmentBehavior="never"
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          data={chats}
-          keyExtractor={(chat) => chat.id}
-          ListEmptyComponent={
-            <EmptyState
-              title={t('chat.noChatsFound')}
-              detail={t('chat.startAnotherChatToForwardThisMessage')}
-            />
-          }
-          renderItem={({ item }) => (
-            <Pressable
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={conversationTitle(item)}
-              onPress={() => {
-                Keyboard.dismiss();
-                void session.prepare(item.id);
-              }}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 14,
-                paddingHorizontal: 24,
-                paddingVertical: 16,
-                opacity: busy ? 0.5 : 1,
-              }}
-            >
-              <ConversationAvatar chat={item} />
-              <Text style={{ color: colors.text, fontSize: 17, flex: 1 }}>
-                {conversationTitle(item)}
-              </Text>
-            </Pressable>
-          )}
+        <ChatDestinations
+          chats={chats}
+          busy={busy}
+          onChoose={(id) => {
+            void session.prepare(id);
+          }}
         />
       )}
     </View>

@@ -1,3 +1,4 @@
+import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { MessageInfo } from './generated/MessageInfo';
 import type { ForwardBatchReview } from './generated/ForwardBatchReview';
 import type { ReplySelection } from './generated/ReplySelection';
@@ -141,6 +142,7 @@ type Results = {
   app_current_share_context: AppShareContext;
   share_app_current: AppShareResult;
   review_reply_selection: ReplySelection;
+  review_shared_reply: SharedReplyDraft;
   message_draft: MessageDraftDto;
   save_message_draft: MessageDraftDto;
   send_message_draft: MessageDraftSendResult;

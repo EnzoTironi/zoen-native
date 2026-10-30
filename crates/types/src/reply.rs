@@ -76,8 +76,37 @@ pub struct QuoteSpan {
     pub end_utf16: u32,
 }
 
+/// An excerpt intentionally shared into another conversation. The enclosing event
+/// authenticates the sender's quotation, not authorship of inaccessible history.
+/// This reference conveys neither membership nor permission to read its source.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SharedReply {
+    pub space_id: String,
+    pub revision: String,
+    pub author_id: String,
+    pub author_name: String,
+    pub text: String,
+}
+impl SharedReply {
+    #[must_use]
+    pub fn is_well_formed(&self) -> bool {
+        let id = |v: &str| !v.is_empty() && v.len() <= 256 && !v.chars().any(char::is_control);
+        id(&self.space_id)
+            && id(&self.revision)
+            && id(&self.author_id)
+            && !self.author_name.is_empty()
+            && self.author_name.len() <= 256
+            && !self.author_name.chars().any(char::is_control)
+            && !self.text.is_empty()
+            && self.text.chars().count() <= 141
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ReplyRef {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<Box<SharedReply>>,
     /// Event hash of the message being answered (the thread root for thread replies).
     pub to: String,
     /// `true` = in the thread under `to`; `false` = inline, quoting `to`.
@@ -92,6 +121,7 @@ pub struct ReplyRef {
 impl ReplyRef {
     pub fn inline(to: impl Into<String>) -> Self {
         Self {
+            shared: None,
             to: to.into(),
             thread: false,
             artifact: None,
@@ -100,6 +130,7 @@ impl ReplyRef {
     }
     pub fn thread(root: impl Into<String>) -> Self {
         Self {
+            shared: None,
             to: root.into(),
             thread: true,
             artifact: None,

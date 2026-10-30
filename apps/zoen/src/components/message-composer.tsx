@@ -1,3 +1,4 @@
+import type { SharedReplyDraft } from '../core/generated/SharedReplyDraft';
 import type { ReplySelection } from '../core/generated/ReplySelection';
 import { createRef, type ReactNode, type Ref } from 'react';
 import { Text, View, Pressable, type TextInputInstance } from 'react-native';
@@ -114,7 +115,13 @@ export function MessageComposer({
   mediaEnabled?: boolean;
   suspended?: boolean;
   search?: ComposerSearchMode;
-  context?: { entry?: TimelineEntry; quote?: ReplySelection | null; onCancel: () => void };
+  context?: {
+    entry?: TimelineEntry;
+    quote?: ReplySelection | null;
+    shared?: SharedReplyDraft | null;
+    onMove?: () => void;
+    onCancel: () => void;
+  };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
   const { colors, scheme, presentation: p, reducedMotion } = useTheme();
@@ -339,6 +346,8 @@ export function MessageComposer({
           <MessageContext
             entry={context.entry}
             quote={context.quote}
+            shared={context.shared}
+            onMove={context.onMove}
             editing={editing}
             onCancel={context.onCancel}
           />
@@ -358,7 +367,7 @@ export function MessageComposer({
           </Text>
         ) : (
           <>
-            {context?.quote ? (
+            {context?.quote || context?.shared ? (
               <Text
                 accessibilityLiveRegion="polite"
                 style={{ color: colors.secondary, paddingHorizontal: 12, paddingBottom: 6 }}
@@ -480,7 +489,7 @@ export function MessageComposer({
             threadRootId={threadRootId ?? null}
             thread={thread}
             disabled={sending || editing || Boolean(search) || draft?.ready === false}
-            suspended={suspended || Boolean(search) || Boolean(context?.quote)}
+            suspended={suspended || Boolean(search) || Boolean(context?.quote || context?.shared)}
             onSent={onMediaSent}
             renderControls={({ attachment, voice, review, files }) =>
               controls({

@@ -8,6 +8,8 @@
 //!
 //! Threads are one level deep: replying in a thread to a thread reply re-points at the root.
 
+pub(crate) mod external;
+
 use std::collections::HashMap;
 
 use types::{EventBody, ReplyRef};
@@ -91,11 +93,15 @@ impl Engine {
         let EntryBody::Message { reply: Some(r), .. } = &e.body else {
             return (None, None);
         };
+        if let Some(shared) = &r.shared {
+            return (Some(self.shared_reply_quote(&r.to, shared)), None);
+        }
         let thread = r.thread.then(|| r.to.clone());
         if let Some(selection) = &r.quote {
             let quote = self.space_state(&e.space).ok().and_then(|s| {
                 let source = s.entries.iter().find(|x| x.id() == selection.source_id)?;
                 Some(ReplyQuote {
+                    origin: None,
                     id: selection.source_id.clone(),
                     author: self.persona(&source.author),
                     text: selection.text.clone(),
@@ -110,6 +116,7 @@ impl Engine {
         let quote = self.space_state(&e.space).ok().and_then(|s| {
             let target = s.entries.iter().find(|x| x.id() == r.to)?;
             Some(ReplyQuote {
+                origin: None,
                 id: r.to.clone(),
                 author: self.persona(&target.author),
                 text: self.quote_text(target),
@@ -119,7 +126,7 @@ impl Engine {
         (quote, None)
     }
 
-    fn quote_text(&self, e: &Entry) -> String {
+    pub(crate) fn quote_text(&self, e: &Entry) -> String {
         let EntryBody::Message { text, attaches, .. } = &e.body else {
             return String::new();
         };

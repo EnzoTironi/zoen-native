@@ -200,6 +200,7 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
     updateDraft,
     replyTo,
     replyQuote: normal?.replyQuote ?? null,
+    sharedReply: normal?.sharedReply ?? null,
     capture: (): MessageDraftAttempt | null => {
       if (!channel || !store.messageDrafts.isCurrent(channel)) return null;
       const transient = transientNow.current;

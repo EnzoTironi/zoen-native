@@ -150,7 +150,7 @@ export function render(
   const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'));
   const calls: { mode: string; entry: TimelineEntry }[] = [];
   const routes: unknown[] = [];
-  const quotes: string[] = [];
+  const quotes: unknown[] = [];
   const previews: unknown[] = [];
   let didPan = false;
   let compilerCursor = 0;
@@ -263,8 +263,8 @@ export function render(
       },
       onAuthor() {},
       onReact() {},
-      onQuote(id: string) {
-        quotes.push(id);
+      onQuote(id: string, sourceSpace?: string) {
+        quotes.push(sourceSpace ? { id, sourceSpace } : id);
       },
       onMenu: (value: TimelineEntry, mode: string) => {
         calls.push({ mode, entry: value });
