@@ -8,6 +8,7 @@ import { messageInfoNavigation } from './message-info-navigation.fixtures.ts';
 import * as messageCopyText from './message-copy-text.ts';
 import * as conversationScope from './conversation-scope.ts';
 import * as messageLinks from '../notifications/links.ts';
+import * as messageDeletionAction from '../components/delete-message-action.ts';
 const code = (
   await build({
     stdin: {
@@ -183,6 +184,7 @@ function fixture() {
       useMessageQuoteSelection: () => ({ open() {}, panel: null }),
     },
     './message-copy': copy.exports,
+    './delete-message-action': messageDeletionAction,
     './message-info-navigation': messageInfoNavigation({ push() {} }),
     './message-actions': { MessageActions: 'MessageActions' },
     './reaction-details': { ReactionDetails: 'ReactionDetails' },
