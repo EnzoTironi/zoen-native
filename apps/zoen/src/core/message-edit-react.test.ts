@@ -111,3 +111,32 @@ test('a failure from a replaced editor cannot claim the current composer', async
     await f.close();
   }
 });
+
+test('compiled reopen reviews the new source revision while retaining the existing correction', async () => {
+  const f = await messageDraftReactFixture();
+  try {
+    await f.render();
+    await f.act(() =>
+      f.current().updateDraft({
+        type: 'edit',
+        entry: { ...entry('source'), text_revision: 'r1' },
+        text: 'Original',
+      }),
+    );
+    await f.act(() => f.current().updateDraft({ type: 'text', value: 'Keep my correction' }));
+    await f.act(() =>
+      f.current().updateDraft({
+        type: 'edit',
+        entry: { ...entry('source'), text_revision: 'r2' },
+        text: 'Freshly selected source',
+      }),
+    );
+    const attempt = f.current().capture();
+    assert.equal(attempt?.editingRevision, 'r2');
+    assert.equal(attempt?.text, 'Keep my correction');
+    assert.equal(f.current().messageDraft.text, 'Owner A private unsent text');
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});

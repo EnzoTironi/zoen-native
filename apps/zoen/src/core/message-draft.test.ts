@@ -97,3 +97,37 @@ test('captured media acceptance checks live quote and edit fences independently'
     false,
   );
 });
+
+test('reopening the same message on a fresh revision keeps the unsaved correction', () => {
+  let draft = reduce(initialMessageDraft(), {
+    type: 'edit',
+    entry: { ...message('a'), text_revision: 'first' },
+    text: 'Original',
+  });
+  draft = reduce(draft, { type: 'text', value: 'My unsaved correction' });
+  const oldAttempt = captureMessageDraft(draft);
+  draft = reduce(draft, {
+    type: 'edit',
+    entry: { ...message('a'), text_revision: 'newer' },
+    text: 'Newly received source',
+  });
+  assert.equal(draft.editText, 'My unsaved correction');
+  assert.equal(draft.editBaseText, 'Newly received source');
+  assert.equal(captureMessageDraft(draft).editingRevision, 'newer');
+  assert.deepEqual(reduce(draft, { type: 'accepted', attempt: oldAttempt }), draft);
+});
+
+test('a pristine reopened editor follows its selected source and a different target starts independently', () => {
+  let draft = reduce(initialMessageDraft(), {
+    type: 'edit',
+    entry: message('a'),
+    text: 'Original',
+  });
+  draft = reduce(draft, { type: 'edit', entry: message('a'), text: 'Newly received source' });
+  assert.equal(draft.editText, 'Newly received source');
+  draft = reduce(draft, { type: 'text', value: 'Private correction A' });
+  draft = reduce(draft, { type: 'edit', entry: message('b'), text: 'Source B' });
+  assert.equal(draft.editText, 'Source B');
+  assert.equal(draft.editBaseText, 'Source B');
+  assert.equal(reduce(draft, { type: 'cancel' }).editBaseText, '');
+});
