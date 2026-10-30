@@ -17,6 +17,7 @@ export type MessageDraft = {
   reply: TimelineEntry | null;
   editing: TimelineEntry | null;
   editText: string;
+  editBaseText: string;
   contextRevision: number;
   textRevision: number;
   editRevision: number;
@@ -24,6 +25,7 @@ export type MessageDraft = {
 export type MessageDraftAttempt = {
   text: string;
   editingId: string | null;
+  editingRevision: string | null;
   replyId: string | null;
   contextRevision: number;
   textRevision: number;
@@ -51,6 +53,7 @@ export function initialMessageDraft(): MessageDraft {
     reply: null,
     editing: null,
     editText: '',
+    editBaseText: '',
     contextRevision: 0,
     textRevision: 0,
     editRevision: 0,
@@ -61,6 +64,7 @@ export function captureMessageDraft(state: MessageDraft): MessageDraftAttempt {
   return {
     text: state.editing ? state.editText : state.text,
     editingId: state.editing?.id ?? null,
+    editingRevision: state.editing?.text_revision ?? state.editing?.id ?? null,
     replyId: state.reply?.id ?? null,
     contextRevision: state.contextRevision,
     textRevision: state.textRevision,
@@ -81,23 +85,29 @@ export function messageDraftReducer(state: MessageDraft, action: MessageDraftAct
         reply: action.entry,
         editing: null,
         editText: '',
+        editBaseText: '',
         contextRevision: state.contextRevision + 1,
       };
-    case 'edit':
+    case 'edit': {
+      const keepCorrection =
+        state.editing?.id === action.entry.id && state.editText !== state.editBaseText;
       return {
         ...state,
         reply: null,
         editing: action.entry,
-        editText: action.text,
+        editText: keepCorrection ? state.editText : action.text,
+        editBaseText: action.text,
         contextRevision: state.contextRevision + 1,
         editRevision: state.editRevision + 1,
       };
+    }
     case 'cancel':
       return {
         ...state,
         reply: null,
         editing: null,
         editText: '',
+        editBaseText: '',
         contextRevision: state.contextRevision + 1,
       };
     case 'media-accepted':
@@ -110,7 +120,13 @@ export function messageDraftReducer(state: MessageDraft, action: MessageDraftAct
         return state.editing?.id === sent.editingId &&
           state.contextRevision === sent.contextRevision &&
           state.editRevision === sent.editRevision
-          ? { ...state, editing: null, editText: '', contextRevision: state.contextRevision + 1 }
+          ? {
+              ...state,
+              editing: null,
+              editText: '',
+              editBaseText: '',
+              contextRevision: state.contextRevision + 1,
+            }
           : state;
       return {
         ...state,

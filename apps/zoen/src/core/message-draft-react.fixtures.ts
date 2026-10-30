@@ -7,6 +7,7 @@ import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { ClientStore } from './store.ts';
 import { Driver, draftSession } from './store.fixtures.ts';
 import * as draft from './message-draft.ts';
+import * as i18n from '../i18n/index.ts';
 import type { useMessageDraft } from './use-message-draft.ts';
 
 const require = createRequire(import.meta.url);
@@ -98,6 +99,7 @@ export async function messageDraftReactFixture(open = true) {
       }),
     },
     './message-draft': draft,
+    '../i18n/index.ts': i18n,
   };
   const module = { exports: {} as { useMessageDraft: typeof useMessageDraft } };
   runInNewContext(compiled, {
@@ -118,6 +120,7 @@ export async function messageDraftReactFixture(open = true) {
     return null;
   }
   return {
+    driver,
     store,
     snapshot,
     calls,

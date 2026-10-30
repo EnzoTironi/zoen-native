@@ -463,3 +463,6 @@ fn attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issue
     attachments::attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issued_sequence()?;
     Ok(())
 }
+
+#[path = "mutation_tests.rs"]
+mod mutations;

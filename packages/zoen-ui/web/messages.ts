@@ -152,19 +152,16 @@ export class Messages {
     );
   }
 
-  /** Reaction, edit or delete for everyone, in the shared annotation shape. */
+  /** Reaction, edit or delete through the original serialized client. */
   annotate(
     space: string,
     target: string,
-    note: { React: { emoji: string } } | 'Unreact' | { Edit: { text: string } } | 'Delete',
+    note: messageConversationOperations.AnnotationInput,
   ): Promise<void> {
-    return this.act(space, {
-      kind: 'queue_annotation',
-      space,
-      target,
-      note: JSON.stringify(note),
-      now: Date.now(),
-    });
+    return messageConversationOperations.annotate.call(this.#operations, space, target, note);
+  }
+  editReviewed<T extends { space_id: string; message_id: string }>(review: T): Promise<void> {
+    return messageConversationOperations.editReviewed.call(this.#operations, review);
   }
 
   /** Seal like native, upload every encrypted chunk, then post the file into the chat. */

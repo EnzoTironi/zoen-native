@@ -137,3 +137,39 @@ export function join(
         : null,
   );
 }
+
+export type AnnotationInput =
+  | { React: { emoji: string } }
+  | 'Unreact'
+  | { Edit: { text: string } }
+  | 'Delete';
+export function annotate(
+  this: MessageConversationOperationsPort,
+  space: string,
+  target: string,
+  note: AnnotationInput,
+): Promise<void> {
+  return act.call(
+    this,
+    space,
+    { kind: 'queue_annotation', space, target, note: JSON.stringify(note), now: Date.now() },
+    false,
+  );
+}
+export function editReviewed(
+  this: MessageConversationOperationsPort,
+  review: { space_id: string; message_id: string },
+): Promise<void> {
+  return act.call(
+    this,
+    review.space_id,
+    {
+      kind: 'queue_annotation',
+      space: review.space_id,
+      target: review.message_id,
+      note: JSON.stringify({ reviewed_edit: review }),
+      now: Date.now(),
+    },
+    false,
+  );
+}

@@ -488,17 +488,15 @@ export function useChatController() {
     store.setTyping(id, false);
     setSending(true);
     try {
-      if (attempt.editingId)
-        await store.request({
-          op: 'edit_message',
-          space_id: id,
-          message_id: attempt.editingId,
-          text,
-        });
+      if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
       updateDraft({ type: 'accepted', attempt });
-    } catch {
-      /* Keep the text for a retry. */
+    } catch (reason) {
+      if (normalDraft.isCurrent(attempt))
+        void inform(
+          t(attempt.editingId ? 'chat.editCouldNotBeSaved' : 'chat.theReplyCouldNotBeSent'),
+          reason instanceof Error ? reason.message : t('chat.tryAgain'),
+        );
     } finally {
       sendingNow.current = false;
       setSending(false);

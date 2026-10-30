@@ -210,7 +210,29 @@ impl BrowserCore {
         now_ms: f64,
     ) -> Result<String, JsValue> {
         let _language = localization::enter(self.lang);
-        let note = serde_json::from_str(note).map_err(error)?;
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Reviewed {
+            reviewed_edit: protocol::message_edit::MessageEdit,
+        }
+        let value: serde_json::Value = serde_json::from_str(note).map_err(error)?;
+        if value.get("reviewed_edit").is_some() {
+            let input: Reviewed = serde_json::from_value(value).map_err(error)?;
+            if input.reviewed_edit.space_id != space || input.reviewed_edit.message_id != target {
+                return Err(error(localization::t(
+                    "O contexto da edição mudou.",
+                    "The edit scope changed.",
+                )));
+            }
+            return serde_json::to_string(
+                &self
+                    .client
+                    .queue_reviewed_edit(input.reviewed_edit, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error);
+        }
+        let note = serde_json::from_value(value).map_err(error)?;
         serde_json::to_string(
             &self
                 .client

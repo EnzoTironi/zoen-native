@@ -183,11 +183,7 @@ impl Client {
                     encode(&self.send_message(space_id, text)?)
                 }
             }
-            EditMessage {
-                space_id,
-                message_id,
-                text,
-            } => encode(&self.edit_message(space_id, message_id, text)?),
+            EditMessage { edit } => encode(&self.edit_reviewed_message(edit)?),
             DeleteMessage {
                 space_id,
                 message_id,

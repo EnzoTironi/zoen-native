@@ -114,17 +114,12 @@ export default function Thread() {
     setBusy(true);
     setFailure(null);
     try {
-      if (attempt.editingId)
-        await store.request({
-          op: 'edit_message',
-          space_id: space,
-          message_id: attempt.editingId,
-          text,
-        });
+      if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
       updateDraft({ type: 'accepted', attempt });
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
+      if (normalDraft.isCurrent(attempt))
+        setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
     } finally {
       sending.current = false;
       setBusy(false);

@@ -43,7 +43,8 @@ fn fixture(run: impl FnOnce(&mut Client<HostSigner>, &Device<'_>, &Author, &mut 
             privacy: Privacy::EndToEnd,
         },
         1,
-    );
+    )
+    .expect("valid signed fixture event");
     client.receive(&create, 2).unwrap();
     let member = clear(
         &mut log,
@@ -53,7 +54,8 @@ fn fixture(run: impl FnOnce(&mut Client<HostSigner>, &Device<'_>, &Author, &mut 
             role: Role::Member,
         },
         3,
-    );
+    )
+    .expect("valid signed fixture event");
     client.receive(&member, 4).unwrap();
     native.create_group(SPACE).unwrap();
     let roster = BTreeSet::from([identity.id(), peer_identity.id()]);
@@ -63,7 +65,8 @@ fn fixture(run: impl FnOnce(&mut Client<HostSigner>, &Device<'_>, &Author, &mut 
         .unwrap();
     client
         .receive(
-            &sealed(&mut log, &author, SealedKind::Commit, commit.commit, 5),
+            &sealed(&mut log, &author, SealedKind::Commit, commit.commit, 5)
+                .expect("valid signed fixture event"),
             6,
         )
         .unwrap();
@@ -75,7 +78,8 @@ fn fixture(run: impl FnOnce(&mut Client<HostSigner>, &Device<'_>, &Author, &mut 
                 SealedKind::Welcome,
                 commit.welcome.unwrap(),
                 7,
-            ),
+            )
+            .expect("valid signed fixture event"),
             8,
         )
         .unwrap();
@@ -100,7 +104,7 @@ fn accept(client: &mut Client<HostSigner>, log: &mut SpaceLog, update: Update, n
         })
         .expect("encrypted application queued");
     env.verify().unwrap();
-    let frame = sequence(log, env);
+    let frame = sequence(log, env).expect("valid signed fixture event");
     let hash = match ServerFrame::decode(&frame).unwrap() {
         ServerFrame::Event { ev } => ev.hash,
         _ => unreachable!(),
@@ -134,7 +138,7 @@ fn peer_event(
     let frame = sequence(
         log,
         Envelope::new(content, sig, author.cert.clone(), None).unwrap(),
-    );
+    )?;
     let hash = match ServerFrame::decode(&frame).unwrap() {
         ServerFrame::Event { ev } => ev.hash,
         _ => unreachable!(),
@@ -354,7 +358,8 @@ fn unauthorized_mutations_are_rejected_and_signed_peer_mutations_do_not_fold() {
                     note,
                 },
                 now,
-            );
+            )
+            .expect("valid signed fixture event");
         }
         let peer = peer_event(
             client,
@@ -365,7 +370,10 @@ fn unauthorized_mutations_are_rejected_and_signed_peer_mutations_do_not_fold() {
                 message: "msg_peer".into(),
                 text: "theirs".into(),
                 attaches: None,
-                reply: Some(ReplyRef { shared: None, quote: None, artifact: None,
+                reply: Some(ReplyRef {
+                    shared: None,
+                    quote: None,
+                    artifact: None,
                     to: mine.clone(),
                     thread: false,
                 }),
@@ -373,7 +381,8 @@ fn unauthorized_mutations_are_rejected_and_signed_peer_mutations_do_not_fold() {
                 forwarded: false,
             },
             16,
-        );
+        )
+        .expect("valid signed fixture event");
         for note in [
             Annotation::Edit {
                 text: "not mine".into(),
@@ -434,7 +443,8 @@ fn signed_late_author_edit_received_after_deletion_cannot_resurrect_message() {
                 forwarded: false,
             },
             10,
-        );
+        )
+        .expect("valid signed fixture event");
         for (note, now) in [
             (Annotation::Delete, 12),
             (
@@ -454,7 +464,8 @@ fn signed_late_author_edit_received_after_deletion_cannot_resurrect_message() {
                     note,
                 },
                 now,
-            );
+            )
+            .expect("valid signed fixture event");
         }
         for restored in [false, true] {
             if restored {
@@ -515,3 +526,6 @@ fn invalid_edits_and_missing_or_non_message_targets_do_not_queue() {
         assert_eq!(client.conversations()[0].messages[0].text.len(), 32_768);
     });
 }
+
+#[path = "mutation_tests/reviewed_edits.rs"]
+mod reviewed_edits;
