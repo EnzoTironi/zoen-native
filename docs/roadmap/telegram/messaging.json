@@ -128,15 +128,17 @@
   {
     "id": "TG-messaging-edit-timestamps",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "crates/client-core/src/message_info.rs",
+      "apps/zoen/src/components/message-info-sheet.tsx",
+      "apps/zoen/src/core/message-info-sheet.test.ts"
     ],
-    "gap": "Exibir horário da última edição; o DTO lido só oferece edited booleano.",
+    "gap": "Detalhes já exibem horário de edição canônico quando disponível; legado sem horário permanece explícito. Aceite manual das variantes editadas e acessibilidade segue em #678.",
     "issues": [
-      172
+      172,
+      678
     ]
   },
   {
@@ -231,25 +233,30 @@
     "acceptance": "scoped",
     "evidence": [
       "apps/zoen/src/app/forward/[space]/[message].tsx",
+      "crates/client-core/src/forwarding/batch.rs",
       "apps/zoen/src/core/forward-message.test.ts"
     ],
-    "gap": "Trocar destinatário em revisão explícita antes de aceitar envio; toque atual já envia.",
+    "gap": "Escolher destino apenas prepara a revisão; Enviar é explícito. Lotes reavaliam itens pendentes e preservam recibos dos aceitos ao mudar destino. Restam integração visual equivalente nas variantes e aceite manual.",
     "issues": [
-      172
+      172,
+      670
     ]
   },
   {
     "id": "TG-messaging-multi-message-selection",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "partial",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "apps/zoen/src/components/use-message-selection.ts",
+      "apps/zoen/src/components/message-selection-toolbar.tsx",
+      "crates/client-core/src/forwarding/batch.rs",
+      "apps/zoen/src/core/thread-message-selection.test.ts"
     ],
-    "gap": "Selecionar várias mensagens e aplicar encaminhamento/cópia/exclusão com alcance visível.",
+    "gap": "Seleção, cópia e encaminhamento durável em lote existem na conversa e na thread, com retomada por item. Exclusão em lote ainda falta; aceite manual permanece pendente.",
     "issues": [
-      172
+      172,
+      670
     ]
   },
   {
@@ -398,29 +405,34 @@
   {
     "id": "TG-messaging-read-timestamps",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "crates/client-core/src/message_info/receipts.rs",
+      "apps/zoen/src/components/message-info-sheet.tsx",
+      "apps/zoen/src/core/message-info-session.test.ts"
     ],
-    "gap": "Expor horário de leitura autorizado, separado do estado agregado Read.",
+    "gap": "Horário declarado pelo participante é separado da observação local, com persistência/replay e indicação de ausência no legado. Restam variantes de acesso, privacidade e aceite manual em #678.",
     "issues": [
-      172
+      172,
+      678
     ]
   },
   {
     "id": "TG-messaging-small-group-read-receipts",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "crates/client-core/src/message_info.rs",
+      "crates/client-core/src/message_info/receipts.rs",
+      "apps/zoen/src/components/message-info-sheet.tsx",
+      "apps/zoen/src/core/message-info-hook.test.ts"
     ],
-    "gap": "Mostrar participantes que leram com atualização e permissões, sem inferir pela presença.",
+    "gap": "Participantes e recibos canônicos são exibidos quando o escopo permite; presença não cria leitura. Qualificação manual de grupos, mudanças de membros e acessibilidade permanece pendente.",
     "issues": [
-      172
+      172,
+      678
     ]
   },
   {
