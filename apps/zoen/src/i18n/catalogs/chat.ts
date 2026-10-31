@@ -2,10 +2,12 @@ import { forwarding } from './forwarding.ts';
 import { defineFeature } from '../catalog.ts';
 import { quoteCollapse } from './quote-collapse.ts';
 import { messageSelection } from './message-selection.ts';
+import { dateNavigation } from './date-navigation.ts';
 
 export const chat = defineFeature(
   {
     ...messageSelection.en,
+    ...dateNavigation.en,
     ...forwarding.en,
     ...quoteCollapse.en,
     selectText: 'Select text',
@@ -224,6 +226,7 @@ export const chat = defineFeature(
   },
   {
     ...messageSelection['pt-BR'],
+    ...dateNavigation['pt-BR'],
     ...forwarding['pt-BR'],
     ...quoteCollapse['pt-BR'],
     selectText: 'Selecionar texto',

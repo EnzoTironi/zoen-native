@@ -7,6 +7,7 @@ import { Pressable, Text, View } from 'react-native';
 import { launchConversationAssistant } from '../assistant/launch';
 import { MessageSelectionToolbar } from './message-selection-toolbar';
 import { ChatHeader } from '../components/chat-header';
+import { ChatDateNavigation } from './chat-date-navigation';
 import { ConversationRail, ConversationRailSpacer } from '../components/conversation-rail';
 import { ConversationTimelineMessage as ConversationMessage } from '../components/conversation-timeline-message';
 import { ConversationContainer, ConversationViewport } from '../components/conversation-viewport';
@@ -201,6 +202,20 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                 search={
                   searchState.active
                     ? {
+                        calendar: (
+                          <ChatDateNavigation
+                            spaceId={id}
+                            onOpen={() => {
+                              cancelInitialEnd();
+                              input.current?.blur();
+                            }}
+                            reveal={reveal}
+                            onSelect={(target) => {
+                              search.close();
+                              setScrollTarget(target);
+                            }}
+                          />
+                        ),
                         state: searchState,
                         status: [
                           !conversationQueryFits(searchState.query.trim())

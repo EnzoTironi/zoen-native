@@ -1,4 +1,5 @@
 use super::*;
+mod date_navigation;
 use crate::{Client, PrivacyDto, SecretVault, TimelineEntry};
 use std::{
     collections::HashMap,

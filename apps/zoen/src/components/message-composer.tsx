@@ -67,6 +67,7 @@ function ComposerInputAccessory({ minimumHeight }: { minimumHeight: number }) {
 }
 
 export type ComposerSearchMode = {
+  calendar?: ReactNode;
   state: ConversationSearchState;
   status: string;
   onClose: () => void;
@@ -362,18 +363,22 @@ export function MessageComposer({
           />
         ) : null}
         {search ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            numberOfLines={3}
-            style={{
-              color: search.state.error ? colors.danger : colors.secondary,
-              fontSize: 12,
-              lineHeight: 17,
-              paddingHorizontal: 8,
-            }}
-          >
-            {search.status}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {search.calendar}
+            <Text
+              accessibilityLiveRegion="polite"
+              numberOfLines={3}
+              style={{
+                color: search.state.error ? colors.danger : colors.secondary,
+                fontSize: 12,
+                lineHeight: 17,
+                paddingHorizontal: 8,
+                flex: 1,
+              }}
+            >
+              {search.status}
+            </Text>
+          </View>
         ) : (
           <>
             {!mediaReplyAvailable && (context?.quote || context?.shared) ? (

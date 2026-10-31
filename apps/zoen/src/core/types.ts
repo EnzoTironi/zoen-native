@@ -213,6 +213,7 @@ type Results = {
   log_events_page: LogEventsPage;
   log_events: LogEventDto[];
   search_messages: MessageSearchPage;
+  message_date_target: string | null;
   recent_attachments: RecentAttachmentPage;
   attachment_reference_validate: RecentAttachment;
   page_apply: PageEditResult;
