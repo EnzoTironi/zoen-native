@@ -297,6 +297,7 @@ function renderScreen(
       return { ConversationTimelineMessage: 'ConversationMessage' };
     if (path.endsWith('/saved-messages/presentation')) return { conversationTitle };
     if (path.endsWith('/components/chat-header')) return { ChatHeader: 'ChatHeader' };
+    if (path.endsWith('/chat-date-navigation')) return { ChatDateNavigation: 'ChatDateNavigation' };
     if (path.endsWith('/miniapps/rail')) return { MiniappRail: 'MiniappRail' };
     if (path.endsWith('/conversation-provider'))
       return {
