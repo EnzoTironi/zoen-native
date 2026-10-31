@@ -104,6 +104,23 @@ export function contentValue(input: unknown): {
       ...(options ? { options } : {}),
       ...(hasGallery ? { gallery: galleryValue(raw.gallery, items) } : {}),
     };
+  } else if (raw.kind === 'poll') {
+    keys(raw, ['kind', 'reply_to', 'question', 'options', ...replyKeys]);
+    if (
+      !boundedText(raw.question, 300) ||
+      !Array.isArray(raw.options) ||
+      raw.options.length < 2 ||
+      raw.options.length > 10
+    )
+      return invalid();
+    const options = raw.options.map((option: unknown) => {
+      const value = object(option);
+      keys(value, ['id', 'text']);
+      if (!id(value.id) || !boundedText(value.text, 200)) return invalid();
+      return { id: value.id, text: value.text };
+    });
+    if (new Set(options.map((option) => option.id)).size !== options.length) return invalid();
+    content = { kind: 'poll', reply_to: raw.reply_to, ...reply, question: raw.question, options };
   } else if (raw.kind === 'voice') {
     keys(raw, ['kind', 'reply_to', 'source_asset_id', 'editor', 'render', ...replyKeys]);
     if (!id(raw.source_asset_id)) invalid();

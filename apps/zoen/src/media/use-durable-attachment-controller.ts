@@ -47,22 +47,12 @@ export function useDurableAttachmentController(
   );
   const routesAvailable =
     state?.phase === 'ready' && !state.frozen && !state.sending && !state.saving && !state.content;
-  const richReply = Boolean(options.replyQuote || options.sharedReply);
   const routes = useMemo(
     () =>
       channel && routesAvailable
         ? {
-            categories: conversationAttachmentCategories.filter(
-              (kind) =>
-                (!richReply || kind !== 'poll') &&
-                (kind !== 'poll' || channel.scope.thread_root_id === null),
-            ),
+            categories: conversationAttachmentCategories,
             open: (kind: ConversationAttachmentCategory, pickerCurrent: () => boolean) => {
-              if (
-                (richReply || admission.current.replyQuote || admission.current.sharedReply) &&
-                kind === 'poll'
-              )
-                return;
               if (!pickerCurrent() || !store.mediaDrafts.isCurrent(channel)) return;
               const latest = channel.getSnapshot();
               if (
@@ -87,7 +77,7 @@ export function useDurableAttachmentController(
             },
           }
         : undefined,
-    [channel, store, routesAvailable, richReply],
+    [channel, store, routesAvailable],
   );
   const photos = useAttachmentPhotoPicker(recentConfiguration, routes);
   const cancelPhotos = photos.cancel;
@@ -99,6 +89,7 @@ export function useDurableAttachmentController(
       focused: false,
       foreground: AppState.currentState !== 'background' && AppState.currentState !== 'inactive',
       picking: false,
+      routeOpening: false,
       pickerAdmission: null as object | null,
       submitting: false,
       approval: null as ApprovalPresentation | null,
@@ -233,6 +224,7 @@ export function useDurableAttachmentController(
   useFocusEffect(
     useCallback(() => {
       runtime.focused = true;
+      runtime.routeOpening = false;
       return () => {
         runtime.focused = false;
         cancelPhotos();

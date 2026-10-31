@@ -9,6 +9,8 @@ mod file_vault;
 mod forward_attribution;
 #[path = "journey_message_deletion/media_reply.rs"]
 mod media_reply;
+#[path = "journey_message_deletion/poll_reply.rs"]
+mod poll_reply;
 #[path = "journey_message_deletion/retained_reply.rs"]
 mod retained_reply;
 

@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use zeroize::Zeroizing;
 
 mod gallery;
+mod polls;
 mod recovery;
 mod replies;
 
@@ -85,6 +86,17 @@ pub struct MediaDraftSendResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Content {
+    Poll {
+        reply_to: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_quote: Option<crate::ReplySelection>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shared_reply: Option<crate::replies::external::SharedReplyDraft>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_intent: Option<String>,
+        question: String,
+        options: Vec<polls::PollOption>,
+    },
     Attachments {
         reply_to: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -241,13 +253,15 @@ fn references(content: &Option<Content>) -> R<Vec<&str>> {
     if !content.reply().valid_shape() {
         return Err(invalid());
     }
-    let reply = match content {
-        Content::Attachments { reply_to, .. } | Content::Voice { reply_to, .. } => reply_to,
-    };
-    if reply.as_deref().is_some_and(|id| !target_id(id)) {
-        return Err(invalid());
-    }
     match content {
+        Content::Poll {
+            question, options, ..
+        } => {
+            if !polls::valid_shape(question, options) {
+                return Err(invalid());
+            }
+            Ok(Vec::new())
+        }
         Content::Attachments {
             items,
             options,

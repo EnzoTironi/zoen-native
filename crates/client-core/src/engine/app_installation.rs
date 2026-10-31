@@ -243,6 +243,18 @@ impl Engine {
         app_id: &str,
         args_json: &str,
     ) -> R<ItemDetail> {
+        self.install_app_with_message(space, app_id, args_json, None)
+            .map(|(item, _)| item)
+    }
+
+    /// Existing builtin state and grants, with a caller-reviewed conversation envelope.
+    pub(crate) fn install_app_with_message(
+        &mut self,
+        space: &str,
+        app_id: &str,
+        args_json: &str,
+        reply: Option<types::ReplyRef>,
+    ) -> R<(ItemDetail, TimelineEntry)> {
         let me = self.me_id()?;
         if !self.is_member(space, &me) {
             return Err(CoreError::Forbidden {
@@ -314,12 +326,13 @@ impl Engine {
                 },
             },
         )?;
-        self.post_as(
+        let message = self.post_as_with_reply(
             space,
             &me,
             &t("App adicionado a este Espaço.", "App added to this Space."),
             Some(item.clone()),
+            reply,
         )?;
-        self.item(&item)
+        Ok((self.item(&item)?, message))
     }
 }

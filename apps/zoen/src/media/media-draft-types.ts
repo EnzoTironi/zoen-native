@@ -61,7 +61,15 @@ export type MediaDraftVoice = MediaReplyFields &
       transcript: string;
     }> | null;
   }>;
-export type MediaDraftContent = MediaDraftAttachments | MediaDraftVoice;
+export type MediaDraftPollOption = Readonly<{ id: string; text: string }>;
+export type MediaDraftPoll = MediaReplyFields &
+  Readonly<{
+    kind: 'poll';
+    reply_to: string | null;
+    question: string;
+    options: readonly MediaDraftPollOption[];
+  }>;
+export type MediaDraftContent = MediaDraftAttachments | MediaDraftVoice | MediaDraftPoll;
 export type MediaDraftDto = Readonly<{
   revision: string;
   content_json: string;

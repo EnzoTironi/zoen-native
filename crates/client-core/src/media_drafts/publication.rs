@@ -47,6 +47,12 @@ impl Engine {
             }
             let reply = content.reply();
             let reference = self.resolve_draft_reply(reply.context(&scope.normal()), reply.to)?;
+            if let Content::Poll {
+                question, options, ..
+            } = content
+            {
+                super::polls::arguments(question, options)?;
+            }
             if matches!(content, Content::Voice { render: None, .. }) {
                 return Err(CoreError::Invalid {
                     reason: t(
@@ -103,6 +109,19 @@ impl Engine {
             let context = reply.context(&normal);
             let thread = scope.thread_root_id.is_some();
             let entries = match content {
+                Content::Poll {
+                    question, options, ..
+                } => {
+                    let args = super::polls::arguments(question, options)?;
+                    let reference = engine.resolve_draft_reply(context, reply.to)?;
+                    let (_, message) = engine.install_app_with_message(
+                        &scope.space_id,
+                        "poll",
+                        &args.to_string(),
+                        reference,
+                    )?;
+                    vec![message]
+                }
                 Content::Attachments { items, .. } => {
                     let mut entries = Vec::with_capacity(items.len());
                     for (((item, asset), bytes), media) in

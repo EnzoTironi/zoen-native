@@ -29,19 +29,31 @@ its exact source and decompressed JSON hashes under the existing selected licens
   the canonical draft. A failed capture/save remains visible and retryable; leaving
   without that final input requires an explicit confirmation. The route retires
   before navigation so old native callbacks cannot repopulate an accepted draft.
-- **Location:** the user explicitly requests a single foreground position, reviews
-  its map link, and explicitly adds that link to the same normal draft. The normal
-  composer remains the send owner. No location is fetched when rendering the tab.
+- **Location:** the user explicitly requests a single foreground position or
+  searches/selects a place, reviews its map and caption, and explicitly stages a
+  GeoJSON file in the same encrypted media journal. Its frozen reply context is
+  captured before GPS/search and survives a newer normal composer reply. Review
+  and Send use the existing attachment owner; rendering never fetches location.
 - **Contact:** the system picker requests only the selected contact's name and
   phones. Those exact editable fields are reviewed, then encoded as a bounded,
   escaped UTF-8 vCard and staged as a normal file through the existing encrypted
   media journal. Its exact cache copy is retained by the existing deferred-release
   owner until ingress reconciliation; retry flushes the same write. Review/Send
   and the received file use the existing attachment and file-viewer paths.
-- **Poll:** an explicit question/options form calls the existing canonical `poll`
-  App installation. Validation/rendering never creates a poll. An unconfirmed
-  attempt is held in that route and is not automatically resent. Poll stays absent
-  in threads because this App creation API cannot bind a thread/reply context.
+- **Poll:** the sheet edits one encrypted private draft in the existing media
+  journal. Incomplete question/options survive close and cold reopen; the
+  conversation offers Edit/Discard. Private stable option IDs prevent a retained
+  text callback from changing another field after removal. An owned local,
+  selected or cross-chat reply remains captured through editing and recovery;
+  threads use the canonical reply contract. Explicit Create atomically installs
+  the existing canonical single-choice `poll` App, its grants and one signed
+  message with an acceptance receipt. A failed write retains private work, a
+  refused source/writer can be revised, and an ambiguous attempt freezes the
+  exact payload for explicit retry without duplicate installation. Neither
+  restore nor render retries a send. Voting authority stays in the existing App.
+  Inline Telegram poll presentation, anonymous/quiz/multiple votes and canonical
+  voter identity remain gaps; current public voting uses display names, which
+  may collide. These are not claimed as complete by this delivery (#741).
 
 These are functional ports onto existing Zoen text/file/App contracts. Full
 InstantPage blocks, embedded media/tables, live location, Telegram contact-message
@@ -49,13 +61,14 @@ bubbles, scanner, online audio/search and other conditional Telegram categories
 remain unchecked in #173. Article input is bounded to64KiB UTF-8 without silent
 truncation. A captured/saved normal draft can cold-reopen; this does not assert
 crash durability for a native keystroke whose change/capture has not reached the
-canonical draft. Poll creation has no new durable idempotency API: the UI prevents
-an automatic retry, but does not promise exactly-once new poll creation across
-process death. Contact/location forms are transient until explicitly staged.
+canonical draft. Poll publication reuses the existing media journal's durable
+receipt and transaction rather than adding a new idempotency API. Contact/location
+forms are transient until explicitly staged.
 
 Source tests exercise the actual production React Compiler output and native
 formatting method dispatch, canonical text/media controllers, cold draft reads,
 reply/thread, lost ingress acknowledgments, retained callbacks, and real native
 close-event handoff. They do not establish iPhone keyboard, picker, VoiceOver,
 visual/animation parity or a complete editor acceptance journey. Those require the
-combined app build and device/simulator batch owned by the integration task.
+final manual iPhone acceptance by Enzo. Current implementation proceeds through
+automated tests, builds and CI only; manual/device QA is deferred by his request.

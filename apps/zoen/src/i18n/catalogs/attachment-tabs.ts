@@ -40,8 +40,7 @@ export const attachmentTabs = defineFeature(
     removeOption: 'Remove option %{number}',
     pollLimit: 'Enter a question and 2–10 different answers.',
     createPoll: 'Create poll',
-    pollUnknown:
-      'The result could not be confirmed. Check this conversation before creating another poll.',
+    resumePoll: 'Edit poll',
     contactPending:
       'The attachment is awaiting confirmation. Retry the same save or return to the conversation to review it.',
     retryContact: 'Retry the same attachment',
@@ -92,8 +91,7 @@ export const attachmentTabs = defineFeature(
     removeOption: 'Remover opção %{number}',
     pollLimit: 'Digite uma pergunta e de 2 a 10 respostas diferentes.',
     createPoll: 'Criar enquete',
-    pollUnknown:
-      'Não foi possível confirmar o resultado. Confira a conversa antes de criar outra enquete.',
+    resumePoll: 'Editar enquete',
     contactPending:
       'O anexo aguarda confirmação. Tente o mesmo salvamento novamente ou volte à conversa para revisar.',
     retryContact: 'Tentar o mesmo anexo novamente',

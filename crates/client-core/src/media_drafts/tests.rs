@@ -3,6 +3,7 @@ use crate::{PrivacyDto, SecretVault};
 use std::sync::{Arc, Mutex};
 
 mod gallery_cases;
+mod poll_cases;
 mod recovery;
 mod reply_context_cases;
 
