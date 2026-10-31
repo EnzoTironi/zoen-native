@@ -471,6 +471,7 @@ pub(super) enum Command {
         #[serde(default = "page_size")]
         limit: u32,
     },
+    MessageDateTarget(crate::conversation_date::MessageDateInput),
     Items {},
     NativeSurfaceItems {
         expected_identity_id: String,
