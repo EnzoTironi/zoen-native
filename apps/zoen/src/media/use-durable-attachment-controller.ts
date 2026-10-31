@@ -54,13 +54,13 @@ export function useDurableAttachmentController(
         ? {
             categories: conversationAttachmentCategories.filter(
               (kind) =>
-                (!richReply || kind === 'article') &&
+                (!richReply || kind !== 'poll') &&
                 (kind !== 'poll' || channel.scope.thread_root_id === null),
             ),
             open: (kind: ConversationAttachmentCategory, pickerCurrent: () => boolean) => {
               if (
                 (richReply || admission.current.replyQuote || admission.current.sharedReply) &&
-                kind !== 'article'
+                kind === 'poll'
               )
                 return;
               if (!pickerCurrent() || !store.mediaDrafts.isCurrent(channel)) return;

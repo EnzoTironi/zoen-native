@@ -11,21 +11,28 @@ import { LocationMap } from './location-map';
 import { LocationSelection } from './location-selection';
 import type { MediaDraftChannel } from './media-draft-channel';
 import type { MediaDriver } from './types';
+import { copyMediaReply, type MediaReplyTarget } from './media-reply';
 
 export function LocationPicker({
   media,
   channel,
   current,
   replyTo,
+  reviewedReply,
   onStaged,
 }: {
   media: MediaDriver;
   channel: MediaDraftChannel | null;
   current(): boolean;
   replyTo(): string | null;
+  reviewedReply?: () => MediaReplyTarget;
   onStaged(): void;
 }) {
   const { colors } = useTheme();
+  const [reply] = useState(() => {
+    const value = reviewedReply?.() ?? { reply_to: replyTo() };
+    return Object.freeze({ reply_to: value.reply_to, ...copyMediaReply(value) });
+  });
   // The route keys the destination and this session retains its original channel/driver admission.
   const [session] = useState(
     () => new LocationSelection({ media, current, gps: chooseStaticPoint }),
@@ -141,7 +148,8 @@ export function LocationPicker({
                   point: state.point,
                   caption,
                   current: valid,
-                  replyTo,
+                  replyTo: () => reply.reply_to,
+                  reviewedReply: () => reply,
                   prepare: prepareLocationFile,
                   nextId: randomUUID,
                   admitted: () => {

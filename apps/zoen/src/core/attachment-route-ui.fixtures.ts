@@ -9,6 +9,8 @@ import { MediaDraftChannel } from '../media/media-draft-channel.ts';
 import type { MediaDraftDto, MediaDraftPort } from '../media/media-draft-types.ts';
 import type { StaticLocation } from '../media/types.ts';
 import * as actions from '../media/attachment-route-actions.ts';
+import * as mediaReply from '../media/media-reply.ts';
+import type { MediaReplyTarget } from '../media/media-reply.ts';
 import {
   NormalMessageDrafts,
   type NormalDraftScope,
@@ -153,10 +155,19 @@ export function fixture(kind = 'article') {
     threadRootId: null,
   };
   const controller = new NormalMessageDrafts({
+    replyIntent: () => `reply_${++uuid}`,
     load: async () => ({ ...stored }),
-    save: async (_, expected, text, reply) => {
+    save: async (_, expected, text, reply, reply_quote, shared_reply, edit, reply_intent) => {
       assert.equal(expected, stored.revision);
-      stored = { revision: String(++revision), text, reply_to: reply };
+      stored = {
+        revision: String(++revision),
+        text,
+        reply_to: reply,
+        reply_quote,
+        shared_reply,
+        edit,
+        reply_intent,
+      };
       return { ...stored };
     },
     send: async (_, expected) => {
@@ -182,6 +193,7 @@ export function fixture(kind = 'article') {
   const prepared: string[] = [];
   const searches: string[] = [];
   let gpsGate: Promise<StaticLocation | null> | null = null;
+  let contactGate: Promise<content.SharedContact | null> | null = null;
   let searchGate: Promise<readonly StaticLocation[]> | null = null;
   const mediaPort: MediaDraftPort = {
     load: async () => mediaStored,
@@ -325,6 +337,7 @@ export function fixture(kind = 'article') {
     if (name === '../../media/attachment-categories') return categories;
     if (name === '../../media/attachment-content') return content;
     if (name === '../../media/attachment-route-actions') return actions;
+    if (name === '../../media/media-reply') return mediaReply;
     if (name === '../../media/location-map') return { LocationMap: 'LocationMap' };
     if (name === '../../media/location-selection') return { LocationSelection };
     if (name === '../../media/location-picker') {
@@ -349,14 +362,15 @@ export function fixture(kind = 'article') {
         },
         chooseSharedContact: async () => {
           contactReads++;
-          return content.sharedContact('Synthetic', ['+000']);
+          return contactGate ?? content.sharedContact('Synthetic', ['+000']);
         },
         prepareLocationFile: async (text: string) => {
           prepared.push(text);
           return { uri: 'file:///location.geojson', release: async () => {} };
         },
-        prepareContactFile: async () => {
-          throw Error('not used');
+        prepareContactFile: async (text: string) => {
+          prepared.push(text);
+          return { uri: 'file:///contact.vcf', release: async () => {} };
         },
       };
     if (name === '../../media/cache-work')
@@ -430,6 +444,13 @@ export function fixture(kind = 'article') {
     prepared,
     searches,
     mediaChannel,
+    chooseReply: (reply: MediaReplyTarget) => {
+      if (reply.shared_reply) controller.setSharedReply(scope, reply.shared_reply);
+      else controller.setReply(scope, reply.reply_to, reply.reply_quote ?? null);
+    },
+    contactGate: (value: Promise<content.SharedContact | null>) => {
+      contactGate = value;
+    },
     gpsGate: (gate: Promise<StaticLocation | null>) => {
       gpsGate = gate;
     },

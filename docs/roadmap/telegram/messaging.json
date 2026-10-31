@@ -57,13 +57,17 @@
       "crates/client-core/src/media_drafts/tests/reply_context_cases.rs",
       "crates/zoen-cli/tests/journey_message_deletion/media_reply.rs",
       "apps/zoen/src/core/media-reply-context.test.ts",
-      "apps/zoen/src/core/media-voice-reply.test.ts"
+      "apps/zoen/src/core/media-voice-reply.test.ts",
+      "apps/zoen/src/media/stage-reviewed-attachment.ts",
+      "apps/zoen/src/core/attachment-form-reply.test.ts",
+      "apps/zoen/src/core/attachment-form-stage.test.ts"
     ],
-    "gap": "Texto, arquivos/fotos/vídeos e voz nativos preservam o trecho revisto no rascunho criptografado, revalidam no Enviar e recuperam o recibo sem apagar resposta posterior; o token privado não vai para a mensagem. Continuam pendentes contexto nos formulários contato/localização/enquete, recuperação durável Web e aceite de gestos/teclado no iPhone por Enzo.",
+    "gap": "Texto, arquivos/fotos/vídeos, voz, contatos e localização nativos preservam o trecho revisto no rascunho criptografado, revalidam no Enviar e recuperam o recibo sem apagar resposta posterior; o token privado não vai para a mensagem. Continuam pendentes contexto de resposta em enquetes, recuperação durável Web e aceite de gestos/teclado no iPhone por Enzo.",
     "issues": [
       172,
       709,
-      737
+      737,
+      739
     ]
   },
   {
@@ -83,14 +87,18 @@
       "crates/client-core/src/media_drafts/tests/reply_context_cases.rs",
       "crates/zoen-cli/tests/journey_message_deletion/media_reply.rs",
       "apps/zoen/src/core/media-reply-context.test.ts",
-      "apps/zoen/src/core/media-voice-reply.test.ts"
+      "apps/zoen/src/core/media-voice-reply.test.ts",
+      "apps/zoen/src/media/stage-reviewed-attachment.ts",
+      "apps/zoen/src/core/attachment-form-reply.test.ts",
+      "apps/zoen/src/core/attachment-form-stage.test.ts"
     ],
-    "gap": "Texto, arquivos/fotos/vídeos e voz nativos preservam o trecho revisto no rascunho criptografado, revalidam no Enviar e recuperam o recibo sem apagar resposta posterior; o token privado não vai para a mensagem. Continuam pendentes contexto nos formulários contato/localização/enquete, recuperação durável Web e aceite de gestos/teclado no iPhone por Enzo.",
+    "gap": "Texto, arquivos/fotos/vídeos, voz, contatos e localização nativos preservam o trecho revisto no rascunho criptografado, revalidam no Enviar e recuperam o recibo sem apagar resposta posterior; o token privado não vai para a mensagem. Continuam pendentes contexto de resposta em enquetes, recuperação durável Web e aceite de gestos/teclado no iPhone por Enzo.",
     "issues": [
       172,
       705,
       709,
-      737
+      737,
+      739
     ]
   },
   {

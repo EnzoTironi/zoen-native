@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as mediaReply from '../media/media-reply.ts';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
@@ -232,6 +233,7 @@ export function locationReactFixture() {
     },
     './location-selection': { LocationSelection },
     './attachment-route-actions': actions,
+    './media-reply': mediaReply,
     './attachment-content': content,
     './attachment-route-platform': {
       chooseStaticPoint: async () => {
