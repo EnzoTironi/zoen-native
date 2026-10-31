@@ -8,13 +8,7 @@ import { type AttachmentPickKind } from './attachment-picker';
 import type { AttachmentReview } from './attachment-review';
 import type { ApprovalPresentation, Preview } from './durable-attachment-types';
 import type { MediaDraftChannel } from './media-draft-channel';
-import type {
-  MediaDraftAttachment,
-  MediaDraftAttachmentOptions,
-  MediaDraftAttachments,
-  MediaDraftContent,
-  MediaDraftDto,
-} from './media-draft-types';
+import type { MediaDraftAttachments, MediaDraftContent, MediaDraftDto } from './media-draft-types';
 
 /** Borrowed previews and render values; the composer retains their lifetime. */
 export type DurableAttachmentRuntime = {
@@ -75,12 +69,7 @@ export type DurableAttachmentRuntime = {
     previews: ReadonlyMap<string, Preview>;
     error: string | null;
   } | null;
-  content: Readonly<{
-    kind: 'attachments';
-    reply_to: string | null;
-    items: readonly MediaDraftAttachment[];
-    options?: MediaDraftAttachmentOptions;
-  }> | null;
+  content: MediaDraftAttachments | null;
   reviewing: Readonly<{ mutationId: string | null; error: Error | null }>;
   options: AttachmentComposerOptions;
   canReview: boolean;

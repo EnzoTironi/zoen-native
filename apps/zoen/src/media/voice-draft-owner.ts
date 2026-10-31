@@ -1,7 +1,7 @@
 import { projectVoiceDraft } from './voice-edit.ts';
 import type { VoiceEditorState } from './voice-editor-state.ts';
 import type { MediaDraftChannel } from './media-draft-channel.ts';
-import type { MediaDraftVoice } from './media-draft-types.ts';
+import type { MediaDraftVoice, MediaDraftSendResult } from './media-draft-types.ts';
 import { VoiceReviewOwner } from './voice-review-owner.ts';
 import {
   VoiceSessionFailure,
@@ -11,8 +11,9 @@ import {
   type VoiceSendable,
 } from './voice-session.ts';
 import type { SensitiveCacheWork } from './cache-work.ts';
+import { captureMediaReply, type MediaReplyOptions, type MediaReplyTarget } from './media-reply.ts';
 
-type Options = {
+type Options = MediaReplyOptions & {
   channel: MediaDraftChannel;
   port: VoiceNativePort;
   uri: string;
@@ -48,6 +49,7 @@ export class VoiceDraftOwner {
     this.content = options.restored ?? {
       kind: 'voice',
       reply_to: options.replyTo,
+      ...captureMediaReply(options),
       source_asset_id: `source_${this.id()}`,
       editor: null,
       render: null,
@@ -61,6 +63,41 @@ export class VoiceDraftOwner {
       beforeReady: (source, editor) => this.prepared(source, editor, !!options.restored),
     });
     this.unsubscribe = this.owner.session.subscribe(() => this.changed());
+  }
+  get replyContext() {
+    return {
+      reply_to: this.content.reply_to,
+      ...captureMediaReply({
+        replyQuote: this.content.reply_quote,
+        sharedReply: this.content.shared_reply,
+        replyIntent: this.content.reply_intent,
+      }),
+    };
+  }
+
+  clearReply(): MediaReplyTarget | null {
+    const state = this.channel.getSnapshot();
+    const voice = this.owner.session.getSnapshot();
+    if (
+      state.frozen ||
+      state.sending ||
+      state.phase !== 'ready' ||
+      voice.phase !== 'ready' ||
+      voice.attempted ||
+      (!this.content.reply_to && !this.content.shared_reply) ||
+      (this.channel.scope.thread_root_id && !this.content.reply_quote && !this.content.shared_reply)
+    )
+      return null;
+    const previous = this.replyContext;
+    this.content = {
+      ...this.content,
+      reply_to: null,
+      reply_quote: undefined,
+      shared_reply: undefined,
+      reply_intent: undefined,
+    };
+    void this.save(this.content).catch(this.onError);
+    return previous;
   }
 
   private async prepared(source: VoicePreparedSource, editor: VoiceEditorState, restored: boolean) {
@@ -128,7 +165,8 @@ export class VoiceDraftOwner {
     return task;
   }
 
-  async send(captured: VoiceSendable): Promise<void> {
+  async send(captured: VoiceSendable): Promise<MediaDraftSendResult> {
+    let accepted: MediaDraftSendResult | undefined;
     await this.owner.send(captured, async () => {
       if (!this.channel.getSnapshot().frozen) {
         await this.channel.flush();
@@ -171,12 +209,14 @@ export class VoiceDraftOwner {
       }
       this.owner.session.freeze();
       try {
-        await this.channel.send();
+        accepted = await this.channel.send();
       } catch (error) {
         if (!this.channel.getSnapshot().frozen) this.owner.session.freeze(false);
         throw error;
       }
     });
+    if (!accepted) throw new VoiceSessionFailure('not_ready');
+    return accepted;
   }
 
   retire() {

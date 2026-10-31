@@ -79,6 +79,7 @@ pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_reject
     for case in [
         "normal",
         "reply",
+        "shared_reply",
         "edit",
         "media",
         "normal_revision",
@@ -90,20 +91,52 @@ pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_reject
         let mut normal_revision = "0".to_string();
         match case {
             "normal" => {
-                f.engine
+                normal_revision = f
+                    .engine
                     .lock()
-                    .save_message_draft(&f.scope.normal(), "0", "Keep this typing".into(), None)
-                    .unwrap();
+                    .save_message_draft(&f.scope.normal(), "0", "Keep this typing".into(), None)?
+                    .revision;
             }
             "reply" => {
                 let root = f
                     .engine
                     .send_message(f.scope.space_id.clone(), "Root".into())
                     .unwrap();
-                f.engine
+                normal_revision = f
+                    .engine
                     .lock()
-                    .save_message_draft(&f.scope.normal(), "0", String::new(), Some(root.id))
-                    .unwrap();
+                    .save_message_draft(&f.scope.normal(), "0", String::new(), Some(root.id))?
+                    .revision;
+            }
+            "shared_reply" => {
+                let space = f.engine.create_group_with(
+                    "Private source".into(),
+                    vec![],
+                    crate::PrivacyDto::Closed,
+                )?;
+                let source = f.engine.send_message(space.clone(), "Root".into())?;
+                let quote = f.engine.lock().review_shared_reply(
+                    &f.scope.normal(),
+                    &space,
+                    &source.id,
+                    None,
+                )?;
+                normal_revision = f
+                    .engine
+                    .lock()
+                    .save_message_draft_content(
+                        &f.scope.normal(),
+                        "0",
+                        crate::message_drafts::DraftContent {
+                            text: String::new(),
+                            reply_to: None,
+                            reply_quote: None,
+                            shared_reply: Some(quote),
+                            reply_intent: None,
+                            edit: None,
+                        },
+                    )?
+                    .revision;
             }
             "edit" => {
                 let source = f
@@ -113,6 +146,7 @@ pub(super) fn failed_media_recovery_cas_keeps_normal_and_media_drafts_and_reject
                     &f.scope.normal(),
                     "0",
                     crate::message_drafts::DraftContent {
+                        reply_intent: None,
                         text: String::new(),
                         reply_to: None,
                         reply_quote: None,

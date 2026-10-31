@@ -24,6 +24,8 @@ import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
 import { pickAttachmentAssets } from './attachment-picker';
 import { useDurableAttachmentComposer } from './durable-attachment-composer';
+import { captureMediaReply, type MediaReplyOptions, type MediaReplyTarget } from './media-reply';
+import type { AcceptedMediaReply } from './media-acceptance';
 
 const subscribeEmpty = () => () => {};
 const emptySnapshot = () => null;
@@ -42,6 +44,7 @@ function scopeAvailable(
   );
 }
 export type AttachmentComposerField = {
+  onCancelReply?: () => MediaReplyTarget | null;
   mutationId: string;
   scope: AttachmentDraftScope;
   targetFrozen: boolean;
@@ -75,14 +78,14 @@ async function discard(uri: string) {
     if (uri.startsWith('blob:')) URL.revokeObjectURL(uri);
   } else discardCacheCopy(uri);
 }
-export type AttachmentComposerOptions = {
+export type AttachmentComposerOptions = MediaReplyOptions & {
   spaceId: string;
   replyTo: string | null;
   threadRootId?: string | null;
   thread: boolean;
   disabled: boolean;
   suspended: boolean;
-  onSent?: () => void;
+  onSent?: (reply?: AcceptedMediaReply) => void;
 };
 
 export function useAttachmentComposer(options: AttachmentComposerOptions) {
@@ -332,6 +335,16 @@ function useVolatileAttachmentComposer({
           sending: Boolean(busy || state.phase === 'closing' || state.phase === 'closed'),
           remaining,
           retry: state.items.some((item) => item.attempted && !item.accepted),
+          onCancelReply:
+            !state.targetFrozen && !busy && state.phase === 'ready'
+              ? () => {
+                  if (!owner || ownerNow.current !== owner || !current(state.scope)) return null;
+                  const scope = owner.getSnapshot().scope;
+                  return owner.clearReply()
+                    ? { reply_to: scope.replyTo, ...captureMediaReply(scope) }
+                    : null;
+                }
+              : undefined,
           onChange: (text) => {
             owner?.setCaption(selected.mutationId, text);
           },

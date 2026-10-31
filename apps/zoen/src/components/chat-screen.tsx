@@ -154,6 +154,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                           : undefined,
                         quote: editing ? undefined : normalDraft.replyQuote,
                         shared: editing ? undefined : normalDraft.sharedReply,
+                        replyIntent: editing ? undefined : normalDraft.replyIntent,
+                        onCancelCaptured: normalDraft.cancelMediaReply,
                         onCancel: () => updateDraft({ type: 'cancel' }),
                       }
                     : undefined

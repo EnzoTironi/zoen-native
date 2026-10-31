@@ -19,6 +19,7 @@ pub(crate) struct FileSendInput<'a> {
     pub caption: &'a str,
     pub media: Option<types::MessageMedia>,
     pub fixed_item: Option<&'a str>,
+    pub draft_reply: Option<crate::replies::external::DraftReplyContext<'a>>,
 }
 
 impl Engine {
@@ -103,6 +104,7 @@ impl Engine {
             caption,
             media,
             fixed_item: None,
+            draft_reply: None,
         })
     }
 
@@ -119,6 +121,7 @@ impl Engine {
             caption,
             media,
             fixed_item,
+            draft_reply,
         } = input;
         let me = self.me_id()?;
         if !self.state.writer(space, &me) {
@@ -150,9 +153,19 @@ impl Engine {
         }
         // Resolve the target before file keys or chunks are written. Never fall back
         // to the main conversation when a thread target disappeared or is foreign.
-        let reply = reply_to
-            .map(|to| self.reply_ref(space, to, thread))
-            .transpose()?;
+        let reply = if let Some(context) = draft_reply {
+            if context.scope.space_id != space
+                || context.scope.thread_root_id.is_some() != thread
+                || context.scope.expected_identity_id != me
+            {
+                return Err(invalid_file());
+            }
+            self.resolve_draft_reply(context, reply_to)?
+        } else {
+            reply_to
+                .map(|to| self.reply_ref(space, to, thread))
+                .transpose()?
+        };
         let caption = if caption.trim().is_empty() {
             ""
         } else {
@@ -177,6 +190,17 @@ impl Engine {
             serde_json::to_vec(&(file_intent, caption))
         }
         .map_err(|_| invalid_file())?;
+        // New reviewed context is part of the immutable send. Preserve every
+        // legacy fingerprint when no selected/shared quote is present.
+        let intent = if reply
+            .as_ref()
+            .is_some_and(|r| r.quote.is_some() || r.shared.is_some())
+        {
+            serde_json::to_vec(&("zoen.file.send.reply.v1", intent, &reply))
+                .map_err(|_| invalid_file())?
+        } else {
+            intent
+        };
         let fingerprint = hex::encode(Sha256::digest(&intent));
         let key = format!("file_send:{me}:{mutation_id}");
         if let Some(receipt) = self.store.meta(&key)? {
@@ -264,22 +288,10 @@ impl Engine {
         reply_to: Option<&str>,
         thread: bool,
     ) -> R<TimelineEntry> {
-        if !mime.starts_with("audio/") {
-            return Err(invalid("não é um áudio", "not audio"));
-        }
-        let me = self.me_id()?;
-        if !self.state.writer(space, &me) {
-            return Err(CoreError::Forbidden {
-                reason: t(
-                    "só membros mandam mensagens de voz",
-                    "only members can send voice messages",
-                ),
-            });
-        }
         let reply = reply_to
             .map(|to| self.reply_ref(space, to, thread))
             .transpose()?;
-        self.create_voice_note(
+        self.send_voice_note_with_meta(
             space,
             bytes,
             mime,
@@ -292,5 +304,27 @@ impl Engine {
                 forwarded_author: None,
             },
         )
+    }
+
+    pub(crate) fn send_voice_note_with_meta(
+        &mut self,
+        space: &str,
+        bytes: &[u8],
+        mime: &str,
+        meta: VoiceMeta,
+    ) -> R<TimelineEntry> {
+        if !mime.starts_with("audio/") {
+            return Err(invalid("não é um áudio", "not audio"));
+        }
+        let me = self.me_id()?;
+        if !self.state.writer(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "só membros mandam mensagens de voz",
+                    "only members can send voice messages",
+                ),
+            });
+        }
+        self.create_voice_note(space, bytes, mime, meta)
     }
 }

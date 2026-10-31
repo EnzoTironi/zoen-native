@@ -15,6 +15,7 @@ fn save_edit(f: &Fixture, edit: Option<MessageDraftEdit>) -> R<MessageDraftDto> 
         &f.scope,
         &current.revision,
         DraftContent {
+            reply_intent: None,
             text: current.text,
             reply_to: current.reply_to,
             reply_quote: current.reply_quote,
@@ -294,6 +295,7 @@ fn private_draft_metadata_never_authorizes_a_stale_source_empty_body_or_wrong_th
         &scope,
         "0",
         DraftContent {
+            reply_intent: None,
             text: String::new(),
             edit: Some(correction(&source, "Wrong thread")),
             reply_to: None,

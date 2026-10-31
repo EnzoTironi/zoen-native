@@ -272,6 +272,8 @@ export type CommandResult<C extends Command> = C['op'] extends keyof Results
 export interface CoreDriver {
   /** Native Rust owns encrypted, device-local normal composer drafts. */
   durableMessageDrafts?: boolean;
+  /** A local intent identity, never a grant of publication authority. */
+  localIntentId?(): string;
   canAuthorizeDevice?(): boolean;
   assistant?: AssistantPort;
   pageInput?: PageInputPort;

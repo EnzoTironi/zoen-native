@@ -7,6 +7,8 @@ mod edit_recovery;
 mod file_vault;
 #[path = "journey_message_deletion/forward_attribution.rs"]
 mod forward_attribution;
+#[path = "journey_message_deletion/media_reply.rs"]
+mod media_reply;
 #[path = "journey_message_deletion/retained_reply.rs"]
 mod retained_reply;
 

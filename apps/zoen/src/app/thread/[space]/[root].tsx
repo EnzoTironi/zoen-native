@@ -183,6 +183,8 @@ export default function Thread() {
                             }
                           : undefined,
                         quote: editing ? undefined : normalDraft.replyQuote,
+                        replyIntent: editing ? undefined : normalDraft.replyIntent,
+                        onCancelCaptured: normalDraft.cancelMediaReply,
                         onCancel: () => updateDraft({ type: 'cancel' }),
                       }
                     : undefined

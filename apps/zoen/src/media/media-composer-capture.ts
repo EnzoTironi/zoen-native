@@ -12,6 +12,7 @@ import { discard, failureMessage, type Recording } from './media-composer-shared
 import { VoiceDraftOwner } from './voice-draft-owner';
 import { VoiceReviewOwner } from './voice-review-owner';
 import { type VoiceSendable } from './voice-session';
+import { copyMediaReply } from './media-reply';
 type ComposerCallbacks = {
   savedVoice: Extract<
     NonNullable<MediaComposerRuntime['durableState']>['content'],
@@ -36,6 +37,8 @@ export function stopCapture(
     | 'stopTask'
     | 'startTask'
     | 'captureControl'
+    | 'captureStage'
+    | 'setCaptureReview'
     | 'recording'
     | 'prepared'
     | 'preparedUri'
@@ -64,6 +67,8 @@ export function stopCapture(
     stopTask,
     startTask,
     captureControl,
+    captureStage,
+    setCaptureReview,
     recording,
     prepared,
     preparedUri,
@@ -91,6 +96,7 @@ export function stopCapture(
   if (stopTask.current) return stopTask.current;
   const starting = startTask.current;
   const control = captureControl.current;
+  const review = captureStage?.current;
   if (
     !starting &&
     !recording.current &&
@@ -154,7 +160,7 @@ export function stopCapture(
         const uri = capture.uri;
         if (uri && (durationMs >= 250 || capture.terminal) && mounted.current && focused.current) {
           const stride = Math.max(1, Math.ceil(levels.current.length / 160));
-          stageVoice(
+          (review?.stage ?? stageVoice)(
             {
               uri,
               durationMs: Math.round(durationMs),
@@ -163,6 +169,8 @@ export function stopCapture(
             true,
             control ?? undefined,
           );
+          if (captureStage && captureStage.current === review) captureStage.current = null;
+          setCaptureReview?.((current) => (current === review ? null : current));
         } else {
           await discard(uri ?? undefined);
           if (mounted.current && focused.current && durationMs < 250)
@@ -235,7 +243,11 @@ export function startCapture(
     | 'appState'
     | 'channel'
     | 'captureControl'
+    | 'captureStage'
     | 'setRecordingLocked'
+    | 'setCaptureReview'
+    | 'replyTo'
+    | 'replyContext'
     | 'startEpoch'
     | 'setBusy'
     | 'setFailure'
@@ -249,7 +261,7 @@ export function startCapture(
     | 'voiceControlNow'
     | 'replaceVoiceControl'
   > &
-    Pick<ComposerCallbacks, 'stop' | 'startRecording'>,
+    Pick<ComposerCallbacks, 'stop' | 'startRecording' | 'stageVoice'>,
   held = false,
 ): Promise<boolean> {
   const {
@@ -266,6 +278,11 @@ export function startCapture(
     appState,
     channel,
     captureControl,
+    captureStage,
+    stageVoice,
+    setCaptureReview,
+    replyTo,
+    replyContext,
     setRecordingLocked,
     startEpoch,
     setBusy,
@@ -299,6 +316,14 @@ export function startCapture(
   )
     return Promise.resolve(false);
   captureControl.current = voiceControl;
+  if (captureStage)
+    captureStage.current = Object.freeze({
+      channel,
+      stage: stageVoice,
+      replyTo,
+      replyContext: copyMediaReply(replyContext ?? {}),
+    });
+  if (captureStage?.current) setCaptureReview?.(captureStage.current);
   setRecordingLocked(!held);
   const epoch = startEpoch.current.value;
   setBusy(true);
@@ -567,6 +592,7 @@ export function stageVoice(
     | 'channel'
     | 'media'
     | 'replyTo'
+    | 'replyContext'
     | 'store'
     | 'mounted'
     | 'setFailure'
@@ -583,6 +609,7 @@ export function stageVoice(
 ) {
   const {
     replyTo,
+    replyContext,
     voiceControlNow,
     replaceVoiceControl,
     channel,
@@ -610,6 +637,9 @@ export function stageVoice(
           port: media.voiceEditor,
           uri: capture.uri,
           replyTo,
+          replyQuote: replyContext?.reply_quote,
+          sharedReply: replyContext?.shared_reply,
+          replyIntent: replyContext?.reply_intent,
           id: randomUUID,
           registerCleanup: (cleanup) => store.registerDeviceCleanup(cleanup),
           work: sensitiveCacheWork,

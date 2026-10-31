@@ -214,6 +214,36 @@ test('compiled attachment reply reads the captured canonical message and preserv
   assert.equal(render().cancel, undefined, 'a frozen attachment target has no misleading cancel');
 });
 
+test('compiled shared media reply renders the reviewed selected snapshot without querying inaccessible source history', () => {
+  const captured = {
+    ...scope,
+    replyTo: null,
+    replyIntent: 'A',
+    sharedReply: {
+      space_id: 'private',
+      message_id: 'source',
+      revision: 'r1',
+      author_id: 'author',
+      author_name: 'Original author',
+      text: '😀',
+      selection: {
+        source_id: 'source',
+        revision: 'r1',
+        text: '😀',
+        spans: [{ start_utf16: 6, end_utf16: 8 }],
+      },
+    },
+  };
+  let canceled = 0;
+  const result = render({ captured, onCancel: () => canceled++ });
+  assert.equal(result.queries.length, 0);
+  assert.ok(result.text.some((value) => String(value).includes('Original author')));
+  assert.equal(result.previews[0]?.text, '😀');
+  (result.cancel!.props.onPress as () => void)();
+  assert.equal(canceled, 1);
+  assert.equal(render({ state: { ...client(), phase: 'opening' }, captured }).queries.length, 0);
+});
+
 test('foreign owner/device/mode, lost membership and unavailable phases never query or show old text', () => {
   const base = client();
   for (const state of [

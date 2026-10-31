@@ -19,6 +19,10 @@ pub struct MessageDraftDto {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "client-types", ts(optional))]
     pub shared_reply: Option<SharedReplyDraft>,
+    /// Private UI intent identity; it is never part of the replicated message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub reply_intent: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -52,4 +56,7 @@ pub(crate) struct DraftContent {
     #[serde(default)]
     #[cfg_attr(feature = "client-types", ts(optional))]
     pub shared_reply: Option<SharedReplyDraft>,
+    #[serde(default)]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub reply_intent: Option<String>,
 }

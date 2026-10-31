@@ -1,3 +1,5 @@
+import * as publicationOperations from './media-composer-publication';
+import { resolveVoiceReplyScope } from './media-composer-replies';
 import {
   RecordingPresets,
   useAudioRecorder,
@@ -33,16 +35,14 @@ import type { VoiceDraftOwner } from './voice-draft-owner';
 import type { VoiceDraft } from './voice-edit';
 import type { VoiceReviewOwner } from './voice-review-owner';
 import { type VoiceSendable, type VoiceSession } from './voice-session';
-import {
-  hasPendingVoiceTrim,
-  updatePendingVoiceTrim,
-  type PendingVoiceTrim,
-} from './voice-trim-preview';
+import { updatePendingVoiceTrim, type PendingVoiceTrim } from './voice-trim-preview';
 
 import { nativeCaptureOwner, type CaptureLease } from './native-capture-owner.ts';
 import { finishNativeCapture, rememberCaptureDuration } from './media-composer-terminal';
 import * as captureOperations from './media-composer-capture';
-import type { MediaComposerOptions } from './media-composer-contract';
+import type { MediaComposerOptions, VoiceCaptureContext } from './media-composer-contract';
+import { captureMediaReply } from './media-reply';
+import { mediaAcceptedIntent } from './media-acceptance';
 import * as lifecycle from './media-composer-lifecycle';
 import * as selection from './media-composer-selection';
 
@@ -53,11 +53,16 @@ const noDraft = () => null;
 export function useMediaComposerController({
   spaceId,
   replyTo = null,
+  replyQuote = null,
+  sharedReply = null,
+  replyIntent = null,
   thread = false,
   threadRootId = null,
   disabled = false,
   suspended = false,
   onSent,
+  onReplyAccepted,
+  onReplyCancelled,
   renderControls,
 }: MediaComposerOptions) {
   const client = useClient();
@@ -133,6 +138,12 @@ export function useMediaComposerController({
   const [voiceControl, setVoiceControl] = useState<object>(() => ({}));
   const voiceControlNow = useRef(voiceControl);
   const captureControl = useRef<object | null>(null);
+  const captureStage = useRef<VoiceCaptureContext | null>(null);
+  const [captureReview, setCaptureReview] = useState<VoiceCaptureContext | null>(null);
+  const replyContext = useMemo(
+    () => captureMediaReply({ replyQuote, sharedReply, replyIntent }),
+    [replyQuote, sharedReply, replyIntent],
+  );
   const replaceVoiceControl = useCallback((control: object = {}) => {
     voiceControlNow.current = control;
     setVoiceControl(control);
@@ -156,6 +167,9 @@ export function useMediaComposerController({
   const attachments = useAttachmentComposer({
     spaceId,
     replyTo,
+    replyQuote,
+    sharedReply,
+    replyIntent,
     thread,
     threadRootId,
     disabled: disabled || Boolean(clip) || captureActive || recorderState.isRecording,
@@ -176,6 +190,7 @@ export function useMediaComposerController({
           channel,
           media,
           replyTo,
+          replyContext,
           store,
           mounted,
           setFailure,
@@ -190,7 +205,7 @@ export function useMediaComposerController({
         preserveExpansion,
         control,
       ),
-    [media, store, channel, replyTo, replaceVoiceControl],
+    [media, store, channel, replyTo, replyContext, replaceVoiceControl],
   );
   useEffect(() => lifecycle.voiceLifecycle1({ uriToDiscard, clip }), [clip]);
   useEffect(
@@ -207,6 +222,11 @@ export function useMediaComposerController({
   );
   useEffect(() => lifecycle.voiceLifecycle3({ channel, mounted, setFailure }), [channel]);
   const savedVoice = durableState?.content?.kind === 'voice' ? durableState.content : null;
+  useEffect(() => {
+    if (!channel || !store.mediaDrafts.isCurrent(channel)) return;
+    const accepted = mediaAcceptedIntent(durableState?.value)?.reply;
+    if (accepted) onReplyAccepted?.(accepted);
+  }, [channel, store, durableState?.value, onReplyAccepted]);
   useEffect(
     () =>
       lifecycle.voiceLifecycle4({
@@ -240,12 +260,26 @@ export function useMediaComposerController({
     [recorderState.isRecording, recorderState.durationMillis, recorderState.metering],
   );
 
+  // Reply changes must not retire the native capture/focus lease. Start owns
+  // its reviewed callback; this event-only fallback is for uncaptured legacy audio.
+  const stageVoiceNow = useRef(stageVoice);
+  useLayoutEffect(() => {
+    stageVoiceNow.current = stageVoice;
+  }, [stageVoice]);
+  const stageCurrentVoice = useCallback(
+    (...args: Parameters<typeof stageVoice>) => {
+      if (!channel || store.mediaDrafts.isCurrent(channel)) stageVoiceNow.current(...args);
+    },
+    [channel, store],
+  );
   const stop = useCallback(
     () =>
       captureOperations.stopCapture({
         stopTask,
         startTask,
         captureControl,
+        captureStage,
+        setCaptureReview,
         recording,
         prepared,
         preparedUri,
@@ -259,7 +293,7 @@ export function useMediaComposerController({
         setRecordingLocked,
         focused,
         levels,
-        stageVoice,
+        stageVoice: stageCurrentVoice,
         inform,
         setFailure,
         getCaptureLease,
@@ -272,7 +306,7 @@ export function useMediaComposerController({
     [
       recorder,
       inform,
-      stageVoice,
+      stageCurrentVoice,
       captureOwner,
       getCaptureLease,
       setCaptureLease,
@@ -391,6 +425,8 @@ export function useMediaComposerController({
     );
   }
   function start(held = false): Promise<boolean> {
+    if ((replyQuote || sharedReply) && (!channel || !media?.voiceEditor))
+      return Promise.resolve(false);
     return captureOperations.startCapture(
       {
         controlIsCurrent,
@@ -406,6 +442,11 @@ export function useMediaComposerController({
         appState,
         channel,
         captureControl,
+        captureStage,
+        stageVoice,
+        setCaptureReview,
+        replyTo,
+        replyContext,
         setRecordingLocked,
         startEpoch,
         setBusy,
@@ -457,100 +498,36 @@ export function useMediaComposerController({
       epoch,
     );
   }
-  async function sendEdited(owner: VoiceReviewOwner, captured: VoiceSendable) {
-    // Like raw Send, lifecycle retirement cancels quietly without consuming the draft.
-    if (!voiceIsActive() || !controlIsCurrent(voiceControl)) return;
-    if (!media || busyNow.current) throw new Error(t('media.voiceRecordingUnavailable'));
-    if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
-      throw new Error(t('media.voiceRecordingUnavailable'));
-    busyNow.current = true;
-    pauseAudioPlayback();
-    setBusy(true);
-    setFailure(null);
-    try {
-      await stop();
-      if (!voiceIsActive() || !controlIsCurrent(voiceControl)) return;
-      if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
-        throw new Error(t('media.voiceRecordingUnavailable'));
-      const durable = durableOwners.current.get(owner);
-      if (durable) await durable.send(captured);
-      else
-        await owner.send(captured, (value) =>
-          media.sendVoice({
-            uri: value.preview.uri,
-            durationMs: value.preview.durationMs,
-            levels: [...value.preview.levels],
-            mime: value.preview.mime,
-            transcript: value.transcript,
-            voiceSourceId: owner.session.getSnapshot().source?.id,
-            spaceId,
-            replyTo,
-            thread,
-          }),
-        );
-      // Acknowledged once: cleanup/refresh failures cannot resubmit the mutation.
-      if (voiceControlNow.current !== voiceControl) {
-        void closeOwner(owner).catch(() => {});
-        void store.refresh().catch(() => {});
-        return;
-      }
-      replaceVoiceControl();
-      clipNow.current = null;
-      setClip(null);
-      uriToDiscard.current = undefined;
-      void closeOwner(owner).catch(() => {});
-      onSent?.();
-      void store.refresh().catch(() => {});
-    } finally {
-      busyNow.current = false;
-      if (mounted.current) setBusy(false);
-    }
+  const publication = {
+    controlIsCurrent,
+    voiceControl,
+    media,
+    busyNow,
+    clipNow,
+    trimNow,
+    setBusy,
+    setFailure,
+    durableOwners,
+    spaceId,
+    replyTo,
+    thread,
+    voiceControlNow,
+    store,
+    replaceVoiceControl,
+    setClip,
+    uriToDiscard,
+    onSent,
+    mounted,
+    clip,
+    voiceIsActive,
+    stop,
+    closeOwner,
+  };
+  function sendEdited(owner: VoiceReviewOwner, captured: VoiceSendable) {
+    return publicationOperations.sendEdited(publication, owner, captured);
   }
-  async function send() {
-    if (
-      !controlIsCurrent(voiceControl) ||
-      !voiceIsActive() ||
-      !media ||
-      busyNow.current ||
-      !clip ||
-      clip.owner
-    )
-      return;
-    busyNow.current = true;
-    setBusy(true);
-    setFailure(null);
-    const uri = clip.uri;
-    try {
-      await stop();
-      if (!controlIsCurrent(voiceControl) || !voiceIsActive()) return;
-      await media.sendVoice({
-        uri: clip.uri,
-        durationMs: clip.durationMs,
-        levels: clip.levels,
-        spaceId,
-        mime: Platform.OS === 'web' ? 'audio/webm' : 'audio/mp4',
-        replyTo,
-        thread,
-      });
-      if (voiceControlNow.current !== voiceControl) {
-        void discard(uri).catch(() => {});
-        void store.refresh().catch(() => {});
-        return;
-      }
-      replaceVoiceControl();
-      clipNow.current = null;
-      setClip(null);
-      uriToDiscard.current = undefined;
-      onSent?.();
-      // Acknowledged sends stay successful even if local cache cleanup needs a retry.
-      void discard(uri).catch(() => {});
-      void store.refresh().catch(() => {});
-    } catch (reason) {
-      setFailure(failureMessage(reason));
-    } finally {
-      busyNow.current = false;
-      if (mounted.current) setBusy(false);
-    }
+  function send() {
+    return publicationOperations.send(publication);
   }
   async function cancel() {
     if (!controlIsCurrent(voiceControl) || busyNow.current) return;
@@ -619,9 +596,40 @@ export function useMediaComposerController({
       cancel,
     });
   }
+  function cancelVoiceReply() {
+    if (
+      !controlIsCurrent(voiceControl) ||
+      busyNow.current ||
+      trimNow.current ||
+      disabled ||
+      suspended
+    )
+      return;
+    const current = clipNow.current;
+    if (!current?.durable || current.durable.channel !== channel) return;
+    const previous = current.durable.clearReply();
+    if (previous) onReplyCancelled?.(previous);
+  }
   return {
     media,
+    voiceReplyScope: resolveVoiceReplyScope(
+      channel,
+      clip,
+      captureReview,
+      captureActive || recorderState.isRecording,
+    ),
     renderControls,
+    voiceReplySupported: !(replyQuote || sharedReply) || Boolean(channel && media?.voiceEditor),
+    cancelVoiceReply:
+      clip?.durable &&
+      !durableState?.frozen &&
+      !busy &&
+      !pendingTrim &&
+      (clip.durable.replyContext.shared_reply ||
+        clip.durable.replyContext.reply_quote ||
+        (clip.durable.replyContext.reply_to && !threadRootId))
+        ? cancelVoiceReply
+        : undefined,
     captureActive,
     recorderState,
     clip,

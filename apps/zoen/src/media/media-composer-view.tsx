@@ -10,11 +10,15 @@ import { VoicePreviewPlayback } from './voice-preview-playback';
 import { VoiceRecordButton } from './voice-record-button';
 import { VoiceReview } from './voice-review';
 import { hasPendingVoiceTrim } from './voice-trim-preview';
+import { AttachmentReplyContext } from './attachment-reply-context';
 
 import type { useMediaComposerController } from './use-media-composer-controller';
 export function renderMediaComposer(context: ReturnType<typeof useMediaComposerController>) {
   const {
     media,
+    voiceReplySupported,
+    voiceReplyScope,
+    cancelVoiceReply,
     renderControls,
     captureActive,
     recorderState,
@@ -118,6 +122,7 @@ export function renderMediaComposer(context: ReturnType<typeof useMediaComposerC
   const voice = (
     <VoiceRecordButton
       disabled={
+        !voiceReplySupported ||
         disabled ||
         busy ||
         attachments.busy ||
@@ -158,6 +163,9 @@ export function renderMediaComposer(context: ReturnType<typeof useMediaComposerC
           voice,
           review: disabled ? review : (attachments.review ?? review),
           files: disabled ? undefined : attachments.field,
+          reply: voiceReplyScope ? (
+            <AttachmentReplyContext scope={voiceReplyScope} onCancel={cancelVoiceReply} />
+          ) : undefined,
         })
       ) : (
         <>

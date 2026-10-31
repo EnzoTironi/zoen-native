@@ -44,8 +44,10 @@ enum ZoenMediaDraftBridge {
     return try JSONDecoder().decode(Request.self, from: Data(json.utf8))
   }
   static func object(_ draft: MediaDraftDto) -> [String: Any] {
-    ["revision": draft.revision, "content_json": draft.contentJson,
+    var result: [String: Any] = ["revision": draft.revision, "content_json": draft.contentJson,
      "assets": draft.assets.map(object), "attempted": draft.attempted]
+    if let accepted = draft.acceptedIntentJson { result["accepted_intent_json"] = accepted }
+    return result
   }
   static func object(_ asset: MediaDraftAsset) -> [String: Any] {
     ["id": asset.id, "name": asset.name, "mime": asset.mime,

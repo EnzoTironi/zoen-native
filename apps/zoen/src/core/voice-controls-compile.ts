@@ -33,7 +33,7 @@ export const compiled = Object.fromEntries(
               builder.onResolve(
                 {
                   filter:
-                    /^\.\/(?:voice-waveform-(?:model|precision)|(?:use-)?media-composer-(?:controller|capture|terminal|shared|selection|view|lifecycle|contract))$/,
+                    /^\.\/(?:voice-waveform-(?:model|precision)|(?:use-)?media-composer-(?:controller|capture|terminal|shared|selection|view|lifecycle|contract|publication|replies))$/,
                 },
                 ({ path }) => ({
                   path: fileURLToPath(

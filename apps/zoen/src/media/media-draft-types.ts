@@ -1,4 +1,5 @@
 import type { TimelineEntry } from '../core/types';
+import type { MediaReplyFields } from './media-reply';
 
 /** Device-local Rust journal. Source bytes never cross into JS persistence. */
 export type MediaDraftScope = Readonly<{
@@ -35,35 +36,38 @@ export type MediaDraftGallery = Readonly<{
   entries: readonly Readonly<{ asset_id: string; photo_id: string }>[];
   forced_caption: boolean;
 }>;
-export type MediaDraftAttachments = Readonly<{
-  kind: 'attachments';
-  reply_to: string | null;
-  items: readonly MediaDraftAttachment[];
-  /** Private picker recovery; the referenced bytes belong to the same Rust journal. */
-  gallery?: MediaDraftGallery;
-  /** Omitted for the legacy media/separate defaults; persisted by the Rust journal. */
-  options?: MediaDraftAttachmentOptions;
-}>;
-export type MediaDraftVoice = Readonly<{
-  kind: 'voice';
-  reply_to: string | null;
-  source_asset_id: string;
-  /** Validated by the voice editor when restored; contains no file URI or native lease. */
-  editor: unknown;
-  render: Readonly<{
-    asset_id: string;
-    mime: string;
-    duration_ms: number;
-    levels: readonly number[];
-    transcript: string;
-  }> | null;
-}>;
+export type MediaDraftAttachments = MediaReplyFields &
+  Readonly<{
+    kind: 'attachments';
+    reply_to: string | null;
+    items: readonly MediaDraftAttachment[];
+    /** Private picker recovery; the referenced bytes belong to the same Rust journal. */
+    gallery?: MediaDraftGallery;
+    /** Omitted for the legacy media/separate defaults; persisted by the Rust journal. */
+    options?: MediaDraftAttachmentOptions;
+  }>;
+export type MediaDraftVoice = MediaReplyFields &
+  Readonly<{
+    kind: 'voice';
+    reply_to: string | null;
+    source_asset_id: string;
+    /** Validated by the voice editor when restored; contains no file URI or native lease. */
+    editor: unknown;
+    render: Readonly<{
+      asset_id: string;
+      mime: string;
+      duration_ms: number;
+      levels: readonly number[];
+      transcript: string;
+    }> | null;
+  }>;
 export type MediaDraftContent = MediaDraftAttachments | MediaDraftVoice;
 export type MediaDraftDto = Readonly<{
   revision: string;
   content_json: string;
   assets: readonly MediaDraftAsset[];
   attempted: boolean;
+  accepted_intent_json?: string | null;
 }>;
 export type MediaDraftSendResult = Readonly<{
   entries: readonly TimelineEntry[];

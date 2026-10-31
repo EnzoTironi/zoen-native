@@ -46,6 +46,7 @@ impl Default for Record {
     fn default() -> Self {
         Self {
             draft: MessageDraftDto {
+                reply_intent: None,
                 revision: MESSAGE_DRAFT_REVISION_ZERO.into(),
                 text: String::new(),
                 edit: None,
@@ -241,6 +242,14 @@ impl Engine {
                 .as_deref()
                 .is_some_and(|id| !valid_id(id))
             || record.last_accepted.as_ref().is_some_and(|r| !r.valid())
+            || record
+                .draft
+                .reply_intent
+                .as_deref()
+                .is_some_and(|id| !valid_revision(id) || id == "0")
+            || (record.draft.reply_intent.is_some()
+                && record.draft.reply_to.is_none()
+                && record.draft.shared_reply.is_none())
         {
             return Err(storage_error());
         }
@@ -310,6 +319,7 @@ impl Engine {
             scope,
             expected,
             DraftContent {
+                reply_intent: None,
                 text,
                 edit: None,
                 reply_to,
@@ -318,7 +328,7 @@ impl Engine {
             },
         )
     }
-    fn validate_draft_reply(
+    pub(crate) fn validate_draft_reply(
         &self,
         scope: &DraftScope,
         to: Option<&str>,
@@ -347,6 +357,7 @@ impl Engine {
             reply_to,
             reply_quote,
             shared_reply,
+            reply_intent,
         } = content;
         let storage = self.draft_storage_scope(scope)?;
         let mut record = self.load_message_draft(scope, &storage)?;
@@ -366,9 +377,24 @@ impl Engine {
         // The encrypted record already owns this exact reviewed context. New
         // private typing must survive source loss; changing the context and
         // publishing still require the live source independently.
-        let retained_reply = record.draft.reply_to == reply_to
+        let same_reply = record.draft.reply_to == reply_to
             && record.draft.reply_quote == reply_quote
             && record.draft.shared_reply == shared_reply;
+        // Older clients omit the token on text-only edits; preserve the known
+        // intent. A new explicit selection, even of the same text, renews it.
+        let reply_intent = reply_intent.or_else(|| {
+            same_reply
+                .then(|| record.draft.reply_intent.clone())
+                .flatten()
+        });
+        if reply_intent
+            .as_deref()
+            .is_some_and(|id| !valid_revision(id) || id == "0")
+            || (reply_intent.is_some() && reply_to.is_none() && shared_reply.is_none())
+        {
+            return Err(invalid());
+        }
+        let retained_reply = same_reply && record.draft.reply_intent == reply_intent;
         if !retained_reply {
             self.validate_draft_reply(
                 scope,
@@ -383,10 +409,12 @@ impl Engine {
             && record.draft.reply_to == reply_to
             && record.draft.reply_quote == reply_quote
             && record.draft.shared_reply == shared_reply
+            && record.draft.reply_intent == reply_intent
         {
             return Ok(record.draft);
         }
         record.draft = MessageDraftDto {
+            reply_intent,
             revision: types::new_id("draft")?,
             text,
             edit,
@@ -475,6 +503,7 @@ impl Engine {
             };
             let cleared = Record {
                 draft: MessageDraftDto {
+                    reply_intent: None,
                     revision: types::new_id("draft")?,
                     text: String::new(),
                     edit: record.draft.edit.clone(),

@@ -1,3 +1,5 @@
+import { immutableReplySelection, immutableSharedReply } from './reply-context.ts';
+export { immutableReplySelection, immutableSharedReply } from './reply-context.ts';
 import type { MessageDraftEdit } from './generated/MessageDraftEdit';
 import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { ReplySelection } from './generated/ReplySelection';
@@ -19,6 +21,7 @@ export type NormalDraftSnapshot = Readonly<{
   reply_to: string | null;
   reply_quote?: ReplySelection | null;
   shared_reply?: SharedReplyDraft | null;
+  reply_intent?: string | null;
   edit?: MessageDraftEdit | null;
 }>;
 export type DraftMessageReference = Readonly<{ id: string; text_revision: string | null }>;
@@ -29,6 +32,7 @@ export type DraftAcceptance = Readonly<{
   draft: NormalDraftSnapshot;
 }>;
 export type NormalDraftPort = {
+  replyIntent?(scope: NormalDraftScope): string | null;
   load(scope: NormalDraftScope): Promise<NormalDraftSnapshot>;
   save(
     scope: NormalDraftScope,
@@ -38,6 +42,7 @@ export type NormalDraftPort = {
     replyQuote?: ReplySelection | null,
     sharedReply?: SharedReplyDraft | null,
     edit?: MessageDraftEdit | null,
+    replyIntent?: string | null,
   ): Promise<NormalDraftSnapshot>;
   sendEdit?(scope: NormalDraftScope, expectedRevision: string): Promise<DraftAcceptance>;
   send(scope: NormalDraftScope, expectedRevision: string): Promise<DraftAcceptance>;
@@ -56,6 +61,7 @@ export type NormalDraftState = Readonly<{
   replyTo: string | null;
   replyQuote: ReplySelection | null;
   sharedReply: SharedReplyDraft | null;
+  replyIntent: string | null;
   edit: MessageDraftEdit | null;
   editRevision: number;
   editContextRevision: number;
@@ -70,7 +76,7 @@ export type NormalDraftState = Readonly<{
 }>;
 export type Content = Pick<
   NormalDraftSnapshot,
-  'text' | 'reply_to' | 'reply_quote' | 'shared_reply' | 'edit'
+  'text' | 'reply_to' | 'reply_quote' | 'shared_reply' | 'reply_intent' | 'edit'
 >;
 export type SendIntent = Content & {
   kind: 'message' | 'edit';
@@ -108,6 +114,7 @@ export function sameEdit(
         a.is_caption === b.is_caption;
 }
 export const sameContent = (a: Content, b: Content) =>
+  (a.reply_intent ?? null) === (b.reply_intent ?? null) &&
   sameEdit(a.edit, b.edit) &&
   a.text === b.text &&
   a.reply_to === b.reply_to &&
@@ -119,6 +126,7 @@ export const content = (state: NormalDraftState): Content => ({
   reply_to: state.replyTo,
   ...(state.replyQuote ? { reply_quote: state.replyQuote } : {}),
   ...(state.sharedReply ? { shared_reply: state.sharedReply } : {}),
+  ...(state.replyIntent ? { reply_intent: state.replyIntent } : {}),
 });
 export const keyFor = (scope: NormalDraftScope) =>
   JSON.stringify([
@@ -129,31 +137,14 @@ export const keyFor = (scope: NormalDraftScope) =>
     scope.spaceId,
     scope.threadRootId,
   ]);
-export function immutableReplySelection(
-  value: ReplySelection | null | undefined,
-): ReplySelection | null {
-  if (!value) return null;
-  const copy = { ...value, spans: value.spans.map((span) => Object.freeze({ ...span })) };
-  Object.freeze(copy.spans);
-  return Object.freeze(copy);
-}
-export function immutableSharedReply(
-  value: SharedReplyDraft | null | undefined,
-): SharedReplyDraft | null {
-  if (!value) return null;
-  return Object.freeze({
-    ...value,
-    ...(value.selection
-      ? { selection: immutableReplySelection(value.selection) ?? undefined }
-      : {}),
-  });
-}
 export function checked(value: NormalDraftSnapshot): NormalDraftSnapshot {
   if (
     typeof value.revision !== 'string' ||
     !value.revision.length ||
     value.revision.length > 256 ||
     typeof value.text !== 'string' ||
+    (value.reply_intent != null &&
+      (value.reply_intent === '0' || !/^[A-Za-z0-9_-]{1,128}$/.test(value.reply_intent))) ||
     (value.edit != null &&
       (typeof value.edit.message_id !== 'string' ||
         !value.edit.message_id ||
@@ -172,5 +163,6 @@ export function checked(value: NormalDraftSnapshot): NormalDraftSnapshot {
     reply_to: value.reply_to,
     ...(value.reply_quote ? { reply_quote: immutableReplySelection(value.reply_quote) } : {}),
     ...(value.shared_reply ? { shared_reply: immutableSharedReply(value.shared_reply) } : {}),
+    ...(value.reply_intent ? { reply_intent: value.reply_intent } : {}),
   };
 }
