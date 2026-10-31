@@ -1,4 +1,6 @@
 //! Real sockets prove omission cannot downgrade a configured managed device.
+#[path = "managed_admission/key_packages.rs"]
+mod key_packages;
 use super::*;
 use relay_admission::managed_images::{AnchorWriter, Deployment};
 
