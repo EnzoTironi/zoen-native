@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Text, View } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { Loading, NativeButton } from '../components/primitives';
@@ -30,34 +30,45 @@ export function PollAttachmentEditor({
   const state = useSyncExternalStore(channel.subscribe, channel.getSnapshot, channel.getSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const feedback = useRef(0);
   useEffect(() => {
     owner.activate();
     void channel.load().catch(() => {});
     return () => owner.retire();
   }, [owner, channel]);
+  function failureMessage(reason: unknown) {
+    const invalid =
+      reason &&
+      typeof reason === 'object' &&
+      (('kind' in reason && reason.kind === 'invalid') ||
+        ('message' in reason && reason.message === 'poll-invalid'));
+    return invalid
+      ? t('attachmentTabs.pollLimit')
+      : (channel.getSnapshot().error?.message ?? t('attachmentTabs.failed'));
+  }
   function edit(work: () => Promise<unknown>) {
     if (!current()) return;
+    const token = ++feedback.current;
     setError(null);
+    const failed = (reason: unknown) => {
+      if (current() && feedback.current === token) setError(failureMessage(reason));
+    };
     try {
-      void work().catch(() => {});
-    } catch {
-      setError(t('attachmentTabs.failed'));
+      void work().catch(failed);
+    } catch (reason) {
+      failed(reason);
     }
   }
   async function submit() {
     if (!current()) return;
+    const token = ++feedback.current;
     setError(null);
     setSubmitting(true);
     try {
       await owner.submit();
       if (current()) onCreated();
     } catch (reason) {
-      if (current())
-        setError(
-          reason instanceof Error && reason.message === 'poll-invalid'
-            ? t('attachmentTabs.pollLimit')
-            : (channel.getSnapshot().error?.message ?? t('attachmentTabs.failed')),
-        );
+      if (current() && feedback.current === token) setError(failureMessage(reason));
     } finally {
       if (current()) setSubmitting(false);
     }

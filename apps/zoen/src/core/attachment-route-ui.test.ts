@@ -310,3 +310,43 @@ test('retained sheet layout callbacks refuse scope retirement without altering o
     assert.equal(f.read().text, '**old draft**', retire);
   }
 });
+
+test('compiled Poll input reports UTF-8 limits and clears stale feedback after a newer valid edit without sending', async () => {
+  const f = fixture('poll');
+  f.render();
+  await f.tick();
+  f.render();
+  await f.tick();
+  let tree = f.render();
+  const question = nodes(tree).filter((node) => node.type === 'Field')[0]!;
+  question.props.onChangeText('😀'.repeat(76));
+  await f.tick();
+  tree = f.render();
+  assert.ok(
+    nodes(tree).some(
+      (node) => node.type === 'Text' && node.props.children === 'attachmentTabs.pollLimit',
+    ),
+  );
+  assert.equal(f.mediaChannel.getSnapshot().content, null);
+  question.props.onChangeText('Valid question');
+  await f.tick();
+  tree = f.render();
+  assert.ok(
+    !nodes(tree).some(
+      (node) => node.type === 'Text' && node.props.children === 'attachmentTabs.pollLimit',
+    ),
+  );
+  const answer = nodes(tree).filter((node) => node.type === 'Field')[1]!;
+  answer.props.onChangeText('😀'.repeat(51));
+  answer.props.onChangeText('Latest valid answer');
+  await f.tick();
+  tree = f.render();
+  assert.ok(
+    !nodes(tree).some(
+      (node) => node.type === 'Text' && node.props.children === 'attachmentTabs.pollLimit',
+    ),
+  );
+  const content = f.mediaChannel.getSnapshot().content;
+  assert.equal(content?.kind === 'poll' && content.options[0]!.text, 'Latest valid answer');
+  assert.equal(f.counts().polls, 0);
+});
