@@ -295,6 +295,7 @@ fn a_received_message_never_becomes_an_owned_edit_even_if_its_text_already_match
                 media: None,
                 reply: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let event = relay.sequence(event)?.clone();

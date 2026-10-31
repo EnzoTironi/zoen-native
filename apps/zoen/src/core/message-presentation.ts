@@ -1,5 +1,33 @@
 import type { TimelineEntry } from './types';
 import emojiRegex from 'emoji-regex';
+import { t } from '../i18n/index.ts';
+
+type ForwardAttribution = {
+  forwarded: boolean;
+  deleted?: boolean;
+  forwarded_author?: string | null;
+};
+
+/** A display snapshot is never a profile link or original-author verification. */
+export function messageForwardAuthor(entry: ForwardAttribution): string | null {
+  if (entry.deleted || !entry.forwarded) return null;
+  const name = entry.forwarded_author;
+  if (
+    typeof name !== 'string' ||
+    !name ||
+    name.trim() !== name ||
+    Array.from(name).length > 64 ||
+    /[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(name)
+  )
+    return null;
+  return name;
+}
+
+export function messageForwardLabel(entry: ForwardAttribution): string | null {
+  if (entry.deleted || !entry.forwarded) return null;
+  const name = messageForwardAuthor(entry);
+  return name ? t('chat.forwardedFrom', { name }) : t('chat.forwarded');
+}
 
 export function isSystemMessage(entry: TimelineEntry) {
   return 'System' in entry.kind || 'Background' in entry.kind;
@@ -19,7 +47,7 @@ export function sameMessageDay(previous: TimelineEntry | undefined, entry: Timel
 }
 
 /** Telegram's strict ten-minute boundary projected onto the fields Zoen actually owns.
- * Forward attribution is not exposed by this DTO, so never infer equal forward authors.
+ * Forwarded messages remain separate; a display name never proves equal authors.
  * Zoen keeps its real thread and civil-day boundaries rather than copying upstream's
  * hard-coded sameThread=true or merging through a date separator. */
 export function messagesAreGrouped(previous: TimelineEntry | undefined, entry: TimelineEntry) {

@@ -197,6 +197,7 @@ mod tests {
             reply: Some(ReplyRef::thread("h1")),
             media: None,
             forwarded: false,
+            forwarded_author: None,
         };
         let json = serde_json::to_string(&new).unwrap();
         assert!(json.contains(r#""reply":{"to":"h1","thread":true}"#));
@@ -210,6 +211,7 @@ mod tests {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         };
         assert!(!serde_json::to_string(&plain).unwrap().contains("reply"));
     }
@@ -318,6 +320,7 @@ mod tests {
             reply: Some(ReplyRef::inline("h1")),
             media: None,
             forwarded: false,
+            forwarded_author: None,
         })
         .unwrap();
         let OldBody::MessagePosted { text } = serde_json::from_str(&json).unwrap();

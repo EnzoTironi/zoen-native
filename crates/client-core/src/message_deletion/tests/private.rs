@@ -11,6 +11,7 @@ fn received(f: &Fixture, text: &str) -> TestResult<TimelineEntry> {
             media: None,
             reply: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     f.client

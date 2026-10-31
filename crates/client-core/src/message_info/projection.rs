@@ -89,6 +89,8 @@ impl Engine {
         Ok(MessageInfo {
             scope: scope.clone(),
             author: self.persona(&entry.author),
+            forwarded: marks.forwarded,
+            forwarded_author: marks.forwarded_author.clone(),
             sent_at_ms: entry.at_ms,
             edited: marks.edited,
             edited_at_ms,

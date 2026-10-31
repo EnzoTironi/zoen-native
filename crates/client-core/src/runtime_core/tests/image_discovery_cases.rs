@@ -120,6 +120,7 @@ pub(super) fn whole_image_keeps_non_openmls_provider_tables_and_real_pending_out
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();

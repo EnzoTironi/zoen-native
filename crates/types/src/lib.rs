@@ -15,6 +15,7 @@
 
 pub mod call_transport;
 pub mod calls;
+pub mod forwarding;
 pub mod media;
 pub use media::{
     AttachmentGrouping, AttachmentPresentation, AttachmentSendOptions, MediaGroup,

@@ -262,6 +262,7 @@ impl Engine {
                 reply: Some(reply),
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let s = self.space_state(space)?;

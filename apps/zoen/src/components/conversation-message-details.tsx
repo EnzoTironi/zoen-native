@@ -1,3 +1,4 @@
+import { messageForwardLabel } from '../core/message-presentation';
 import { router } from 'expo-router';
 import { type ReactNode } from 'react';
 import { Text, View } from 'react-native';
@@ -338,7 +339,7 @@ export function renderServiceMessage(context: MessageFace, details: ReactNode) {
   const canOpenItem =
     !!edit && !entry.deleted && item?.id === edit.item_id && item.space_id === spaceId;
   const serviceLabel = [
-    !entry.deleted && entry.forwarded ? t('chat.forwarded') : '',
+    messageForwardLabel(entry),
     !entry.deleted && entry.reply_to ? `${entry.reply_to.author.name}: ${entry.reply_to.text}` : '',
     !entry.deleted && edit ? `${entry.author.name} · ${text} · ${edit.title}` : text,
   ]

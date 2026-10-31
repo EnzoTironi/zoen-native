@@ -17,6 +17,7 @@ fn post(f: &Fixture, space: &str, text: &str) -> Result<String, Box<dyn std::err
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?
         .client_id)

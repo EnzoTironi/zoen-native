@@ -1,3 +1,4 @@
+import { messageForwardLabel } from '../core/message-presentation';
 import { ScrollView, Text, View } from 'react-native';
 import type { MessageInfo } from '../core/generated/MessageInfo';
 import { messageInfoDate, messageReadDate } from '../core/message-info-presentation';
@@ -48,6 +49,11 @@ export function MessageInfoSheet({
           <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>
             {value.author.name}
           </Text>
+          {messageForwardLabel(value) ? (
+            <Text selectable style={{ color: colors.secondary }}>
+              {messageForwardLabel(value)}
+            </Text>
+          ) : null}
           <Text style={{ color: colors.secondary }}>{messageDeliveryLabel(value.delivery)}</Text>
         </View>
       </View>

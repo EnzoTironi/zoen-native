@@ -1,3 +1,4 @@
+import * as messagePresentation from './message-presentation.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -27,6 +28,7 @@ const ports: Record<string, unknown> = {
   'react/jsx-runtime': jsx,
   'react-native': { ScrollView: 'ScrollView', View: 'View', Text: 'Text' },
   '../core/message-info-presentation': dates,
+  '../core/message-presentation': messagePresentation,
   '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en' },
   '../theme': { useTheme: () => ({ colors: {}, presentation: { list: {} } }) },
   '../profile/profile-avatar': { ProfileAvatar: 'Avatar' },
@@ -60,6 +62,7 @@ function info(): MessageInfo {
     },
     author: draftSession().conversations[0]!.members[0]!,
     sent_at_ms: '1000',
+    forwarded: false,
     edited: true,
     edited_at_ms: '2000',
     delivery: 'Read',
@@ -105,4 +108,13 @@ test('actual compiled Info sheet distinguishes load error from absent metadata a
       'messageInfo.unavailable',
     ),
   );
+});
+
+test('compiled message info shows the preserved author without a profile control or read grant', () => {
+  const value = { ...info(), forwarded: true, forwarded_author: 'Original 雨' };
+  const output = text(module.exports.MessageInfoSheet({ value }));
+  assert.ok(output.includes('Original 雨'));
+  assert.ok(output.includes('Forwarded from'));
+  const ordinary = text(module.exports.MessageInfoSheet({ value: { ...value, forwarded: false } }));
+  assert.ok(!ordinary.includes('Original 雨'));
 });

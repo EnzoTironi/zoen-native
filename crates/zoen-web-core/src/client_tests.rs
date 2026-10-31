@@ -171,6 +171,7 @@ fn web_fixture() -> std::result::Result<WebFixture, Box<dyn std::error::Error>> 
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         2,
     )?;

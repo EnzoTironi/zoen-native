@@ -393,6 +393,7 @@ pub(super) fn message(
         media: None,
         reply: None,
         forwarded: false,
+        forwarded_author: None,
     })
 }
 

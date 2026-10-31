@@ -260,6 +260,7 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?)?
         .clone();
@@ -275,6 +276,7 @@ pub(super) fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes(
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     assert_eq!(

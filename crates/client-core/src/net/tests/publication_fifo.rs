@@ -143,6 +143,7 @@ pub(super) async fn unsettled_space_does_not_block_another_and_reconnect_recover
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )
             .map_err(Into::into)

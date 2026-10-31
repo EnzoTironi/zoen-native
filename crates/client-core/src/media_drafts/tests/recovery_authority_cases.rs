@@ -38,6 +38,7 @@ pub(super) fn media_contract_recovery_only_file_refuses_signed_projection_and_in
                 media: None,
                 reply: None,
                 forwarded: false,
+                forwarded_author: None,
             },
             "version" => types::EventBody::ItemVersioned {
                 item: item.clone(),

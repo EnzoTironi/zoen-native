@@ -151,6 +151,7 @@ mod tests {
                             reply: None,
                             media: None,
                             forwarded: false,
+                            forwarded_author: None,
                         },
                         now,
                     )?,

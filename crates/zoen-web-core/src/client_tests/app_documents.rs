@@ -89,6 +89,7 @@ pub(super) fn browser_app_install_uses_request_locale_and_preserves_signed_histo
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         4,
     )?;
@@ -428,6 +429,7 @@ pub(super) fn received_app_owned_documents_keep_manifest_history_without_becomin
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         12,
     )?;

@@ -555,3 +555,5 @@ fn revoked_destination_never_leaks_entry_but_keeps_safe_receipt_or_cancel_recove
         assert!(f.client.forward_status(f.scope.source()).unwrap().is_none());
     }
 }
+
+mod attribution;

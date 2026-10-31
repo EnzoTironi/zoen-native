@@ -108,6 +108,7 @@ impl Engine {
                 false,
                 &t("App adicionado a este Espaço.", "App added to this Space."),
                 Some(copy_item),
+                None,
             )?;
             receipts.push(CopyReceipt {
                 id: mutation_id.into(),
@@ -139,6 +140,7 @@ impl Engine {
         item: &str,
         to: &str,
         caption: &str,
+        forwarded_author: Option<String>,
     ) -> R<crate::TimelineEntry> {
         let (me, _, source_space, _, app) = self.app_document_scope(item)?;
         if source_space != from || !self.state.writer(to, &me) {
@@ -149,7 +151,7 @@ impl Engine {
         self.atomic_agent_action(|e| {
             let title = app.title.clone();
             let copied = e.create_app_document_copy(
-                to, &me, app, &title, &read.scene_json, &scene, true, caption, None,
+                to, &me, app, &title, &read.scene_json, &scene, true, caption, None, forwarded_author,
             )?;
             let entry = e.space_state(to)?.entries.iter().find(|entry| {
                 matches!(&entry.body, crate::engine::EntryBody::Message { attaches: Some(id), .. } if id == &copied)
@@ -170,6 +172,7 @@ impl Engine {
         forwarded: bool,
         caption: &str,
         item_id: Option<String>,
+        forwarded_author: Option<String>,
     ) -> R<String> {
         if app.view.is_some()
             && !self
@@ -252,6 +255,7 @@ impl Engine {
                 reply: None,
                 media: None,
                 forwarded,
+                forwarded_author,
             },
         )?;
         Ok(item)

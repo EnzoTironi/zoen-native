@@ -179,6 +179,7 @@ impl<S: Signer> Client<S> {
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             ],
             &uploads,

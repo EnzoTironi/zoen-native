@@ -44,6 +44,11 @@ pub struct MessageReadParticipant {
 pub struct MessageInfo {
     pub scope: MessageInfoScope,
     pub author: Persona,
+    #[serde(default)]
+    pub forwarded: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub forwarded_author: Option<String>,
     pub sent_at_ms: i64,
     pub edited: bool,
     pub edited_at_ms: Option<i64>,

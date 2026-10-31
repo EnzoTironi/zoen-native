@@ -245,6 +245,7 @@ fn browser_discussion_does_not_publish_private_draft_or_choose_forwarded_inline_
                 reply,
                 media: None,
                 forwarded,
+                forwarded_author: None,
             },
             20 + index,
         )?;

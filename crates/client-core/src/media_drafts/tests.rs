@@ -261,6 +261,7 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser(
                         thread: false,
                     }),
                     forwarded: member["forwarded"].as_bool().unwrap_or(false),
+                    forwarded_author: None,
                 },
                 false,
             )

@@ -461,6 +461,7 @@ fn media_contract_received_ordered_fixtures_match_native_projection(
                         thread: false,
                     }),
                     forwarded: member["forwarded"].as_bool().unwrap_or(false),
+                    forwarded_author: None,
                 },
                 20 + index as i64,
             )?;

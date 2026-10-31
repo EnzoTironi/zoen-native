@@ -248,6 +248,7 @@ fn signed_second_device_thread_on_activity_survives_annotations_and_exports_boun
             reply: Some(types::ReplyRef::thread(&activity_event.hash)),
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         40,
     )?;
@@ -355,6 +356,7 @@ fn signed_duplicate_item_origins_surface_projection_error_without_dropping_human
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         21,
     )?;

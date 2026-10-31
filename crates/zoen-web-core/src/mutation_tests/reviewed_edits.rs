@@ -113,6 +113,7 @@ fn a_valid_member_cannot_edit_a_received_message_with_their_own_review_scope() {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
             10,
         )

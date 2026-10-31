@@ -140,6 +140,7 @@ impl Engine {
                 reply: Some(reference),
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let entry = self

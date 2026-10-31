@@ -8,4 +8,4 @@ import type { Persona } from "./Persona";
 /**
  * Sent/edit dates are author-signed event clock claims, not relay arrival time.
  */
-export type MessageInfo = { scope: MessageInfoScope, author: Persona, sent_at_ms: string, edited: boolean, edited_at_ms: string | null, delivery: Delivery, read_details: MessageReadDetails, participants: Array<MessageReadParticipant>, };
+export type MessageInfo = { scope: MessageInfoScope, author: Persona, forwarded: boolean, forwarded_author?: string, sent_at_ms: string, edited: boolean, edited_at_ms: string | null, delivery: Delivery, read_details: MessageReadDetails, participants: Array<MessageReadParticipant>, };

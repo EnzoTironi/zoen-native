@@ -20,6 +20,7 @@ import { messageMayContainMarkdown } from '../core/message-markdown';
 import {
   largeEmojiFontSize,
   messageCanInteract,
+  messageForwardLabel,
   messageCanSelect,
   messageCard,
   messageHasStandaloneAppCard,
@@ -334,7 +335,7 @@ export function useConversationMessage({
           .filter(Boolean)
           .join(': ')
       : null,
-    !entry.deleted && entry.forwarded ? t('chat.forwarded') : null,
+    messageForwardLabel(entry),
     entry.edited ? t('chat.editedAt', { time }) : time,
     mine ? messageDeliveryLabel(albumContent?.delivery ?? entry.delivery) : null,
   ]

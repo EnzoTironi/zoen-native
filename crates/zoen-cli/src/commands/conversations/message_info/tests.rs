@@ -63,6 +63,7 @@ fn human() -> Result<Human, Box<dyn std::error::Error>> {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?
         .clone();

@@ -15,6 +15,7 @@ function value(): MessageInfo {
     scope: source,
     author: draftSession().conversations[0]!.members[0]!,
     sent_at_ms: '1000',
+    forwarded: false,
     edited: true,
     edited_at_ms: '2000',
     delivery: 'Read',

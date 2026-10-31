@@ -69,6 +69,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<String> {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     e.append_at(

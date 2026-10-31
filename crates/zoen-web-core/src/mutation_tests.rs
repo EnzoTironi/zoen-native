@@ -379,6 +379,7 @@ fn unauthorized_mutations_are_rejected_and_signed_peer_mutations_do_not_fold() {
                 }),
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
             16,
         )
@@ -441,6 +442,7 @@ fn signed_late_author_edit_received_after_deletion_cannot_resurrect_message() {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
             10,
         )

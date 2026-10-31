@@ -14,6 +14,7 @@ pub(super) fn attachment_intent_persists_both_signed_events_and_real_ciphertext_
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         9,
     )?;

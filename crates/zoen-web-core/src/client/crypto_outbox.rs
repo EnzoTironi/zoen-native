@@ -141,6 +141,7 @@ impl<S: Signer> Client<S> {
                 reply,
                 media: None,
                 forwarded,
+                forwarded_author: None,
             },
             now_ms,
             Vec::new(),
