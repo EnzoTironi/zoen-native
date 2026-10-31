@@ -131,10 +131,12 @@ type Results = {
   message_info: MessageInfo;
   forward_batch_status: ForwardBatchReview | null;
   forward_batch_review: ForwardBatchReview;
+  set_forward_batch_options: ForwardBatchReview;
   confirm_forward_batch: ForwardBatchReview;
   finish_forward_batch: ForwardBatchReview;
   abandon_forward_batch: ForwardBatchReview;
   forward_review: ForwardReview;
+  set_forward_options: ForwardReview;
   forward_status: ForwardReview | null;
   confirm_forward: ForwardReview;
   dismiss_forward: void;

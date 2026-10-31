@@ -46,6 +46,7 @@ mod item_versions;
 mod items;
 pub(crate) use item_versions::ItemVersions;
 mod labels;
+mod message_forward;
 mod persistence;
 mod plans;
 mod requests;

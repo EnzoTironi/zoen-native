@@ -11,6 +11,7 @@ mod command;
 mod content_dispatch;
 mod conversation_dispatch;
 mod draft_dispatch;
+mod forwarding_command;
 mod forwarding_dispatch;
 mod search;
 use command::Command;

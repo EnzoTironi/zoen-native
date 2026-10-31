@@ -1,3 +1,6 @@
+import { messageForwardLabel } from '../../core/message-presentation';
+import { ForwardOptionsMenu } from '../../components/forward-options-menu';
+import { forwardHasCaption } from '../../core/forward-options';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
@@ -74,6 +77,17 @@ export default function ForwardSelection() {
             true,
           status: (source) => store.driver.request({ op: 'forward_batch_status', source }),
           review: (scope) => store.driver.request({ op: 'forward_batch_review', scope }),
+          configure:
+            process.env.EXPO_OS === 'web'
+              ? undefined
+              : (source, batch_id, review_revision, options) =>
+                  store.driver.request({
+                    op: 'set_forward_batch_options',
+                    source,
+                    batch_id,
+                    review_revision,
+                    options,
+                  }),
           confirm: (source, batch_id, review_revision) =>
             store.request({ op: 'confirm_forward_batch', source, batch_id, review_revision }),
           abandon: (source, batch_id, review_revision) =>
@@ -146,6 +160,11 @@ export default function ForwardSelection() {
     review?.messages.filter((message) => message.acceptedMessageId !== null).length ?? 0;
   const skippedIds = review?.skippedIds ?? [];
   const complete = Boolean(review && accepted + skippedIds.length === ids.length);
+  const pending =
+    review?.messages.filter(
+      (message) => message.acceptedMessageId === null && !skippedIds.includes(message.message.id),
+    ) ?? [];
+  const pendingOptions = pending[0]?.options;
   return (
     <View style={{ flex: 1, paddingTop: headerHeight, paddingBottom: insets.bottom }}>
       <Stack.Screen options={{ title: t('chat.forwardTo') }} />
@@ -187,16 +206,36 @@ export default function ForwardSelection() {
                     : ''}
                 </Text>
               </View>
+              {session.configurable && pendingOptions && review && !review.completed ? (
+                <View style={{ paddingHorizontal: 16, alignItems: 'flex-end' }}>
+                  <ForwardOptionsMenu
+                    options={pendingOptions}
+                    canHideCaption={pending.some((r) => forwardHasCaption(r.message))}
+                    disabled={busy || target?.can_write !== true}
+                    remaining={accepted > 0}
+                    onChange={(options) => {
+                      if (current()) void session.configure(review, options);
+                    }}
+                  />
+                </View>
+              ) : null}
               <ScrollView
                 testID="forward-selection-review"
                 contentContainerStyle={{ padding: 16, gap: 20 }}
               >
                 {review.messages.map((message) => (
                   <View key={message.message.id} style={{ gap: 8 }}>
-                    <Text style={{ color: colors.secondary }}>{message.message.author.name}</Text>
+                    {!message.options.hide_author ? (
+                      <Text style={{ color: colors.secondary }}>
+                        {message.message.forwarded
+                          ? messageForwardLabel(message.message)
+                          : message.message.author.name}
+                      </Text>
+                    ) : null}
                     <ForwardMessagePreview
                       spaceId={space}
                       entry={message.message}
+                      options={message.options}
                       isCurrent={current}
                     />
                     {skippedIds.includes(message.message.id) ? (

@@ -1,3 +1,6 @@
+import { ownForwardReview } from './forward-review.ts';
+import type { ForwardOptions } from './generated/ForwardOptions';
+import { ownForwardOptions } from './forward-options.ts';
 import type { ForwardBatchReview } from './generated/ForwardBatchReview';
 import type { ForwardBatchSource } from './generated/ForwardBatchSource';
 import type { ForwardBatchScope } from './generated/ForwardBatchScope';
@@ -31,6 +34,12 @@ export type ForwardSelectionPort = {
   writable?(targetId: string): boolean;
   status(source: ForwardBatchSource): Promise<ForwardBatchReview | null>;
   review(scope: ForwardBatchScope): Promise<ForwardBatchReview>;
+  configure?(
+    source: ForwardBatchSource,
+    batchId: string,
+    revision: string,
+    options: ForwardOptions,
+  ): Promise<ForwardBatchReview>;
   confirm(
     source: ForwardBatchSource,
     batchId: string,
@@ -139,14 +148,7 @@ export class ForwardSelectionSession {
         completed: value.completed,
         error: value.error,
         skippedIds: [...value.skipped_message_ids],
-        messages: value.messages.map((item) => ({
-          targetId: item.target_space,
-          // Driver DTOs are JSON values; avoid a structuredClone runtime requirement on Hermes.
-          message: JSON.parse(JSON.stringify(item.message)) as typeof item.message,
-          operationId: item.operation_id,
-          sourceRevision: item.source_revision,
-          acceptedMessageId: item.accepted_message_id,
-        })),
+        messages: value.messages.map(ownForwardReview),
       });
     }
     this.callbacks.reviewed?.(this.selected);
@@ -226,6 +228,34 @@ export class ForwardSelectionSession {
       if (!this.current(attempt)) return;
       if (value.target_space !== targetId) throw new ForwardMessageChanged();
       this.project(value);
+    });
+  }
+  get configurable() {
+    return typeof this.port.configure === 'function';
+  }
+  async configure(review: ForwardSelectionReview, options: ForwardOptions) {
+    const update = this.port.configure?.bind(this.port);
+    if (
+      !update ||
+      review !== this.selected ||
+      review.completed ||
+      !review.messages.some(
+        (r) => r.acceptedMessageId === null && !review.skippedIds.includes(r.message.id),
+      )
+    )
+      return;
+    const next = ownForwardOptions(options);
+    await this.run(review.targetId, async (attempt) => {
+      try {
+        const value = await update(this.source(), review.batchId, review.revision, next);
+        if (this.current(attempt)) this.project(value);
+      } catch (reason) {
+        if (!this.current(attempt)) return;
+        const value = await this.port.status(this.source());
+        if (!this.current(attempt)) return;
+        this.project(value);
+        throw reason;
+      }
     });
   }
   async confirm(review: ForwardSelectionReview) {

@@ -9,6 +9,7 @@ pub(crate) struct ForwardFileInput<'a> {
     pub voice: Option<&'a VoiceNoteDto>,
     pub media: Option<types::MessageMedia>,
     pub forwarded_author: Option<String>,
+    pub forwarded: bool,
 }
 impl Engine {
     /// Copies one current verified file, freshly encrypted for its new audience.
@@ -21,6 +22,7 @@ impl Engine {
             voice,
             media,
             forwarded_author,
+            forwarded,
         } = input;
         let me = self.me_id()?;
         if !self.is_member(from_space, &me) || !self.state.writer(to_space, &me) {
@@ -74,7 +76,7 @@ impl Engine {
                         levels: VoiceMeta::encode(&voice.levels),
                         transcript: voice.transcript.clone(),
                         reply: None,
-                        forwarded: true,
+                        forwarded,
                         forwarded_author: forwarded_author.clone(),
                     },
                 );
@@ -98,7 +100,7 @@ impl Engine {
                     attaches: Some(item),
                     reply: None,
                     media,
-                    forwarded: true,
+                    forwarded,
                     forwarded_author: forwarded_author.clone(),
                 },
             )?;

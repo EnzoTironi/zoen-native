@@ -11,17 +11,15 @@ impl Client {
         vault: Option<Arc<dyn SecretVault>>,
     ) -> Result<String, CoreError> {
         use Command::{
-            AbandonForwardBatch, AddAdmin, AddMember, AddMemberReviewed, AgentControlChange,
-            AgentControlRead, AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview,
-            AgentDefinitionRead, AgentDefinitionReconcile, AgentDefinitionUpdate,
-            AgentEnrollmentApprove, AgentEnrollmentDismiss, AgentEnrollmentPreview,
-            AgentEnrollmentStatus, AgentStatus, AppCurrentShareContext, AppEditTargets,
-            CallHistory, ChatLayout, ConfirmForward, ConfirmForwardBatch, ControlAgent,
+            AddAdmin, AddMember, AddMemberReviewed, AgentControlChange, AgentControlRead,
+            AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
+            AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
+            AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
+            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ControlAgent,
             CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
-            DeleteMessages, DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            DeleteMessages, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
-            FinishForwardBatch, ForwardBatchReview, ForwardBatchStatus, ForwardMessage,
-            ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
+            ForwardMessage, Forwarding, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
             MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus,
             PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite,
             ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
@@ -195,15 +193,7 @@ impl Client {
                 message_id,
                 emoji,
             } => encode(&self.react(space_id, message_id, emoji)?),
-            command @ (ForwardBatchStatus { .. }
-            | ForwardBatchReview { .. }
-            | ConfirmForwardBatch { .. }
-            | FinishForwardBatch { .. }
-            | AbandonForwardBatch { .. }
-            | ForwardReview { .. }
-            | ForwardStatus { .. }
-            | ConfirmForward { .. }
-            | DismissForward { .. }) => self.dispatch_forwarding(command),
+            Forwarding(command) => self.dispatch_forwarding(command),
             ForwardMessage {
                 source_space,
                 message_id,

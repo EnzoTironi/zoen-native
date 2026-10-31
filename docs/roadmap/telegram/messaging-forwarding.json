@@ -12,7 +12,7 @@
       "apps/zoen/src/core/forward-attribution-render.test.ts",
       "crates/zoen-cli/tests/journey_message_deletion/forward_attribution.rs"
     ],
-    "gap": "Texto/arquivo/voz preservam um nome de autoria assinado pelo encaminhador e o mesmo nome ao reencaminhar; legado permanece genérico. Não transmite identificadores da origem nem prova assinatura do autor original. Restam navegação autorizada da origem/perfil, opções de autoria/legenda e aceite manual no iPhone por Enzo.",
+    "gap": "Texto/arquivo/voz preservam um nome de autoria assinado pelo encaminhador e o mesmo nome ao reencaminhar; legado permanece genérico. Revisões individuais e em lote usam a mesma autoria. Não transmite identificadores da origem nem prova assinatura do autor original. Restam navegação autorizada da origem/perfil e aceite manual no iPhone por Enzo.",
     "issues": [
       172,
       732
@@ -21,15 +21,22 @@
   {
     "id": "TG-messaging-forward-without-sender-or-caption",
     "scope": "active",
-    "implementation": "missing",
-    "acceptance": "pending",
+    "implementation": "present",
+    "acceptance": "scoped",
     "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
+      "apps/zoen/src/components/forward-options-menu.ios.tsx",
+      "apps/zoen/src/core/forward-options-session.test.ts",
+      "apps/zoen/src/core/forward-options-render.test.ts",
+      "crates/client-core/src/forwarding/options.rs",
+      "crates/client-core/src/forwarding/batch/options.rs",
+      "crates/client-core/src/forwarding/tests/options.rs",
+      "crates/client-core/src/forwarding/batch/tests/options.rs",
+      "crates/zoen-cli/tests/journey_message_deletion/forward_attribution.rs"
     ],
-    "gap": "Revisar ocultação de autoria/legenda antes de encaminhar, com proteção de conteúdo.",
+    "gap": "iOS: menu nativo e prévia revisam autoria/legenda antes do envio. Opções privadas e duráveis renovam a confirmação; lotes alteram somente pendentes, preservam aceitos e não rearmam trabalho interrompido. Texto simples e transcrição são preservados; apenas a legenda de arquivos comuns é removida. Aceite manual por Enzo após a implementação da roadmap; transportes Web e demais plataformas permanecem sem essa entrega.",
     "issues": [
-      172
+      172,
+      735
     ]
   },
   {

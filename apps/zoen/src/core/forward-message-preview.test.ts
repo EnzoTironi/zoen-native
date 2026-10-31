@@ -1,3 +1,4 @@
+import * as forwardOptions from './forward-options.ts';
 import * as messagePresentation from './message-presentation.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -57,6 +58,9 @@ function load(code: string, ports: Record<string, unknown>) {
     module,
     exports: module.exports,
     require: (path: string) => {
+      if (path === '../core/forward-options') return forwardOptions;
+      if (path === './forward-options-menu' && !(path in ports))
+        return { ForwardOptionsMenu: () => null };
       if (path === 'react/compiler-runtime' || path.startsWith('@babel/runtime/'))
         return require(path);
       assert.ok(path in ports, `Missing forwarding presentation port ${path}`);
@@ -193,6 +197,7 @@ for (const mode of [
   'demo',
   'largeType',
   'saved',
+  'options',
 ] as const)
   test(`compiled forwarding route: ${mode} preserves keyboard/media and canonical operation semantics`, async () => {
     const root = createReactTestRoot();
@@ -258,6 +263,18 @@ for (const mode of [
             events.push(canonical.accepted_message_id ? 'ack' : 'cancel');
             canonical = null;
             return;
+          }
+          if (command.op === 'set_forward_options') {
+            assert.equal(command.operation_id, canonical.operation_id);
+            assert.equal(command.source_revision, canonical.source_revision);
+            assert.equal(command.scope.target_space, canonical.target_space);
+            events.push('options');
+            canonical = {
+              ...canonical,
+              operation_id: 'configured-operation',
+              options: command.options,
+            };
+            return canonical;
           }
           assert.fail(`Unexpected forwarding command ${command.op}`);
         },
@@ -350,6 +367,7 @@ for (const mode of [
       '../profile/profile-avatar': ports['../../../profile/profile-avatar'],
       './primitives': ports['../../../components/primitives'],
       './forward-message-preview': { ForwardMessagePreview: host('Preview') },
+      './forward-options-menu': { ForwardOptionsMenu: host('Options') },
       '../core/message-presentation': messagePresentation,
     });
     ports['../../../components/chat-destinations'] = load(destinationsCode, {
@@ -409,6 +427,37 @@ for (const mode of [
         assert.equal(scrollingIds.includes('forward-message-send'), false);
         assert.equal(scrollingIds.includes('forward-message-cancel'), false);
         assert.ok(views.has('forward-message-send') && views.has('forward-message-cancel'));
+
+        if (mode === 'options') {
+          const retainedSend = views.get('forward-message-send');
+          await root.act(() =>
+            views.get('Options').onChange({ hide_author: true, hide_caption: true }),
+          );
+          assert.deepEqual(events, ['status', 'dismiss', 'status', 'review', 'options']);
+          assert.deepEqual(JSON.parse(JSON.stringify(views.get('Preview').options)), {
+            hide_author: true,
+            hide_caption: true,
+          });
+          assert.equal(
+            message.kind && 'Message' in message.kind && message.kind.Message.text,
+            '**Reviewed caption**',
+          );
+          assert.equal(preview.isCurrent(), false);
+          await root.act(() => retainedSend.onPress());
+          assert.equal(events.includes('send'), false);
+          await root.act(() => views.get('forward-message-send').onPress());
+          assert.deepEqual(events, [
+            'status',
+            'dismiss',
+            'status',
+            'review',
+            'options',
+            'send',
+            'ack',
+            'back',
+          ]);
+          return;
+        }
 
         assert.equal(views.get('forward-message-review').style.paddingBottom, 34);
         if (mode === 'cancel') {

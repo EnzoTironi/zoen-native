@@ -6,6 +6,8 @@ import { draftSession } from './store.fixtures.ts';
 import { conversationScope } from './conversation-scope.ts';
 import { emptyActivity } from './live-activity.ts';
 import * as messageSelection from './message-selection.ts';
+import * as messagePresentation from './message-presentation.ts';
+import * as forwardOptions from './forward-options.ts';
 import * as access from '../home/access.ts';
 import type { TimelineEntry } from './types';
 
@@ -15,7 +17,12 @@ export type Review = {
   ready: boolean;
   completed: boolean;
   skippedIds: string[];
-  messages: Array<{ message: TimelineEntry; acceptedMessageId: string | null; targetId: string }>;
+  messages: Array<{
+    message: TimelineEntry;
+    options: { hide_author: boolean; hide_caption: boolean };
+    acceptedMessageId: string | null;
+    targetId: string;
+  }>;
 };
 const compiled = await build({
   stdin: {
@@ -82,6 +89,9 @@ export function fixture() {
   const calls: Array<{ action: string; value?: unknown }> = [];
   const sessions: MockSession[] = [];
   class MockSession {
+    get configurable() {
+      return typeof this.port.configure === 'function';
+    }
     readonly scope: unknown;
     readonly port: Record<string, (...args: unknown[]) => unknown>;
     readonly callbacks: { reviewed(value: Review | null): void; busy(value: boolean): void };
@@ -112,6 +122,9 @@ export function fixture() {
     async confirm(review: Review) {
       calls.push({ action: 'confirm', value: review });
     }
+    async configure(review: Review, options: unknown) {
+      calls.push({ action: 'configure', value: { review, options } });
+    }
     async finish(review: Review) {
       calls.push({ action: 'finish', value: review });
     }
@@ -127,6 +140,7 @@ export function fixture() {
   const module = { exports: {} as { default(): unknown } };
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
+    process: { env: { EXPO_OS: 'ios' } },
     exports: module.exports,
     require(name: string) {
       if (name === 'react') return host.react;
@@ -158,6 +172,9 @@ export function fixture() {
       if (name === '@shopify/flash-list') return { FlashList: 'FlashList' };
       if (name.endsWith('/conversation-scope')) return { conversationScope };
       if (name.endsWith('/message-selection')) return messageSelection;
+      if (name.endsWith('/message-presentation')) return messagePresentation;
+      if (name.endsWith('/forward-options')) return forwardOptions;
+      if (name.endsWith('/forward-options-menu')) return { ForwardOptionsMenu: 'Options' };
       if (name.endsWith('/forward-selection')) return { ForwardSelectionSession: MockSession };
       if (name.endsWith('/i18n/index.ts'))
         return {
@@ -212,6 +229,7 @@ export const review = (accepted = 0, ready = true, completed = false): Review =>
       kind: { Message: { text: id, card: null } },
     } as TimelineEntry,
     targetId: 'target',
+    options: { hide_author: false, hide_caption: false },
     acceptedMessageId: index < accepted ? `accepted-${id}` : null,
   })),
 });

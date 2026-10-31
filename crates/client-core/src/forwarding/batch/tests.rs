@@ -494,3 +494,5 @@ fn explicit_stop_of_available_pending_allows_a_new_same_set_intent() {
         .iter()
         .all(|r| r.accepted_message_id.is_some()));
 }
+
+mod options;

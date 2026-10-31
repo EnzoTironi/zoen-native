@@ -200,3 +200,5 @@ async fn recovery_key_command_preserves_a_string_reply_without_publishing_or_ret
     assert!(!core.backup_status().enabled);
     Ok(())
 }
+
+mod forward_contracts;
