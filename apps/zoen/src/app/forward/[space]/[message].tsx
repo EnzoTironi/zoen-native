@@ -63,6 +63,17 @@ export default function Forward() {
             true,
           status: (source) => store.driver.request({ op: 'forward_status', source }),
           review: (scope) => store.driver.request({ op: 'forward_review', scope }),
+          configure:
+            process.env.EXPO_OS === 'web'
+              ? undefined
+              : (scope, operation_id, source_revision, options) =>
+                  store.driver.request({
+                    op: 'set_forward_options',
+                    scope,
+                    operation_id,
+                    source_revision,
+                    options,
+                  }),
           confirm: (scope, operation_id, source_revision) =>
             store.request({ op: 'confirm_forward', scope, operation_id, source_revision }),
           dismiss: (scope, operation_id, accepted_message_id) =>
@@ -185,6 +196,14 @@ export default function Forward() {
           recipient={target ? conversationTitle(target) : t('chat.chatUnavailable')}
           counterpart={target?.counterpart}
           sourceTitle={source ? conversationTitle(source) : undefined}
+          options={review.options}
+          onOptions={
+            session.configurable
+              ? (options) => {
+                  if (previewCurrent()) void session.configure(review, options);
+                }
+              : undefined
+          }
           accepted={review.acceptedMessageId !== null}
           busy={busy}
           canSend={target?.can_write === true}

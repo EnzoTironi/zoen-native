@@ -1,3 +1,6 @@
+import { ForwardOptionsMenu } from './forward-options-menu';
+import { forwardHasCaption, DEFAULT_FORWARD_OPTIONS } from '../core/forward-options';
+import type { ForwardOptions } from '../core/generated/ForwardOptions';
 import { messageForwardLabel } from '../core/message-presentation';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -16,6 +19,8 @@ export function ForwardReviewPanel({
   recipient,
   counterpart,
   sourceTitle,
+  options = DEFAULT_FORWARD_OPTIONS,
+  onOptions,
   accepted,
   busy,
   canSend,
@@ -29,6 +34,8 @@ export function ForwardReviewPanel({
   recipient: string;
   counterpart?: Persona | null;
   sourceTitle?: string;
+  options?: ForwardOptions;
+  onOptions?(options: ForwardOptions): void;
   accepted: boolean;
   busy: boolean;
   canSend: boolean;
@@ -89,6 +96,14 @@ export function ForwardReviewPanel({
               >
                 {recipient}
               </Text>
+              {onOptions && !accepted ? (
+                <ForwardOptionsMenu
+                  options={options}
+                  canHideCaption={forwardHasCaption(entry)}
+                  disabled={busy || !canSend}
+                  onChange={onOptions}
+                />
+              ) : null}
             </View>
             <ScrollView
               testID="forward-message-preview-scroll"
@@ -103,20 +118,23 @@ export function ForwardReviewPanel({
               }}
               contentContainerStyle={{ padding: 16, gap: 12 }}
             >
-              <View style={{ gap: 3 }}>
-                {entry.author.name ? (
-                  <Text style={{ color: p.list.accent, fontSize: 15, fontWeight: '600' }}>
-                    {entry.forwarded ? messageForwardLabel(entry) : entry.author.name}
-                  </Text>
-                ) : null}
-                {sourceTitle ? (
-                  <Text style={{ color: p.list.secondary, fontSize: 13 }}>{sourceTitle}</Text>
-                ) : null}
-              </View>
+              {!options.hide_author ? (
+                <View style={{ gap: 3 }}>
+                  {entry.author.name ? (
+                    <Text style={{ color: p.list.accent, fontSize: 15, fontWeight: '600' }}>
+                      {entry.forwarded ? messageForwardLabel(entry) : entry.author.name}
+                    </Text>
+                  ) : null}
+                  {sourceTitle ? (
+                    <Text style={{ color: p.list.secondary, fontSize: 13 }}>{sourceTitle}</Text>
+                  ) : null}
+                </View>
+              ) : null}
               <ForwardMessagePreview
                 key={`${spaceId}:${entry.id}`}
                 spaceId={spaceId}
                 entry={entry}
+                options={options}
                 contentWidth={Math.max(1, panelWidth - 32)}
                 isCurrent={isCurrent}
               />

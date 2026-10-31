@@ -2,6 +2,10 @@ import { defineFeature } from '../catalog.ts';
 
 export const forwarding = defineFeature(
   {
+    forwardOptions: 'Forward options',
+    showForwardAuthor: 'Show sender',
+    showForwardCaption: 'Show caption',
+    remainingForwardMessages: 'Remaining messages',
     forwarded: 'Forwarded',
     forwardedFrom: 'Forwarded from %{name}',
     forward: 'Forward',
@@ -14,6 +18,10 @@ export const forwarding = defineFeature(
     forwardRequiresAccount: 'Use your account to forward messages',
   },
   {
+    forwardOptions: 'Opções de encaminhamento',
+    showForwardAuthor: 'Mostrar remetente',
+    showForwardCaption: 'Mostrar legenda',
+    remainingForwardMessages: 'Mensagens restantes',
     forwarded: 'Encaminhada',
     forwardedFrom: 'Encaminhada de %{name}',
     forward: 'Encaminhar',

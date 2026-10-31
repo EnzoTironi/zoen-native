@@ -1,6 +1,7 @@
 //! A durable reviewed set over the same signed forward writer. Each item's
 //! acceptance and batch receipt commit together; the set is intentionally non-atomic.
 use super::*;
+mod options;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -155,7 +156,14 @@ impl Engine {
                 })
                 .map(|r| r.operation_id.clone())
                 .unwrap_or(types::new_id("forward")?);
+            let options = batch
+                .records
+                .iter()
+                .find(|record| record.message.id == *id)
+                .map(|record| record.options)
+                .unwrap_or_default();
             records.push(Record {
+                options,
                 target_space: scope.target_space.clone(),
                 operation_id,
                 source_revision,
@@ -198,23 +206,11 @@ impl Engine {
         }
         self.batch_target_access(source, &batch.target_space)?;
         // Freeze the entire still-pending set before the first publication.
-        for record in &batch.records {
-            if record.accepted_message.is_some() {
-                continue;
-            }
-            let scope = source
-                .item(&record.message.id)
-                .target(batch.target_space.clone());
-            if self
-                .forward_source(&scope)
-                .map(|(_, revision)| revision != record.source_revision)
-                .unwrap_or(true)
-            {
-                batch.ready = false;
-                batch.error = Some(stale().to_string());
-                self.persist_forward_batch(source, &batch)?;
-                return self.batch_result(source, batch);
-            }
+        if !self.pending_forward_sources_current(source, &batch) {
+            batch.ready = false;
+            batch.error = Some(stale().to_string());
+            self.persist_forward_batch(source, &batch)?;
+            return self.batch_result(source, batch);
         }
         // Consume this explicit Send durably before any signed output. A cold
         // interrupted batch requires a new review for only its pending items.
@@ -228,10 +224,11 @@ impl Engine {
             let before = batch.clone();
             let result = self.atomic_agent_action(|engine| {
                 engine.batch_target_access(source, &batch.target_space)?;
-                let entry = engine.forward(
+                let entry = engine.forward_with_options(
                     &source.source_space,
                     &batch.records[index].message.id,
                     &batch.target_space,
+                    batch.records[index].options,
                 )?;
                 batch.records[index].accepted_message = Some(entry.id);
                 engine.persist_forward_batch(source, &batch)

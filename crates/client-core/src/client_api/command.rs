@@ -4,7 +4,6 @@ use super::{
 };
 use crate::{
     app_resources::{Install, Update},
-    forwarding::*,
     message_drafts::{DraftContent, DraftScope},
     owner_policy::OwnerPolicyScope,
     sites::{SiteReview, SiteScope},
@@ -245,42 +244,6 @@ pub(super) enum Command {
         space_id: String,
         message_id: String,
         emoji: Option<String>,
-    },
-    ForwardBatchStatus {
-        source: ForwardBatchSource,
-    },
-    ForwardBatchReview {
-        scope: ForwardBatchScope,
-    },
-    ConfirmForwardBatch {
-        source: ForwardBatchSource,
-        batch_id: String,
-        review_revision: String,
-    },
-    AbandonForwardBatch {
-        source: ForwardBatchSource,
-        batch_id: String,
-        review_revision: String,
-    },
-    FinishForwardBatch {
-        source: ForwardBatchSource,
-        batch_id: String,
-    },
-    ForwardReview {
-        scope: ForwardScope,
-    },
-    ForwardStatus {
-        source: ForwardSource,
-    },
-    ConfirmForward {
-        scope: ForwardScope,
-        operation_id: String,
-        source_revision: String,
-    },
-    DismissForward {
-        scope: ForwardScope,
-        operation_id: String,
-        accepted_message_id: Option<String>,
     },
     ForwardMessage {
         source_space: String,
@@ -828,4 +791,7 @@ pub(super) enum Command {
         platform: String,
         token: String,
     },
+    /// This domain retains the same flat op tags and strict field checks.
+    #[serde(untagged)]
+    Forwarding(super::forwarding_command::ForwardingCommand),
 }

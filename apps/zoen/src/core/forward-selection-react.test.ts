@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { all, fixture, review, text, type Review } from './forward-selection-react.fixtures.ts';
+import type { ItemCard } from './generated/ItemCard';
 
 const send = (tree: unknown) =>
   all(tree, (element) => element.props?.testID === 'forward-selection-send')[0]!;
@@ -122,6 +123,84 @@ test('real route uses durable Core batch status, review, confirm and finish port
       { action: 'driver', value: { op: 'finish_forward_batch', source, batch_id: 'batch-id' } },
     ],
   );
+});
+
+test('batch options update the exact reviewed set through the private driver without sending', async () => {
+  const f = fixture();
+  f.render();
+  const partial = review(1, false);
+  partial.messages[0]!.message.author.name = 'Accepted sender';
+  partial.messages[1]!.message.author.name = 'Pending sender';
+  partial.messages[1]!.options = { hide_author: true, hide_caption: true };
+  partial.messages[1]!.message.kind = {
+    Message: { text: 'Only this caption', card: { kind_id: 'file' } as ItemCard },
+  };
+  f.publish(partial);
+  const tree = f.render();
+  const menu = all(tree, (element) => element.type === 'Options')[0]!;
+  assert.equal(menu.props.remaining, true);
+  assert.equal(menu.props.canHideCaption, true);
+  assert.equal(menu.props.disabled, false);
+  assert.strictEqual(menu.props.options, partial.messages[1]!.options);
+  const labels = all(tree, (element) => element.type === 'Text').map((n) => text(n.props.children));
+  assert.ok(labels.includes('Accepted sender'));
+  assert.ok(!labels.includes('Pending sender'));
+  const options = { hide_author: true, hide_caption: false };
+  (menu.props.onChange as (options: unknown) => void)(options);
+  assert.deepEqual(f.calls.at(-1), { action: 'configure', value: { review: partial, options } });
+  assert.equal(f.calls.filter((c) => c.action === 'confirm').length, 0);
+  const previews = all(tree, (e) => e.type === 'Preview');
+  assert.strictEqual(previews[0]!.props.options, partial.messages[0]!.options);
+  assert.strictEqual(previews[1]!.props.options, partial.messages[1]!.options);
+  const source = { source_space: 'source', message_ids: ['a', 'b'] };
+  await f.ports().configure!(source, 'batch', 'revision', options);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.calls.at(-1))), {
+    action: 'driver',
+    value: {
+      op: 'set_forward_batch_options',
+      source,
+      batch_id: 'batch',
+      review_revision: 'revision',
+      options,
+    },
+  });
+  f.publish(review(2));
+  assert.equal(all(f.render(), (e) => e.type === 'Options').length, 0);
+});
+
+for (const reason of ['blur', 'epoch', 'access', 'retiring', 'replacement'] as const)
+  test(`batch option menu cannot operate a retained ${reason} review`, () => {
+    const f = fixture();
+    f.render();
+    f.publish(review());
+    const tree = f.render();
+    const menu = all(tree, (element) => element.type === 'Options')[0]!;
+    if (reason === 'blur') f.blur();
+    if (reason === 'epoch') f.store.sessionEpoch++;
+    if (reason === 'access') f.revoke();
+    if (reason === 'retiring') f.store.isSessionRetiring = true;
+    if (reason === 'replacement') {
+      f.publish(review());
+      f.render();
+    }
+    (menu.props.onChange as (options: unknown) => void)({ hide_author: true, hide_caption: true });
+    assert.equal(f.calls.filter((c) => c.action === 'configure').length, 0);
+  });
+
+test('batch review renders original forwarding attribution and keeps legacy sources generic', () => {
+  const f = fixture();
+  f.render();
+  const value = review();
+  for (const row of value.messages) {
+    row.message.forwarded = true;
+    row.message.author.name = 'Intermediate sender';
+  }
+  value.messages[0]!.message.forwarded_author = 'Original author';
+  f.publish(value);
+  const labels = all(f.render(), (e) => e.type === 'Text').map((n) => text(n.props.children));
+  assert.ok(labels.includes('Forwarded from Original author'));
+  assert.ok(labels.includes('Forwarded'));
+  assert.ok(!labels.some((label) => label.includes('Intermediate sender')));
 });
 
 test('completed durable batch requires Forward Again and another destination choice before a new review', () => {

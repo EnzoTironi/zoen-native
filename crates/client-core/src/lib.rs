@@ -63,8 +63,8 @@ pub use client_api::export_typescript;
 mod files;
 mod forwarding;
 pub use forwarding::{
-    ForwardBatchReview, ForwardBatchScope, ForwardBatchSource, ForwardReview, ForwardScope,
-    ForwardSource,
+    ForwardBatchReview, ForwardBatchScope, ForwardBatchSource, ForwardOptions, ForwardReview,
+    ForwardScope, ForwardSource,
 };
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
