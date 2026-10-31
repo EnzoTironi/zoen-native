@@ -17,7 +17,7 @@
     "lint": "oxlint --deny-warnings .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "test": "node --import ./src/i18n/test-setup.ts --test --test-concurrency=1 src/core/*.test.ts src/documents/*.test.ts src/miniapps/*.test.ts src/auth/*.test.ts",
+    "test": "node --import ./src/i18n/test-setup.ts --test --test-concurrency=4 src/core/*.test.ts src/documents/*.test.ts src/miniapps/*.test.ts src/auth/*.test.ts",
     "core:types": "node ../../scripts/build-expo-core.mjs types",
     "export:web": "node ../../scripts/build-expo-web-core.mjs --release && expo export --platform web",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
