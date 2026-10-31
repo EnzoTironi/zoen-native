@@ -1,3 +1,4 @@
+use super::deployment::Binding;
 use serde::{Deserialize, Serialize};
 
 /// Locators bound to an actual SQL/FDB pairing and certified managed device.
@@ -49,7 +50,7 @@ pub struct Prepared {
 #[serde(deny_unknown_fields)]
 pub(super) struct State {
     pub schema: u8,
-    pub deployment: Deployment,
+    pub deployment: Binding,
     pub committed: Checkpoint,
     pub committed_effect: Option<Prepared>,
     pub prepared: Option<Prepared>,
@@ -67,17 +68,17 @@ pub enum Recovery {
 }
 
 impl State {
-    pub fn initial(deployment: Deployment) -> Option<Self> {
+    pub fn initial(deployment: Binding) -> Option<Self> {
         if !deployment.valid() {
             return None;
         }
         let committed = Checkpoint {
             generation: 1,
             sequence: 0,
-            digest: hash(&("managed-images/genesis/1", &deployment))?,
+            digest: hash(&(deployment.genesis_domain(), &deployment))?,
         };
         Some(Self {
-            schema: 2,
+            schema: deployment.schema(),
             deployment,
             committed,
             committed_effect: None,
@@ -86,7 +87,7 @@ impl State {
     }
 
     pub fn valid(&self) -> bool {
-        self.schema == 2
+        self.schema == self.deployment.schema()
             && self.deployment.valid()
             && self.committed.generation > 0
             && self.committed.generation <= i64::MAX as u64
@@ -96,7 +97,7 @@ impl State {
                 None => {
                     self.committed.sequence == 0
                         && self.committed.generation == 1
-                        && hash(&("managed-images/genesis/1", &self.deployment)).as_ref()
+                        && hash(&(self.deployment.genesis_domain(), &self.deployment)).as_ref()
                             == Some(&self.committed.digest)
                 }
                 Some(last) => {
@@ -135,7 +136,7 @@ impl State {
 }
 
 pub(super) fn transition(
-    deployment: &Deployment,
+    deployment: &Binding,
     previous: &Checkpoint,
     effect: &str,
     retirement: bool,
@@ -158,7 +159,7 @@ pub(super) fn transition(
             generation,
             sequence,
             digest: hash(&(
-                "managed-images/effect/1",
+                deployment.effect_domain(),
                 deployment,
                 previous,
                 sequence,

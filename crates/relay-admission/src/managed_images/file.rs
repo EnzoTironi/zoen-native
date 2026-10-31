@@ -1,6 +1,7 @@
+use super::deployment::Binding;
 use super::lock::ScopedLock;
 use super::state::State;
-use super::{AnchorError, Checkpoint, Deployment, Prepared, Recovery};
+use super::{AnchorError, Checkpoint, Deployment, Prepared, Recovery, RuntimeDeployment};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -17,7 +18,7 @@ pub struct AnchorWriter {
 #[derive(Clone)]
 pub struct AnchorReader {
     pub(super) directory: PathBuf,
-    pub(super) deployment: Deployment,
+    pub(super) deployment: Binding,
 }
 
 /// Relay/gateway effects retain this shared OS lock through the actual effect.
@@ -79,6 +80,23 @@ pub(super) fn sync_directory(path: &Path) -> Result<(), AnchorError> {
 
 impl AnchorReader {
     pub fn open(directory: &Path, deployment: Deployment) -> Result<Self, AnchorError> {
+        Self::open_bound(directory, Binding::Device(deployment))
+    }
+
+    /// A shared deployment does not certify a principal or authorize an effect.
+    ///
+    /// # Errors
+    /// Refuses a missing/private-file failure, corrupt checkpoint or a different
+    /// deployment/profile. It never creates replacement history.
+    #[deny(clippy::pedantic, clippy::perf)]
+    pub fn open_runtime(
+        directory: &Path,
+        deployment: RuntimeDeployment,
+    ) -> Result<Self, AnchorError> {
+        Self::open_bound(directory, Binding::Runtime(deployment))
+    }
+
+    fn open_bound(directory: &Path, deployment: Binding) -> Result<Self, AnchorError> {
         if !deployment.valid()
             || !fs::symlink_metadata(directory)
                 .map_err(unavailable)?
@@ -201,6 +219,24 @@ impl AnchorWriter {
     /// independently prove an unused namespace before invoking this method.
     /// Missing state in an existing directory is never adopted or regenerated.
     pub fn create(directory: &Path, deployment: Deployment) -> Result<Self, AnchorError> {
+        Self::create_bound(directory, Binding::Device(deployment))
+    }
+
+    /// Bootstrap one unused SQL/FDB runtime pairing, not one balance per agent.
+    /// The caller must prove the entire namespace unused before creating it.
+    ///
+    /// # Errors
+    /// Refuses invalid deployment data, an existing directory, failed private
+    /// file creation, durability failure or competing writer ownership.
+    #[deny(clippy::pedantic, clippy::perf)]
+    pub fn create_runtime(
+        directory: &Path,
+        deployment: RuntimeDeployment,
+    ) -> Result<Self, AnchorError> {
+        Self::create_bound(directory, Binding::Runtime(deployment))
+    }
+
+    fn create_bound(directory: &Path, deployment: Binding) -> Result<Self, AnchorError> {
         let state = State::initial(deployment.clone()).ok_or(AnchorError::Invalid)?;
         let parent = directory.parent().ok_or(AnchorError::Invalid)?;
         let mut builder = fs::DirBuilder::new();
@@ -230,11 +266,28 @@ impl AnchorWriter {
             deployment,
         };
         write(&reader.directory, &state)?;
-        Self::open(directory, reader.deployment)
+        Self::open_bound(directory, reader.deployment)
     }
 
     pub fn open(directory: &Path, deployment: Deployment) -> Result<Self, AnchorError> {
-        let reader = AnchorReader::open(directory, deployment)?;
+        Self::open_bound(directory, Binding::Device(deployment))
+    }
+
+    /// Never adopts a missing checkpoint or changes an existing pairing.
+    ///
+    /// # Errors
+    /// Refuses missing/corrupt/mismatched history, unavailable private files or
+    /// another live writer. A failed open does not initialize a checkpoint.
+    #[deny(clippy::pedantic, clippy::perf)]
+    pub fn open_runtime(
+        directory: &Path,
+        deployment: RuntimeDeployment,
+    ) -> Result<Self, AnchorError> {
+        Self::open_bound(directory, Binding::Runtime(deployment))
+    }
+
+    fn open_bound(directory: &Path, deployment: Binding) -> Result<Self, AnchorError> {
+        let reader = AnchorReader::open_bound(directory, deployment)?;
         let writer = ScopedLock::exclusive(lock_file(directory, "writer.lock")?)?;
         Ok(Self {
             reader,

@@ -156,3 +156,13 @@ or ignored (211.56 seconds); all-target Clippy for `relay-admission` and
 Evidence index: `zoen-image-managed-continuity-v452/evidence-index.json` in the
 local build evidence directory. Static peer review found no material blocker
 in this dispatch increment. This is not native iPhone or deployment acceptance.
+
+## Shared runtime deployment
+
+`RuntimeDeployment` and the `create_runtime`/`open_runtime` anchor constructors reuse the same durable prepare, history, consumption and generation locks for every principal in one SQL/FDB pairing. Namespace, witness and source identify this shared authority; the actual agent/device remains bound to each signed publication. A later effect by another agent advances the same checkpoint, and retirement drains effects from all principals. This is metadata for continuity, not a separate balance, device enrollment, financial admission or permission to publish.
+
+The shared representation is schema 3, with distinct genesis/transition hash domains. Schema 2 remains byte-compatible and single-device scoped. Neither constructor adopts the other format or bootstraps missing state. An existing deployment needs an explicit authority migration; changing its schema or configuration is not a migration.
+
+Relay's trusted operator file keeps its existing `devices` array and may also declare `runtimes`: each entry supplies `deployment` (`namespace`, `witness`, `source`), an absolute `anchor_directory`, and nonempty `principals` (`agent`, `device`). Several principals in that one entry share its reader. Duplicate devices, duplicate namespaces, mixed legacy/shared namespaces, wrong pairings and more than 256 total configured principals are refused. These locators do not replace the live directory, certificate, membership or per-effect managed-binding checks. No socket request can register a runtime or choose its anchor.
+
+This shared anchor/relay contract is part of [general agent continuity #327](https://github.com/EnzoTironi/zoen-native/issues/327). It does not activate the general runtime: capsule/cursor and owner-policy commitments, normal reply dispatch/output integration and the full isolated SQL/FDB/vault restore/takeover proof remain required. The general paid-dispatch, output and absence-based-refund gates remain closed. Apps/creation work remains paused.
