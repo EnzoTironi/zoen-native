@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 mod gallery_cases;
 mod recovery;
+mod reply_context_cases;
 
 #[derive(Default)]
 struct Vault(Mutex<HashMap<String, Vec<u8>>>);

@@ -1,4 +1,33 @@
+import {
+  invalid,
+  bytes,
+  id,
+  boundedText,
+  hasControl,
+  target,
+  object,
+  keys,
+  freeze,
+  editorJson,
+  MAX_MEDIA_DRAFT_CONTENT_BYTES,
+} from './media-draft-values.ts';
+export {
+  MediaDraftFailure,
+  invalid,
+  bytes,
+  id,
+  boundedText,
+  hasControl,
+  target,
+  object,
+  keys,
+  freeze,
+  editorJson,
+  MAX_MEDIA_DRAFT_CONTENT_BYTES,
+} from './media-draft-values.ts';
 import { galleryValue } from './media-draft-gallery.ts';
+import { mediaReplyValue } from './media-reply-contract.ts';
+import { mediaAcceptedIntent } from './media-acceptance.ts';
 import type { MediaDraftChannel } from './media-draft-channel.ts';
 import type {
   MediaDraftAsset,
@@ -18,76 +47,6 @@ export type MediaDraftState = Readonly<{
   frozen: boolean;
   error: Error | null;
 }>;
-export class MediaDraftFailure extends Error {
-  readonly kind: 'closed' | 'notLoaded' | 'invalid' | 'busy' | 'attempted' | 'conflict';
-  constructor(kind: MediaDraftFailure['kind'], cause?: unknown) {
-    super(cause instanceof Error ? cause.message : `Media draft ${kind}`, { cause });
-    this.name = 'MediaDraftFailure';
-    this.kind = kind;
-  }
-}
-export function invalid(): never {
-  throw new MediaDraftFailure('invalid');
-}
-export const bytes = (text: string) => {
-  let count = 0;
-  for (const letter of text) {
-    const point = letter.codePointAt(0)!;
-    count += point < 128 ? 1 : point < 2048 ? 2 : point < 65536 ? 3 : 4;
-  }
-  return count;
-};
-export const id = (value: unknown): value is string =>
-  typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
-export const boundedText = (value: unknown, limit: number): value is string =>
-  typeof value === 'string' && !value.includes('\0') && bytes(value) <= limit;
-export const hasControl = (value: string) =>
-  [...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
-export const target = (value: unknown): value is string | null =>
-  value === null || (boundedText(value, 256) && value.length > 0);
-export const object = (value: unknown): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return invalid();
-  return value as Record<string, unknown>;
-};
-export function keys(value: Record<string, unknown>, expected: string[]) {
-  if (Object.keys(value).sort().join(',') !== expected.sort().join(',')) invalid();
-}
-export function freeze<T>(value: T): T {
-  if (value && typeof value === 'object') {
-    for (const child of Object.values(value)) freeze(child);
-    Object.freeze(value);
-  }
-  return value;
-}
-/** Opaque editor data remains JSON, never an SDK object, cache path or file lease. */
-export function editorJson(value: unknown, depth = 0, seen = new Set<unknown>()): unknown {
-  if (depth > 64) invalid();
-  if (value === null || typeof value === 'boolean') return value;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : invalid();
-  if (typeof value === 'string') {
-    if (/^(?:file:|content:|blob:|ph:|assets-library:|\/private\/|\/var\/|\/Users\/)/i.test(value))
-      invalid();
-    return value;
-  }
-  if (!value || typeof value !== 'object' || seen.has(value)) return invalid();
-  const proto = Object.getPrototypeOf(value);
-  if (!Array.isArray(value) && proto !== Object.prototype && proto !== null) invalid();
-  seen.add(value);
-  let result: unknown;
-  if (Array.isArray(value)) result = value.map((child) => editorJson(child, depth + 1, seen));
-  else {
-    const record: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-    for (const [key, child] of Object.entries(value).sort(([left], [right]) =>
-      left.localeCompare(right),
-    )) {
-      if (/(?:^|_)(?:uri|url|path|lease)(?:$|_)|(?:Uri|URL|Path|Lease)$/.test(key)) invalid();
-      record[key] = editorJson(child, depth + 1, seen);
-    }
-    result = record;
-  }
-  seen.delete(value);
-  return result;
-}
 export function contentValue(input: unknown): {
   content: MediaDraftContent | null;
   json: string;
@@ -97,6 +56,10 @@ export function contentValue(input: unknown): {
   const raw = object(input);
   const refs: string[] = [];
   if (!target(raw.reply_to)) invalid();
+  const reply = mediaReplyValue(raw);
+  const replyKeys = ['reply_quote', 'shared_reply', 'reply_intent'].filter((key) =>
+    Object.hasOwn(raw, key),
+  );
   let content: MediaDraftContent;
   if (raw.kind === 'attachments') {
     const hasOptions = Object.hasOwn(raw, 'options');
@@ -105,6 +68,7 @@ export function contentValue(input: unknown): {
       'kind',
       'reply_to',
       'items',
+      ...replyKeys,
       ...(hasOptions ? ['options'] : []),
       ...(hasGallery ? ['gallery'] : []),
     ]);
@@ -135,12 +99,13 @@ export function contentValue(input: unknown): {
     content = {
       kind: 'attachments',
       reply_to: raw.reply_to,
+      ...reply,
       items,
       ...(options ? { options } : {}),
       ...(hasGallery ? { gallery: galleryValue(raw.gallery, items) } : {}),
     };
   } else if (raw.kind === 'voice') {
-    keys(raw, ['kind', 'reply_to', 'source_asset_id', 'editor', 'render']);
+    keys(raw, ['kind', 'reply_to', 'source_asset_id', 'editor', 'render', ...replyKeys]);
     if (!id(raw.source_asset_id)) invalid();
     refs.push(raw.source_asset_id);
     let render = null;
@@ -176,6 +141,7 @@ export function contentValue(input: unknown): {
     content = {
       kind: 'voice',
       reply_to: raw.reply_to,
+      ...reply,
       source_asset_id: raw.source_asset_id as string,
       editor: editorJson(raw.editor),
       render,
@@ -183,7 +149,7 @@ export function contentValue(input: unknown): {
   } else return invalid();
   if (new Set(refs).size !== refs.length) invalid();
   const json = JSON.stringify(content);
-  if (bytes(json) > 512 * 1024) invalid();
+  if (bytes(json) > MAX_MEDIA_DRAFT_CONTENT_BYTES) invalid();
   return { content: freeze(content), json, refs };
 }
 export function assetValue(input: unknown): MediaDraftAsset {
@@ -218,11 +184,26 @@ export function dtoValue(input: unknown): {
   content: MediaDraftContent | null;
 } {
   const raw = object(input);
-  keys(raw, ['revision', 'content_json', 'assets', 'attempted']);
+  const hasAcceptance = Object.hasOwn(raw, 'accepted_intent_json');
+  keys(raw, [
+    'revision',
+    'content_json',
+    'assets',
+    'attempted',
+    ...(hasAcceptance ? ['accepted_intent_json'] : []),
+  ]);
+  if (
+    hasAcceptance &&
+    raw.accepted_intent_json != null &&
+    !boundedText(raw.accepted_intent_json, MAX_MEDIA_DRAFT_CONTENT_BYTES)
+  )
+    invalid();
+  if (hasAcceptance)
+    mediaAcceptedIntent({ accepted_intent_json: raw.accepted_intent_json as string | null });
   if (
     !boundedText(raw.revision, 256) ||
     !raw.revision.length ||
-    !boundedText(raw.content_json, 512 * 1024) ||
+    !boundedText(raw.content_json, MAX_MEDIA_DRAFT_CONTENT_BYTES) ||
     !Array.isArray(raw.assets) ||
     typeof raw.attempted !== 'boolean'
   )
@@ -258,6 +239,9 @@ export function dtoValue(input: unknown): {
       content_json: parsed.json,
       assets,
       attempted: raw.attempted,
+      ...(raw.accepted_intent_json != null
+        ? { accepted_intent_json: raw.accepted_intent_json as string }
+        : {}),
     }),
     content: parsed.content,
   };

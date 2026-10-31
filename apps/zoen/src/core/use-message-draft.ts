@@ -13,6 +13,7 @@ import { useFocusEffect } from 'expo-router';
 import { useClient } from './provider';
 import {
   canConsumeMediaReply,
+  canConsumeAcceptedMediaReply,
   initialMessageDraft,
   projectMessageDraft,
   type MessageDraftAction,
@@ -20,6 +21,7 @@ import {
 } from './message-draft';
 import { messageCard } from './message-presentation';
 import type { TimelineEntry, TimelinePage } from './types';
+import type { AcceptedMediaReply } from '../media/media-acceptance';
 
 const subscribeEmpty = () => () => {};
 const readEmpty = () => null;
@@ -197,12 +199,37 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
     }
   }
 
+  function clearMatchedMediaReply(accepted?: AcceptedMediaReply) {
+    if (!channel || !normal || !store.messageDrafts.isCurrent(channel)) return;
+    const current = channel.controller.getSnapshot(channel.scope);
+    const matches = accepted
+      ? canConsumeAcceptedMediaReply(
+          {
+            reply_to: current.replyTo,
+            reply_quote: current.replyQuote,
+            shared_reply: current.sharedReply,
+            reply_intent: current.replyIntent,
+            editing: Boolean(current.edit),
+          },
+          accepted,
+        )
+      : canConsumeMediaReply(
+          {
+            replyRevision: current.replyRevision,
+            editContextRevision: current.editContextRevision,
+            editing: Boolean(current.edit),
+          },
+          { replyRevision: normal.replyRevision, editContextRevision: edit.contextRevision },
+        );
+    if (matches) channel.controller.setReply(channel.scope, null);
+  }
   return {
     messageDraft,
     updateDraft,
     replyTo,
     replyQuote: normal?.replyQuote ?? null,
     sharedReply: normal?.sharedReply ?? null,
+    replyIntent: normal?.replyIntent ?? null,
     capture: (): MessageDraftAttempt | null => {
       if (!channel || mounted.current !== channel || !store.messageDrafts.isCurrent(channel))
         return null;
@@ -218,24 +245,8 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
         editRevision: normal.editRevision,
       };
     },
-    mediaAccepted: () => {
-      if (!channel || !normal || !store.messageDrafts.isCurrent(channel)) return;
-      const current = channel.controller.getSnapshot(channel.scope);
-      if (
-        canConsumeMediaReply(
-          {
-            replyRevision: current.replyRevision,
-            editContextRevision: current.editContextRevision,
-            editing: Boolean(current.edit),
-          },
-          {
-            replyRevision: normal.replyRevision,
-            editContextRevision: edit.contextRevision,
-          },
-        )
-      )
-        channel.controller.setReply(channel.scope, null);
-    },
+    mediaAccepted: clearMatchedMediaReply,
+    cancelMediaReply: clearMatchedMediaReply,
     ready: Boolean(normal?.loaded && channel && store.messageDrafts.isCurrent(channel)),
     loading: !normal || normal.loading || !normal.loaded,
     error: normal?.error ?? null,

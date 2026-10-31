@@ -13,6 +13,6 @@ export function composerOwnerFixture() {
         setup_pending: false,
       },
     },
-    store: { sessionEpoch: 1, isSessionRetiring: false },
+    store: { sessionEpoch: 1, isSessionRetiring: false, driver: {} },
   };
 }

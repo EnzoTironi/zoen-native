@@ -1,16 +1,18 @@
 import { MAX_FILE_CAPTION_BYTES, MAX_SELECTED_BYTES } from './types.ts';
+import type { MediaReplyOptions } from './media-reply';
 
 export const MAX_ATTACHMENT_ITEMS = 10;
 export const MAX_ATTACHMENT_TOTAL_BYTES = MAX_SELECTED_BYTES;
 
-export type AttachmentDraftScope = Readonly<{
-  mode: 'account' | 'demo';
-  identityId: string;
-  deviceId: string;
-  spaceId: string;
-  replyTo: string | null;
-  thread: boolean;
-}>;
+export type AttachmentDraftScope = MediaReplyOptions &
+  Readonly<{
+    mode: 'account' | 'demo';
+    identityId: string;
+    deviceId: string;
+    spaceId: string;
+    replyTo: string | null;
+    thread: boolean;
+  }>;
 /** The picker owner verifies the staged file's actual size before admitting it. */
 export type AttachmentAsset = Readonly<{
   uri: string;
@@ -308,6 +310,28 @@ export class AttachmentDraft {
         ),
       ),
       error: null,
+    });
+    return true;
+  }
+  clearReply(): boolean {
+    if (
+      !this.current() ||
+      this.state.targetFrozen ||
+      this.state.phase === 'sending' ||
+      this.state.phase === 'picking'
+    )
+      return false;
+    const scope = this.state.scope;
+    if (!scope.replyTo && !scope.sharedReply) return false;
+    if (scope.thread && !scope.replyQuote && !scope.sharedReply) return false;
+    this.publish({
+      scope: Object.freeze({
+        ...scope,
+        replyTo: scope.thread ? scope.replyTo : null,
+        replyQuote: undefined,
+        sharedReply: undefined,
+        replyIntent: undefined,
+      }),
     });
     return true;
   }

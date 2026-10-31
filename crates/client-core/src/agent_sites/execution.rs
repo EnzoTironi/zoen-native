@@ -168,6 +168,7 @@ impl Client {
                         caption: "",
                         media: None,
                         fixed_item: Some(&item_id),
+                        draft_reply: None,
                     })?;
                     let crate::EntryKind::Message {
                         card: Some(card), ..

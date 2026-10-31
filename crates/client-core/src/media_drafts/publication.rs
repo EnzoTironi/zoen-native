@@ -25,14 +25,8 @@ impl Engine {
             let entries = receipt
                 .messages
                 .iter()
-                .map(|id| {
-                    timeline
-                        .iter()
-                        .find(|entry| &entry.id == id)
-                        .cloned()
-                        .ok_or_else(stale)
-                })
-                .collect::<R<Vec<_>>>()?;
+                .filter_map(|id| timeline.iter().find(|entry| &entry.id == id).cloned())
+                .collect();
             return Ok(MediaDraftSendResult {
                 entries,
                 draft: record.dto()?,
@@ -51,12 +45,8 @@ impl Engine {
                     reason: t("só autores enviam mídia", "only writers can send media"),
                 });
             }
-            let reply = match content {
-                Content::Attachments { reply_to, .. } | Content::Voice { reply_to, .. } => {
-                    reply_to.as_deref()
-                }
-            };
-            self.draft_target(&scope.normal(), reply)?;
+            let reply = content.reply();
+            let reference = self.resolve_draft_reply(reply.context(&scope.normal()), reply.to)?;
             if matches!(content, Content::Voice { render: None, .. }) {
                 return Err(CoreError::Invalid {
                     reason: t(
@@ -74,8 +64,8 @@ impl Engine {
                             .metadata(
                                 &scope.expected_identity_id,
                                 &scope.space_id,
-                                reply.or(scope.thread_root_id.as_deref()),
-                                scope.thread_root_id.is_some(),
+                                reference.as_ref().map(|r| r.to.as_str()),
+                                reference.as_ref().is_some_and(|r| r.thread),
                                 &mutations,
                                 index,
                             )
@@ -108,11 +98,9 @@ impl Engine {
         }
         self.atomic_agent_action(|engine| {
             let content = record.content.as_ref().ok_or_else(invalid)?;
-            let reply = match content {
-                Content::Attachments { reply_to, .. } | Content::Voice { reply_to, .. } => {
-                    reply_to.as_deref().or(scope.thread_root_id.as_deref())
-                }
-            };
+            let reply = content.reply();
+            let normal = scope.normal();
+            let context = reply.context(&normal);
             let thread = scope.thread_root_id.is_some();
             let entries = match content {
                 Content::Attachments { items, .. } => {
@@ -120,17 +108,21 @@ impl Engine {
                     for (((item, asset), bytes), media) in
                         items.iter().zip(&record.assets).zip(&bytes).zip(&metadata)
                     {
-                        entries.push(engine.send_file_message_with_media(
-                            &scope.space_id,
-                            &asset.name,
-                            &asset.mime,
-                            bytes,
-                            None,
-                            reply,
-                            thread,
-                            &item.mutation_id,
-                            &item.caption,
-                            media.clone(),
+                        entries.push(engine.send_file_message_inner(
+                            crate::files::FileSendInput {
+                                space: &scope.space_id,
+                                name: &asset.name,
+                                mime: &asset.mime,
+                                bytes,
+                                thumbnail: None,
+                                reply_to: reply.to.or(normal.thread_root_id.as_deref()),
+                                thread,
+                                mutation_id: &item.mutation_id,
+                                caption: &item.caption,
+                                media: media.clone(),
+                                fixed_item: None,
+                                draft_reply: Some(context),
+                            },
                         )?);
                     }
                     entries
@@ -138,15 +130,18 @@ impl Engine {
                 Content::Voice {
                     render: Some(render),
                     ..
-                } => vec![engine.send_voice_note(
+                } => vec![engine.send_voice_note_with_meta(
                     &scope.space_id,
                     &bytes[1],
                     &render.mime,
-                    render.duration_ms.round() as u64,
-                    &render.levels,
-                    &render.transcript,
-                    reply,
-                    thread,
+                    types::VoiceMeta {
+                        ms: render.duration_ms.round() as u64,
+                        levels: types::VoiceMeta::encode(&render.levels),
+                        transcript: render.transcript.trim().into(),
+                        reply: engine.resolve_draft_reply(context, reply.to)?,
+                        forwarded: false,
+                        forwarded_author: None,
+                    },
                 )?],
                 _ => return Err(invalid()),
             };
@@ -158,6 +153,7 @@ impl Engine {
                 last_accepted: Some(Receipt {
                     input_revision: expected.into(),
                     messages: entries.iter().map(|entry| entry.id.clone()).collect(),
+                    reply: Some(reply.accepted()),
                 }),
                 save_receipts: record.save_receipts.clone(),
             };

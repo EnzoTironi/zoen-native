@@ -11,6 +11,7 @@ import * as i18n from '../i18n/index.ts';
 import * as presentation from './message-presentation.ts';
 import type { useMessageDraft } from './use-message-draft.ts';
 import type { MessageDraftEdit } from './generated/MessageDraftEdit';
+import type { ReplyContextFields } from './reply-context.ts';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -35,10 +36,13 @@ export async function messageDraftReactFixture(open = true) {
   let text = 'Owner A private unsent text';
   let revision = 1;
   let edit: MessageDraftEdit | undefined;
+  let reply: ReplyContextFields = { reply_to: null };
+  let intentSerial = 0;
+  Object.assign(driver, { localIntentId: () => `native_intent_${++intentSerial}` });
   const draftValue = () => ({
     revision: String(revision),
     text,
-    reply_to: null,
+    ...reply,
     ...(edit ? { edit } : {}),
   });
   driver.durableMessageDrafts = true;
@@ -52,6 +56,12 @@ export async function messageDraftReactFixture(open = true) {
       assert.equal(command.expected_device_id, snapshot.account!.device_id);
       assert.equal(command.expected_revision, String(revision));
       text = command.text;
+      reply = {
+        reply_to: command.reply_to,
+        reply_quote: command.reply_quote,
+        shared_reply: command.shared_reply,
+        reply_intent: command.reply_intent,
+      };
       edit = command.edit;
       ++revision;
       return draftValue();
@@ -69,6 +79,7 @@ export async function messageDraftReactFixture(open = true) {
         draft: draftValue(),
       };
     }
+    if (command.op === 'message') throw Error('Synthetic source unavailable');
     throw Error(`Unexpected draft operation ${command.op}`);
   };
   const store = new ClientStore(driver);

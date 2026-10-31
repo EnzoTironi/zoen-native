@@ -3,4 +3,8 @@ import type { MessageDraftEdit } from "./MessageDraftEdit";
 import type { ReplySelection } from "./ReplySelection";
 import type { SharedReplyDraft } from "./SharedReplyDraft";
 
-export type MessageDraftDto = { revision: string, text: string, edit?: MessageDraftEdit, reply_to: string | null, reply_quote?: ReplySelection, shared_reply?: SharedReplyDraft, };
+export type MessageDraftDto = { revision: string, text: string, edit?: MessageDraftEdit, reply_to: string | null, reply_quote?: ReplySelection, shared_reply?: SharedReplyDraft, 
+/**
+ * Private UI intent identity; it is never part of the replicated message.
+ */
+reply_intent?: string, };

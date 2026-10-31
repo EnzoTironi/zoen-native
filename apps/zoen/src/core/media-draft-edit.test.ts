@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MediaDraftChannel, MediaDraftFailure } from '../media/media-draft-channel.ts';
 import type { MediaDraftDto, MediaDraftPort, MediaDraftScope } from '../media/media-draft-types.ts';
+import type { TimelineEntry } from './types.ts';
 
 const scope: MediaDraftScope = {
   expected_identity_id: 'owner',
@@ -87,7 +88,12 @@ function fixture(value = original()) {
     async send(owner, revision) {
       calls.push({ op: 'send', scope: owner, revision });
       assert.equal(revision, canonical.revision);
-      return { entries: [], draft: canonical };
+      const entries = JSON.parse(canonical.content_json).items.map(
+        (item: { mutation_id: string }) =>
+          ({ id: `accepted_${item.mutation_id}` }) as TimelineEntry,
+      );
+      canonical = { revision: 'accepted', content_json: 'null', assets: [], attempted: false };
+      return { entries, draft: canonical };
     },
   };
   return {

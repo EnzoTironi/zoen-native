@@ -7,6 +7,7 @@ import { MAX_ATTACHMENT_ITEMS, type AttachmentDraftState } from './attachment-dr
 import { AttachmentDraftStrip } from './attachment-draft-strip';
 import { isLocationFileMime } from './location-file';
 import { mediaPlayback } from './playback-owner';
+import { copyMediaReply, sameMediaReply } from './media-reply';
 
 import type { useDurableAttachmentController } from './use-durable-attachment-controller';
 export function renderDurableAttachment(
@@ -60,6 +61,9 @@ export function renderDurableAttachment(
         deviceId: channel.scope.expected_device_id,
         spaceId: channel.scope.space_id,
         replyTo: content?.reply_to ?? channel.scope.thread_root_id,
+        ...(content?.reply_quote ? { replyQuote: content.reply_quote } : {}),
+        ...(content?.shared_reply ? { sharedReply: content.shared_reply } : {}),
+        ...(content?.reply_intent ? { replyIntent: content.reply_intent } : {}),
         thread: Boolean(channel.scope.thread_root_id),
       }
     : null;
@@ -103,6 +107,47 @@ export function renderDurableAttachment(
           sending: busy,
           remaining: items.length,
           retry,
+          onCancelReply:
+            !busy &&
+            !presentation &&
+            !state?.frozen &&
+            !options.disabled &&
+            !options.suspended &&
+            (content.reply_quote ||
+              content.shared_reply ||
+              (content.reply_to && !channel?.scope.thread_root_id))
+              ? () => {
+                  if (
+                    !channel ||
+                    !current() ||
+                    runtime.picking ||
+                    runtime.submitting ||
+                    runtime.approval
+                  )
+                    return null;
+                  const latest = channel.getSnapshot();
+                  const next = latest.content;
+                  if (
+                    latest.frozen ||
+                    latest.sending ||
+                    next?.kind !== 'attachments' ||
+                    next.reply_to !== content.reply_to ||
+                    !sameMediaReply(next, content)
+                  )
+                    return null;
+                  const previous = { reply_to: next.reply_to, ...copyMediaReply(next) };
+                  void channel
+                    .save({
+                      ...next,
+                      reply_to: null,
+                      reply_quote: undefined,
+                      shared_reply: undefined,
+                      reply_intent: undefined,
+                    })
+                    .catch(failure);
+                  return previous;
+                }
+              : undefined,
           onChange: (caption) => {
             if (
               !channel ||

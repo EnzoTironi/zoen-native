@@ -38,6 +38,9 @@ pub struct ReplyOrigin {
     pub available: bool,
 }
 impl SharedReplyDraft {
+    pub(crate) fn well_formed(&self) -> bool {
+        self.signed().is_well_formed()
+    }
     fn signed(&self) -> types::SharedReply {
         types::SharedReply {
             space_id: self.space_id.clone(),
@@ -49,6 +52,14 @@ impl SharedReplyDraft {
         }
     }
 }
+/// Borrowed private draft context, revalidated by the publishing Engine.
+#[derive(Clone, Copy)]
+pub(crate) struct DraftReplyContext<'a> {
+    pub scope: &'a DraftScope,
+    pub selection: Option<&'a ReplySelection>,
+    pub shared: Option<&'a SharedReplyDraft>,
+}
+
 fn unavailable() -> CoreError {
     CoreError::Stale {
         reason: crate::i18n::t(
@@ -58,6 +69,32 @@ fn unavailable() -> CoreError {
     }
 }
 impl Engine {
+    pub(crate) fn resolve_draft_reply(
+        &self,
+        context: DraftReplyContext<'_>,
+        to: Option<&str>,
+    ) -> R<Option<types::ReplyRef>> {
+        self.validate_private_draft_scope(context.scope)?;
+        self.validate_draft_reply(context.scope, to, context.selection, context.shared)?;
+        if let Some(shared) = context.shared {
+            let mut reference = types::ReplyRef::inline(&shared.message_id);
+            reference.shared = Some(Box::new(shared.signed()));
+            return Ok(Some(reference));
+        }
+        to.or(context.scope.thread_root_id.as_deref())
+            .map(|to| {
+                let mut reference = self.reply_ref(
+                    &context.scope.space_id,
+                    to,
+                    context.scope.thread_root_id.is_some(),
+                )?;
+                reference.quote = context
+                    .selection
+                    .map(|selection| Box::new(selection.signed()));
+                Ok(reference)
+            })
+            .transpose()
+    }
     pub(crate) fn review_shared_reply(
         &self,
         scope: &DraftScope,

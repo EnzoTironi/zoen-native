@@ -11,6 +11,7 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { t } from '../i18n/index.ts';
 import { conversationQueryFits, type ConversationSearchState } from '../core/conversation-search';
 import { MediaComposer } from '../media/MediaComposer';
+import type { AcceptedMediaReply } from '../media/media-acceptance';
 import type { AttachmentComposerField } from '../media/attachment-composer';
 import { AttachmentReplyContext } from '../media/attachment-reply-context';
 import { ComposerReplyContext } from './composer-reply-context';
@@ -101,7 +102,7 @@ export function MessageComposer({
   onFocus?: () => void;
   onBlur: () => void;
   onSend: () => void;
-  onMediaSent?: () => void;
+  onMediaSent?: (reply?: AcceptedMediaReply) => void;
   sending: boolean;
   editing?: boolean;
   allowEmptyEdit?: boolean;
@@ -115,11 +116,17 @@ export function MessageComposer({
   context?: Pick<
     ComponentProps<typeof ComposerReplyContext>,
     'entry' | 'edit' | 'quote' | 'shared'
-  > & { onCancel: () => void };
+  > & {
+    onCancel: () => void;
+    replyIntent?: string | null;
+    onCancelCaptured?: (reply: AcceptedMediaReply) => void;
+  };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
   const { colors, scheme, presentation: p, reducedMotion } = useTheme();
   const client = useClient();
+  const mediaReplyAvailable =
+    client.mode === 'account' && Boolean(client.store.driver.media?.drafts);
   const sessionScope = JSON.stringify([
     homeOwnerFor(client),
     client.store.sessionEpoch,
@@ -149,11 +156,13 @@ export function MessageComposer({
     voice,
     review,
     files,
+    reply: mediaReply,
   }: {
     attachment: ReactNode;
     voice: ReactNode;
     review?: ReactNode;
     files?: AttachmentComposerField;
+    reply?: ReactNode;
   }) {
     const fieldText = files ? files.value : value;
     const native = process.env.EXPO_OS === 'ios';
@@ -327,15 +336,20 @@ export function MessageComposer({
     );
     return (
       <>
-        {files?.scope.replyTo ? (
+        {files && (files.scope.replyTo || files.scope.sharedReply) ? (
           <AttachmentReplyContext
             scope={files.scope}
             onCancel={
-              files.targetFrozen || (files.scope.thread && files.scope.replyTo === threadRootId)
-                ? undefined
-                : context?.onCancel
+              files.onCancelReply
+                ? () => {
+                    const previous = files.onCancelReply?.();
+                    if (previous) context?.onCancelCaptured?.(previous);
+                  }
+                : undefined
             }
           />
+        ) : mediaReply !== undefined ? (
+          mediaReply
         ) : !files && context ? (
           <ComposerReplyContext
             entry={context.entry}
@@ -362,7 +376,7 @@ export function MessageComposer({
           </Text>
         ) : (
           <>
-            {context?.quote || context?.shared ? (
+            {!mediaReplyAvailable && (context?.quote || context?.shared) ? (
               <Text
                 accessibilityLiveRegion="polite"
                 style={{ color: colors.secondary, paddingHorizontal: 12, paddingBottom: 6 }}
@@ -483,18 +497,28 @@ export function MessageComposer({
             key={`${spaceId}:${threadRootId ?? 'chat'}`}
             spaceId={spaceId}
             replyTo={replyTo}
+            replyQuote={context?.quote}
+            sharedReply={context?.shared}
+            replyIntent={context?.replyIntent}
             threadRootId={threadRootId ?? null}
             thread={thread}
             disabled={sending || editing || Boolean(search) || draft?.ready === false}
-            suspended={suspended || Boolean(search) || Boolean(context?.quote || context?.shared)}
+            suspended={
+              suspended ||
+              Boolean(search) ||
+              (!mediaReplyAvailable && Boolean(context?.quote || context?.shared))
+            }
             onSent={onMediaSent}
-            renderControls={({ attachment, voice, review, files }) =>
+            onReplyAccepted={onMediaSent}
+            onReplyCancelled={context?.onCancelCaptured}
+            renderControls={({ attachment, voice, review, files, reply }) =>
               controls({
                 attachment: editing ? null : attachment,
                 // Keep the same gesture owner mounted while editing hides its slot.
                 voice,
                 review,
                 files: editing || search ? undefined : files,
+                reply,
               })
             }
           />

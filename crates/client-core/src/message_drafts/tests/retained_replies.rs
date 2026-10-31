@@ -4,6 +4,7 @@ use crate::{MessageDeletion, MessageDeletionTarget, QuoteSpan, ReplySelection};
 
 fn changed_text(draft: &MessageDraftDto, text: &str) -> DraftContent {
     DraftContent {
+        reply_intent: None,
         text: text.into(),
         edit: draft.edit.clone(),
         reply_to: draft.reply_to.clone(),
@@ -58,6 +59,7 @@ fn existing_reply_context_preserves_new_text_but_still_cannot_publish_an_unavail
             &f.scope,
             "0",
             DraftContent {
+                reply_intent: None,
                 text: "Before source change".into(),
                 edit: None,
                 reply_to: (kind != "shared").then(|| source.id.clone()),

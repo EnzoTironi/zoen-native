@@ -95,11 +95,22 @@ export class NormalMessageDraftService {
       thread_root_id: scope.threadRootId,
     });
     return new NormalMessageDrafts({
+      replyIntent: (scope) =>
+        native(scope) ? (this.store.driver.localIntentId?.() ?? null) : null,
       load: async (scope) =>
         native(scope)
           ? this.store.driver.request({ op: 'message_draft', ...target(scope) })
           : read(scope),
-      save: async (scope, expectedRevision, text, replyTo, replyQuote, sharedReply, edit) => {
+      save: async (
+        scope,
+        expectedRevision,
+        text,
+        replyTo,
+        replyQuote,
+        sharedReply,
+        edit,
+        replyIntent,
+      ) => {
         if (native(scope))
           return this.store.driver.request({
             op: 'save_message_draft',
@@ -110,6 +121,7 @@ export class NormalMessageDraftService {
             reply_quote: replyQuote ?? null,
             shared_reply: sharedReply ?? undefined,
             edit: edit ?? undefined,
+            ...(replyIntent ? { reply_intent: replyIntent } : {}),
           });
         if (replyQuote || sharedReply)
           throw new Error('Quoted replies require the signed-in native account.');

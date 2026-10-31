@@ -38,6 +38,7 @@ fn shared_selection_recovers_and_sends_once_without_private_history(
         &f.scope,
         "0",
         DraftContent {
+            reply_intent: None,
             edit: None,
             text: "Answer".into(),
             reply_to: None,
@@ -141,6 +142,7 @@ async fn shared_selected_command_rechecks_exact_ranges_revision_and_sender_acces
         &f.scope,
         &retained.revision,
         DraftContent {
+            reply_intent: None,
             edit: None,
             text: retained.text,
             reply_to: None,

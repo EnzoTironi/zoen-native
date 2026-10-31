@@ -13,7 +13,7 @@ import Foundation
 
 struct MediaDraftScope { let expectedIdentityId: String; let expectedDeviceId: String; let spaceId: String; let threadRootId: String? }
 struct MediaDraftAsset { let id: String; let name: String; let mime: String; let size: UInt64; let sha256: String }
-struct MediaDraftDto { let revision: String; let contentJson: String; let assets: [MediaDraftAsset]; let attempted: Bool }
+struct MediaDraftDto { let revision: String; let contentJson: String; let assets: [MediaDraftAsset]; let attempted: Bool; var acceptedIntentJson: String? = nil }
 enum ZoenMediaFiles { enum Failure: Error { case tooLarge, invalidFile, invalidRecording } }
 enum ZoenVoiceEditor {
   struct Source { let sampleRate: Double; let frameCount: Int64 }
@@ -36,6 +36,12 @@ enum ZoenVoiceEditor {
       durationMs: Double(80900) / 24000 * 1000, levels: peaks)
   }
   static func main() throws {
+    if CommandLine.arguments.last == "receipt" || CommandLine.arguments.last == "legacy" {
+      let value = MediaDraftDto(revision: "r2", contentJson: "null", assets: [], attempted: false,
+        acceptedIntentJson: CommandLine.arguments.last == "receipt" ? "{\"input_revision\":\"r1\",\"messages\":[\"sent\"],\"reply\":{\"reply_to\":\"source\",\"reply_intent\":\"A\"}}" : nil)
+      let json = try JSONSerialization.data(withJSONObject: ZoenMediaDraftBridge.object(value))
+      print(String(decoding: json, as: UTF8.self)); return
+    }
     let actual = render()
     if CommandLine.arguments.last == "emit" {
       print(String(decoding: try JSONEncoder().encode(actual), as: UTF8.self))
@@ -94,6 +100,19 @@ test(
         { env: { ...process.env, SDKROOT: sdk }, timeout: 45_000 },
       );
       const native = JSON.parse(execFileSync(binary, ['emit'], { encoding: 'utf8' }));
+      const accepted = JSON.parse(execFileSync(binary, ['receipt'], { encoding: 'utf8' }));
+      assert.deepEqual(JSON.parse(accepted.accepted_intent_json), {
+        input_revision: 'r1',
+        messages: ['sent'],
+        reply: { reply_to: 'source', reply_intent: 'A' },
+      });
+      assert.equal(
+        Object.hasOwn(
+          JSON.parse(execFileSync(binary, ['legacy'], { encoding: 'utf8' })),
+          'accepted_intent_json',
+        ),
+        false,
+      );
       const metadata = {
         mime: native.mime as string,
         duration_ms: native.durationMs as number,

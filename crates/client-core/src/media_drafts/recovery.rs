@@ -57,6 +57,7 @@ impl Engine {
                 || normal.edit.is_some()
                 || !normal.text.is_empty()
                 || normal.reply_to.is_some()
+                || normal.shared_reply.is_some()
             {
                 return Err(stale());
             }
@@ -73,7 +74,26 @@ impl Engine {
             }
             let first = engine.failed_media_event(scope, message_id)?;
             let (file, caption, reply, media) = engine.failed_media_source(scope, &first)?;
+            let reply_quote = reply
+                .as_ref()
+                .and_then(|r| r.quote.as_deref())
+                .map(crate::ReplySelection::from);
+            let shared_reply = reply.as_ref().and_then(|reference| {
+                reference
+                    .shared
+                    .as_ref()
+                    .map(|shared| crate::replies::external::SharedReplyDraft {
+                        space_id: shared.space_id.clone(),
+                        message_id: reference.to.clone(),
+                        revision: shared.revision.clone(),
+                        author_id: shared.author_id.clone(),
+                        author_name: shared.author_name.clone(),
+                        text: shared.text.clone(),
+                        selection: shared.selection.as_ref().map(crate::ReplySelection::from),
+                    })
+            });
             let reply_to = match &reply {
+                Some(_) if shared_reply.is_some() => None,
                 Some(reply) if reply.thread => {
                     if scope.thread_root_id.as_deref() != Some(reply.to.as_str()) {
                         return Err(invalid());
@@ -85,7 +105,14 @@ impl Engine {
                 }
                 _ => return Err(invalid()),
             };
-            engine.draft_target(&scope.normal(), reply_to.as_deref())?;
+            engine.resolve_draft_reply(
+                crate::replies::external::DraftReplyContext {
+                    scope: &scope.normal(),
+                    selection: reply_quote.as_ref(),
+                    shared: shared_reply.as_ref(),
+                },
+                reply_to.as_deref(),
+            )?;
             let mut sources = vec![(first, file, caption, reply.clone(), media.clone())];
             if let Some(group) = media.as_ref().and_then(|media| media.group.as_ref()) {
                 let mut candidates = engine
@@ -170,14 +197,20 @@ impl Engine {
                 // Import these final bytes as a NEW source; native decoding will
                 // create/authenticate a fresh recipe before editing or sending.
                 Content::Voice {
+                    reply_intent: None,
                     reply_to,
+                    reply_quote,
+                    shared_reply,
                     source_asset_id: assets[0].id.clone(),
                     editor: serde_json::Value::Null,
                     render: None,
                 }
             } else {
                 Content::Attachments {
+                    reply_intent: None,
                     reply_to,
+                    reply_quote,
+                    shared_reply,
                     items: attachments,
                     gallery: None,
                     options: AttachmentSendOptions {

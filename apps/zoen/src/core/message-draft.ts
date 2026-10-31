@@ -1,5 +1,17 @@
 import type { ReplySelection } from './generated/ReplySelection';
 import type { TimelineEntry } from './types';
+import { sameReplyContext, type ReplyContextFields } from './reply-context.ts';
+
+export function canConsumeAcceptedMediaReply(
+  current: ReplyContextFields & { editing: boolean },
+  accepted: ReplyContextFields,
+): boolean {
+  return (
+    !current.editing &&
+    Boolean(accepted.reply_to || accepted.shared_reply) &&
+    sameReplyContext(current, accepted)
+  );
+}
 
 export function canConsumeMediaReply(
   current: { replyRevision: number; editContextRevision: number; editing: boolean },

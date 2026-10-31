@@ -14,6 +14,9 @@ import type {
 } from '../media/attachment-photo-session.ts';
 import { AttachmentReview } from '../media/attachment-review.ts';
 import * as mediaDraftContract from '../media/media-draft-contract.ts';
+import * as mediaReply from '../media/media-reply.ts';
+import * as mediaAcceptance from '../media/media-acceptance.ts';
+import type { MediaReplyOptions, MediaReplyTarget } from '../media/media-reply.ts';
 import { MediaDraftChannel, MediaDraftFailure } from '../media/media-draft-channel.ts';
 import type { MediaDraftDto, MediaDraftPort, MediaDraftScope } from '../media/media-draft-types.ts';
 import { PlaybackCoordinator } from '../media/playback-owner.ts';
@@ -31,7 +34,11 @@ export type Result = {
     editable: boolean;
     onChange(text: string): void;
     onSend(finalCaption?: string): void;
-    scope: { replyTo: string | null; thread: boolean };
+    onCancelReply?: () => MediaReplyTarget | null;
+    scope: {
+      replyTo: string | null;
+      thread: boolean;
+    } & MediaReplyOptions;
   };
   review: Element | null;
 };
@@ -284,6 +291,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     './attachment-categories': attachmentCategories,
     './media-draft-channel': { MediaDraftFailure },
     './media-draft-contract': mediaDraftContract,
+    './media-reply': mediaReply,
+    './media-acceptance': mediaAcceptance,
     'expo-media-library': { MediaType: { IMAGE: 'image', VIDEO: 'video' } },
     react: {
       useMemo: memo,

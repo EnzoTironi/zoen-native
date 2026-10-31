@@ -87,6 +87,7 @@ fn commit(f: &Fixture, editing: bool) -> R<(String, MessageDraftSendResult)> {
             &f.scope,
             "0",
             DraftContent {
+                reply_intent: None,
                 text: "Independent normal draft".into(),
                 reply_to: None,
                 reply_quote: None,
@@ -151,6 +152,7 @@ fn a_later_observed_edit_never_replaces_the_accepted_revision_stamp() -> R<()> {
             &f.scope,
             &current.revision,
             DraftContent {
+                reply_intent: None,
                 text: current.text,
                 reply_to: current.reply_to,
                 reply_quote: current.reply_quote,

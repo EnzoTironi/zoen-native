@@ -62,6 +62,7 @@ export class NormalMessageDrafts {
         replyTo: null,
         replyQuote: null,
         sharedReply: null,
+        replyIntent: null,
         textRevision: 0,
         replyRevision: 0,
         persistedRevision: '0',
@@ -119,6 +120,7 @@ export class NormalMessageDrafts {
           replyTo: value.reply_to,
           replyQuote: value.reply_quote ?? null,
           sharedReply: value.shared_reply ?? null,
+          replyIntent: value.reply_intent ?? null,
           persistedRevision: value.revision,
           error: null,
         });
@@ -198,6 +200,7 @@ export class NormalMessageDrafts {
       editContextRevision: record.state.editContextRevision + 1,
       replyTo,
       replyQuote: immutableReplySelection(replyQuote),
+      replyIntent: replyTo ? (this.port.replyIntent?.(scope) ?? null) : null,
       sharedReply: null,
       replyRevision: record.state.replyRevision + 1,
     });
@@ -221,6 +224,7 @@ export class NormalMessageDrafts {
       replyTo: null,
       replyQuote: null,
       sharedReply: immutableSharedReply(quote),
+      replyIntent: this.port.replyIntent?.(scope) ?? null,
       replyRevision: record.state.replyRevision + 1,
     });
     this.schedule(record);
@@ -283,6 +287,7 @@ export class NormalMessageDrafts {
           target.reply_quote ?? null,
           target.shared_reply ?? null,
           target.edit ?? null,
+          target.reply_intent ?? null,
         ),
       );
       this.requireDraining();
@@ -465,6 +470,10 @@ export class NormalMessageDrafts {
             intent.kind === 'message' && record.state.replyRevision === intent.replyRevision
               ? null
               : record.state.sharedReply,
+          replyIntent:
+            intent.kind === 'message' && record.state.replyRevision === intent.replyRevision
+              ? null
+              : record.state.replyIntent,
           persistedRevision: record.persisted.revision,
           error: null,
         });
@@ -521,6 +530,7 @@ export class NormalMessageDrafts {
           replyTo: null,
           replyQuote: null,
           sharedReply: null,
+          replyIntent: null,
           persistedRevision: '0',
           loaded: false,
           loading: false,
