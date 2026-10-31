@@ -1,67 +1,45 @@
-import { Text, View, type ColorValue } from 'react-native';
+import { View } from 'react-native';
 import { Field, NativeButton } from '../components/primitives';
 import { t } from '../i18n';
+import type { MediaDraftPollOption } from './media-draft-types';
 
 type PollFields = {
   question: string;
-  options: string[];
+  options: readonly MediaDraftPollOption[];
   locked: boolean;
-  unknownPoll: boolean;
-  colors: { secondary: ColorValue };
-  current(): boolean;
-  working: { current: boolean };
-  pollAttempted: { current: boolean };
+  sending: boolean;
+  retry: boolean;
   setQuestion(value: string): void;
-  setOptions(value: string[]): void;
-  perform(work: () => Promise<void>): Promise<void>;
-  createPoll(): Promise<void>;
+  setOption(id: string, value: string): void;
+  addOption(): void;
+  removeOption(id: string): void;
+  submit(): void;
 };
 
-/** Stateless fields; route admission and once-only mutation ownership stay with the route. */
-export function PollAttachmentFields({
-  question,
-  options,
-  locked,
-  unknownPoll,
-  colors,
-  current,
-  working,
-  pollAttempted,
-  setQuestion,
-  setOptions,
-  perform,
-  createPoll,
-}: PollFields) {
+/** Stable private option IDs keep queued native callbacks attached to the same field. */
+export function PollAttachmentFields(props: PollFields) {
   return (
     <>
       <Field
         label={t('attachmentTabs.question')}
-        value={question}
-        editable={!locked && !unknownPoll}
-        onChangeText={(value) => {
-          if (current() && !working.current && !pollAttempted.current) setQuestion(value);
-        }}
+        value={props.question}
+        editable={!props.locked}
+        onChangeText={props.setQuestion}
       />
-      {options.map((option, index) => (
-        <View key={index} style={{ gap: 8 }}>
+      {props.options.map((option, index) => (
+        <View key={option.id} style={{ gap: 8 }}>
           <Field
             label={t('attachmentTabs.option', { number: index + 1 })}
-            value={option}
-            editable={!locked && !unknownPoll}
-            onChangeText={(value) => {
-              if (current() && !working.current && !pollAttempted.current)
-                setOptions(options.map((old, position) => (position === index ? value : old)));
-            }}
+            value={option.text}
+            editable={!props.locked}
+            onChangeText={(value) => props.setOption(option.id, value)}
           />
-          {options.length > 2 ? (
+          {props.options.length > 2 ? (
             <NativeButton
               secondary
               label={t('attachmentTabs.removeOption', { number: index + 1 })}
-              disabled={locked || unknownPoll}
-              onPress={() => {
-                if (current() && !working.current && !pollAttempted.current)
-                  setOptions(options.filter((_, position) => position !== index));
-              }}
+              disabled={props.locked}
+              onPress={() => props.removeOption(option.id)}
             />
           ) : null}
         </View>
@@ -69,24 +47,14 @@ export function PollAttachmentFields({
       <NativeButton
         secondary
         label={t('attachmentTabs.addOption')}
-        disabled={locked || unknownPoll || options.length >= 10}
-        onPress={() => {
-          if (current() && !working.current && !pollAttempted.current && options.length < 10)
-            setOptions([...options, '']);
-        }}
+        disabled={props.locked || props.options.length >= 10}
+        onPress={props.addOption}
       />
       <NativeButton
-        label={t('attachmentTabs.createPoll')}
-        disabled={locked || unknownPoll}
-        onPress={() => {
-          void perform(createPoll);
-        }}
+        label={t(props.retry ? 'chat.tryAgain2' : 'attachmentTabs.createPoll')}
+        disabled={props.sending || (props.locked && !props.retry)}
+        onPress={props.submit}
       />
-      {unknownPoll ? (
-        <Text accessibilityRole="alert" style={{ color: colors.secondary }}>
-          {t('attachmentTabs.pollUnknown')}
-        </Text>
-      ) : null}
     </>
   );
 }

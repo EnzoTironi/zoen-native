@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as messageDraft from './message-draft.ts';
 import * as mediaReply from '../media/media-reply.ts';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -250,7 +251,8 @@ export function locationReactFixture() {
       },
     },
     './article-editor': { ArticleEditor: () => null },
-    './poll-attachment-fields': { PollAttachmentFields: () => null },
+    '../core/message-draft': messageDraft,
+    './poll-attachment-editor': { PollAttachmentEditor: () => null },
   };
   const picker = { exports: {} };
   const resolve = (name: string): unknown => {

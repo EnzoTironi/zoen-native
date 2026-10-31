@@ -27,7 +27,7 @@ const reviewed = (shared: boolean) =>
       }
     : { reply_to: 'source', reply_quote: selection() };
 
-test('compiled attachment chooser offers Contact and Location for quoted replies and fences a retained Poll tab', async () => {
+test('compiled attachment chooser offers reply-aware Contact, Location and Poll without carrying quotes in URLs', async () => {
   const f = attachments();
   f.render();
   await tick();
@@ -35,14 +35,14 @@ test('compiled attachment chooser offers Contact and Location for quoted replies
   const previous = f.routes()!;
   assert.ok(previous.categories.includes('poll'));
   f.render({ replyTo: 'source', replyQuote: selection(), replyIntent: 'A' });
-  assert.deepEqual([...f.routes()!.categories], ['location', 'contact', 'article']);
+  assert.deepEqual([...f.routes()!.categories], ['location', 'contact', 'article', 'poll']);
   previous.open('poll', () => true);
-  assert.equal(f.navigations.length, 0);
-  f.routes()!.open('contact', () => false);
-  assert.equal(f.navigations.length, 0);
-  f.routes()!.open('contact', () => true);
   assert.equal(f.navigations.length, 1);
-  assert.deepEqual(JSON.parse(JSON.stringify(f.navigations[0])), {
+  f.routes()!.open('contact', () => false);
+  assert.equal(f.navigations.length, 1);
+  f.routes()!.open('contact', () => true);
+  assert.equal(f.navigations.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.navigations[1])), {
     pathname: '/chat-attachment/[id]',
     params: {
       id: 'chat',

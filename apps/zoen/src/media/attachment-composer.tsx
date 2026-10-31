@@ -86,6 +86,7 @@ export type AttachmentComposerOptions = MediaReplyOptions & {
   disabled: boolean;
   suspended: boolean;
   onSent?: (reply?: AcceptedMediaReply) => void;
+  onReplyCancelled?: (reply: AcceptedMediaReply) => void;
 };
 
 export function useAttachmentComposer(options: AttachmentComposerOptions) {

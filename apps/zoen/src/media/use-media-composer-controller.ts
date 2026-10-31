@@ -175,6 +175,7 @@ export function useMediaComposerController({
     disabled: disabled || Boolean(clip) || captureActive || recorderState.isRecording,
     suspended,
     onSent,
+    onReplyCancelled,
   });
   const closeOwner = useCallback(async (owner: VoiceReviewOwner) => {
     await owner.close();

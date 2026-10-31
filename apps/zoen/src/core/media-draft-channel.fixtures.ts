@@ -102,7 +102,7 @@ export function fixture() {
       if (current.attempted && json !== 'null') throw new Error('Attempted');
       const parsed = JSON.parse(json) as MediaDraftContent | null;
       const refs =
-        parsed === null
+        parsed === null || parsed.kind === 'poll'
           ? []
           : parsed.kind === 'attachments'
             ? parsed.items.map((item) => item.asset_id)

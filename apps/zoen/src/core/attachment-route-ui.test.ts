@@ -140,8 +140,10 @@ test('compiled Location stages one reviewed GeoJSON in the existing journal, pre
   assert.equal(f.counts().backs, 1);
 });
 
-test('compiled Poll validation never creates on render/typing; explicit unconfirmed result is held, not resent', async () => {
+test('compiled Poll stages private input and explicitly retries a lost ACK without a second poll', async () => {
   const f = fixture('poll');
+  f.render();
+  await f.tick();
   f.render();
   await f.tick();
   let tree = f.render();
@@ -160,11 +162,11 @@ test('compiled Poll validation never creates on render/typing; explicit unconfir
   await f.tick();
   tree = f.render();
   assert.equal(f.counts().polls, 1);
-  assert.equal(f.button(tree, 'attachmentTabs.createPoll').props.disabled, true);
-  create.props.onPress();
+  assert.equal(f.mediaChannel.getSnapshot().frozen, true);
+  f.button(tree, 'chat.tryAgain2').props.onPress();
   await f.tick();
   assert.equal(f.counts().polls, 1);
-  assert.equal(f.counts().backs, 0);
+  assert.equal(f.counts().backs, 1);
 });
 
 test('actual native Article editor formatting handlers use installed native methods and do not capture/send by rendering', async () => {
@@ -250,6 +252,8 @@ test('all compiled attachment sheets use one focus-aware keyboard owner and reme
 
 test('compiled Poll relayout preserves every typed field and once-only create without remounting', async () => {
   const f = fixture('poll');
+  f.render();
+  await f.tick();
   f.render();
   await f.tick();
   let tree = f.render();

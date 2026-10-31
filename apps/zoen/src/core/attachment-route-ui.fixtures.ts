@@ -10,6 +10,8 @@ import type { MediaDraftDto, MediaDraftPort } from '../media/media-draft-types.t
 import type { StaticLocation } from '../media/types.ts';
 import * as actions from '../media/attachment-route-actions.ts';
 import * as mediaReply from '../media/media-reply.ts';
+import * as messageDraft from './message-draft.ts';
+import { PollDraftOwner } from '../media/poll-draft-owner.ts';
 import type { MediaReplyTarget } from '../media/media-reply.ts';
 import {
   NormalMessageDrafts,
@@ -32,6 +34,7 @@ const routeCode = compile(
   process.env.ZOEN_ATTACHMENT_ROUTE_SOURCE ?? '../media/attachment-route.tsx',
 );
 const locationPickerCode = compile('../media/location-picker.tsx');
+const pollEditorCode = compile('../media/poll-attachment-editor.tsx');
 const pollFieldsCode = compile('../media/poll-attachment-fields.tsx');
 export const editorCode = compile('../media/article-editor.tsx');
 export type Element = { type: unknown; props: Record<string, any> };
@@ -195,6 +198,7 @@ export function fixture(kind = 'article') {
   let gpsGate: Promise<StaticLocation | null> | null = null;
   let contactGate: Promise<content.SharedContact | null> | null = null;
   let searchGate: Promise<readonly StaticLocation[]> | null = null;
+  const pollReceipts = new Map<string, Awaited<ReturnType<MediaDraftPort['send']>>>();
   const mediaPort: MediaDraftPort = {
     load: async () => mediaStored,
     save: async (_, expected, content, assets) => {
@@ -217,9 +221,36 @@ export function fixture(kind = 'article') {
       throw Error('not used');
     },
     release: async () => {},
-    send: async () => {
-      sends++;
-      throw Error('picker must not send');
+    send: async (_, expected) => {
+      if (kind !== 'poll') throw Error('picker must not send');
+      const old = pollReceipts.get(expected);
+      if (old) return old;
+      assert.equal(expected, mediaStored.revision);
+      const value = JSON.parse(mediaStored.content_json);
+      assert.equal(value.kind, 'poll');
+      content.pollArguments(
+        value.question,
+        value.options.map((o: { text: string }) => o.text),
+      );
+      polls++;
+      mediaStored = {
+        revision: String(Number(expected) + 1),
+        content_json: 'null',
+        assets: [],
+        attempted: false,
+        accepted_intent_json: JSON.stringify({
+          input_revision: expected,
+          messages: ['synthetic-poll'],
+          reply: { reply_to: value.reply_to, ...mediaReply.copyMediaReply(value) },
+        }),
+      };
+      const result = { entries: [{ id: 'synthetic-poll' } as TimelineEntry], draft: mediaStored };
+      pollReceipts.set(expected, result);
+      if (pollError) {
+        pollError = false;
+        throw Error('synthetic lost poll ACK');
+      }
+      return result;
     },
   };
   const mediaChannel = new MediaDraftChannel(
@@ -257,13 +288,8 @@ export function fixture(kind = 'article') {
         value === mediaChannel && owner.identityId === scope.owner.identityId,
     },
     refresh: async () => {},
-    request: async (request: any) => {
-      assert.equal(request.op, 'install_app');
-      assert.equal(request.space_id, scope.spaceId);
-      assert.equal(request.app_id, 'poll');
-      polls++;
-      if (pollError) throw new Error('synthetic unconfirmed effect');
-      return { id: 'synthetic-poll' };
+    request: async () => {
+      throw Error('Poll must use the durable conversation journal');
     },
   };
   const module: { exports: any } = { exports: {} };
@@ -338,6 +364,10 @@ export function fixture(kind = 'article') {
     if (name === '../../media/attachment-content') return content;
     if (name === '../../media/attachment-route-actions') return actions;
     if (name === '../../media/media-reply') return mediaReply;
+    if (name === '../../core/message-draft') return messageDraft;
+    if (name === '../../media/poll-draft-owner') return { PollDraftOwner };
+    if (name === '../../media/attachment-reply-context')
+      return { AttachmentReplyContext: 'AttachmentReplyContext' };
     if (name === '../../media/location-map') return { LocationMap: 'LocationMap' };
     if (name === '../../media/location-selection') return { LocationSelection };
     if (name === '../../media/location-picker') {
@@ -375,6 +405,15 @@ export function fixture(kind = 'article') {
       };
     if (name === '../../media/cache-work')
       return { sensitiveCacheWork: { run: (work: () => unknown) => work() } };
+    if (name === '../../media/poll-attachment-editor') {
+      const editor = { exports: {} };
+      runInNewContext(pollEditorCode, {
+        module: editor,
+        exports: editor.exports,
+        require: routeDependency,
+      });
+      return editor.exports;
+    }
     if (name === '../../media/poll-attachment-fields') {
       const fields = { exports: {} };
       runInNewContext(pollFieldsCode, {
@@ -434,7 +473,7 @@ export function fixture(kind = 'article') {
   };
   return {
     render: () => {
-      if (kind === 'location') render();
+      if (kind === 'location' || kind === 'poll') render();
       return render();
     },
     button,

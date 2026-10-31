@@ -51,6 +51,13 @@ impl Content {
                 shared_reply,
                 reply_intent,
                 ..
+            }
+            | Self::Poll {
+                reply_to,
+                reply_quote,
+                shared_reply,
+                reply_intent,
+                ..
             } => (reply_to, reply_quote, shared_reply, reply_intent),
         };
         Reply {

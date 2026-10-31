@@ -23,12 +23,12 @@ export const compiled = await build({
         builder.onResolve(
           {
             filter:
-              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review)|attachment-gallery-journal)$/,
+              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review)|attachment-gallery-journal|poll-draft-review)$/,
           },
           ({ path }) => ({
             path: fileURLToPath(
               new URL(
-                `../media/${path.slice(2)}.${path.endsWith('-view') ? 'tsx' : 'ts'}`,
+                `../media/${path.slice(2)}.${path.endsWith('-view') || path.endsWith('poll-draft-review') ? 'tsx' : 'ts'}`,
                 import.meta.url,
               ),
             ),

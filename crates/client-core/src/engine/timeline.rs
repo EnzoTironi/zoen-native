@@ -341,6 +341,17 @@ impl Engine {
         text: &str,
         attaches: Option<ItemId>,
     ) -> R<TimelineEntry> {
+        self.post_as_with_reply(space, author, text, attaches, None)
+    }
+
+    pub(crate) fn post_as_with_reply(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        attaches: Option<ItemId>,
+        reply: Option<types::ReplyRef>,
+    ) -> R<TimelineEntry> {
         if !self.state.writer(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -362,7 +373,7 @@ impl Engine {
                 message: new_id("msg")?,
                 text: text.to_string(),
                 attaches,
-                reply: None,
+                reply,
                 media: None,
                 forwarded: false,
                 forwarded_author: None,

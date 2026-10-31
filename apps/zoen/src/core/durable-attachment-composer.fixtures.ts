@@ -112,7 +112,9 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       writes.push(json);
       const content = JSON.parse(json);
       const refs: string[] =
-        content?.items.map((item: { asset_id: string }) => item.asset_id) ?? [];
+        content?.kind === 'attachments'
+          ? content.items.map((item: { asset_id: string }) => item.asset_id)
+          : [];
       durable = {
         revision: String(revision++),
         content_json: json,
@@ -304,7 +306,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       router: { push: (value: unknown) => navigations.push(value) },
     },
     'expo-crypto': { randomUUID: () => `asset-${++sequence}` },
-    '../components/primitives': { NativeButton: 'NativeButton' },
+    '../components/primitives': { NativeButton: 'NativeButton', IconButton: 'IconButton' },
+    './attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     '../core/provider': {
       useClient: () => ({
         store,

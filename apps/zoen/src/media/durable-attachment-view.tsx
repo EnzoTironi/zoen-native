@@ -8,6 +8,7 @@ import { AttachmentDraftStrip } from './attachment-draft-strip';
 import { isLocationFileMime } from './location-file';
 import { mediaPlayback } from './playback-owner';
 import { copyMediaReply, sameMediaReply } from './media-reply';
+import { renderPollDraftReview } from './poll-draft-review';
 
 import type { useDurableAttachmentController } from './use-durable-attachment-controller';
 export function renderDurableAttachment(
@@ -40,6 +41,15 @@ export function renderDurableAttachment(
     reorder,
     setRestoreEpoch,
   } = context;
+  if (state?.content?.kind === 'poll')
+    return {
+      active: true,
+      busy: true,
+      field: undefined,
+      pick,
+      canAdd: false,
+      review: renderPollDraftReview(context, state.content),
+    };
   const presentation = runtime.approval;
   // A native-review writer freeze is not a pending Send.
   const retry = Boolean(state?.frozen && !state.reviewing);

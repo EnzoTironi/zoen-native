@@ -31,6 +31,7 @@ const files = new Map([
   ['durable-attachment-composer', 'tsx'],
   ['use-durable-attachment-controller', 'ts'],
   ['durable-attachment-view', 'tsx'],
+  ['poll-draft-review', 'tsx'],
   ['durable-attachment-commands', 'ts'],
   ['durable-attachment-pick', 'ts'],
   ['durable-attachment-review', 'ts'],
@@ -213,6 +214,7 @@ export async function attachmentOwnerReactFixture(open = true) {
         ...React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot),
       }),
     },
+    './attachment-reply-context': { AttachmentReplyContext: () => null },
     '../components/primitives': { NativeButton: native },
     '../components/dialogs': {
       useDialogs: () => ({
