@@ -15,8 +15,7 @@ export function renderPollDraftReview(
   const { channel, state, runtime, options, current, store, colors, failure, cancel, own } =
     context;
   if (!channel || !state) return null;
-  const live = () =>
-    current() && runtime.foreground && channel.getSnapshot().content?.kind === 'poll';
+  const live = () => current() && runtime.foreground && channel.getSnapshot().content === poll;
   const disabled = options.disabled || options.suspended || state.sending || Boolean(own?.clearing);
   return (
     <View testID="poll-draft-review" style={{ gap: 8, paddingVertical: 8 }}>

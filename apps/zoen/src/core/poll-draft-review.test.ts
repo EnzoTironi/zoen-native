@@ -64,9 +64,13 @@ test('poll dock unlink preserves latest question and reports captured reply, whi
   const cancelled: unknown[] = [];
   const view = f.render({ onReplyCancelled: (reply) => cancelled.push(reply) });
   const context = nodes(view.review).find((n) => n.type === 'AttachmentReplyContext')!;
-  const unlink = context.props.onCancel as () => void;
+  const retiredUnlink = context.props.onCancel as () => void;
   await f.channel.save({ ...poll, kind: 'poll', question: 'Latest question' });
-  unlink();
+  retiredUnlink();
+  await tick();
+  assert.equal(cancelled.length, 0, 'an obsolete dock cannot edit the current draft');
+  const freshContext = nodes(f.render().review).find((n) => n.type === 'AttachmentReplyContext')!;
+  (freshContext.props.onCancel as () => void)();
   await tick();
   assert.deepEqual(JSON.parse(JSON.stringify(cancelled)), [
     { reply_to: 'source', reply_intent: 'A' },
@@ -91,15 +95,46 @@ test('discarding a private poll never publishes and cannot erase another pending
   await tick();
   assert.equal(f.channel.getSnapshot().content, null);
   assert.equal(f.sent.length, 0);
-  await f.channel.save({
-    kind: 'poll',
-    reply_to: null,
-    question: 'Second private draft',
-    options: poll.options,
-  });
-  f.render({ disabled: true });
+  await f.channel.save(
+    {
+      kind: 'attachments',
+      reply_to: null,
+      items: [{ asset_id: 'a', mutation_id: 'new_media', caption: 'Newer work' }],
+    },
+    [{ id: 'a', uri: 'file:///new', name: 'new.txt', mime: 'text/plain' }],
+  );
   discard();
   await tick();
-  assert.equal(f.channel.getSnapshot().content?.kind, 'poll');
+  assert.equal(f.channel.getSnapshot().content?.kind, 'attachments');
+  f.unmount();
+});
+
+test('a retained dock cannot open, unlink or discard a newer poll with the same captured normal reply', async () => {
+  const f = fixture(initial());
+  f.render();
+  await tick();
+  const old = f.render();
+  const open = button(old.review, 'attachmentTabs.resumePoll'),
+    discard = button(old.review, 'chat.cancel');
+  const unlink = nodes(old.review).find((n) => n.type === 'AttachmentReplyContext')!.props
+    .onCancel as () => void;
+  await f.channel.clear();
+  await f.channel.save({
+    ...poll,
+    kind: 'poll',
+    question: 'Another poll',
+    options: [
+      { id: 'new_a', text: 'Yes' },
+      { id: 'new_b', text: 'No' },
+    ],
+  });
+  const before = f.channel.getSnapshot().content;
+  open();
+  discard();
+  unlink();
+  await tick();
+  assert.equal(f.channel.getSnapshot().content, before);
+  assert.equal(f.navigations.length, 0);
+  assert.equal(f.sent.length, 0);
   f.unmount();
 });
