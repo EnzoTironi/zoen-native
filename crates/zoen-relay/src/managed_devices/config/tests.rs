@@ -72,3 +72,55 @@ fn public_or_symlinked_operator_config_is_not_adopted() -> Result<(), Box<dyn st
     drop(writer);
     Ok(())
 }
+
+#[test]
+fn operator_config_loads_one_runtime_anchor_for_multiple_explicit_principals(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use relay_admission::managed_images::{AnchorWriter, RuntimeDeployment};
+    let home = crate::managed_devices::tests::Home(
+        std::env::temp_dir().join(types::new_id("runtime-operator")?),
+    );
+    let deployment = RuntimeDeployment {
+        namespace: "shared-config".into(),
+        witness: "a".repeat(64),
+        source: "test-cell".into(),
+    };
+    let _writer = AnchorWriter::create_runtime(&home.0, deployment.clone())?;
+    let path = home.0.join("operator.json");
+    let entry = serde_json::json!({
+        "deployment": deployment,
+        "anchor_directory": home.0,
+        "principals": [
+            {"agent":"first-agent", "device":"b".repeat(64)},
+            {"agent":"second-agent", "device":"c".repeat(64)}
+        ]
+    });
+    write(
+        &path,
+        &serde_json::to_vec(&serde_json::json!({"devices":[], "runtimes":[entry.clone()]}))?,
+    )?;
+    let registry = ManagedDevices::load_operator_file(Some(&path))?;
+    for device in ["b".repeat(64), "c".repeat(64)] {
+        assert!(registry.get(&device).is_some());
+    }
+    for invalid_entry in [
+        serde_json::json!({"deployment":deployment,"anchor_directory":home.0,"principals":[]}),
+        serde_json::json!({"deployment":deployment,"anchor_directory":home.0,"principals":[{"agent":"first-agent","device":"b".repeat(64),"grant":true}]}),
+    ] {
+        write(
+            &path,
+            &serde_json::to_vec(&serde_json::json!({"devices":[], "runtimes":[invalid_entry]}))?,
+        )?;
+        assert!(ManagedDevices::load_operator_file(Some(&path)).is_err());
+    }
+    write(
+        &path,
+        &serde_json::to_vec(&serde_json::json!({"devices":[], "runtimes":[entry.clone(),entry]}))?,
+    )?;
+    assert!(ManagedDevices::load_operator_file(Some(&path)).is_err());
+    assert!(
+        registry.get(&"b".repeat(64)).is_some(),
+        "a rewritten config cannot replace the live registry"
+    );
+    Ok(())
+}

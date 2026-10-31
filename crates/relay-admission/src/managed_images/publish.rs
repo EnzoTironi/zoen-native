@@ -128,12 +128,11 @@ impl AnchorReader {
         checkpoint: &Checkpoint,
         envelope: &Envelope,
     ) -> Result<Record, AnchorError> {
-        if envelope.author() != self.deployment.agent
-            || envelope.device() != Some(self.deployment.device.as_str())
-        {
+        let device = envelope.device().ok_or(AnchorError::Invalid)?;
+        if !self.deployment.principal(envelope.author(), device) {
             return Err(AnchorError::Invalid);
         }
-        let effect_digest = publish_digest(&self.deployment.namespace, envelope)?;
+        let effect_digest = publish_digest(self.deployment.namespace(), envelope)?;
         let prepared = self
             .checkpoint_effect(checkpoint)?
             .ok_or(AnchorError::Unreconciled)?;
@@ -146,10 +145,10 @@ impl AnchorReader {
         .encode();
         Ok(Record {
             schema: 1,
-            namespace: self.deployment.namespace.clone(),
-            source: self.deployment.source.clone(),
-            agent: self.deployment.agent.clone(),
-            device: self.deployment.device.clone(),
+            namespace: self.deployment.namespace().into(),
+            source: self.deployment.source().into(),
+            agent: envelope.author().into(),
+            device: device.into(),
             checkpoint: checkpoint.clone(),
             checkpoint_record_digest: event_log::sha256_hex(
                 &serde_json::to_vec(&prepared).map_err(|_| AnchorError::Invalid)?,
@@ -180,10 +179,9 @@ impl AnchorReader {
         if canonical != bytes
             || record.schema != 1
             || record.effect_digest != effect
-            || record.namespace != self.deployment.namespace
-            || record.source != self.deployment.source
-            || record.agent != self.deployment.agent
-            || record.device != self.deployment.device
+            || record.namespace != self.deployment.namespace()
+            || record.source != self.deployment.source()
+            || !self.deployment.principal(&record.agent, &record.device)
         {
             return Err(AnchorError::Unreconciled);
         }
@@ -215,7 +213,10 @@ impl AnchorReader {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 let original = self.read_publish(&record.effect_digest)?;
-                if original.wire_digest != record.wire_digest {
+                if original.wire_digest != record.wire_digest
+                    || original.agent != record.agent
+                    || original.device != record.device
+                {
                     return Err(AnchorError::Invalid);
                 }
                 return Ok(ConsumePublish::Consumed(original.condition()?));
