@@ -30,10 +30,10 @@ impl AnchorReader {
         let mut bytes = Vec::new();
         File::open(path)
             .map_err(unavailable)?
-            .take(4097)
+            .take(32_769)
             .read_to_end(&mut bytes)
             .map_err(unavailable)?;
-        if bytes.len() > 4096 {
+        if bytes.len() > 32_768 {
             return Err(AnchorError::Invalid);
         }
         let prepared: Prepared =
@@ -44,6 +44,9 @@ impl AnchorReader {
                 &prepared.previous,
                 &prepared.effect_digest,
                 prepared.retirement,
+                &prepared.subject_updates,
+                prepared.subjects_after.as_deref(),
+                prepared.intent.as_deref(),
             )
             .as_ref()
                 != Some(&prepared)

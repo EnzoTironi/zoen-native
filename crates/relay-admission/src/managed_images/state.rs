@@ -1,5 +1,7 @@
 use super::deployment::Binding;
+use super::{subjects, SubjectUpdate};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Locators bound to an actual SQL/FDB pairing and certified managed device.
 /// This structure is an observation, never a permission to dispatch or publish.
@@ -44,6 +46,12 @@ pub struct Prepared {
     pub next: Checkpoint,
     pub effect_digest: String,
     pub retirement: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subject_updates: Vec<SubjectUpdate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subjects_after: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +62,8 @@ pub(super) struct State {
     pub committed: Checkpoint,
     pub committed_effect: Option<Prepared>,
     pub prepared: Option<Prepared>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub subjects: BTreeMap<String, String>,
 }
 
 /// Recovery never recovers a Fresh provider permit. Even BothAfter only
@@ -83,12 +93,14 @@ impl State {
             committed,
             committed_effect: None,
             prepared: None,
+            subjects: BTreeMap::new(),
         })
     }
 
     pub fn valid(&self) -> bool {
         self.schema == self.deployment.schema()
             && self.deployment.valid()
+            && self.subjects_valid()
             && self.committed.generation > 0
             && self.committed.generation <= i64::MAX as u64
             && self.committed.sequence <= i64::MAX as u64
@@ -107,20 +119,43 @@ impl State {
                             &last.previous,
                             &last.effect_digest,
                             last.retirement,
+                            &last.subject_updates,
+                            last.subjects_after.as_deref(),
+                            last.intent.as_deref(),
                         )
                         .as_ref()
                             == Some(last)
                 }
             }
             && self.prepared.as_ref().is_none_or(|prepared| {
-                self.prepare(&prepared.effect_digest, prepared.retirement)
-                    .as_ref()
+                self.prepare_subjects(
+                    &prepared.effect_digest,
+                    prepared.retirement,
+                    &prepared.subject_updates,
+                    prepared.intent.as_deref(),
+                )
+                .as_ref()
                     == Some(prepared)
             })
     }
 
-    pub fn prepare(&self, effect: &str, retirement: bool) -> Option<Prepared> {
-        transition(&self.deployment, &self.committed, effect, retirement)
+    pub fn prepare_subjects(
+        &self,
+        effect: &str,
+        retirement: bool,
+        updates: &[SubjectUpdate],
+        intent: Option<&str>,
+    ) -> Option<Prepared> {
+        let next = subjects::apply(&self.subjects, updates)?;
+        transition(
+            &self.deployment,
+            &self.committed,
+            effect,
+            retirement,
+            updates,
+            subjects::commitment(&next).as_deref(),
+            intent,
+        )
     }
 
     pub fn recovery(&self, sql: &Checkpoint, fdb: &Checkpoint) -> Option<Recovery> {
@@ -140,8 +175,26 @@ pub(super) fn transition(
     previous: &Checkpoint,
     effect: &str,
     retirement: bool,
+    updates: &[SubjectUpdate],
+    subjects_after: Option<&str>,
+    intent: Option<&str>,
 ) -> Option<Prepared> {
-    if !digest(effect) || !digest(&previous.digest) || previous.generation == 0 {
+    if !digest(effect)
+        || !subjects::well_formed(updates)
+        || !digest(&previous.digest)
+        || previous.generation == 0
+        || (deployment.schema() != 3
+            && (!updates.is_empty() || subjects_after.is_some() || intent.is_some()))
+        || subjects_after.is_some_and(|value| !digest(value))
+        || (!updates.is_empty() && subjects_after.is_none())
+        || intent.is_some_and(|value| {
+            value.is_empty()
+                || value.len() > 16_384
+                || !value.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=' | b'-' | b'_')
+                })
+        })
+    {
         return None;
     }
     let sequence = previous.sequence.checked_add(1)?;
@@ -158,21 +211,38 @@ pub(super) fn transition(
         next: Checkpoint {
             generation,
             sequence,
-            digest: hash(&(
-                deployment.effect_domain(),
-                deployment,
-                previous,
-                sequence,
-                effect,
-                retirement,
-            ))?,
+            digest: if subjects_after.is_some() || intent.is_some() {
+                hash(&(
+                    "runtime-continuity/subject-effect/1",
+                    deployment,
+                    previous,
+                    sequence,
+                    effect,
+                    retirement,
+                    updates,
+                    subjects_after,
+                    intent,
+                ))?
+            } else {
+                hash(&(
+                    deployment.effect_domain(),
+                    deployment,
+                    previous,
+                    sequence,
+                    effect,
+                    retirement,
+                ))?
+            },
         },
         effect_digest: effect.into(),
         retirement,
+        subject_updates: updates.into(),
+        subjects_after: subjects_after.map(str::to_owned),
+        intent: intent.map(str::to_owned),
     })
 }
 
-fn hash(value: &impl Serialize) -> Option<String> {
+pub(super) fn hash(value: &impl Serialize) -> Option<String> {
     serde_json::to_vec(value)
         .ok()
         .map(|bytes| event_log::sha256_hex(&bytes))

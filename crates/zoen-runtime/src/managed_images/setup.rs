@@ -13,6 +13,9 @@ impl RuntimeAuthority {
         agent: &str,
         device: &str,
     ) -> Result<Self, RuntimeError> {
+        if self.runtime_continuity.is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
         let deployment = self.configured_image_deployment(agent, device).await?;
         let mut sql = self.finance.empty_image_checkpoint_transaction().await?;
         let fdb = self.execution.transaction().await?;
@@ -94,6 +97,9 @@ impl RuntimeAuthority {
         agent: &str,
         device: &str,
     ) -> Result<Self, RuntimeError> {
+        if self.runtime_continuity.is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
         let deployment = self.configured_image_deployment(agent, device).await?;
         let mut anchor = AnchorWriter::open(directory, deployment.clone()).map_err(error)?;
         self.reconcile_image_anchor(&mut anchor, &deployment)

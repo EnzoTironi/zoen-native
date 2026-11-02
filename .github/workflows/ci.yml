@@ -174,6 +174,9 @@ jobs:
 
   rust-tests:
     needs: change-scope
+    env:
+      # Backup/restore tests use the matching tools in this owned pinned service.
+      ZOEN_TEST_PG_CONTAINER: pg
     # Only an explicit verified skip can omit Rust; missing/failed scope stays full.
     if: ${{ !cancelled() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.run_rust != 'false') }}
     runs-on: ubuntu-24.04

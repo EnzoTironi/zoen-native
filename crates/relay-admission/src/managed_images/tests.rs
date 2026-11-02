@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 mod publish;
 mod release;
 mod runtime;
+mod subjects;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
