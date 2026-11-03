@@ -157,7 +157,15 @@ export class ConversationSearch {
     if (!this.submitted) return;
     this.dirty = true;
     const generation = ++this.generation;
-    if (!this.isCurrent()) return;
+    if (!this.isCurrent()) {
+      if (this.state.active) {
+        this.firstPage = null;
+        this.publish({ hits: [], cursor: null, index: -1, loading: false, completed: false });
+      } else {
+        this.publish({ completed: false });
+      }
+      return;
+    }
     const query = this.state.query.trim();
     if (!query || !this.fitsQuery(query)) return;
     this.publish({ loading: true, error: null });

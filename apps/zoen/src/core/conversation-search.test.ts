@@ -307,6 +307,7 @@ test('an empty result cannot launch AI after access returns before canonical ref
   await search.refreshCanonical();
   current = true;
   assert.equal(search.assistantQuery(observed), null);
+  assert.equal(search.getSnapshot().completed, false);
 
   await search.refreshCanonical();
   assert.equal(search.assistantQuery(search.getSnapshot()), 'term');
@@ -333,7 +334,8 @@ test('restored access does not allow navigation or pagination on invalidated hit
   current = true;
   await search.move('older');
   await search.loadMore();
-  assert.equal(search.getSnapshot().index, 0);
+  assert.equal(search.getSnapshot().index, -1);
+  assert.deepEqual(search.getSnapshot().hits, []);
   assert.deepEqual(cursors, [null]);
 
   await search.refreshCanonical();
