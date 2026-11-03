@@ -60,7 +60,27 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         .execute(pool)
         .await
         .unwrap();
-    zoen_relay::MIGRATIONS.run(pool).await.unwrap();
+    let previous = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(
+            zoen_relay::MIGRATIONS
+                .iter()
+                .filter(|migration| migration.version <= 41)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    previous.run(pool).await?;
+    sqlx::query("INSERT INTO push_tokens(identity, device, platform, token, purpose) VALUES ('upgrade', 'device', 'apns', 'upgrade-token', 'notification')")
+        .execute(pool)
+        .await?;
+    zoen_relay::MIGRATIONS.run(pool).await?;
+    let id: i64 = sqlx::query_scalar(
+        "DELETE FROM push_tokens WHERE token = 'upgrade-token' RETURNING registration_id",
+    )
+    .fetch_one(pool)
+    .await?;
+    assert!(id > 0);
 
     let root = Signer::generate()?;
     let first = Author::device(&root, Signer::generate()?);
