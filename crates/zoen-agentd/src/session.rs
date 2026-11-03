@@ -154,7 +154,6 @@ impl ToolSession {
             return Ok(false);
         }
         let (lease, since) = (lease.clone(), *since);
-        self.charge(since, now_ms);
         match self.provider.suspend(&lease).await {
             Ok(snap) => *st = State::Suspended { snap },
             Err(SandboxError::Unsupported(_)) => {
@@ -163,6 +162,7 @@ impl ToolSession {
             }
             Err(e) => return Err(e.into()),
         }
+        self.charge(since, now_ms);
         Ok(true)
     }
 

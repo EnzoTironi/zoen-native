@@ -27,6 +27,7 @@ struct Guest {
     delete_calls: usize,
     already_gone: bool,
     resume_failures: usize,
+    suspend_failures: usize,
     resume_calls: usize,
     largest_stdin: usize,
     file_commands: usize,
@@ -53,6 +54,10 @@ impl Guest {
             } else {
                 (200, json!({}))
             };
+        }
+        if path.ends_with("/suspend") && self.suspend_failures > 0 {
+            self.suspend_failures -= 1;
+            return (503, json!({"error": "injected suspend failure"}));
         }
         if path.ends_with("/start") {
             self.resume_calls += 1;
@@ -536,25 +541,5 @@ async fn the_actual_guest_scripts_round_trip_binary_data_and_quoted_paths() {
     fly.release(lease).await.unwrap();
 }
 
-#[tokio::test]
-async fn resume_recovers_when_start_errors_but_machine_is_running() {
-    let api = MockFly::new();
-    let session = session(api.provider());
-    session
-        .exec(ExecRequest::sh("echo before"), NOW)
-        .await
-        .unwrap();
-    assert!(session.tick(NOW).await.unwrap());
-    {
-        let mut guest = api.guest.lock().unwrap();
-        guest.resume_failures = 1;
-        guest.state_response = Some((200, json!({"state": "started"})));
-    }
-    session
-        .exec(ExecRequest::sh("echo after"), NOW)
-        .await
-        .unwrap();
-    assert_eq!(session.state().await, "running");
-    assert_eq!(api.guest.lock().unwrap().resume_calls, 1);
-    session.finish(NOW).await.unwrap();
-}
+#[path = "fly_contract/fly_lifecycle_recovery.rs"]
+mod lifecycle_recovery;
