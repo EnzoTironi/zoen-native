@@ -136,8 +136,10 @@ export function listenNotificationEvents(
     const hint = decodeNotificationWake(Platform.OS, trigger);
     if (hint) wake(hint);
   });
-  let handledIdentifier: string | undefined;
-  const respond = (response: Notifications.NotificationResponse | null) => {
+  let initialPending = true;
+  const liveDuringStartup = new Set<string>();
+  let initialIdentifier: string | undefined;
+  const respond = (response: Notifications.NotificationResponse | null, initial = false) => {
     if (
       !active ||
       !response ||
@@ -146,15 +148,29 @@ export function listenNotificationEvents(
     )
       return;
     const { identifier, content } = response.notification.request;
-    if (identifier === handledIdentifier) return;
-    handledIdentifier = identifier;
+    if (initial) {
+      if (liveDuringStartup.has(identifier)) return;
+      initialIdentifier = identifier;
+    } else {
+      if (initialPending) liveDuringStartup.add(identifier);
+      if (identifier === initialIdentifier) {
+        initialIdentifier = undefined;
+        return;
+      }
+    }
     tap(content.data);
-    void Notifications.clearLastNotificationResponseAsync();
+    void Notifications.clearLastNotificationResponseAsync().finally(() => {
+      if (initial && initialIdentifier === identifier) initialIdentifier = undefined;
+    }).catch(() => {});
   };
   const responses = Notifications.addNotificationResponseReceivedListener(respond);
   void Notifications.getLastNotificationResponseAsync()
-    .then(respond)
-    .catch(() => {});
+    .then((response) => respond(response, true))
+    .catch(() => {})
+    .finally(() => {
+      initialPending = false;
+      liveDuringStartup.clear();
+    });
   return () => {
     active = false;
     received.remove();

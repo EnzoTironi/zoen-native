@@ -38,6 +38,8 @@ for (const initialFirst of [false, true]) {
     await Promise.resolve();
     assert.equal(taps, 1);
     assert.equal(cleared, 1);
+    receive(response);
+    assert.equal(taps, 2);
     stop();
   });
 }
