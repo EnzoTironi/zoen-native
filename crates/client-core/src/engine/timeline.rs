@@ -256,7 +256,12 @@ impl Engine {
         if !self.visible_message(entry) {
             return Err(not_found(&t("Mensagem", "Message")));
         }
-        if marks.deleted || (note.author_only() && *author != me) {
+        if marks.deleted {
+            return Err(CoreError::Forbidden {
+                reason: t("mensagem apagada", "message was deleted"),
+            });
+        }
+        if note.author_only() && *author != me {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "só quem escreveu edita ou apaga",
