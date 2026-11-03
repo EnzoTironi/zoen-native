@@ -177,3 +177,29 @@ test('returning to search retries an interrupted first page and discards its lat
   assert.deepEqual(search.getSnapshot().hits, [hit('fresh')]);
   assert.equal(search.getSnapshot().loading, false);
 });
+
+test('a successful pagination retry clears a temporary search failure', async () => {
+  let failNextPage = true;
+  const search = new ConversationSearch({
+    current: () => true,
+    search: async (_, cursor) => {
+      if (!cursor) return { hits: [hit('first')], next_cursor: 'older' };
+      if (failNextPage) throw new Error('temporarily unavailable');
+      return { hits: [hit('second')], next_cursor: null };
+    },
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+  await search.move('older');
+  assert.equal(search.getSnapshot().completed, false);
+  assert.equal(search.getSnapshot().index, 0);
+
+  failNextPage = false;
+  await search.move('older');
+  const result = search.getSnapshot();
+  assert.equal(result.completed, true);
+  assert.equal(result.error, null);
+  assert.equal(result.index, 1);
+  assert.deepEqual(result.hits, [hit('first'), hit('second')]);
+});

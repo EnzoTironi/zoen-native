@@ -207,6 +207,7 @@ export class ConversationSearch {
         cursor: page.next_cursor,
         index: next < hits.length ? next : this.state.index,
         loading: false,
+        completed: true,
       });
     } catch (reason) {
       // A stale canonical cursor must be restarted explicitly, never silently skip a page.
