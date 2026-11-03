@@ -200,16 +200,17 @@ export class MutedChatsSession {
         BigInt(failedAction.until) <= BigInt(snapshot.clock_ms) &&
         actual === null,
       );
-      this.failedAction = null;
+      const actionFailed = Boolean(
+        failedAction &&
+        !elapsed &&
+        (failedAction.until === undefined || actual !== failedAction.until),
+      );
+      this.failedAction = actionFailed ? failedAction : null;
       this.publish({
         phase: 'ready',
         chats,
         clock_ms: snapshot.clock_ms ?? null,
-        actionFailed: Boolean(
-          failedAction &&
-          !elapsed &&
-          (failedAction.until === undefined || actual !== failedAction.until),
-        ),
+        actionFailed,
       });
     } catch {
       if (this.current(revision))
@@ -266,6 +267,7 @@ export class MutedChatsSession {
     let dispatched = false;
     let failed = false;
     let target: string | null | undefined = choice ? undefined : null;
+    this.failedAction = null;
     this.publish({ pending: id, actionFailed: false });
     try {
       if (!(await confirm()) || !this.current(revision) || this.state.selected !== id) return;
