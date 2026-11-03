@@ -207,6 +207,9 @@ test('actual Expo consumer and maintained public facade keep one controlled quot
       [0, 1],
       'a late action cannot mutate selection presentation',
     );
+    assert.notEqual(n.quoteCollapse.generation, generation);
+    await f.root.act(() => n.onBlockquoteToggle({ nativeEvent: { index: 0, generation } }));
+    assert.deepEqual([...f.native.quoteCollapse.expanded], [0, 1]);
     n = await f.render({ ...props, revision: 'r2' });
     assert.notEqual(n.quoteCollapse.generation, generation);
     assert.deepEqual(
