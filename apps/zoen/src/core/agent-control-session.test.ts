@@ -283,3 +283,34 @@ test('reviewed revoke preserves durable unknown across reopen and retries only t
   assert.equal(cold.ticket(), null);
   assert.equal(cold.retryTicket(), null);
 });
+
+test('a retired control request cannot refresh or overwrite the next account', async () => {
+  const f = fixture();
+  const held = deferred<void>();
+  let reads = 0;
+  const session = new AgentControlSession(
+    {
+      ...f.port,
+      read: (agent, scope) => {
+        reads++;
+        return f.port.read(agent, scope);
+      },
+      control: () => held.promise,
+    },
+    'agent',
+  );
+  session.activate(first);
+  await session.refresh();
+  const control = session.change(session.ticket()!);
+  assert.equal(session.getSnapshot().pending, 'Pause');
+
+  session.retire();
+  session.activate(f.epoch());
+  await session.refresh();
+  const next = session.getSnapshot();
+  held.resolve(undefined);
+  await control;
+  assert.equal(reads, 2);
+  assert.equal(session.getSnapshot(), next);
+  assert.equal(next.pending, null);
+});
