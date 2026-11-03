@@ -196,8 +196,7 @@ test('registration requires relay acknowledgement and token rotation cannot over
   };
   const coordinator = new PushCoordinator(ports, configuration);
   const first = coordinator.foreground();
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(coordinator.getSnapshot().registration, 'registering');
   const rotated = coordinator.receivedToken('BB'.repeat(32));
   assert.equal(writes.length, 1);
@@ -221,9 +220,7 @@ test('network failures are transient waiting state, with five bounded retries an
   assert.equal(coordinator.getSnapshot().registration, 'waiting');
   for (let i = 0; i < 5; i++) {
     retries[i]?.callback();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
   assert.deepEqual(
     retries.map((retry) => retry.delay),
@@ -298,6 +295,7 @@ test('a refused rotation cannot reuse an acknowledgement superseded by another w
   const coordinator = new PushCoordinator(ports, configuration);
   await coordinator.foreground();
   const firstRotation = coordinator.receivedToken('bb'.repeat(32));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   const secondRotation = coordinator.receivedToken('cc'.repeat(32));
   acknowledge({ kind: 'acknowledged' });
   await Promise.all([firstRotation, secondRotation]);
@@ -308,6 +306,21 @@ test('a refused rotation cannot reuse an acknowledgement superseded by another w
     writes,
     ['aa', 'bb', 'cc', 'aa'].map((byte) => byte.repeat(32)),
   );
+  assert.equal(coordinator.getSnapshot().registration, 'acknowledged');
+  coordinator.dispose();
+});
+
+test('rotation during a registration notification only writes the newest token', async () => {
+  const { ports, writes } = fixture();
+  const coordinator = new PushCoordinator(ports, configuration);
+  let rotated = false;
+  coordinator.subscribe(() => {
+    if (rotated || coordinator.getSnapshot().registration !== 'registering') return;
+    rotated = true;
+    void coordinator.receivedToken('bb'.repeat(32));
+  });
+  await coordinator.foreground();
+  assert.deepEqual(writes, ['bb'.repeat(32)]);
   assert.equal(coordinator.getSnapshot().registration, 'acknowledged');
   coordinator.dispose();
 });
