@@ -207,3 +207,16 @@ async fn stalled_provider_request_ends_at_apns_expiration() -> anyhow::Result<()
     assert_eq!(start.elapsed(), Duration::from_millis(500));
     Ok(())
 }
+
+#[test]
+fn voip_request_saturation_preserves_message_wake_admission() {
+    let pusher = Pusher::disabled();
+    let permits: Vec<_> = (0..MAX_WAKE_TASKS)
+        .filter_map(|_| pusher.try_voip_request())
+        .collect();
+    assert_eq!(permits.len(), MAX_WAKE_TASKS);
+    assert!(pusher.try_voip_request().is_none());
+    assert!(pusher.try_wake_task().is_some());
+    drop(permits);
+    assert!(pusher.try_voip_request().is_some());
+}

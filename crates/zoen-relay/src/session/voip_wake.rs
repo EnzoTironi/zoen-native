@@ -22,6 +22,9 @@ impl Session {
         }
         let sequence = i64::try_from(seq).map_err(|_| "voip_wake_refused")?;
         self.publish_allowed().map_err(limits::slow_down)?;
+        let Some(_permit) = self.st.push.try_voip_request() else {
+            return Err("voip_wake_overloaded".into());
+        };
         tokio::time::timeout(Duration::from_secs(5), async {
             let event = self
                 .st

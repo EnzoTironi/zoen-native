@@ -175,6 +175,7 @@ struct Fcm {
 pub struct Pusher {
     wake_slots: Arc<Semaphore>,
     voip_slots: Semaphore,
+    voip_request_slots: Semaphore,
     http: Arc<dyn Http>,
     apns: Option<Apns>,
     fcm: Option<Fcm>,
@@ -244,6 +245,7 @@ impl Pusher {
         Ok(Self {
             wake_slots: Arc::new(Semaphore::new(MAX_WAKE_TASKS)),
             voip_slots: Semaphore::new(MAX_WAKE_TASKS),
+            voip_request_slots: Semaphore::new(MAX_WAKE_TASKS),
             http,
             apns,
             fcm,
@@ -302,6 +304,7 @@ impl Pusher {
         Self {
             wake_slots: Arc::new(Semaphore::new(MAX_WAKE_TASKS)),
             voip_slots: Semaphore::new(MAX_WAKE_TASKS),
+            voip_request_slots: Semaphore::new(MAX_WAKE_TASKS),
             http,
             apns: None,
             fcm: None,
@@ -314,6 +317,10 @@ impl Pusher {
 
     pub fn enabled(&self) -> bool {
         self.apns.is_some() || self.fcm.is_some()
+    }
+
+    pub(crate) fn try_voip_request(&self) -> Option<tokio::sync::SemaphorePermit<'_>> {
+        self.voip_request_slots.try_acquire().ok()
     }
 
     pub(crate) fn voip_available(&self) -> bool {
