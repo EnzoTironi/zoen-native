@@ -35,6 +35,12 @@ edition = "2021"
 license = "AGPL-3.0-only"
 publish = false
 
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 # Shared JSON wire parser: native and host must round-trip the same f64 values.

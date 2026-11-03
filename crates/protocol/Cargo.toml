@@ -9,6 +9,9 @@ publish.workspace = true
 [features]
 client-types = ["dep:ts-rs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 types.workspace = true
 event-log.workspace = true
