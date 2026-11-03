@@ -314,7 +314,8 @@ impl WasmTier {
         store
             .fuel_async_yield_interval(Some(1_000_000))
             .map_err(|e| WasmError::Runtime(e.to_string()))?;
-        let ticks = (limits.wall.as_millis() / EPOCH_TICK.as_millis()).max(1) as u64;
+        let ticks = u64::try_from((limits.wall.as_millis() / EPOCH_TICK.as_millis()).max(1))
+            .map_err(|_| WasmError::Runtime("wall limit exceeds the epoch clock range".into()))?;
         store.set_epoch_deadline(ticks);
         store.epoch_deadline_trap();
 
