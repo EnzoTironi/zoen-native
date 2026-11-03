@@ -70,6 +70,7 @@ pub fn valid_token(t: &str) -> bool {
 /// One device token to wake.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Target {
+    pub registration_id: i64,
     pub platform: String,
     pub token: String,
 }

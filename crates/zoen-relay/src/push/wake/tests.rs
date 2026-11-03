@@ -18,8 +18,8 @@ impl DeviceTokens for Tokens {
             Ok(self.current.lock().unwrap().clone())
         }
     }
-    async fn remove_dead(&self, token: &str) {
-        self.removed.lock().unwrap().push(token.into());
+    async fn remove_dead(&self, target: &Target) {
+        self.removed.lock().unwrap().push(target.token.clone());
     }
 }
 
@@ -46,6 +46,7 @@ fn tokens(platforms: &[&str]) -> Tokens {
                 .iter()
                 .enumerate()
                 .map(|(n, p)| Target {
+                    registration_id: 0,
                     platform: (*p).into(),
                     token: format!("SYNTHETIC_DEVICE_TOKEN_{n}"),
                 })

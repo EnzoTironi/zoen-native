@@ -52,6 +52,7 @@ async fn fcm_exchanges_once_and_sends_data_only() {
     };
     let p = Pusher::new(m.clone(), None, Some(cfg)).unwrap();
     let t = Target {
+        registration_id: 0,
         platform: FCM.into(),
         token: "tok".into(),
     };

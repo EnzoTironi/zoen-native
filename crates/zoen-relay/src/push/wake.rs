@@ -3,7 +3,7 @@ use super::{Outcome, Pusher, Target};
 #[async_trait::async_trait]
 trait DeviceTokens: Send + Sync {
     async fn targets(&self, identities: &[String]) -> Result<Vec<Target>, ()>;
-    async fn remove_dead(&self, token: &str);
+    async fn remove_dead(&self, target: &Target);
 }
 
 #[async_trait::async_trait]
@@ -16,8 +16,8 @@ impl DeviceTokens for sqlx::PgPool {
             .map_err(|_| ())
     }
 
-    async fn remove_dead(&self, token: &str) {
-        let _ = crate::db::drop_push_token(self, token).await;
+    async fn remove_dead(&self, target: &Target) {
+        let _ = crate::db::drop_push_token(self, target).await;
     }
 }
 
@@ -73,7 +73,7 @@ async fn dispatch(
             Outcome::Sent => observed.sent += 1,
             Outcome::Gone => {
                 observed.gone += 1;
-                tokens.remove_dead(&target.token).await;
+                tokens.remove_dead(&target).await;
             }
             Outcome::Failed(_) => observed.failed += 1,
             Outcome::Disabled => observed.disabled += 1,

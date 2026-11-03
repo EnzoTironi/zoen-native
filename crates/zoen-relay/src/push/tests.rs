@@ -52,6 +52,7 @@ pub(super) fn apns_cfg() -> ApnsConfig {
 
 fn target(p: &str) -> Target {
     Target {
+        registration_id: 0,
         platform: p.into(),
         token: "abc".into(),
     }

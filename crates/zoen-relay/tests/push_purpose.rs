@@ -48,6 +48,9 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         .execute(pool)
         .await
         .unwrap();
+    sqlx::raw_sql(include_str!("../migrations/0042_push_registration_id.sql"))
+        .execute(pool)
+        .await?;
     let legacy: (String, String) = sqlx::query_as("SELECT token, purpose FROM push_tokens")
         .fetch_one(pool)
         .await
@@ -157,7 +160,13 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     db::set_push_token(pool, &identity.id, device, push::APNS_VOIP, "0011")
         .await
         .unwrap();
-    db::drop_push_token(pool, "0011").await.unwrap();
+    let old = db::push_targets(pool, &audience).await?.remove(0);
+    db::set_push_token(pool, &identity.id, device, push::APNS, "0011").await?;
+    db::drop_push_token(pool, &old).await?;
+    let current = db::push_targets(pool, &audience).await?.remove(0);
+    assert_ne!(old.registration_id, current.registration_id);
+    assert_eq!(current.token, old.token);
+    db::drop_push_token(pool, &current).await?;
     assert!(db::push_targets(pool, &audience).await.unwrap().is_empty());
     assert_eq!(
         tokens(db::voip_push_targets(pool, &audience).await.unwrap()),
