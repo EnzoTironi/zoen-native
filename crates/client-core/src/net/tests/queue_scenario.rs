@@ -318,6 +318,16 @@ pub(super) async fn queued_messages_round_trip(
                             },
                         )
                         .await;
+                        reply(
+                            &mut socket,
+                            ServerFrame::Rejected {
+                                space: space.into(),
+                                client_id: env.client_id().into(),
+                                reason: "duplicate refusal".into(),
+                                permanent: true,
+                            },
+                        )
+                        .await;
                         continue;
                     }
                     if matches!(catch_up, CatchUp::TransientOrder) {
