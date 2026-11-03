@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { byId, find, fixture, type Handler } from './attachment-composer-ui.fixtures.ts';
+import { byId, find, fixture, scan, type Handler } from './attachment-composer-ui.fixtures.ts';
 
 test('Send captures the final native correction before its JS delivery and keeps the keyboard open', () => {
   const f = fixture();
@@ -136,6 +136,18 @@ test('the empty search send action asks the assistant without sending a chat mes
     },
   });
   (find(tree, byId('ask-conversation')).props.onPress as Handler)();
+  for (const state of [{ completed: false }, { loading: true }, { cursor: 'next' }]) {
+    const blocked = f.render(undefined, {
+      search: {
+        state: { query: 'Missing search question', hits: [], completed: true, ...state },
+        onClose() {},
+        onMove() {},
+        onAsk() {},
+        onSearch() {},
+      },
+    });
+    assert.equal(scan(blocked).some(byId('ask-conversation')), false);
+  }
   assert.equal(asks, 1);
   assert.equal(sends, 0);
 });
