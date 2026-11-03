@@ -108,6 +108,10 @@ pub(super) async fn turn_pair_requires_exact_current_encrypted_dm_writers(
                 .call_pair(&space, &ana.identity, &bruno.identity)
                 .await
                 .unwrap());
+            assert!(
+                !log.call_pair(&space, &bruno.identity, &ana.identity)
+                    .await?
+            );
         }
     }
     assert!(!log
