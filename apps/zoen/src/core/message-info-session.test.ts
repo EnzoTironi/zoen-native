@@ -79,9 +79,9 @@ test('access loss and same-owner ABA retire held reads; only a new current read 
   f.session.focus();
   f.current(false);
   f.current(true);
+  assert.equal(f.requests.length, 2, 'restored access does not wait for the revoked read');
   f.requests[0]!.resolve(value());
   await tick();
-  assert.equal(f.requests.length, 2);
   assert.equal(
     f.seen.some((state) => state.value !== null),
     false,
@@ -108,4 +108,39 @@ test('blur, wrong source and storage/query failure cannot masquerade as missing 
   await tick();
   assert.equal(f.seen.at(-1)!.error, true);
   assert.equal(f.seen.at(-1)!.value, null);
+});
+
+test('reopening Info loads immediately even while the prior read is unresolved', async () => {
+  const f = fixture();
+  f.session.focus();
+  f.session.blur();
+  f.session.focus();
+  assert.equal(f.requests.length, 2);
+
+  f.requests[0]!.resolve(value());
+  await tick();
+  assert.equal(f.seen.at(-1)!.loading, true);
+  f.session.refresh();
+  assert.equal(f.requests.length, 2);
+  f.requests[1]!.resolve(value());
+  await tick();
+  assert.equal(f.requests.length, 3);
+  f.requests[2]!.resolve({ ...value(), edited_at_ms: '4000' });
+  await tick();
+  assert.equal(f.seen.at(-1)!.value?.edited_at_ms, '4000');
+});
+
+test('retry replaces a temporary Info error with the canonical metadata', async () => {
+  const f = fixture();
+  f.session.focus();
+  f.requests[0]!.reject(new Error('temporarily offline'));
+  await tick();
+  assert.deepEqual(f.seen.at(-1), { value: null, loading: false, error: true });
+
+  f.session.refresh();
+  assert.deepEqual(f.seen.at(-1), { value: null, loading: true, error: false });
+  const canonical = value();
+  f.requests[1]!.resolve(canonical);
+  await tick();
+  assert.deepEqual(f.seen.at(-1), { value: canonical, loading: false, error: false });
 });

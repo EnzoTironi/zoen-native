@@ -6,17 +6,20 @@ import { conversationScope } from '../core/conversation-scope';
 import { useClient } from '../core/provider';
 import { homeOwnerFor } from '../home/access';
 
+const loadingState = { value: null, loading: true, error: false };
+
 export function useMessageInfo(spaceId: string, messageId: string, expectedScope: string) {
   const { store } = useClient();
   const [state, setState] = useState<{
+    session: MessageInfoSession;
     value: MessageInfo | null;
     loading: boolean;
     error: boolean;
-  }>({ value: null, loading: true, error: false });
+  } | null>(null);
   const session = useMemo(() => {
     const owner = homeOwnerFor(store.getSnapshot());
     const epoch = store.sessionEpoch;
-    return new MessageInfoSession(
+    const session = new MessageInfoSession(
       {
         expected_identity_id: owner?.identityId ?? '',
         expected_device_id: owner?.deviceId ?? '',
@@ -31,8 +34,9 @@ export function useMessageInfo(spaceId: string, messageId: string, expectedScope
           store.sessionEpoch === epoch,
         read: (scope) => store.driver.request({ op: 'message_info', scope }),
       },
-      (value, loading, error) => setState({ value, loading, error }),
+      (value, loading, error) => setState({ session, value, loading, error }),
     );
+    return session;
   }, [store, spaceId, messageId, expectedScope]);
   useFocusEffect(
     useCallback(() => {
@@ -50,5 +54,11 @@ export function useMessageInfo(spaceId: string, messageId: string, expectedScope
       canonical();
     };
   }, [store, session, spaceId]);
-  return { ...state, retry: () => session.refresh() };
+  const visible = state?.session === session ? state : loadingState;
+  return {
+    value: visible.value,
+    loading: visible.loading,
+    error: visible.error,
+    retry: () => session.refresh(),
+  };
 }
