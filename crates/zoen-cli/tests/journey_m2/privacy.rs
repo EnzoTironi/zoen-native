@@ -235,7 +235,7 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back(
 /// group, and nobody seals a message before the commit that takes them out.
 #[tokio::test]
 async fn a_removed_member_reads_nothing_after_removal() {
-    let w = World::new("m2rm").await;
+    let mut w = World::new("m2rm").await;
     for (h, n) in [("ana", "Ana"), ("bruno", "Bruno"), ("carla", "Carla")] {
         w.init(h, n);
     }
@@ -255,6 +255,9 @@ async fn a_removed_member_reads_nothing_after_removal() {
 
     let carla = w.zoen("carla", &["read", "Cofre"]);
     assert!(carla.contains(after) && carla.contains(reply), "{carla}");
+    // A cold relay must recover the same removal cut before Bruno reconnects.
+    w.stop_relay();
+    w.start_relay();
     let bruno = w.zoen("bruno", &["read", "Cofre"]);
     assert!(bruno.contains(before), "{bruno}");
     assert!(!bruno.contains("tucano"), "{bruno}");
