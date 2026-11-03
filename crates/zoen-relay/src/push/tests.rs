@@ -171,17 +171,16 @@ async fn apns_dead_token_is_gone() {
 }
 
 #[tokio::test]
-async fn apns_bad_device_token_preserves_registration() {
+async fn apns_nonterminal_failures_preserve_registration() {
     let http = Arc::new(Mock::default());
-    http.replies
-        .lock()
-        .unwrap()
-        .push((400, r#"{"reason":"BadDeviceToken"}"#.into()));
-    let pusher = Pusher::new(http, Some(apns_cfg()), None).unwrap();
-    assert_eq!(
-        pusher.wake(&target(APNS)).await,
-        Outcome::Failed("apns 400".into())
-    );
+    let pusher = Pusher::new(http.clone(), Some(apns_cfg()), None).unwrap();
+    for (status, reason) in [(400, "BadDeviceToken"), (429, "TooManyRequests"), (503, "Shutdown")] {
+        http.replies.lock().unwrap().push((status, reason.into()));
+        assert_eq!(
+            pusher.wake(&target(APNS)).await,
+            Outcome::Failed(format!("apns {status}"))
+        );
+    }
 }
 
 #[test]
