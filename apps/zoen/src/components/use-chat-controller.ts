@@ -360,8 +360,16 @@ export function useChatController() {
     let active = true;
     if (!searchState.active || !selectedHit) return;
     const captured = searchReveal.capture();
-    const current = () =>
-      active && focused.current && search.isCurrent() && searchReveal.isCurrent(captured);
+    const current = () => {
+      const latest = search.getSnapshot();
+      return (
+        active &&
+        focused.current &&
+        search.isCurrent() &&
+        latest.hits[latest.index] === selectedHit &&
+        searchReveal.isCurrent(captured)
+      );
+    };
     void (async () => {
       const message = await store.driver.request({
         op: 'message',
