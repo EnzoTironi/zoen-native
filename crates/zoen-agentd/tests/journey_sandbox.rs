@@ -205,6 +205,19 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
         "resumed, not started again"
     );
 
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(session.tick(NOW).await?);
+    provider.stall_next_resume();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), session.finish(NOW))
+            .await
+            .is_err()
+    );
+    assert_eq!(session.state().await, "finishing");
+    assert!(matches!(
+        session.exec(ExecRequest::sh("true"), NOW).await,
+        Err(SessionError::Finished)
+    ));
     session.finish(NOW).await.unwrap();
     assert_eq!(session.state().await, "done");
     assert_eq!(provider.released.load(Ordering::SeqCst), 1);
