@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { Text, View } from 'react-native';
 import { useClient } from '../../core/provider';
@@ -36,6 +36,18 @@ export default function Integrity() {
   } | null>(null);
   const [failure, setFailure] = useState<{ scope: string; text: string } | null>(null);
   const [busyScope, setBusyScope] = useState<string | null>(null);
+  const activePage = useRef<symbol | null>(null);
+  const focusedScope = useRef<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      focusedScope.current = scope;
+      setBusyScope(null);
+      return () => {
+        focusedScope.current = null;
+        activePage.current = null;
+      };
+    }, [scope]),
+  );
   const busy = busyScope === scope;
   const extra = more?.base === base ? more : null;
   const entries = [...(audit.data?.events ?? []), ...(extra?.events ?? [])];
@@ -141,13 +153,16 @@ export default function Integrity() {
                 disabled={busy}
                 label={busy ? t('integrity.loading') : t('integrity.earlierEvents')}
                 onPress={() => {
-                  if (!currentSession()) return;
+                  if (focusedScope.current !== scope || activePage.current || !currentSession())
+                    return;
+                  const pageRequest = Symbol();
+                  activePage.current = pageRequest;
                   setBusyScope(scope);
                   setFailure(null);
                   void store.driver
                     .request({ op: 'log_events_page', space_id: id, before, limit: 50 })
                     .then((page) => {
-                      if (!currentSession()) return;
+                      if (activePage.current !== pageRequest || !currentSession()) return;
                       setMore({
                         base,
                         events: [...(extra?.events ?? []), ...page.events],
@@ -155,13 +170,17 @@ export default function Integrity() {
                       });
                     })
                     .catch((reason: unknown) => {
-                      if (!currentSession()) return;
+                      if (activePage.current !== pageRequest || !currentSession()) return;
                       setFailure({
                         scope,
                         text: reason instanceof Error ? reason.message : t('integrity.loadFailed'),
                       });
                     })
-                    .finally(() => setBusyScope((pending) => (pending === scope ? null : pending)));
+                    .finally(() => {
+                      if (activePage.current !== pageRequest) return;
+                      activePage.current = null;
+                      setBusyScope(null);
+                    });
                 }}
               />
             </View>
