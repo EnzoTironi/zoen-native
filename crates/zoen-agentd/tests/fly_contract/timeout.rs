@@ -33,3 +33,32 @@ async fn zero_timeout_keeps_a_cold_session_cold() -> Result<(), SessionError> {
     assert_eq!(session.state().await, "cold");
     Ok(())
 }
+
+#[tokio::test]
+async fn poisoned_budget_refuses_new_work_but_allows_cleanup() -> Result<(), SessionError> {
+    let api = MockFly::new();
+    let budget = Arc::new(Mutex::new(DailyBudget::new(3600, 0, NOW)));
+    let session = ToolSession::new(
+        api.provider(),
+        spec(),
+        "ana".into(),
+        Duration::ZERO,
+        budget.clone(),
+    );
+    session.exec(ExecRequest::sh("true"), NOW).await?;
+    assert!(std::thread::spawn(move || {
+        let _guard = budget.lock();
+        panic!("inject budget lock poisoning");
+    })
+    .join()
+    .is_err());
+    assert!(matches!(
+        session.exec(ExecRequest::sh("true"), NOW).await,
+        Err(SessionError::BudgetUnavailable)
+    ));
+    session.finish(NOW).await?;
+    session.finish(NOW).await?;
+    assert_eq!(session.state().await, "done");
+    assert_eq!(session.usage().len(), 1);
+    Ok(())
+}

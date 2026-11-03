@@ -18,6 +18,8 @@ pub enum SessionError {
     Sandbox(#[from] SandboxError),
     #[error("the task is over; this sandbox is gone")]
     Finished,
+    #[error("sandbox budget is unavailable")]
+    BudgetUnavailable,
 }
 
 enum State {
@@ -86,16 +88,22 @@ impl ToolSession {
     }
 
     pub fn usage(&self) -> Vec<Usage> {
-        self.usage.lock().unwrap().clone()
+        self.usage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     fn charge(&self, since: Instant, now_ms: i64) {
-        let u =
-            self.budget
-                .lock()
-                .unwrap()
-                .charge(self.spec.tier, secs_ceil(since.elapsed()), now_ms);
-        self.usage.lock().unwrap().push(u);
+        let u = self
+            .budget
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .charge(self.spec.tier, secs_ceil(since.elapsed()), now_ms);
+        self.usage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(u);
     }
 
     pub async fn exec(
@@ -109,7 +117,11 @@ impl ToolSession {
             State::Finishing { .. } | State::Done => return Err(SessionError::Finished),
             _ => 0,
         };
-        let left = self.budget.lock().unwrap().admit(self.spec.tier, now_ms)?;
+        let left = self
+            .budget
+            .lock()
+            .map_err(|_| SessionError::BudgetUnavailable)?
+            .admit(self.spec.tier, now_ms)?;
         let left = left.saturating_sub(running_uncharged);
         if left == 0 {
             return Err(BudgetError::Exhausted {
