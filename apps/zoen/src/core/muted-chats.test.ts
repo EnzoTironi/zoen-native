@@ -293,6 +293,9 @@ test('a fresh read confirms an accepted unmute after the first reconciliation fa
   await f.unmute();
   assert.equal(f.session.getSnapshot().readFailed, true);
   assert.equal(f.session.getSnapshot().actionFailed, true);
+  f.session.suspend();
+  assert.equal(f.session.ticket(), null);
+  f.session.activate(scope);
   f.read(async () => f.snapshot());
   await f.load();
   const state = f.session.getSnapshot();

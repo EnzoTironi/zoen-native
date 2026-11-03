@@ -37,7 +37,7 @@ export function useMutedChats(spaceId?: string) {
         if (active === foreground) return;
         foreground = active;
         if (foreground) activate();
-        else session.retire();
+        else session.suspend();
       });
       return () => {
         focused = false;

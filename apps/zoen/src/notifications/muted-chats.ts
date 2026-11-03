@@ -139,11 +139,17 @@ export class MutedChatsSession {
     for (const listener of this.listeners) listener();
   }
   activate(owner: AccountScope | null) {
+    if (!owner || accountScopeKey(owner) !== accountScopeKey(this.owner))
+      this.failedAction = null;
     this.owner = owner ? Object.freeze({ ...owner }) : null;
     ++this.revision;
-    this.failedAction = null;
     const scope = accountScopeKey(owner);
     this.state = { ...emptyMutedChats, scope, pending: this.inFlight.get(scope)?.id ?? null };
+    this.publish({});
+  }
+  suspend() {
+    ++this.revision;
+    this.state = emptyMutedChats;
     this.publish({});
   }
   retire() {
@@ -152,6 +158,7 @@ export class MutedChatsSession {
   private current(revision = this.revision) {
     return Boolean(
       this.owner &&
+      this.state.scope &&
       revision === this.revision &&
       accountScopeKey(this.owner) === accountScopeKey(this.port.scope()),
     );
@@ -304,6 +311,7 @@ export class MutedChatsSession {
     } finally {
       if (dispatched && this.inFlight.get(scope) === write) {
         this.inFlight.delete(scope);
+        if (failed && accountScopeKey(this.owner) === scope) this.failedAction = { id, until: target };
         if (this.current() && this.state.scope === scope) {
           // A newer read/foreground may have changed revision during the ACK.
           // Acceptance may precede a lost response; reconcile by read, never resend.
