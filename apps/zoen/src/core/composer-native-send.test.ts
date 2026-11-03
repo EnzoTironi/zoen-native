@@ -5,6 +5,7 @@ import { byId, find, fixture, type Handler } from './attachment-composer-ui.fixt
 test('Send captures the final native correction before its JS delivery and keeps the keyboard open', () => {
   const f = fixture();
   let draft = 'Send teh';
+  const formattedCorrection = 'Send **the** 🪷';
   const sent: string[] = [];
   let blurred = false;
   const tree = f.render(undefined, {
@@ -21,10 +22,10 @@ test('Send captures the final native correction before its JS delivery and keeps
     },
   });
   const input = find(tree, byId('message-input'));
-  f.nativeChange(input, 'Send the 🪷', 7);
+  f.nativeChange(input, formattedCorrection, 7);
   assert.equal(draft, 'Send teh', 'the native correction has not reached the draft writer');
   (find(tree, byId('send-message')).props.onPress as Handler)();
-  assert.deepEqual(sent, ['Send the 🪷']);
+  assert.deepEqual(sent, [formattedCorrection]);
   assert.equal(draft, '');
   f.drainNativeEvents();
   assert.equal(draft, '', 'late JS delivery cannot recreate the accepted message');
@@ -35,9 +36,9 @@ test('Send captures the final native correction before its JS delivery and keeps
       draft = text;
     },
   });
-  f.nativeChange(find(next, byId('message-input')), 'Send the 🪷', 8);
+  f.nativeChange(find(next, byId('message-input')), formattedCorrection, 8);
   f.drainNativeEvents();
-  assert.equal(draft, 'Send the 🪷', 'retyping the same text with a later event is legitimate');
+  assert.equal(draft, formattedCorrection, 'retyping the same text with a later event is legitimate');
 });
 
 for (const changed of [
