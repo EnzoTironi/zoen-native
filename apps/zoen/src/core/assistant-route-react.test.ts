@@ -55,6 +55,29 @@ for (const retirement of ['owner', 'membership'] as const) {
     }
   });
 }
+test('membership revocation discards a late answer even after access returns', async () => {
+  const f = await assistantRouteFixture();
+  const answer = deferred<{ text: string }>();
+  try {
+    f.launch();
+    f.holdAsk(answer.promise);
+    await f.mount();
+    assert.equal(f.asked.length, 1);
+    await f.removeMembership();
+    assert.deepEqual(f.closed, ['lease-1']);
+    await f.restoreOriginal();
+    await f.root.act(() => answer.resolve({ text: 'Revoked answer' }));
+    await f.focus(false);
+    await f.focus(true);
+    assert.equal(f.text().includes('Revoked answer'), false);
+    assert.equal(f.composer(), undefined);
+    assert.equal(f.opened.length, 1);
+    assert.equal(f.asked.length, 1);
+  } finally {
+    answer.resolve({ text: 'cleanup' });
+    await f.cleanup();
+  }
+});
 test('owner change between launch and first mount cannot borrow query/context', async () => {
   const f = await assistantRouteFixture();
   try {
