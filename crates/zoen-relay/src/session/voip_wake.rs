@@ -50,6 +50,9 @@ impl Session {
                     .await
                     .map_err(|_| "voip_wake_unavailable")?;
                 for target in targets {
+                    if !self.still_authorized().await {
+                        break;
+                    }
                     if !db::voip_registration_current(
                         &self.st.pool,
                         peer,
