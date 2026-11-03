@@ -125,6 +125,7 @@ export async function assistantRouteFixture() {
     buttons = new Map<string, { onPress(): void }>();
   const children = ({ children }: { children?: React.ReactNode }) =>
     React.createElement(React.Fragment, null, children);
+  let failNavigation = false;
   const routes: { params: { ticket: string } }[] = [];
   const ports: Record<string, unknown> = {
     react: React,
@@ -133,7 +134,15 @@ export async function assistantRouteFixture() {
     'expo-crypto': { randomUUID: () => `ticket-${++uuid}` },
     'expo-router': {
       ...focus.exports,
-      router: { push: (value: (typeof routes)[number]) => routes.push(value) },
+      router: {
+        push(value: (typeof routes)[number]) {
+          if (failNavigation) {
+            ticket = value.params.ticket;
+            throw new Error('navigation failed');
+          }
+          routes.push(value);
+        },
+      },
       Stack: { Screen: () => null },
       useLocalSearchParams: () => ({ space, ticket }),
     },
@@ -244,6 +253,8 @@ export async function assistantRouteFixture() {
       launch.launchConversationAssistant(space, query, store);
       ticket = routes.at(-1)!.params.ticket;
     },
+    failNavigation: () => { failNavigation = true; },
+    useTicket: (next: string) => { ticket = next; },
     mount: () => root.render(React.createElement(Route)),
     focus: (next: boolean) =>
       root.act(() => {

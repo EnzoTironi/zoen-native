@@ -349,8 +349,7 @@ fn real_postgres_fdb_http_authority_journeys() -> std::result::Result<(), Box<dy
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
-        .build()
-        .unwrap();
+        .build()?;
     rt.block_on(journeys::run())?;
     drop(rt);
     drop(network);

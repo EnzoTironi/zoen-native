@@ -5,6 +5,10 @@ mod common;
 mod edit_recovery;
 #[path = "../src/file_vault.rs"]
 mod file_vault;
+#[path = "common/final_event_loss.rs"]
+mod final_event_loss;
+#[path = "common/final_event_proxy.rs"]
+mod final_event_proxy;
 #[path = "journey_message_deletion/forward_attribution.rs"]
 mod forward_attribution;
 #[path = "journey_message_deletion/media_reply.rs"]

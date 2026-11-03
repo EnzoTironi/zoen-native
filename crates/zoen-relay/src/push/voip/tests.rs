@@ -3,6 +3,7 @@ use crate::push::tests::{apns_cfg, Mock};
 
 fn target(platform: &str) -> Target {
     Target {
+        registration_id: 0,
         platform: platform.into(),
         token: "ab".repeat(32),
     }
@@ -100,6 +101,7 @@ async fn expired_or_invalid_targets_never_reach_provider_and_dead_token_is_expli
     ));
     for token in ["", "abc", "../../private", &"ab".repeat(257)] {
         let invalid = Target {
+            registration_id: 0,
             platform: APNS_VOIP.into(),
             token: token.into(),
         };
@@ -116,6 +118,14 @@ async fn expired_or_invalid_targets_never_reach_provider_and_dead_token_is_expli
     assert_eq!(
         pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
         Outcome::Gone
+    );
+    mock.replies
+        .lock()
+        .unwrap()
+        .push((400, r#"{"reason":"BadDeviceToken"}"#.into()));
+    assert_eq!(
+        pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
+        Outcome::Failed("apns voip 400".into())
     );
     let disabled = Pusher::new(mock, None, None).unwrap();
     assert_eq!(
