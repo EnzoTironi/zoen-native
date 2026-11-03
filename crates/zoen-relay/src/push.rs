@@ -454,10 +454,7 @@ impl Pusher {
             .await?;
         Ok(match status {
             200 => Outcome::Sent,
-            404 => Outcome::Gone,
-            // Only UNREGISTERED means a dead token; INVALID_ARGUMENT can be our own bad
-            // payload, and treating it as Gone would wipe every Android token.
-            400 | 403 if body.contains("UNREGISTERED") => Outcome::Gone,
+            404 if fcm_unregistered(&body) => Outcome::Gone,
             s => Outcome::Failed(format!("fcm {s}")),
         })
     }
@@ -465,6 +462,22 @@ impl Pusher {
 
 #[cfg(test)]
 mod tests;
+
+fn fcm_unregistered(body: &str) -> bool {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .is_some_and(|response| {
+            response
+                .pointer("/error/details")
+                .and_then(Value::as_array)
+                .is_some_and(|details| {
+                    details.iter().any(|detail| {
+                        detail["@type"] == "type.googleapis.com/google.firebase.fcm.v1.FcmError"
+                            && detail["errorCode"] == "UNREGISTERED"
+                    })
+                })
+        })
+}
 
 #[cfg(test)]
 mod fcm_tests;
