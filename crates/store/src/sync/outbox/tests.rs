@@ -227,3 +227,20 @@ fn disk_reopen_and_vacuum_into_keep_named_order(
     std::fs::remove_dir_all(directory).unwrap();
     Ok(())
 }
+
+#[test]
+fn late_retry_preserves_terminal_outbox_refusal()
+-> std::result::Result<(), Box<dyn std::error::Error>> {
+    let store = Store::in_memory()?;
+    store.outbox_put(&event("message", 100, "Application"))?;
+    store.outbox_note("message", "permission revoked", true)?;
+    store.outbox_note("message", "late transport failure", false)?;
+
+    let pending = store.outbox()?;
+    assert_eq!(pending.len(), 1);
+    assert!(pending[0].failed);
+    assert_eq!(pending[0].attempts, 1);
+    assert_eq!(pending[0].last_error.as_deref(), Some("permission revoked"));
+    assert_eq!(store.outbox_len()?, 0);
+    Ok(())
+}

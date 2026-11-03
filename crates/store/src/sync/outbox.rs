@@ -132,7 +132,8 @@ impl Store {
 
     pub fn outbox_note(&self, client_id: &str, error: &str, failed: bool) -> Result<()> {
         self.conn.execute(
-            "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = ?3 WHERE client_id = ?1",
+            "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = ?3
+             WHERE client_id = ?1 AND failed = 0",
             params![client_id, error, failed as i64],
         )?;
         Ok(())
