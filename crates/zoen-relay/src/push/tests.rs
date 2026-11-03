@@ -198,5 +198,8 @@ fn platforms() {
     assert!(valid_platform("fcm") && valid_platform("apns") && valid_platform("apns-sandbox"));
     assert!(!valid_platform("web"));
     assert!(valid_token("a1:B_-") && valid_token(""));
+    assert!(valid_registration(APNS, "aabb"));
+    assert!(!valid_registration(APNS, "a1:B_-"));
+    assert!(valid_registration(FCM, "a1:B_-"));
     assert!(!valid_token("abc/../x") && !valid_token("a?b"));
 }
