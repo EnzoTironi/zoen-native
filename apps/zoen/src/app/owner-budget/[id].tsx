@@ -28,7 +28,8 @@ export default function OwnerBudget() {
   )
     return <EmptyState title={t('ownerPolicy.unavailable')} />;
   const conversation = snapshot?.conversations.find((space) => space.id === request.space_id);
-  if (conversation && conversation.kind !== 'Direct')
+  if (!conversation) return <EmptyState title={t('ownerPolicy.unavailable')} />;
+  if (conversation.kind !== 'Direct')
     return <AccountBudgetScreen agentId={request.agent.id} />;
   return (
     <>
