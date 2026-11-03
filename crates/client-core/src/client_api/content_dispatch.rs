@@ -438,7 +438,8 @@ impl Client {
                     &self.lock(),
                     &expected_identity_id,
                     &expected_device_id,
-                )?;
+                )
+                .map_err(|_| invalid("The push registration session changed."))?;
                 encode(&self.register_push(platform, token).await?)
             }
             _ => Err(invalid("Command routed to the wrong application handler")),
