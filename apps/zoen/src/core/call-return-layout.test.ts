@@ -25,7 +25,7 @@ const output = await build({
   ],
 });
 type Element = { type: string; props: Record<string, any> };
-function fixture(minimized: boolean, reduced = false, mode = 'account') {
+function fixture(minimized: boolean, reduced = false, mode = 'account', state = 'connected') {
   let shows = 0;
   const jsx = (type: string, props: Record<string, unknown>) => ({ type, props });
   const ports: Record<string, unknown> = {
@@ -50,7 +50,7 @@ function fixture(minimized: boolean, reduced = false, mode = 'account') {
     'expo-symbols': { SymbolView: 'Symbol' },
     './provider': {
       useNativeCalls: () => ({
-        activeCall: { minimized, state: 'connected', connected_at_ms: 1000 },
+        activeCall: { minimized, state, connected_at_ms: 1000 },
         showActiveCall: async () => {
           shows += 1;
         },
@@ -96,4 +96,10 @@ test('visible call and demo reserve no banner height; reduced motion uses a gent
   const bar = fixture(true, true).tree.props.children[0] as Element;
   assert.equal(bar.props.entering.duration, 150);
   assert.equal(bar.props.entering.policy, 'never'); // fade remains gentle; no position transform
+});
+
+test('a minimized reconnecting call shows its status instead of the elapsed time', () => {
+  const { tree } = fixture(true, false, 'account', 'reconnecting');
+  const bar = tree.props.children[0] as Element;
+  assert.match(JSON.stringify(bar), /chat\.reconnectingCall/);
 });

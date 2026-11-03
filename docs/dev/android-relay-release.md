@@ -15,6 +15,28 @@ At 2026-10-10 21:30 UTC, a certificate-only Hello to `wss://relay.tryzoen.com/v1
 | Image | `zoen-staging-relay:deployment-01M4FN7VVAF967S009B2W0V8HR` |
 | Last updated | `2026-10-09T06:25:09Z` |
 
+## Check migration history before rollout
+
+Using the deployment database's read-only access path, inspect the migration
+ledger before starting a new relay image.
+
+```sql
+BEGIN READ ONLY;
+SELECT version, description, success, encode(checksum, 'hex') AS checksum
+FROM _sqlx_migrations
+WHERE version >= 42
+ORDER BY version;
+ROLLBACK;
+```
+
+Version 42 is reserved for `push registration id`. Version 43 is
+`shared runtime checkpoints`. If either is already recorded, verify its
+checksum against the corresponding SQL file in the release revision using
+SHA-384. Stop the rollout if a row is failed or differs from the release
+history, including a checkpoint migration recorded as version 42. Preserve the
+ledger and resolve the mismatch against a restored copy before touching the
+deployment database.
+
 ## Proposed server action
 
 After the current-source Rust and Android checks pass, deploy only the existing relay image from the reviewed checkout:

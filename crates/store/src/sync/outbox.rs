@@ -130,6 +130,22 @@ impl Store {
         })
     }
 
+    /// Find a queued event that can still receive a publication outcome.
+    ///
+    /// # Errors
+    /// Returns SQLite read errors or an error decoding an invalid event.
+    pub fn outbox_active_event(&self, client_id: &str) -> Result<Option<Event>> {
+        let json: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT json FROM outbox WHERE client_id = ?1 AND failed = 0",
+                [client_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(json.as_deref().map(serde_json::from_str).transpose()?)
+    }
+
     /// The retained original bytes, never an authority reconstructed from SQL columns.
     ///
     /// # Errors
@@ -155,13 +171,14 @@ impl Store {
         Ok(())
     }
 
-    /// Records one retry attempt and its refusal without replacing signed bytes.
+    /// Record an attempt while pending. The first terminal refusal remains authoritative.
     ///
     /// # Errors
-    /// Returns SQLite errors while executing the operation or decoding its stored rows.
+    /// Returns SQLite errors while recording the attempt.
     pub fn outbox_note(&self, client_id: &str, error: &str, failed: bool) -> Result<()> {
         self.conn.execute(
-            "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = ?3 WHERE client_id = ?1",
+            "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = ?3
+             WHERE client_id = ?1 AND failed = 0",
             params![client_id, error, i64::from(failed)],
         )?;
         Ok(())

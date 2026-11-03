@@ -18,6 +18,7 @@ export function useIntegrityReport(spaceId: string) {
   } | null>(null);
   useFocusEffect(
     useCallback(() => {
+      setResult(null);
       if (!snapshot) return;
       let active = true;
       void store.driver

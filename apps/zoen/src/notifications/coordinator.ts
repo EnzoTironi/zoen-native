@@ -180,10 +180,12 @@ export class PushCoordinator {
         const timer = setTimeout(callback, delay);
         return () => clearTimeout(timer);
       });
-    this.cancelRetry = schedule(() => {
+    const cancel = schedule(() => {
+      if (this.cancelRetry !== cancel) return;
       this.cancelRetry = null;
       if (this.active(stamp)) void this.flush();
     }, milliseconds);
+    this.cancelRetry = cancel;
   }
 
   /** Disposal invalidates callbacks; it does not unregister a device merely because the app closed. */

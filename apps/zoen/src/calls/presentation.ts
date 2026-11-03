@@ -43,7 +43,7 @@ export function readCallPresentation(
 }
 
 export function callElapsed(connectedAtMs: number | null, now: number): string | null {
-  if (connectedAtMs === null) return null;
+  if (connectedAtMs === null || !Number.isFinite(now)) return null;
   const elapsed = Math.max(0, Math.floor((now - connectedAtMs) / 1000));
   const seconds = String(elapsed % 60).padStart(2, '0');
   const minutes = Math.floor(elapsed / 60);
@@ -57,20 +57,23 @@ export function watchCallPresentation(port: {
   owner(): { identity: string | undefined; device: string | undefined };
   changed(value: CallPresentation | null): void;
 }): () => void {
+  const owner = port.owner();
   let live = true;
-  let revision = 0;
+  let receivedEvent = false;
   const apply = (json: string) => {
-    if (live) port.changed(readCallPresentation(json, port.owner()));
+    if (!live) return;
+    const current = port.owner();
+    if (current.identity !== owner.identity || current.device !== owner.device) return;
+    port.changed(readCallPresentation(json, owner));
   };
   const remove = port.listen((json) => {
-    revision += 1;
+    receivedEvent = true;
     apply(json);
   });
-  const atQuery = revision;
   void port
     .current()
     .then((json) => {
-      if (revision === atQuery) apply(json);
+      if (!receivedEvent) apply(json);
     })
     .catch(() => {});
   return () => {

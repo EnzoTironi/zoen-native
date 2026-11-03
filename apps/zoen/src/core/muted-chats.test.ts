@@ -162,10 +162,24 @@ test('ambiguous write and failed read stay explicit; retry only reads', async ()
   assert.equal(f.session.getSnapshot().phase, 'failed');
   assert.equal(f.session.getSnapshot().actionFailed, true);
   assert.equal(f.session.getSnapshot().readFailed, true);
+  await f.load();
+  assert.equal(f.session.getSnapshot().readFailed, true);
+  assert.equal(f.session.getSnapshot().actionFailed, true);
+  assert.equal(f.writes().length, 1);
   f.read(async () => f.snapshot());
   await f.load();
   assert.equal(f.writes().length, 1);
   assert.equal(f.session.getSnapshot().phase, 'ready');
+  assert.equal(f.session.getSnapshot().readFailed, false);
+  assert.equal(f.session.getSnapshot().actionFailed, true);
+  await f.load();
+  assert.equal(f.session.getSnapshot().actionFailed, true);
+  const chat = f.snapshot().conversations.find((entry) => entry.id === 'chat-0')!;
+  chat.muted = false;
+  chat.muted_until_ms = null;
+  await f.load();
+  assert.equal(f.session.getSnapshot().actionFailed, false);
+  assert.equal(f.writes().length, 1);
 });
 test('loading, empty, malformed and foreign reads stay separate; late reads are suppressed', async () => {
   const f = mutedFixture();
@@ -269,3 +283,63 @@ for (const refresh of ['canonical', 'foreground'] as const)
       );
       assert.equal(f.writes().length, 1, 'terminal reconciliation only reads');
     });
+
+test('a fresh read confirms an accepted unmute after the first reconciliation failed', async () => {
+  const f = mutedFixture();
+  await f.load();
+  f.select();
+  f.write(async (id) => {
+    const chat = f.snapshot().conversations.find((row) => row.id === id)!;
+    chat.muted = false;
+    chat.muted_until_ms = null;
+    f.read(async () => {
+      throw new Error('temporarily unavailable');
+    });
+    throw new Error('lost response after local commit');
+  });
+
+  await f.unmute();
+  assert.equal(f.session.getSnapshot().readFailed, true);
+  assert.equal(f.session.getSnapshot().actionFailed, true);
+  f.session.suspend();
+  assert.equal(f.session.ticket(), null);
+  f.session.activate(scope);
+  f.read(async () => f.snapshot());
+  await f.load();
+  const state = f.session.getSnapshot();
+  assert.equal(state.readFailed, false);
+  assert.equal(state.actionFailed, false);
+  assert.deepEqual(
+    state.chats.map((chat) => chat.id),
+    ['chat-1'],
+  );
+  assert.equal(f.writes().length, 1);
+});
+
+for (const sameAccount of [true, false])
+  test(`a lost unmute response in the background is only reconciled for the same account (${sameAccount})`, async () => {
+    const f = mutedFixture();
+    await f.load();
+    f.select();
+    const started = deferred<void>();
+    const response = deferred<void>();
+    f.write(async () => {
+      started.resolve();
+      await response.promise;
+      throw new Error('unknown acceptance');
+    });
+    const action = f.unmute();
+    await started.promise;
+    f.session.suspend();
+    response.resolve();
+    await action;
+    assert.equal(f.session.ticket(), null);
+
+    const next = sameAccount ? scope : { ...scope, epoch: scope.epoch + 1 };
+    f.scope(next);
+    f.session.activate(next);
+    await f.load();
+    assert.equal(f.session.getSnapshot().phase, 'ready');
+    assert.equal(f.session.getSnapshot().actionFailed, sameAccount);
+    assert.equal(f.writes().length, 1);
+  });

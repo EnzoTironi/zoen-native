@@ -39,33 +39,40 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const dialogs = useDialogs();
   const deviceId = mode === 'account' ? (snapshot?.account?.device_id ?? null) : null;
   const jobs = useMemo(() => (deviceId ? new NotificationJobs() : null), [deviceId]);
-  const coordinator = useMemo(
-    () =>
-      new PushCoordinator(
-        {
-          current: () =>
-            Boolean(
-              deviceId &&
-              store.getSnapshot().mode === 'account' &&
-              store.getSnapshot().snapshot?.account?.device_id === deviceId,
-            ),
-          permission: notificationPermission,
-          token: nativePushToken,
-          async register(configuration, token) {
-            if (store.getSnapshot().snapshot?.account?.device_id !== deviceId)
-              throw new Error(t('notifications.accountChanged'));
-            await store.driver.request({
-              op: 'register_push',
-              platform: pushPlatform(configuration),
-              token,
-            });
-            return { kind: 'acknowledged' };
-          },
+  const identityId = mode === 'account' ? (snapshot?.account?.identity_id ?? null) : null;
+  const coordinator = useMemo(() => {
+    const current = () => {
+      const state = store.getSnapshot();
+      const account = state.snapshot?.account;
+      return (
+        state.mode === 'account' &&
+        identityId !== null &&
+        deviceId !== null &&
+        account?.identity_id === identityId &&
+        account.device_id === deviceId
+      );
+    };
+    return new PushCoordinator(
+      {
+        current,
+        permission: notificationPermission,
+        token: nativePushToken,
+        async register(configuration, token) {
+          if (!identityId || !deviceId || !current())
+            throw new Error(t('notifications.accountChanged'));
+          await store.driver.request({
+            op: 'register_push',
+            expected_identity_id: identityId,
+            expected_device_id: deviceId,
+            platform: pushPlatform(configuration),
+            token,
+          });
+          return { kind: 'acknowledged' };
         },
-        nativePushConfiguration(),
-      ),
-    [store, deviceId],
-  );
+      },
+      nativePushConfiguration(),
+    );
+  }, [store, identityId, deviceId]);
 
   useEffect(
     () =>
@@ -122,9 +129,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       },
     );
     let before = store.getSnapshot().snapshot;
+    let wasSynced = before?.connection.synced === true;
     const stopStore = store.subscribe(() => {
       const after = store.getSnapshot().snapshot;
-      if (!current() || !after?.connection.synced) return;
+      if (!current()) return;
+      const synced = after?.connection.synced === true;
+      const reconnected = synced && !wasSynced;
+      wasSynced = synced;
+      if (!synced) return;
+      if (
+        reconnected &&
+        AppState.currentState === 'active' &&
+        coordinator.getSnapshot().registration === 'waiting'
+      ) {
+        void coordinator.foreground();
+      }
       if (
         before &&
         AppState.currentState !== 'active' &&

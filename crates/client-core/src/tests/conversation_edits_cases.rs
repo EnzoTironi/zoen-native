@@ -241,7 +241,7 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
         .find(|s| s.members.len() > 2)
         .unwrap();
     let message = e.send_message(s.id.clone(), "react here".into()).unwrap();
-    let (ana, bia) = {
+    let (owner, ana, bia) = {
         let mut engine = e.lock();
         let owner = engine.me.clone().unwrap();
         let template = engine.identities[&owner].clone();
@@ -263,7 +263,7 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
                 .unwrap();
             ids.push(id);
         }
-        (ids.remove(0), ids.remove(0))
+        (owner, ids.remove(0), ids.remove(0))
     };
     let react_as = |who: &str, emoji: Option<&str>| {
         e.lock().me = Some(who.into());
@@ -281,6 +281,8 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
     react_as(&bia, Some("👍"));
     react_as(&ana, Some("👍"));
     let both = reactions();
+    react_as(&ana, Some("👍"));
+    assert_eq!(reactions(), both);
     assert_eq!(both.len(), 1);
     assert!(both[0].mine);
     assert_eq!(both[0].people.len(), 2);
@@ -296,11 +298,40 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
         vec![&bia]
     );
     react_as(&ana, None);
+    let remaining_before_repeat = reactions();
+    react_as(&ana, None);
+    assert_eq!(reactions(), remaining_before_repeat);
     let remaining = reactions();
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].emoji, "👍");
     assert!(!remaining[0].mine);
     assert_eq!(remaining[0].people[0].id, bia);
+    e.lock().append(
+        &s.id,
+        &owner,
+        types::EventBody::MemberAdded {
+            identity: ana.clone(),
+            role: types::Role::Reader,
+        },
+    )?;
+    let persisted_before = {
+        let engine = e.lock();
+        (engine.store.event_count()?, engine.store.outbox_len()?)
+    };
+    for emoji in [None, Some("👍".into())] {
+        assert!(matches!(
+            e.react(s.id.clone(), message.id.clone(), emoji),
+            Err(CoreError::Forbidden { .. })
+        ));
+    }
+    {
+        let engine = e.lock();
+        assert_eq!(
+            (engine.store.event_count()?, engine.store.outbox_len()?),
+            persisted_before
+        );
+    }
+    assert_eq!(reactions(), remaining);
     drop(e);
     let e = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
     e.lock().me = Some(ana);

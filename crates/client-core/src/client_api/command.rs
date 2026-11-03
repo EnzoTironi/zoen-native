@@ -789,6 +789,8 @@ pub(super) enum Command {
         expected_identity_id: Option<String>,
     },
     RegisterPush {
+        expected_identity_id: String,
+        expected_device_id: String,
         platform: String,
         token: String,
     },

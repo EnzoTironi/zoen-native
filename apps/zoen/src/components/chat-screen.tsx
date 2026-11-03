@@ -249,18 +249,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                           void search.search();
                         },
                         onAsk: () => {
-                          const current = search.getSnapshot();
-                          if (
-                            search.isCurrent() &&
-                            current.completed &&
-                            !current.loading &&
-                            !current.error &&
-                            !current.hits.length &&
-                            !current.cursor &&
-                            current.query.trim() &&
-                            conversationQueryFits(current.query.trim())
-                          )
-                            launchConversationAssistant(id, current.query.trim(), store);
+                          const query = search.assistantQuery(searchState);
+                          if (query) launchConversationAssistant(id, query, store);
                         },
                       }
                     : undefined

@@ -71,10 +71,7 @@ impl World {
             .unwrap();
         let db_url = format!("{}/{}", admin.rsplit_once('/').unwrap().0, database);
         let pool = PgPool::connect(&db_url).await.unwrap();
-        sqlx::migrate!("../zoen-relay/migrations")
-            .run(&pool)
-            .await
-            .unwrap();
+        zoen_relay::MIGRATIONS.run(&pool).await.unwrap();
         let http = http::Provider::new().await;
         let namespace = types::new_id("authority")?;
         let mut openers = Vec::new();

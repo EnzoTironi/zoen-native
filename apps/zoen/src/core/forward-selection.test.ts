@@ -67,6 +67,7 @@ test('unknown acceptance reads durable batch status without resend or auto-finis
   await f.session.confirm(review);
   assert.equal(ops(f, 'confirm').length, 1);
   assert.equal(ops(f, 'status').length, 2);
+  assert.equal(f.state().error, null);
   assert.equal(
     f.selected()!.messages.every((item) => item.acceptedMessageId !== null),
     true,
@@ -135,6 +136,7 @@ test('abandon uses exact batch token, publishes distinct skipped outcomes and ne
   assert.equal(ops(f, 'abandon')[0]!.batch, review.batchId);
   assert.equal(ops(f, 'abandon')[0]!.revision, review.revision);
   assert.deepEqual(f.selected()!.skippedIds, ['a', 'b', 'c']);
+  assert.equal(f.state().error, null);
   assert.equal(
     f.selected()!.messages.every((item) => item.acceptedMessageId === null),
     true,
@@ -225,4 +227,82 @@ test('untrusted result set cannot change the reviewed source identity or retain 
   await f.session.recover();
   assert.ok(f.state().error instanceof Error);
   assert.equal(f.selected()!.ready, false);
+});
+
+test('Done recovers a lost acknowledgement from the same completed batch', async () => {
+  const f = fixture();
+  await f.session.confirm(await f.ready());
+  f.finish(async (record) => {
+    f.setRecord({ ...record, completed: true });
+    throw new Error('lost acknowledgement');
+  });
+
+  await f.session.finish(f.selected()!);
+  assert.equal(f.selected()!.completed, true);
+  assert.deepEqual(f.sent, ['target']);
+  await f.session.finish(f.selected()!);
+  assert.equal(ops(f, 'finish').length, 1);
+});
+
+test('discarding the remaining batch recovers a lost acknowledgement without sending', async () => {
+  const f = fixture();
+  const review = await f.ready();
+  f.confirm(async () => f.accept(['a']));
+  await f.session.confirm(review);
+  f.onAbandonAcknowledgement(() => {
+    throw new Error('lost acknowledgement');
+  });
+
+  await f.session.abandon(f.selected()!);
+  assert.equal(f.selected()!.completed, true);
+  assert.deepEqual(f.selected()!.skippedIds, ['b', 'c']);
+  assert.equal(f.selected()!.messages[0]!.acceptedMessageId, 'accepted-a');
+  assert.equal(f.state().error, null);
+  assert.deepEqual(f.sent, []);
+  await f.session.abandon(f.selected()!);
+  assert.equal(ops(f, 'abandon').length, 1);
+  assert.equal(ops(f, 'confirm').length, 1);
+});
+
+test('Done cannot navigate using a recovered record for a different destination', async () => {
+  const f = fixture();
+  await f.session.confirm(await f.ready());
+  const review = f.selected()!;
+  f.finish(async (record) => {
+    f.setRecord({ ...record, completed: true, target_space: 'other' });
+    throw new Error('lost acknowledgement');
+  });
+
+  await f.session.finish(review);
+  assert.equal(f.selected(), review);
+  assert.ok(f.state().error);
+  assert.deepEqual(f.sent, []);
+});
+
+test('a lost Send response cannot turn an incomplete receipt list into success', async () => {
+  const f = fixture();
+  const review = await f.ready();
+  f.confirm(async () => {
+    const accepted = f.accept();
+    f.setRecord({ ...accepted, messages: accepted.messages.slice(0, 1) });
+    throw new Error('lost acknowledgement');
+  });
+
+  await f.session.confirm(review);
+  assert.equal(f.selected()?.ready, false);
+  assert.ok(f.selected()?.messages.every((item) => item.acceptedMessageId === null));
+  assert.ok(f.state().error);
+  assert.deepEqual(f.sent, []);
+  assert.equal(ops(f, 'confirm').length, 1);
+});
+
+test('a terminal batch must account for every message as accepted or skipped', async () => {
+  const f = fixture();
+  await f.ready();
+  f.setRecord({ ...f.record(), completed: true, ready: false });
+  f.session.blur();
+  await f.session.focus();
+  assert.equal(f.selected(), null);
+  assert.ok(f.state().error);
+  assert.deepEqual(f.sent, []);
 });

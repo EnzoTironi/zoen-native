@@ -132,6 +132,11 @@ export class ToolReviewSession {
   retire() {
     this.activate(null);
   }
+  visible(observed: ReviewState, scopeKey: string): ReviewState {
+    return observed === this.state && scopeKey === reviewScopeKey(this.scope) && this.current()
+      ? observed
+      : emptyReview;
+  }
   private current(revision = this.revision): boolean {
     return Boolean(
       this.scope &&
@@ -139,8 +144,8 @@ export class ToolReviewSession {
       reviewScopeKey(this.scope) === reviewScopeKey(this.port.scope()),
     );
   }
-  async refresh() {
-    if (!this.current()) return;
+  async refresh(observed: ReviewState = this.state) {
+    if (observed !== this.state || !this.current()) return;
     const revision = ++this.revision;
     this.publish({ phase: 'loading', busy: Boolean(this.flight) });
     try {
@@ -223,7 +228,10 @@ export class ToolReviewSession {
       }
       dispatched = true;
       await this.port.requestReview(ticket.id, ticket.hash);
-      if (this.current(ticket.revision)) await this.refresh();
+      if (this.flight === ticket && this.current()) {
+        this.publish({ unknown: true });
+        await this.refresh();
+      }
       return (
         this.current() && ticket.scope === reviewScopeKey(this.scope) && this.flight === ticket
       );

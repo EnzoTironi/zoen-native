@@ -8,7 +8,8 @@ import FoundationModels
 
 extension ZoenSession {
   private func assistantMember(_ spaceId: String, core engine: Client) throws -> (String, String) {
-    guard !erasing, !closing, self.core === engine, spaceId.utf8.count <= 256 else { throw ZoenAssistantFailure.closed }
+    guard !erasing, !closing, !notificationOnly, self.core === engine,
+          spaceId.utf8.count <= 256 else { throw ZoenAssistantFailure.closed }
     let space = try engine.space(spaceId: spaceId)
     guard let member = space.members.first(where: { $0.isMe }) else { throw ZoenAssistantFailure.closed }
     if let account = engine.account() {
@@ -20,7 +21,7 @@ extension ZoenSession {
   }
 
   private func assistantIsCurrent(_ lease: ZoenAssistantLease, core engine: Client) -> Bool {
-    guard generation == lease.generation, mode == lease.mode,
+    guard generation == lease.generation, mode == lease.mode, sessionLocale == lease.locale,
           let member = try? assistantMember(lease.spaceId, core: engine) else { return false }
     return member.0 == lease.identity && member.1 == lease.device
   }
@@ -31,7 +32,7 @@ extension ZoenSession {
     if let reason = ZoenAssistantModel.unavailable(locale: locale) {
       return try ZoenMediaFiles.json(["available": false, "reason": reason])
     }
-    guard assistants.count < 4 else { throw ZoenAssistantFailure.limit }
+    guard assistants.count + assistantDrains.count < 4 else { throw ZoenAssistantFailure.limit }
     let context = try ZoenAssistantModel.context(core: core, spaceId: spaceId)
     let id = UUID().uuidString
     assistants[id] = ZoenAssistantLease(generation: generation, mode: mode, identity: member.0,

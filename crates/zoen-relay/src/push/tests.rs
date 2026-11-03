@@ -54,7 +54,7 @@ fn target(p: &str) -> Target {
     Target {
         registration_id: 0,
         platform: p.into(),
-        token: "abc".into(),
+        token: "aabb".into(),
     }
 }
 
@@ -138,7 +138,7 @@ async fn apns_wake_is_content_free_background() {
     assert_eq!(p.wake(&target(APNS_SANDBOX)).await, Outcome::Sent);
     let calls = m.calls.lock().unwrap();
     let (url, headers, body) = &calls[0];
-    assert_eq!(url, "https://api.sandbox.push.apple.com/3/device/abc");
+    assert_eq!(url, "https://api.sandbox.push.apple.com/3/device/aabb");
     let h = |k: &str| headers.iter().find(|(n, _)| n == k).unwrap().1.clone();
     assert_eq!(h("apns-push-type"), "background");
     assert_eq!(h("apns-topic"), "xyz.tironi.zoen");
@@ -198,5 +198,43 @@ fn platforms() {
     assert!(valid_platform("fcm") && valid_platform("apns") && valid_platform("apns-sandbox"));
     assert!(!valid_platform("web"));
     assert!(valid_token("a1:B_-") && valid_token(""));
+    assert!(valid_registration(APNS, "aabb"));
+    assert!(!valid_registration(APNS, "a1:B_-"));
+    assert!(valid_registration(FCM, "a1:B_-"));
     assert!(!valid_token("abc/../x") && !valid_token("a?b"));
+}
+
+#[tokio::test]
+async fn malformed_legacy_apns_token_never_reaches_provider() -> anyhow::Result<()> {
+    let http = Arc::new(Mock::default());
+    let pusher = Pusher::new(http.clone(), Some(apns_cfg()), None)?;
+    let mut target = target(APNS);
+    target.token = "abc".into();
+    assert_eq!(pusher.wake(&target).await, Outcome::Gone);
+    assert!(http.calls.lock().unwrap().is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn transport_errors_do_not_expose_the_apns_request_url() -> anyhow::Result<()> {
+    struct BrokenTransport;
+
+    #[async_trait::async_trait]
+    impl Http for BrokenTransport {
+        async fn post(
+            &self,
+            url: &str,
+            _: &[(&str, String)],
+            _: String,
+        ) -> anyhow::Result<(u16, String)> {
+            anyhow::bail!("connection failed for {url}");
+        }
+    }
+
+    let pusher = Pusher::new(Arc::new(BrokenTransport), Some(apns_cfg()), None)?;
+    assert_eq!(
+        pusher.wake(&target(APNS)).await,
+        Outcome::Failed("push provider unavailable".into())
+    );
+    Ok(())
 }

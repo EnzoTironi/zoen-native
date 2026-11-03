@@ -53,7 +53,13 @@ test('cold session restores durable unknown and cannot dispatch contradictory re
   const ticket = session.ticket()!;
   await Promise.all([session.change(ticket), session.change(ticket)]);
   assert.deepEqual(f.calls, ['Pause:1']);
+  const retirement: ReturnType<AgentControlSession['getSnapshot']>[] = [];
+  const stop = session.subscribe(() => retirement.push(session.getSnapshot()));
   session.retire();
+  stop();
+  assert.deepEqual(retirement.map(({ scopeKey, pending, phase }) => ({ scopeKey, pending, phase })), [
+    { scopeKey: null, pending: null, phase: 'inactive' },
+  ]);
   const cold = new AgentControlSession(f.port, 'agent');
   cold.activate(first);
   await cold.refresh();
@@ -257,7 +263,11 @@ test('reviewed revoke preserves durable unknown across reopen and retries only t
   assert.deepEqual(f.calls, ['Revoke:1']);
   assert.equal(session.getSnapshot().status, 'Active');
   assert.equal(session.getSnapshot().pending, 'Revoke');
+  const retiredRetry = session.retryTicket()!;
+  assert.ok(retiredRetry);
   session.retire();
+  await session.retry(retiredRetry);
+  assert.deepEqual(f.calls, ['Revoke:1']);
   const cold = new AgentControlSession(f.port, 'agent');
   cold.activate(first);
   await cold.refresh();
@@ -272,4 +282,76 @@ test('reviewed revoke preserves durable unknown across reopen and retries only t
   assert.equal(cold.getSnapshot().pending, null);
   assert.equal(cold.ticket(), null);
   assert.equal(cold.retryTicket(), null);
+});
+
+test('a retired control request cannot refresh or overwrite the next account', async () => {
+  const f = fixture();
+  const held = deferred<void>();
+  let reads = 0;
+  const session = new AgentControlSession(
+    {
+      ...f.port,
+      read: (agent, scope) => {
+        reads++;
+        return f.port.read(agent, scope);
+      },
+      control: () => held.promise,
+    },
+    'agent',
+  );
+  session.activate(first);
+  await session.refresh();
+  const control = session.change(session.ticket()!);
+  const previous = session.getSnapshot();
+  assert.equal(previous.pending, 'Pause');
+
+  session.retire();
+  session.activate(f.epoch());
+  await session.refresh();
+  const next = session.getSnapshot();
+  await session.refresh(previous);
+  held.resolve(undefined);
+  await control;
+  assert.equal(reads, 2);
+  assert.equal(session.getSnapshot(), next);
+  assert.equal(next.pending, null);
+});
+
+test('two taps on the same agent refresh button start only one read', async () => {
+  const f = fixture();
+  let reads = 0;
+  const session = new AgentControlSession(
+    {
+      ...f.port,
+      read: (agent, scope) => {
+        reads++;
+        return f.port.read(agent, scope);
+      },
+    },
+    'agent',
+  );
+  session.activate(first);
+  await session.refresh();
+  const displayed = session.getSnapshot();
+  await Promise.all([session.refresh(displayed), session.refresh(displayed)]);
+  assert.equal(reads, 2);
+  assert.equal(session.getSnapshot().phase, 'ready');
+});
+
+test('automatic refresh cannot hide an admitted action before its reconciliation', async () => {
+  const f = fixture();
+  const held = deferred<void>();
+  const session = new AgentControlSession({ ...f.port, control: () => held.promise }, 'agent');
+  session.activate(first);
+  await session.refresh();
+  const action = session.change(session.ticket()!);
+
+  await session.refresh();
+  assert.equal(session.getSnapshot().pending, 'Pause');
+  assert.equal(session.getSnapshot().busy, true);
+
+  held.resolve(undefined);
+  await action;
+  assert.equal(session.getSnapshot().pending, null);
+  assert.equal(session.getSnapshot().busy, false);
 });

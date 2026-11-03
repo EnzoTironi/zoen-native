@@ -5,8 +5,12 @@ mod common;
 mod edit_recovery;
 #[path = "../src/file_vault.rs"]
 mod file_vault;
+#[allow(dead_code)]
 #[path = "common/final_event_loss.rs"]
 mod final_event_loss;
+// The cursor-repair journey uses the proxy's full evidence API. This
+// independent test target only uses it to drop the original event.
+#[allow(dead_code)]
 #[path = "common/final_event_proxy.rs"]
 mod final_event_proxy;
 #[path = "journey_message_deletion/forward_attribution.rs"]

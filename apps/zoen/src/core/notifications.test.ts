@@ -266,3 +266,19 @@ test('unsupported build and explicit server refusal remain truthful terminal sta
   assert.equal(refused.getSnapshot().registration, 'refused');
   refused.dispose();
 });
+
+test('a cancelled retry cannot run or replace the current token timer', async () => {
+  const { ports, retries, writes } = fixture();
+  ports.register = async (_, token) => {
+    writes.push(token);
+    throw new Error('offline');
+  };
+  const coordinator = new PushCoordinator(ports, configuration);
+  await coordinator.foreground();
+  await coordinator.receivedToken('BB'.repeat(32));
+  assert.equal(retries[0]?.cancelled, true);
+  retries[0]?.callback();
+  assert.deepEqual(writes, ['aa'.repeat(32), 'bb'.repeat(32)]);
+  coordinator.dispose();
+  assert.equal(retries[1]?.cancelled, true);
+});

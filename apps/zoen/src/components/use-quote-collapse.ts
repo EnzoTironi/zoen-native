@@ -3,7 +3,6 @@ import { t } from '../i18n/index.ts';
 import { useQuoteLayoutTransition } from './quote-layout-context';
 
 let nextGeneration = 1;
-type Owner = { text: string; id?: string; revision?: string; generation: number };
 
 /** One ephemeral owner for quote presentation; the native renderer owns its AST/layout. */
 export function useQuoteCollapse(
@@ -17,28 +16,26 @@ export function useQuoteCollapse(
     () => ({ text, id, revision, generation: nextGeneration++ }),
     [text, id, revision],
   );
-  const ownerRef = useRef<Owner | null>(null);
   const [state, setState] = useState({ generation: 0, expanded: [] as number[] });
   // This is only a cheap candidate gate. The maintained AST decides which
   // actual quote blocks qualify; no quote parsing or text replacement lives here.
   const enabled = process.env.EXPO_OS === 'ios' && text.includes('>') && !selecting;
-  const enabledRef = useRef(enabled);
+  const eventGeneration = useMemo(() => nextGeneration++, [owner, enabled]);
+  const activeGeneration = useRef<number | null>(null);
   useLayoutEffect(() => {
-    ownerRef.current = owner;
-    enabledRef.current = enabled;
-    if (!enabled) beginLayoutTransition?.finish(owner.generation);
+    activeGeneration.current = enabled ? eventGeneration : null;
+    if (!enabled) beginLayoutTransition?.finish(eventGeneration);
     return () => {
-      beginLayoutTransition?.finish(owner.generation);
-      if (ownerRef.current?.generation === owner.generation) ownerRef.current = null;
+      beginLayoutTransition?.finish(eventGeneration);
+      activeGeneration.current = null;
     };
-  }, [owner, enabled, beginLayoutTransition]);
+  }, [owner, enabled, eventGeneration, beginLayoutTransition]);
   const onBlockquoteToggle = useCallback(
     (event: { nativeEvent: { index: number; generation: number } }) => {
       const { index, generation } = event.nativeEvent;
       if (
-        !enabledRef.current ||
-        generation !== owner.generation ||
-        ownerRef.current?.generation !== generation ||
+        generation !== eventGeneration ||
+        activeGeneration.current !== generation ||
         !Number.isSafeInteger(index) ||
         index < 0 ||
         index > 2147483647
@@ -46,10 +43,10 @@ export function useQuoteCollapse(
         return;
       beginLayoutTransition?.begin(generation);
       setState((previous) => {
-        if (!enabledRef.current || ownerRef.current?.generation !== generation) return previous;
-        const expanded = previous.generation === generation ? previous.expanded : [];
+        if (activeGeneration.current !== generation) return previous;
+        const expanded = previous.generation === owner.generation ? previous.expanded : [];
         return {
-          generation,
+          generation: owner.generation,
           expanded: (expanded.includes(index)
             ? expanded.filter((value) => value !== index)
             : [...expanded, index]
@@ -57,13 +54,13 @@ export function useQuoteCollapse(
         };
       });
     },
-    [owner, beginLayoutTransition],
+    [owner, eventGeneration, beginLayoutTransition],
   );
   return {
     quoteCollapse: {
       enabled,
       expanded: state.generation === owner.generation ? state.expanded : [],
-      generation: owner.generation,
+      generation: eventGeneration,
       expandLabel: t('chat.expandQuote'),
       collapseLabel: t('chat.collapseQuote'),
       expandedLabel: t('chat.quoteExpanded'),

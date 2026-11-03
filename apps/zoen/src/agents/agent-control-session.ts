@@ -86,13 +86,14 @@ export class AgentControlSession {
   }
   activate(scope: AccountScope | null) {
     const pending =
-      accountScopeKey(scope) === accountScopeKey(this.scope) ? this.state.pending : null;
+      scope && accountScopeKey(scope) === accountScopeKey(this.scope) ? this.state.pending : null;
     ++this.generation;
     ++this.readGeneration;
     this.operationId = null;
+    this.revision = null;
     this.scope = scope ? Object.freeze({ ...scope }) : null;
     this.active = scope !== null;
-    this.state = { ...emptyAgentControl, scopeKey: accountScopeKey(scope), pending };
+    this.state = { ...emptyAgentControl, scopeKey: scope ? accountScopeKey(scope) : null, pending };
     this.publish({});
   }
   /** Preserve an unresolved action through background/focus changes on this route. */
@@ -103,11 +104,13 @@ export class AgentControlSession {
     this.publish({ phase: 'inactive', status: null, busy: false });
   }
   retire() {
-    this.scope = null;
-    this.suspend();
-    this.publish({ pending: null });
+    this.activate(null);
   }
-  async refresh() {
+  async refresh(observed?: AgentControlState) {
+    if (this.state.busy || (observed && observed !== this.state)) return;
+    await this.readStatus();
+  }
+  private async readStatus() {
     if (!this.current() || !this.scope) return;
     const scope = this.scope;
     const generation = this.generation;
@@ -189,7 +192,7 @@ export class AgentControlSession {
       /* The same durable intent remains unresolved; reads never resend it. */
     }
     if (!this.current(ticket.generation)) return;
-    await this.refresh();
+    await this.readStatus();
     if (this.current(ticket.generation)) this.publish({ busy: false });
   }
   /** An admitted result belongs to its original owner/activation even after canonical refresh. */
@@ -230,7 +233,7 @@ export class AgentControlSession {
       // Delivery is unknown. Reconciliation is a status read, never an automatic retry.
     }
     if (!this.current(ticket.generation)) return;
-    await this.refresh();
+    await this.readStatus();
     if (this.current(ticket.generation)) this.publish({ busy: false });
   }
 }

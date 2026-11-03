@@ -117,6 +117,7 @@ export class MutedChatsSession {
   private state = emptyMutedChats;
   private owner: AccountScope | null = null;
   private revision = 0;
+  private failedAction: FailedMute | null = null;
   // Reads may retire a review, but cannot retire a write already dispatched.
   private readonly inFlight = new Map<string, { id: string }>();
   private readonly listeners = new Set<() => void>();
@@ -138,10 +139,16 @@ export class MutedChatsSession {
     for (const listener of this.listeners) listener();
   }
   activate(owner: AccountScope | null) {
+    if (!owner || accountScopeKey(owner) !== accountScopeKey(this.owner)) this.failedAction = null;
     this.owner = owner ? Object.freeze({ ...owner }) : null;
     ++this.revision;
     const scope = accountScopeKey(owner);
     this.state = { ...emptyMutedChats, scope, pending: this.inFlight.get(scope)?.id ?? null };
+    this.publish({});
+  }
+  suspend() {
+    ++this.revision;
+    this.state = emptyMutedChats;
     this.publish({});
   }
   retire() {
@@ -150,6 +157,7 @@ export class MutedChatsSession {
   private current(revision = this.revision) {
     return Boolean(
       this.owner &&
+      this.state.scope &&
       revision === this.revision &&
       accountScopeKey(this.owner) === accountScopeKey(this.port.scope()),
     );
@@ -162,9 +170,10 @@ export class MutedChatsSession {
   private accepts(ticket: MutedChatTicket | null) {
     return Boolean(ticket && ticket.scope === this.state.scope && this.current(ticket.revision));
   }
-  async load(ticket: MutedChatTicket | null, failedAction: FailedMute | null = null) {
+  async load(ticket: MutedChatTicket | null, failedAction = this.failedAction) {
     if (!this.accepts(ticket) || !this.owner) return;
     const owner = this.owner;
+    this.failedAction = failedAction;
     const revision = ++this.revision;
     this.publish({
       phase: 'loading',
@@ -191,15 +200,17 @@ export class MutedChatsSession {
         BigInt(failedAction.until) <= BigInt(snapshot.clock_ms) &&
         actual === null,
       );
+      const actionFailed = Boolean(
+        failedAction &&
+        !elapsed &&
+        (failedAction.until === undefined || actual !== failedAction.until),
+      );
+      this.failedAction = actionFailed ? failedAction : null;
       this.publish({
         phase: 'ready',
         chats,
         clock_ms: snapshot.clock_ms ?? null,
-        actionFailed: Boolean(
-          failedAction &&
-          !elapsed &&
-          (failedAction.until === undefined || actual !== failedAction.until),
-        ),
+        actionFailed,
       });
     } catch {
       if (this.current(revision))
@@ -256,6 +267,7 @@ export class MutedChatsSession {
     let dispatched = false;
     let failed = false;
     let target: string | null | undefined = choice ? undefined : null;
+    this.failedAction = null;
     this.publish({ pending: id, actionFailed: false });
     try {
       if (!(await confirm()) || !this.current(revision) || this.state.selected !== id) return;
@@ -300,6 +312,8 @@ export class MutedChatsSession {
     } finally {
       if (dispatched && this.inFlight.get(scope) === write) {
         this.inFlight.delete(scope);
+        if (failed && accountScopeKey(this.owner) === scope)
+          this.failedAction = { id, until: target };
         if (this.current() && this.state.scope === scope) {
           // A newer read/foreground may have changed revision during the ACK.
           // Acceptance may precede a lost response; reconcile by read, never resend.

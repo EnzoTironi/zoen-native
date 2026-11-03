@@ -60,7 +60,27 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         .execute(pool)
         .await
         .unwrap();
-    sqlx::migrate!("./migrations").run(pool).await.unwrap();
+    let previous = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(
+            zoen_relay::MIGRATIONS
+                .iter()
+                .filter(|migration| migration.version <= 41)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    previous.run(pool).await?;
+    sqlx::query("INSERT INTO push_tokens(identity, device, platform, token, purpose) VALUES ('upgrade', 'device', 'apns', 'upgrade-token', 'notification')")
+        .execute(pool)
+        .await?;
+    zoen_relay::MIGRATIONS.run(pool).await?;
+    let id: i64 = sqlx::query_scalar(
+        "DELETE FROM push_tokens WHERE token = 'upgrade-token' RETURNING registration_id",
+    )
+    .fetch_one(pool)
+    .await?;
+    assert!(id > 0);
 
     let root = Signer::generate()?;
     let first = Author::device(&root, Signer::generate()?);
@@ -132,8 +152,12 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     );
 
     // Moving a token to a sibling removes only the old purpose registration.
+    // Older relays could persist APNs tokens without canonicalizing case.
+    sqlx::query("UPDATE push_tokens SET token = 'EEFF' WHERE purpose = 'voip' AND token = 'eeff'")
+        .execute(pool)
+        .await?;
     let previous_voip = db::voip_push_targets(pool, &audience).await?.remove(0);
-    db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "eeff")
+    db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "EEFF")
         .await
         .unwrap();
     db::drop_push_token(pool, &previous_voip).await?;
@@ -181,12 +205,27 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     assert!(db::revoke_device(&mut tx, &identity.id, device)
         .await
         .unwrap());
+    let registration = db::set_push_token(pool, &identity.id, device, push::APNS, "3344");
+    tokio::pin!(registration);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut registration)
+            .await
+            .is_err()
+    );
     tx.commit().await.unwrap();
+    assert!(registration.await.is_err());
     assert!(db::push_targets(pool, &audience).await.unwrap().is_empty());
     assert!(db::voip_push_targets(pool, &audience)
         .await
         .unwrap()
         .is_empty());
+    db::set_push_token(pool, &identity.id, sibling, push::APNS, "4455").await?;
+    assert!(
+        db::set_push_token(pool, &identity.id, device, push::APNS, "4455")
+            .await
+            .is_err()
+    );
+    assert_eq!(tokens(db::push_targets(pool, &audience).await?), ["4455"]);
     assert!(
         db::set_push_token(pool, &identity.id, sibling, "unknown", "4455")
             .await

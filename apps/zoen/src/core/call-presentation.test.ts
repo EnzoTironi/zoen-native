@@ -35,6 +35,7 @@ test('return presentation requires exact account/device and a valid transient ca
     assert.equal(readCallPresentation(json, owner), null);
   assert.equal(readCallPresentation(encode(current), { identity: undefined, device: 'a1' }), null);
   assert.equal(callElapsed(null, 4000), null);
+  assert.equal(callElapsed(1000, Number.NaN), null);  assert.equal(callElapsed(1000, Infinity), null);
   assert.equal(callElapsed(1000, 65_000), '1:04');
   assert.equal(callElapsed(1000, 0), '0:00');
 });
@@ -79,8 +80,7 @@ test('disposed query and an account changed during the read cannot publish old c
   currentOwner = { identity: 'bob', device: 'b1' };
   resolve(encode(current));
   await Promise.resolve();
-  assert.equal(values.length, 1);
-  assert.equal(values[0], null);
+  assert.deepEqual(values, []);
   stop();
   let late!: (json: string) => void;
   const dispose = watchCallPresentation({
@@ -92,5 +92,91 @@ test('disposed query and an account changed during the read cannot publish old c
   dispose();
   late(encode(current));
   await Promise.resolve();
-  assert.deepEqual(values, [null]);
+  assert.deepEqual(values, []);
+});
+
+test('a call ended during subscription cannot be revived by the initial read', async () => {
+  const values: (CallPresentation | null)[] = [];
+  const stop = watchCallPresentation({
+    owner: () => owner,
+    listen: (changed) => {
+      changed('null');
+      return () => {};
+    },
+    current: async () => encode(current),
+    changed: (value) => values.push(value),
+  });
+  try {
+    await Promise.resolve();
+    assert.deepEqual(values, [null]);
+  } finally {
+    stop();
+  }
+});
+
+test('a watcher cannot publish a call for the account that replaced its owner', async () => {
+  let activeOwner = owner;
+  const values: (CallPresentation | null)[] = [];
+  const stop = watchCallPresentation({
+    owner: () => activeOwner,
+    listen: () => () => {},
+    current: async () => encode({ ...current, identity_id: 'bob' }),
+    changed: (value) => values.push(value),
+  });
+  try {
+    activeOwner = { ...owner, identity: 'bob' };
+    await Promise.resolve();
+    assert.deepEqual(values, []);
+  } finally {
+    stop();
+  }
+});
+
+test('retired session rejects late native events even for the same account', async () => {
+  let sessionCurrent = true;
+  let emit!: (json: string) => void;
+  const values: (CallPresentation | null)[] = [];
+  const stop = watchCallPresentation({
+    owner: () => (sessionCurrent ? owner : { identity: undefined, device: undefined }),
+    listen: (changed) => {
+      emit = changed;
+      return () => {};
+    },
+    current: async () => encode(current),
+    changed: (value) => values.push(value),
+  });
+  try {
+    await Promise.resolve();
+    assert.deepEqual(values, [current]);
+    sessionCurrent = false;
+    emit(encode({ ...current, state: 'reconnecting' }));
+    emit('null');
+    assert.deepEqual(values, [current]);
+  } finally {
+    stop();
+  }
+});
+
+test('native events still update the bar after the initial read fails', async () => {
+  let emit!: (json: string) => void;
+  const values: (CallPresentation | null)[] = [];
+  const stop = watchCallPresentation({
+    owner: () => owner,
+    listen: (changed) => {
+      emit = changed;
+      return () => {};
+    },
+    current: async () => {
+      throw new Error('initial state unavailable');
+    },
+    changed: (value) => values.push(value),
+  });
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    emit(encode(current));
+    emit('null');
+    assert.deepEqual(values, [current, null]);
+  } finally {
+    stop();
+  }
 });

@@ -56,6 +56,18 @@ up() {
   install
   mkdir -p "$DEV/data" "$DEV/logs"
   [[ -f "$CLUSTER" ]] || echo "zoen:dev@127.0.0.1:$PORT" > "$CLUSTER"
+  local address
+  address="$(<"$CLUSTER")"
+  if [[ ! "$address" =~ ^[^@]+@127[.]0[.]0[.]1:([0-9]+)$ ]]; then
+    echo "Expected one local FoundationDB address in $CLUSTER" >&2
+    return 1
+  fi
+  local configured_port="${BASH_REMATCH[1]}"
+  if [[ -n "${FDB_PORT:-}" && "$PORT" != "$configured_port" ]]; then
+    echo "FDB_PORT=$PORT conflicts with the existing cluster on port $configured_port" >&2
+    return 1
+  fi
+  PORT="$configured_port"
   if ! pgrep -f "fdbserver.*$DEV/data" >/dev/null; then
     nohup "$TOOLS/bin/fdbserver" -p "127.0.0.1:$PORT" -C "$CLUSTER" -d "$DEV/data" -L "$DEV/logs" \
       --knob_min_available_space_ratio="$MIN_FREE_RATIO" \
@@ -67,10 +79,10 @@ up() {
   # A brand-new cluster answers nothing until it is configured, so configure exactly once.
   if [[ ! -f "$DEV/.configured" ]]; then
     "${fdbcli[@]}" --exec "configure new single ssd" >/dev/null 2>&1 || true
-    touch "$DEV/.configured"
   fi
   for _ in $(seq 1 60); do
     if "${fdbcli[@]}" --exec "status minimal" 2>/dev/null | grep -q "is available"; then
+      touch "$DEV/.configured"
       echo "fdb up ($CLUSTER)"; return
     fi
     sleep 1

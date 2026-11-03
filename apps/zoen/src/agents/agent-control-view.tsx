@@ -81,7 +81,7 @@ export function AgentControlView({
           disabled={disabled || state.busy || state.phase === 'loading'}
           label={t('agents.lifecycleRefresh')}
           onPress={() => {
-            if (!disabled) void session.refresh();
+            if (!disabled) void session.refresh(state);
           }}
         />
       ) : null}

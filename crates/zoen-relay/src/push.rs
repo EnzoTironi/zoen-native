@@ -52,10 +52,10 @@ pub fn purpose(platform: &str) -> Option<&'static str> {
 
 pub fn valid_registration(platform: &str, token: &str) -> bool {
     match platform {
-        APNS_VOIP | APNS_VOIP_SANDBOX => {
+        APNS | APNS_SANDBOX | APNS_VOIP | APNS_VOIP_SANDBOX => {
             token.is_empty() || protocol::push::ApnsToken::parse(token).is_ok()
         }
-        APNS | APNS_SANDBOX | FCM => valid_token(token),
+        FCM => valid_token(token),
         _ => false,
     }
 }
@@ -321,6 +321,11 @@ impl Pusher {
     }
 
     pub async fn wake(&self, t: &Target) -> Outcome {
+        if matches!(t.platform.as_str(), APNS | APNS_SANDBOX | FCM)
+            && (t.token.is_empty() || !valid_registration(&t.platform, &t.token))
+        {
+            return Outcome::Gone;
+        }
         let r = match t.platform.as_str() {
             APNS | APNS_SANDBOX => match &self.apns {
                 Some(a) => self.apns(a, t).await,
@@ -332,11 +337,14 @@ impl Pusher {
             },
             _ => return Outcome::Disabled,
         };
-        r.unwrap_or_else(|e| Outcome::Failed(e.to_string()))
+        r.unwrap_or_else(|_| Outcome::Failed("push provider unavailable".into()))
     }
 
     fn apns_jwt(a: &Apns) -> anyhow::Result<String> {
-        let mut c = a.jwt.lock().unwrap();
+        let mut c = a
+            .jwt
+            .lock()
+            .map_err(|_| anyhow::anyhow!("APNs credential cache unavailable"))?;
         let t = now();
         if let Some((j, until)) = c.as_ref() {
             if *until > t {
@@ -388,7 +396,12 @@ impl Pusher {
 
     async fn fcm_access(&self, f: &Fcm) -> anyhow::Result<String> {
         let t = now();
-        if let Some((tok, until)) = f.access.lock().unwrap().as_ref() {
+        if let Some((tok, until)) = f
+            .access
+            .lock()
+            .map_err(|_| anyhow::anyhow!("FCM credential cache unavailable"))?
+            .as_ref()
+        {
             if *until > t {
                 return Ok(tok.clone());
             }
@@ -427,7 +440,10 @@ impl Pusher {
             .ok_or_else(|| anyhow::anyhow!("no access_token"))?
             .to_string();
         let ttl = v["expires_in"].as_u64().unwrap_or(3600);
-        *f.access.lock().unwrap() = Some((tok.clone(), t + ttl.saturating_sub(300)));
+        *f.access
+            .lock()
+            .map_err(|_| anyhow::anyhow!("FCM credential cache unavailable"))? =
+            Some((tok.clone(), t + ttl.saturating_sub(300)));
         Ok(tok)
     }
 

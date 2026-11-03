@@ -162,6 +162,12 @@ test('exact-unit human review sends once and remains pending until matching actu
   assert.equal(f.session.getSnapshot().effectiveness, 'current');
   assert.equal(f.f.queries, 2, 'one fresh Runtime inquiry after install');
   assert.equal(f.f.submits, 1);
+
+  f.f.receipt = { ...f.f.receipt, state: 'pending' };
+  await f.session.reconcile();
+  assert.equal(f.session.getSnapshot().receipt?.state, 'installed');
+  assert.equal(f.session.getSnapshot().effectiveness, 'current');
+  assert.equal(f.f.submits, 1);
 });
 test('editing during prepare discards old preview and old rendered edits', async () => {
   const f = await fixture(),

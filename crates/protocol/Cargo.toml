@@ -9,6 +9,9 @@ publish.workspace = true
 [features]
 client-types = ["dep:ts-rs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 types.workspace = true
 event-log.workspace = true
@@ -20,6 +23,3 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 ts-rs = { version = "12.0.1", optional = true }
-
-[lints]
-workspace = true

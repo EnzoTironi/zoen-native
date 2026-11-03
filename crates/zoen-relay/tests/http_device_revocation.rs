@@ -153,7 +153,7 @@ impl TestRelay {
             .connect(&url)
             .await
             .unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        zoen_relay::MIGRATIONS.run(&pool).await.unwrap();
         let auth_pool = || {
             PgPoolOptions::new()
                 .max_connections(1)

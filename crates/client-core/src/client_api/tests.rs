@@ -202,3 +202,25 @@ async fn recovery_key_command_preserves_a_string_reply_without_publishing_or_ret
 }
 
 mod forward_contracts;
+
+#[tokio::test]
+async fn push_registration_rejects_stale_session_before_network() -> Result<(), CoreError> {
+    let core = Client::open(":memory:".into(), "en".into())?;
+    let result = core
+        .client_request(
+            serde_json::json!({
+                "op": "register_push",
+                "expected_identity_id": "previous-owner",
+                "expected_device_id": "previous-device",
+                "platform": "apns",
+                "token": "aabb"
+            })
+            .to_string(),
+        )
+        .await;
+    assert_eq!(
+        result.err().map(|error| error.to_string()),
+        Some(invalid("The push registration session changed.").to_string())
+    );
+    Ok(())
+}

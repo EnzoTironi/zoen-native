@@ -154,7 +154,7 @@ impl Relay {
             .unwrap()
             .database(&database);
         let pool = PgPool::connect_with(options.clone()).await.unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        zoen_relay::MIGRATIONS.run(&pool).await.unwrap();
         let state = Arc::new(AppState {
             read_snapshots: zoen_relay::read_snapshots::Resources::new(&pool),
             auth: zoen_relay::auth::Service::disabled(),

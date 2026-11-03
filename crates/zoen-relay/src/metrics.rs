@@ -4,6 +4,11 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 #[derive(Default)]
 pub struct Metrics {
+    pub push_sent: AtomicU64,
+    pub push_failed: AtomicU64,
+    pub push_gone: AtomicU64,
+    pub push_lookup_failed: AtomicU64,
+    pub push_overloaded: AtomicU64,
     pub connections: AtomicU64,
     pub events_sequenced: AtomicU64,
     pub events_duplicate: AtomicU64,
@@ -125,6 +130,61 @@ impl Metrics {
             "counter",
             self.receipts_overloaded.load(Relaxed),
         );
+        put(
+            "zoen_relay_push_sent_total",
+            "Provider accepted device wake requests",
+            "counter",
+            self.push_sent.load(Relaxed),
+        );
+        put(
+            "zoen_relay_push_failed_total",
+            "Device wake requests failed",
+            "counter",
+            self.push_failed.load(Relaxed),
+        );
+        put(
+            "zoen_relay_push_gone_total",
+            "Device wake targets deemed invalid",
+            "counter",
+            self.push_gone.load(Relaxed),
+        );
+        put(
+            "zoen_relay_push_lookup_failed_total",
+            "Device wake target lookups failed",
+            "counter",
+            self.push_lookup_failed.load(Relaxed),
+        );
+        put(
+            "zoen_relay_push_overloaded_total",
+            "Device wake jobs dropped at the concurrency limit",
+            "counter",
+            self.push_overloaded.load(Relaxed),
+        );
         s
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_outcomes_render_as_unlabelled_counters() {
+        let metrics = Metrics::default();
+        for (name, counter) in [
+            ("sent", &metrics.push_sent),
+            ("failed", &metrics.push_failed),
+            ("gone", &metrics.push_gone),
+            ("lookup_failed", &metrics.push_lookup_failed),
+            ("overloaded", &metrics.push_overloaded),
+        ] {
+            Metrics::inc(counter);
+            let metric = format!("zoen_relay_push_{name}_total");
+            let rendered = metrics.render(0);
+            assert!(rendered
+                .lines()
+                .any(|line| line == format!("# TYPE {metric} counter")));
+            assert!(rendered.lines().any(|line| line == format!("{metric} 1")));
+        }
     }
 }

@@ -420,7 +420,7 @@ mod tests {
             .connect(&url)
             .await
             .unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        crate::MIGRATIONS.run(&pool).await.unwrap();
 
         // Catch assertion panics through the task so cleanup still drops only
         // this disposable schema before propagating the fixture failure.

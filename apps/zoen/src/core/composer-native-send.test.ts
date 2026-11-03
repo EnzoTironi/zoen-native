@@ -42,7 +42,11 @@ for (const [label, initialDraft] of [
     });
     f.nativeChange(find(next, byId('message-input')), formattedCorrection, 8);
     f.drainNativeEvents();
-    assert.equal(draft, formattedCorrection, 'retyping the same text with a later event is legitimate');
+    assert.equal(
+      draft,
+      formattedCorrection,
+      'retyping the same text with a later event is legitimate',
+    );
   });
 }
 

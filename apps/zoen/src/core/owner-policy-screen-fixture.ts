@@ -274,8 +274,10 @@ export function screen(f: Fixture, mode: 'image' | 'account' = 'image') {
       };
     if (name === 'react-native') return { ScrollView: 'ScrollView', Text: 'Text', View: 'View' };
     if (name === '@expo/ui') return { Host: 'Host', Switch: 'Switch' };
+    if (name === '../../home/access')
+      return { homeSpacesFor: () => new Set(routeSpaces.map((space) => space.id)) };
     if (name === '../../core/provider')
-      return { useClient: () => ({ snapshot: { conversations: routeSpaces } }) };
+      return { useClient: () => ({ snapshot: { conversations: routeSpaces }, store: { isSessionRetiring: false } }) };
     // The alternative account selector is qualified by its own real component/port cases.
     if (name === '../../agents/account-budget-screen')
       return { AccountBudgetScreen: 'AccountBudgetScreen' };

@@ -41,7 +41,7 @@ const compiled = await build({
   ],
 });
 
-function fixture(initial: State, platform = 'ios') {
+function fixture(initial: State, platform = 'ios', failFirstRegistration = false) {
   const calls: Call[] = [];
   const effects: (() => unknown)[] = [];
   const cleanups: (() => void)[] = [];
@@ -81,6 +81,10 @@ function fixture(initial: State, platform = 'ios') {
     driver: {
       async request(value: unknown) {
         calls.push({ kind: 'register', value });
+        if (failFirstRegistration) {
+          failFirstRegistration = false;
+          throw new Error('offline');
+        }
       },
     },
   };
@@ -156,6 +160,10 @@ function fixture(initial: State, platform = 'ios') {
       appState.currentState = state;
       for (const callback of changes) callback(state);
     },
+    synced(synced: boolean) {
+      current = { ...current, snapshot: { ...current.snapshot, connection: { synced } } };
+      for (const listener of storeListeners) listener();
+    },
     replaceAccount() {
       current = {
         ...current,
@@ -198,7 +206,13 @@ test('unknown, background and inactive provider mounts wait for activation befor
         { kind: 'token' },
         {
           kind: 'register',
-          value: { op: 'register_push', platform: 'apns-sandbox', token: 'ab12' },
+          value: {
+            op: 'register_push',
+            expected_identity_id: 'synthetic-owner',
+            expected_device_id: 'synthetic-device',
+            platform: 'apns-sandbox',
+            token: 'ab12',
+          },
         },
       ]);
     } finally {
@@ -285,6 +299,24 @@ test('manual unread contributes one badge unit without emitting a message alert 
     f.conversations([{ ...chat, manual_unread: false }]);
     await f.flush();
     assert.deepEqual(f.calls, [{ kind: 'badge', value: 0 }]);
+  } finally {
+    f.close();
+  }
+});
+
+test('foreground resync retries a waiting registration once', async () => {
+  const f = fixture('active', 'ios', true);
+  const registrations = () => f.calls.filter(({ kind }) => kind === 'register').length;
+  try {
+    await f.flush();
+    assert.equal(registrations(), 1);
+    f.synced(false);
+    await f.flush();
+    assert.equal(registrations(), 1);
+    f.synced(true);
+    f.synced(true);
+    await f.flush();
+    assert.equal(registrations(), 2);
   } finally {
     f.close();
   }

@@ -8,6 +8,7 @@ use tokio_tungstenite::tungstenite::Message;
 pub(crate) struct Relay {
     pub(crate) url: String,
     task: tokio::task::JoinHandle<()>,
+    push_requests: Arc<std::sync::Mutex<Vec<(String, String)>>>,
 }
 impl Drop for Relay {
     fn drop(&mut self) {
@@ -18,6 +19,8 @@ impl Drop for Relay {
 pub(crate) async fn relay(peer: String) -> Relay {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
+    let push_requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = push_requests.clone();
     let task = tokio::spawn(async move {
         let mut sockets = tokio::task::JoinSet::new();
         let mut connection = 0;
@@ -26,6 +29,7 @@ pub(crate) async fn relay(peer: String) -> Relay {
             let fresh = connection > 0;
             connection += 1;
             let peer = peer.clone();
+            let observed = observed.clone();
             sockets.spawn(async move {
                 let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
                 let Some(Ok(Message::Binary(bytes))) = socket.next().await else {
@@ -109,6 +113,16 @@ pub(crate) async fn relay(peer: String) -> Relay {
                                 result: Ok(Reply::Done),
                             }
                         }
+                        ClientFrame::Req {
+                            id,
+                            op: Op::RegisterPush { platform, token },
+                        } => {
+                            observed.lock().unwrap().push((platform, token));
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Done),
+                            }
+                        }
                         ClientFrame::Req { id, .. } => ServerFrame::Res {
                             id,
                             result: Ok(Reply::Done),
@@ -130,7 +144,11 @@ pub(crate) async fn relay(peer: String) -> Relay {
             });
         }
     });
-    Relay { url, task }
+    Relay {
+        url,
+        task,
+        push_requests,
+    }
 }
 
 struct Fixture {
@@ -226,4 +244,40 @@ async fn completed_old_directory_and_unlink_reply_cannot_apply_after_same_owner_
         before,
     );
     assert!(client.lock().revoked_devices().contains(&peer));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn push_registration_accepts_the_authenticated_owner(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let relay = relay(Signer::from_secret(&[74; 32]).id()).await;
+    let client = Client::open(":memory:".into(), "en".into())?;
+    client
+        .lock()
+        .create_account("Push owner", "push_owner", &relay.url)?;
+    client.lock().set_registered(true)?;
+    let fixture = Fixture {
+        client,
+        _relay: relay,
+    };
+    online(&fixture.client).await;
+    let (owner, _) = fixture.client.device_directory_owner()?;
+    let result = fixture
+        .client
+        .client_request(
+            serde_json::json!({
+                "op": "register_push",
+                "expected_identity_id": owner.identity,
+                "expected_device_id": owner.device,
+                "platform": "apns",
+                "token": "aabb"
+            })
+            .to_string(),
+        )
+        .await?;
+    assert_eq!(result, "null");
+    assert_eq!(
+        *fixture._relay.push_requests.lock().unwrap(),
+        [("apns".into(), "aabb".into())]
+    );
+    Ok(())
 }

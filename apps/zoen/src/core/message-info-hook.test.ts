@@ -83,11 +83,13 @@ test('actual Expo Info ignores typing/other chats and retires canonical, members
     },
   });
   let current: ReturnType<typeof useMessageInfo> | undefined;
-  function Surface() {
-    const value = module.exports.useMessageInfo(spaceId, 'message', expected);
+  const committed: { target: string; value: MessageInfo | null }[] = [];
+  function Surface({ target = 'message' }: { target?: string }) {
+    const value = module.exports.useMessageInfo(spaceId, target, expected);
     React.useLayoutEffect(() => {
       current = value;
-    }, [value]);
+      committed.push({ target, value: value.value });
+    }, [target, value]);
     return null;
   }
   try {
@@ -108,6 +110,14 @@ test('actual Expo Info ignores typing/other chats and retires canonical, members
       reads[0]!.resolve(info);
     });
     assert.equal(current!.value!.sent_at_ms, '1000');
+    await root.render(React.createElement(Surface, { target: 'next' }));
+    assert.equal(reads.length, 2);
+    assert.equal(committed.find((entry) => entry.target === 'next')?.value, null);
+    const nextInfo = { ...info, scope: calls.filter((call) => call.op === 'message_info')[1].scope };
+    await root.act(async () => {
+      reads[1]!.resolve(nextInfo);
+    });
+    assert.equal(current!.value?.scope.message_id, 'next');
     const beforeActivity = store.getSnapshot();
     await root.act(async () => {
       driver.changed!({
@@ -123,13 +133,13 @@ test('actual Expo Info ignores typing/other chats and retires canonical, members
       beforeActivity,
       'actual activity emits a store publication',
     );
-    assert.equal(reads.length, 1, 'typing does not reread metadata');
+    assert.equal(reads.length, 2, 'typing does not reread metadata');
     assert.equal(current!.value!.sent_at_ms, '1000');
     await root.act(() => store.refresh(['other-chat']));
-    assert.equal(reads.length, 1, 'another conversation does not invalidate Info');
+    assert.equal(reads.length, 2, 'another conversation does not invalidate Info');
     assert.equal(current!.value!.sent_at_ms, '1000');
     await root.act(() => store.refresh([spaceId]));
-    assert.equal(reads.length, 2, 'canonical changes to this conversation reread');
+    assert.equal(reads.length, 3, 'canonical changes to this conversation reread');
     assert.equal(current!.value, null, 'invalidated canonical data is not retained optimistically');
     const members = snapshot.conversations[0]!.members;
     snapshot.conversations[0]!.members = [];
@@ -138,18 +148,18 @@ test('actual Expo Info ignores typing/other chats and retires canonical, members
     snapshot.conversations[0]!.members = members;
     await root.act(() => store.refresh(['other-chat']));
     await root.act(async () => {
-      reads[1]!.resolve(info);
+      reads[2]!.resolve(nextInfo);
     });
     assert.equal(current!.value, null, 'membership ABA cannot revive a held result');
     await root.act(() => store.refresh([spaceId]));
-    assert.equal(reads.length, 3);
+    assert.equal(reads.length, 4);
     await root.act(async () => {
       await store.close();
       await store.open('account');
-      reads[2]!.resolve(info);
+      reads[3]!.resolve(nextInfo);
     });
     assert.equal(current!.value, null);
-    assert.equal(reads.length, 3);
+    assert.equal(reads.length, 4);
     assert.ok(calls.every((call) => call.op === 'message_info' || call.op === 'snapshot'));
     assert.deepEqual(root.errors, []);
   } finally {

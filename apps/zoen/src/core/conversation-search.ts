@@ -38,12 +38,27 @@ export function conversationQueryFits(query: string): boolean {
   return true;
 }
 
+export function emptySearchQuery(state: ConversationSearchState): string | null {
+  const query = state.query.trim();
+  return state.active &&
+    state.completed &&
+    !state.loading &&
+    !state.error &&
+    !state.hits.length &&
+    !state.cursor &&
+    query &&
+    conversationQueryFits(query)
+    ? query
+    : null;
+}
+
 /** Transient search only. Generation and owner checks fence every asynchronous read. */
 export class ConversationSearch {
   private state = initial();
   private generation = 0;
   private firstPage: string | null = null;
   private dirty = false;
+  private submitted = false;
   private listeners = new Set<() => void>();
   private readonly source: ConversationSearchSource;
   constructor(source: ConversationSearchSource, query = '') {
@@ -54,6 +69,10 @@ export class ConversationSearch {
     return this.state.active && this.source.current();
   }
   getSnapshot = () => this.state;
+  assistantQuery(observed: ConversationSearchState): string | null {
+    if (observed !== this.state || !this.isCurrent()) return null;
+    return emptySearchQuery(observed);
+  }
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {
@@ -70,6 +89,7 @@ export class ConversationSearch {
   }
   /** Keep the reviewed projection when returning, but retire all pending reads. */
   suspend() {
+    if (this.state.loading && this.firstPage === null) this.dirty = true;
     this.generation++;
     this.publish({ active: false, loading: false });
   }
@@ -77,6 +97,7 @@ export class ConversationSearch {
     this.generation++;
     this.firstPage = null;
     this.dirty = false;
+    this.submitted = false;
     this.state = initial();
     for (const listener of this.listeners) listener();
   }
@@ -84,6 +105,7 @@ export class ConversationSearch {
     this.generation++;
     this.firstPage = null;
     this.dirty = false;
+    this.submitted = false;
     this.publish({
       query,
       hits: [],
@@ -102,6 +124,7 @@ export class ConversationSearch {
     const generation = ++this.generation;
     if (!this.state.active || !query || !this.fitsQuery(query) || !this.source.current()) return;
     this.dirty = false;
+    this.submitted = true;
     this.firstPage = null;
     this.publish({
       loading: true,
@@ -131,6 +154,7 @@ export class ConversationSearch {
    * Cursor bytes are compared opaquely: an unchanged clock/read preserves accepted pages;
    * a changed index or first-page presentation replaces them from the fresh page. */
   async refreshCanonical() {
+    if (!this.submitted) return;
     this.dirty = true;
     const generation = ++this.generation;
     if (!this.isCurrent()) return;
@@ -144,14 +168,17 @@ export class ConversationSearch {
         unchanged = this.firstPage !== null && key === this.firstPage;
       this.firstPage = key;
       this.dirty = false;
+      if (unchanged) {
+        this.publish({ loading: false, completed: true });
+        return;
+      }
+      const hits = uniqueHits(page.hits);
+      const selected = this.state.hits[this.state.index];
+      const index = selected ? hits.findIndex((hit) => hitKey(hit) === hitKey(selected)) : -1;
       this.publish({
-        ...(unchanged
-          ? {}
-          : {
-              hits: uniqueHits(page.hits),
-              cursor: page.next_cursor,
-              index: page.hits.length ? 0 : -1,
-            }),
+        hits,
+        cursor: page.next_cursor,
+        index: index >= 0 ? index : hits.length ? 0 : -1,
         loading: false,
         completed: true,
       });
@@ -206,6 +233,7 @@ export class ConversationSearch {
         cursor: page.next_cursor,
         index: next < hits.length ? next : this.state.index,
         loading: false,
+        completed: true,
       });
     } catch (reason) {
       // A stale canonical cursor must be restarted explicitly, never silently skip a page.
@@ -217,10 +245,14 @@ export class ConversationSearch {
     return generation === this.generation && this.state.active && this.source.current();
   }
 }
+function hitKey(hit: UniversalHit): string {
+  return JSON.stringify([hit.kind, hit.space_id, hit.ref_id]);
+}
+
 function uniqueHits(hits: readonly UniversalHit[]): UniversalHit[] {
   const seen = new Set<string>();
   return hits.filter((hit) => {
-    const key = JSON.stringify([hit.kind, hit.space_id, hit.ref_id]);
+    const key = hitKey(hit);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

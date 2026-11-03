@@ -14,7 +14,6 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 use tokio_tungstenite::tungstenite::Message;
-use types::EventBody;
 
 #[derive(Clone, Debug)]
 pub enum Kind {
@@ -67,16 +66,10 @@ pub struct Record {
     pub kind: Kind,
 }
 
-pub(super) enum EventTarget {
-    PlainText(String),
-    #[allow(dead_code, reason = "used by the forwarding restart journey")]
-    ClientId(String),
-}
-
 pub(super) struct Selector {
     pub(super) space: String,
     pub(super) author: String,
-    pub(super) target: EventTarget,
+    pub(super) target: Box<dyn Fn(&protocol::Sequenced) -> bool + Send + Sync>,
     pub(super) consumed: bool,
 }
 
@@ -361,11 +354,7 @@ async fn forward_ws(
                                 let selected = !selector.consumed
                                     && ev.env.space() == selector.space
                                     && ev.env.author() == selector.author
-                                    && match &selector.target {
-                                        EventTarget::ClientId(id) => ev.env.client_id() == id,
-                                        EventTarget::PlainText(expected) => ev.plain_event().is_some_and(|event| matches!(event.body,
-                                            EventBody::MessagePosted { text, .. } if &text == expected)),
-                                    };
+                                    && (selector.target)(&ev);
                                 if selected { selector.consumed = true; dropped = true; }
                             }
                             Some(Kind::Event {

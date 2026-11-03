@@ -9,7 +9,7 @@ import {
 } from '../core/telegram-composer-presentation';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { t } from '../i18n/index.ts';
-import { conversationQueryFits, type ConversationSearchState } from '../core/conversation-search';
+import { emptySearchQuery, type ConversationSearchState } from '../core/conversation-search';
 import { MediaComposer } from '../media/MediaComposer';
 import type { AcceptedMediaReply } from '../media/media-acceptance';
 import type { AttachmentComposerField } from '../media/attachment-composer';
@@ -141,16 +141,7 @@ export function MessageComposer({
     paddingBottom: restingBottom + (8 - restingBottom) * Math.min(1, Math.max(0, progress.value)),
   }));
   const hasText = Boolean(value.trim());
-  const canAsk = Boolean(
-    search &&
-    search.state.completed &&
-    !search.state.loading &&
-    !search.state.error &&
-    !search.state.hits.length &&
-    !search.state.cursor &&
-    search.state.query.trim() &&
-    conversationQueryFits(search.state.query.trim()),
-  );
+  const canAsk = Boolean(search && emptySearchQuery(search.state));
   const minimumHeight = composerSourceMinimumHeight(p.typography.message.fontSize) ?? 40;
   function controls({
     attachment,

@@ -150,6 +150,7 @@ impl Session {
             return;
         }
         let Some(permit) = self.st.push.try_wake_task() else {
+            crate::metrics::Metrics::inc(&self.st.metrics.push_overloaded);
             return;
         };
         let st = self.st.clone();
@@ -157,7 +158,8 @@ impl Session {
         let audience = audience.to_vec();
         tokio::spawn(async move {
             let _permit = permit;
-            crate::push::wake_registered_devices(&st.pool, &st.push, &me, &audience).await;
+            crate::push::wake_registered_devices(&st.pool, &st.push, &st.metrics, &me, &audience)
+                .await;
         });
     }
 }

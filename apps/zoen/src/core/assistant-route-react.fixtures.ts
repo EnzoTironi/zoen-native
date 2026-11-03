@@ -127,6 +127,7 @@ export async function assistantRouteFixture() {
     React.createElement(React.Fragment, null, children);
   let failNavigation = false;
   const routes: { params: { ticket: string } }[] = [];
+  const i18n = { locale: 'en', t: (key: string) => key };
   const ports: Record<string, unknown> = {
     react: React,
     'react/compiler-runtime': require('react/compiler-runtime'),
@@ -212,7 +213,7 @@ export async function assistantRouteFixture() {
         return null;
       },
     },
-    '../../i18n/index.ts': { locale: 'en', t: (key: string) => key },
+    '../../i18n/index.ts': i18n,
     '../../theme': { useTheme: () => ({ colors: {} }) },
   };
   ports['../core/provider'] = ports['../../core/provider'];
@@ -253,9 +254,17 @@ export async function assistantRouteFixture() {
       launch.launchConversationAssistant(space, query, store);
       ticket = routes.at(-1)!.params.ticket;
     },
-    failNavigation: () => { failNavigation = true; },
-    useTicket: (next: string) => { ticket = next; },
+    failNavigation: () => {
+      failNavigation = true;
+    },
+    useTicket: (next: string) => {
+      ticket = next;
+    },
     mount: () => root.render(React.createElement(Route)),
+    changeLocale: (locale: string) => {
+      i18n.locale = locale;
+      return root.render(React.createElement(Route));
+    },
     focus: (next: boolean) =>
       root.act(() => {
         focused = next;
