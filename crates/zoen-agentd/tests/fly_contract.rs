@@ -414,7 +414,11 @@ async fn suspended_cleanup_can_retry_resume_then_retry_delete() {
     assert!(session.tick(NOW).await.unwrap());
     assert_eq!(session.state().await, "suspended");
     assert!(session.finish(NOW).await.is_err());
-    assert_eq!(session.state().await, "suspended");
+    assert_eq!(session.state().await, "finishing");
+    assert!(matches!(
+        session.exec(ExecRequest::sh("true"), NOW).await,
+        Err(SessionError::Finished)
+    ));
     assert!(session.finish(NOW).await.is_err());
     assert_eq!(session.state().await, "finishing");
     session.finish(NOW).await.unwrap();

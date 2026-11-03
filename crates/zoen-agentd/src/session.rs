@@ -33,6 +33,9 @@ enum State {
     Suspended {
         snap: SnapshotRef,
     },
+    FinishingSuspended {
+        snap: SnapshotRef,
+    },
     Finishing {
         lease: Lease,
         since: Option<Instant>,
@@ -82,7 +85,7 @@ impl ToolSession {
             State::Cold => "cold",
             State::Running { .. } => "running",
             State::Suspended { .. } => "suspended",
-            State::Finishing { .. } => "finishing",
+            State::FinishingSuspended { .. } | State::Finishing { .. } => "finishing",
             State::Done => "done",
         }
     }
@@ -114,7 +117,9 @@ impl ToolSession {
         let mut st = self.state.lock().await;
         let running_uncharged = match &*st {
             State::Running { since, .. } => secs_ceil(since.elapsed()),
-            State::Finishing { .. } | State::Done => return Err(SessionError::Finished),
+            State::FinishingSuspended { .. } | State::Finishing { .. } | State::Done => {
+                return Err(SessionError::Finished)
+            }
             _ => 0,
         };
         let left = self
@@ -139,7 +144,9 @@ impl ToolSession {
             State::Cold => self.provider.acquire(&self.spec, &self.owner).await?,
             State::Suspended { snap } => self.provider.resume(snap).await?,
             State::Running { lease, .. } => lease.clone(),
-            State::Finishing { .. } | State::Done => unreachable!(),
+            State::FinishingSuspended { .. } | State::Finishing { .. } | State::Done => {
+                unreachable!()
+            }
         };
         if matches!(&*st, State::Cold | State::Suspended { .. }) {
             let now = Instant::now();
@@ -195,14 +202,17 @@ impl ToolSession {
                 };
             }
             State::Suspended { snap } => {
-                let lease = self.provider.resume(snap).await?;
-                *st = State::Finishing { lease, since: None };
+                *st = State::FinishingSuspended { snap: snap.clone() };
             }
-            State::Finishing { .. } => {}
+            State::FinishingSuspended { .. } | State::Finishing { .. } => {}
             State::Cold | State::Done => {
                 *st = State::Done;
                 return Ok(());
             }
+        }
+        if let State::FinishingSuspended { snap } = &*st {
+            let lease = self.provider.resume(snap).await?;
+            *st = State::Finishing { lease, since: None };
         }
         let State::Finishing { lease, since } = &*st else {
             unreachable!()
