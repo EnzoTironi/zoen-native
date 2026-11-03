@@ -29,7 +29,9 @@ function applyCallInfoPlist(config) {
   const voip = process.env.ZOEN_IOS_VOIP_WAKE === '1';
   config.modResults.ZoenVoipWakeEnabled = voip;
   const callModes = voip ? ['audio', 'voip'] : ['audio'];
-  config.modResults.UIBackgroundModes = [...new Set([...modes.filter((mode) => mode !== 'voip'), ...callModes])];
+  config.modResults.UIBackgroundModes = [
+    ...new Set([...modes.filter((mode) => mode !== 'voip'), ...callModes]),
+  ];
   return config;
 }
 function withNativeCalls(config) {
