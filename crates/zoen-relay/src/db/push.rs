@@ -22,6 +22,14 @@ pub async fn set_push_token(
         token
     };
     let mut tx = pool.begin().await?;
+    // A token can move between devices, so a device row lock alone cannot
+    // serialize concurrent claims for a token with no previous registration.
+    if !token.is_empty() {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!("push-token:{purpose}:{token}"))
+            .execute(&mut *tx)
+            .await?;
+    }
     // Serialize authorization with revocation before changing token ownership.
     let active = sqlx::query_scalar::<_, bool>(
         "SELECT true FROM devices WHERE identity = $1 AND device = $2

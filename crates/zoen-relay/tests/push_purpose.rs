@@ -122,6 +122,19 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     tx.commit().await.unwrap();
     let audience = [identity.id.clone()];
 
+    let (first_claim, second_claim) = tokio::join!(
+        db::set_push_token(pool, &identity.id, device, push::APNS_VOIP, "ABCD"),
+        db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "abcd"),
+    );
+    first_claim?;
+    second_claim?;
+    assert_eq!(
+        tokens(db::voip_push_targets(pool, &audience).await?),
+        ["abcd"]
+    );
+    db::set_push_token(pool, &identity.id, device, push::APNS_VOIP, "").await?;
+    db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "").await?;
+
     db::set_push_token(pool, &identity.id, device, push::APNS, "aabb")
         .await
         .unwrap();
