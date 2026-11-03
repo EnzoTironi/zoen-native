@@ -161,7 +161,12 @@ impl FinalEventProxy {
             fault.lose_receipt.store(false, Ordering::SeqCst);
         }
     }
-    async fn start(listen_port: u16, port: u16, evidence: PathBuf, saved: Option<Arc<SavedFault>>) -> Self {
+    async fn start(
+        listen_port: u16,
+        port: u16,
+        evidence: PathBuf,
+        saved: Option<Arc<SavedFault>>,
+    ) -> Self {
         let listener = TcpListener::bind(("127.0.0.1", listen_port)).await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let state = Arc::new(Mutex::new(State {
