@@ -321,6 +321,11 @@ impl Pusher {
     }
 
     pub async fn wake(&self, t: &Target) -> Outcome {
+        if matches!(t.platform.as_str(), APNS | APNS_SANDBOX | FCM)
+            && (t.token.is_empty() || !valid_registration(&t.platform, &t.token))
+        {
+            return Outcome::Gone;
+        }
         let r = match t.platform.as_str() {
             APNS | APNS_SANDBOX => match &self.apns {
                 Some(a) => self.apns(a, t).await,
