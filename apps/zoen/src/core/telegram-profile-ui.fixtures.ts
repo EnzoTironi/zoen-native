@@ -313,6 +313,7 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
         : overrides[path];
     if (path in ports) return ports[path];
     if (/\/i18n(?:\/index.ts)?$/.test(path)) return { t, formatLocale: () => 'en-US' };
+    if (path === 'expo-constants') return { expoConfig: { extra: {} } };
     if (path.endsWith('core/provider')) return { useClient: () => ({ ...state, store }) };
     if (path.endsWith('core/query')) return { useCoreQuery: () => query };
     // This fixture tests the existing profile surface; member controls have their own real-port suite.

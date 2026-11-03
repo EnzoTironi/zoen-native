@@ -142,6 +142,18 @@ pub trait LogStore: Send + Sync {
     async fn call_pair(&self, _space: &str, _who: &str, _peer: &str) -> Result<bool, StoreError> {
         Ok(false)
     }
+    /// Observes the exact encrypted publication and current call pair in one snapshot.
+    /// The envelope alone does not establish that the plaintext is a call invitation.
+    async fn call_wake_event(
+        &self,
+        _space: &str,
+        _who: &str,
+        _device: &str,
+        _peer: &str,
+        _seq: u64,
+    ) -> Result<Option<Sequenced>, StoreError> {
+        Ok(None)
+    }
     /// One fixed membership read version, before the paired PostgreSQL snapshot.
     async fn membership_read_version(&self) -> Result<i64, StoreError> {
         Err(StoreError("membership snapshot unsupported".into()))

@@ -15,9 +15,9 @@ impl Client {
             AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
             AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
             AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
-            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ControlAgent,
-            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
-            DeleteMessages, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            AppCurrentShareContext, AppEditTargets, CallHistory, CallWakeConsent, ChatLayout,
+            ControlAgent, CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite,
+            DeleteMessage, DeleteMessages, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
             ForwardMessage, Forwarding, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
             MessageDateTarget, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
@@ -109,6 +109,36 @@ impl Client {
             }
             PageBlockMarkdown { block } => encode(&crate::pages::editor_block_markdown(&block)?),
             CallHistory { space_id } => encode(&self.lock().call_history(&space_id)?),
+            CallWakeConsent {
+                expected_identity_id,
+                expected_device_id,
+                space_id,
+                peer_id,
+                allowed,
+            } => {
+                if let Some(allowed) = allowed {
+                    self.set_call_wake_consent(
+                        expected_identity_id,
+                        expected_device_id,
+                        space_id,
+                        peer_id,
+                        allowed,
+                    )
+                    .await?;
+                    encode(&allowed)
+                } else {
+                    encode(
+                        &self
+                            .get_call_wake_consent(
+                                expected_identity_id,
+                                expected_device_id,
+                                space_id,
+                                peer_id,
+                            )
+                            .await?,
+                    )
+                }
+            }
             InviteCall {
                 expected_identity_id,
                 expected_device_id,

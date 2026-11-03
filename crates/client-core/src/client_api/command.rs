@@ -135,6 +135,13 @@ pub(super) enum Command {
     CallHistory {
         space_id: String,
     },
+    CallWakeConsent {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        peer_id: String,
+        allowed: Option<bool>,
+    },
     InviteCall {
         expected_identity_id: String,
         expected_device_id: String,

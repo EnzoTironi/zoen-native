@@ -97,6 +97,7 @@ export type CoreEvent =
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
 type Results = {
+  call_wake_consent: boolean;
   chat_layout: ChatLayoutResult;
   saved_messages: SpaceSummary;
   space_member_context: SpaceMemberContext;

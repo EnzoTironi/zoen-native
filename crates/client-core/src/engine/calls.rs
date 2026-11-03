@@ -205,7 +205,7 @@ impl Engine {
     /// Device-local contact policy gates effects, never the canonical call fold.
     /// Ending/declining and reading history remain possible after blocking.
     pub(crate) fn assert_call_peer_allowed(&self, peer: &str) -> R<()> {
-        if self.store.blocked()?.iter().any(|id| id == peer) {
+        if self.store.is_blocked(peer)? {
             return Err(CoreError::Forbidden {
                 reason: "Call participant is blocked on this device".into(),
             });
@@ -231,6 +231,51 @@ impl Engine {
             return Err(not_found("Conversation"));
         }
         Ok(self.space_state(space)?.calls.clone())
+    }
+
+    pub(crate) fn resolve_call_wake(
+        &self,
+        identity: &str,
+        device: &str,
+        payload: &[u8],
+        now: i64,
+    ) -> R<Option<(String, CallRecord)>> {
+        self.assert_call_owner(identity, device)?;
+        let Ok(wake) = protocol::push::CallWake::decode(payload, now) else {
+            return Ok(None);
+        };
+        let Some(event) = self.store.event_by_hash_prefix(wake.nonce())? else {
+            return Ok(None);
+        };
+        let EventBody::CallV1 {
+            signal: CallSignal::Invite {
+                call_id, callee, ..
+            },
+        } = &event.body
+        else {
+            return Ok(None);
+        };
+        if callee != identity
+            || event.seq == 0
+            || event.sealed_wire.is_none()
+            || event.at_ms.checked_add(protocol::push::CALL_WAKE_WINDOW_MS)
+                != Some(wake.expires_at_ms())
+            || !self.is_member(&event.space, identity)
+            || self.store.is_blocked(&event.author)?
+        {
+            return Ok(None);
+        }
+        let invitation = event_log::content_hash_of(&event);
+        Ok(self
+            .call_history(&event.space)?
+            .into_iter()
+            .find_map(|call| {
+                (call.call_id == *call_id
+                    && call.invitation == invitation
+                    && call.invitation_confirmed
+                    && call.ringing_at(now))
+                .then(|| (event.space.clone(), call))
+            }))
     }
 
     pub(crate) fn invite_call(

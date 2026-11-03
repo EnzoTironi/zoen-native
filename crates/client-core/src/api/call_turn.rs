@@ -126,8 +126,84 @@ impl Allocation<'_> {
     }
 }
 
+impl Client {
+    async fn call_wake_consent_request(
+        &self,
+        identity: &str,
+        device: &str,
+        op: Op,
+    ) -> Result<Reply, CoreError> {
+        self.lock().native_surface_owner(identity, device)?;
+        let (owner, channel) = self.device_directory_owner()?;
+        self.with_device_directory_completion(&owner, &channel, |engine| {
+            engine.native_surface_owner(identity, device)
+        })?;
+        let result = tokio::time::timeout(Duration::from_secs(8), channel.clone().send(op))
+            .await
+            .map_err(|_| invalid("Call notification permission unavailable"))?
+            .map_err(net_err)?;
+        self.with_device_directory_completion(&owner, &channel, |engine| {
+            engine.native_surface_owner(identity, device)?;
+            Ok(result)
+        })
+    }
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl Client {
+    /// Changes this recipient's permission for cold VoIP wakes in one direct chat.
+    pub async fn set_call_wake_consent(
+        &self,
+        identity_id: String,
+        device_id: String,
+        space_id: String,
+        peer_id: String,
+        allowed: bool,
+    ) -> Result<(), CoreError> {
+        if allowed {
+            scope(self, &identity_id, &device_id, &space_id, &peer_id)?;
+        }
+        match self
+            .call_wake_consent_request(
+                &identity_id,
+                &device_id,
+                Op::SetVoipConsent {
+                    space: space_id,
+                    peer: peer_id,
+                    allowed,
+                },
+            )
+            .await?
+        {
+            Reply::Done => Ok(()),
+            _ => Err(invalid("Unexpected call notification permission response")),
+        }
+    }
+
+    /// Reads the relay's consent for this recipient and conversation.
+    pub async fn get_call_wake_consent(
+        &self,
+        identity_id: String,
+        device_id: String,
+        space_id: String,
+        peer_id: String,
+    ) -> Result<bool, CoreError> {
+        match self
+            .call_wake_consent_request(
+                &identity_id,
+                &device_id,
+                Op::GetVoipConsent {
+                    space: space_id,
+                    peer: peer_id,
+                },
+            )
+            .await?
+        {
+            Reply::VoipConsent(allowed) => Ok(allowed),
+            _ => Err(invalid("Unexpected call notification permission response")),
+        }
+    }
+
     /// Transport allocation only. Native RTC must independently require the
     /// confirmed call/selected device/MLS-authenticated DTLS fingerprint and use
     /// relay-only ICE. There is no public STUN or plaintext fallback here.

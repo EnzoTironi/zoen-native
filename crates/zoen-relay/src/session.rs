@@ -45,6 +45,8 @@ mod requests;
 mod saved_messages;
 mod syncing;
 mod turn;
+mod voip_consent;
+mod voip_wake;
 
 use authentication::{handshake, LoggedIn};
 
