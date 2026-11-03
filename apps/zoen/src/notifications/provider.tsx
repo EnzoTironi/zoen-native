@@ -58,7 +58,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         permission: notificationPermission,
         token: nativePushToken,
         async register(configuration, token) {
-          if (!identityId || !deviceId || !current()) throw new Error(t('notifications.accountChanged'));
+          if (!identityId || !deviceId || !current())
+            throw new Error(t('notifications.accountChanged'));
           await store.driver.request({
             op: 'register_push',
             expected_identity_id: identityId,
@@ -128,9 +129,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       },
     );
     let before = store.getSnapshot().snapshot;
+    let wasSynced = before?.connection.synced === true;
     const stopStore = store.subscribe(() => {
       const after = store.getSnapshot().snapshot;
-      if (!current() || !after?.connection.synced) return;
+      if (!current()) return;
+      const synced = after?.connection.synced === true;
+      const reconnected = synced && !wasSynced;
+      wasSynced = synced;
+      if (!synced) return;
+      if (
+        reconnected &&
+        AppState.currentState === 'active' &&
+        coordinator.getSnapshot().registration === 'waiting'
+      ) {
+        void coordinator.foreground();
+      }
       if (
         before &&
         AppState.currentState !== 'active' &&
