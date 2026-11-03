@@ -196,6 +196,11 @@ test('actual Expo consumer and maintained public facade keep one controlled quot
     await f.root.act(() => original({ nativeEvent: { index: 0, generation } }));
     n = await f.render(props);
     assert.deepEqual([...n.quoteCollapse.expanded], [0, 1]);
+    const afterReveal = n.quoteCollapse.generation;
+    assert.notEqual(afterReveal, generation);
+    await f.root.act(() => n.onBlockquoteToggle({ nativeEvent: { index: 0, generation } }));
+    assert.deepEqual([...f.native.quoteCollapse.expanded], [0, 1]);
+    const beforeSelection = n.onBlockquoteToggle;
     n = await f.render(props, true);
     assert.equal(n.quoteCollapse.enabled, false, 'selection reveals original full native text');
     assert.equal(n.selectable, true);
@@ -207,8 +212,11 @@ test('actual Expo consumer and maintained public facade keep one controlled quot
       [0, 1],
       'a late action cannot mutate selection presentation',
     );
-    assert.notEqual(n.quoteCollapse.generation, generation);
-    await f.root.act(() => n.onBlockquoteToggle({ nativeEvent: { index: 0, generation } }));
+    assert.notEqual(n.quoteCollapse.generation, afterReveal);
+    await f.root.act(() => beforeSelection({ nativeEvent: { index: 0, generation: afterReveal } }));
+    await f.root.act(() =>
+      n.onBlockquoteToggle({ nativeEvent: { index: 0, generation: afterReveal } }),
+    );
     assert.deepEqual([...f.native.quoteCollapse.expanded], [0, 1]);
     n = await f.render({ ...props, revision: 'r2' });
     assert.notEqual(n.quoteCollapse.generation, generation);
