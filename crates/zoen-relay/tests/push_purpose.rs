@@ -132,9 +132,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     );
 
     // Moving a token to a sibling removes only the old purpose registration.
+    let previous_voip = db::voip_push_targets(pool, &audience).await?.remove(0);
     db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "eeff")
         .await
         .unwrap();
+    db::drop_voip_push_token(pool, &previous_voip).await?;
     let owner: String = sqlx::query_scalar("SELECT device FROM push_tokens WHERE purpose = 'voip'")
         .fetch_one(pool)
         .await
