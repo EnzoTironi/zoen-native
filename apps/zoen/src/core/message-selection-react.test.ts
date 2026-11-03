@@ -152,6 +152,11 @@ function fixture() {
         },
       };
     },
+    editFirst: () => {
+      entries = entries.map((entry, index) =>
+        index === 0 ? { ...entry, text_revision: 'edited' } : entry,
+      );
+    },
     remove: () => {
       entries = [];
     },
@@ -339,10 +344,10 @@ for (const change of [
     if (change === 'access') f.revoke();
     if (change === 'reader') f.readOnly();
     if (change === 'selection') selected.toggle(f.entries[1]!);
-    if (change === 'revision') f.entries[0]!.text_revision = 'edited';
+    if (change === 'revision') f.editFirst();
     if (change === 'cancel') selected.cancel();
     f.render();
-    if (change === 'selection' || change === 'cancel')
+    if (change === 'selection' || change === 'cancel' || change === 'revision')
       assert.equal(f.confirmations[0]!.signal?.aborted, true);
     f.notify();
     f.answer(true);
