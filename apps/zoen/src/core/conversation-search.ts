@@ -44,6 +44,7 @@ export class ConversationSearch {
   private generation = 0;
   private firstPage: string | null = null;
   private dirty = false;
+  private submitted = false;
   private listeners = new Set<() => void>();
   private readonly source: ConversationSearchSource;
   constructor(source: ConversationSearchSource, query = '') {
@@ -78,6 +79,7 @@ export class ConversationSearch {
     this.generation++;
     this.firstPage = null;
     this.dirty = false;
+    this.submitted = false;
     this.state = initial();
     for (const listener of this.listeners) listener();
   }
@@ -85,6 +87,7 @@ export class ConversationSearch {
     this.generation++;
     this.firstPage = null;
     this.dirty = false;
+    this.submitted = false;
     this.publish({
       query,
       hits: [],
@@ -103,6 +106,7 @@ export class ConversationSearch {
     const generation = ++this.generation;
     if (!this.state.active || !query || !this.fitsQuery(query) || !this.source.current()) return;
     this.dirty = false;
+    this.submitted = true;
     this.firstPage = null;
     this.publish({
       loading: true,
@@ -132,6 +136,7 @@ export class ConversationSearch {
    * Cursor bytes are compared opaquely: an unchanged clock/read preserves accepted pages;
    * a changed index or first-page presentation replaces them from the fresh page. */
   async refreshCanonical() {
+    if (!this.submitted) return;
     this.dirty = true;
     const generation = ++this.generation;
     if (!this.isCurrent()) return;

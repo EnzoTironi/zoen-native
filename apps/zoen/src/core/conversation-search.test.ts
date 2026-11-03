@@ -223,3 +223,21 @@ test('canonical refresh keeps the selected result while it remains on the first 
   await search.refreshCanonical();
   assert.equal(search.getSnapshot().index, 0);
 });
+
+test('conversation updates do not submit a draft search query', async () => {
+  const queries: string[] = [];
+  const search = new ConversationSearch({
+    current: () => true,
+    search: async (query) => {
+      queries.push(query);
+      return { hits: [], next_cursor: null };
+    },
+  });
+  search.open();
+  search.setQuery('submitted');
+  await search.search();
+  search.setQuery('draft');
+  await search.refreshCanonical();
+  assert.deepEqual(queries, ['submitted']);
+  assert.equal(search.getSnapshot().completed, false);
+});
