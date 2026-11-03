@@ -52,10 +52,10 @@ pub fn purpose(platform: &str) -> Option<&'static str> {
 
 pub fn valid_registration(platform: &str, token: &str) -> bool {
     match platform {
-        APNS_VOIP | APNS_VOIP_SANDBOX => {
+        APNS | APNS_SANDBOX | APNS_VOIP | APNS_VOIP_SANDBOX => {
             token.is_empty() || protocol::push::ApnsToken::parse(token).is_ok()
         }
-        APNS | APNS_SANDBOX | FCM => valid_token(token),
+        FCM => valid_token(token),
         _ => false,
     }
 }
