@@ -329,7 +329,7 @@ impl FlyMachinesProvider {
 #[async_trait]
 impl SandboxProvider for FlyMachinesProvider {
     async fn acquire(&self, spec: &SandboxSpec, owner: &str) -> Result<Lease, SandboxError> {
-        let id = new_lease_id();
+        let id = new_lease_id()?;
         // Fly's shared CPUs go up to 8; memory in 256 MB steps. No owner id leaves us: the
         // Machine's metadata names the lease only.
         let body = serde_json::json!({
