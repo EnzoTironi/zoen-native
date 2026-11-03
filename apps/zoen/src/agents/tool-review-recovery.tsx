@@ -64,7 +64,7 @@ export function ToolReviewRecovery({
           label={t('reviewRenewal.open')}
           disabled={state.busy || disabled}
           onPress={() => {
-            if (!disabled && session.successor() === successor)
+            if (!disabled && session.successor(state) === successor)
               router.push({ pathname: '/request/[id]', params: { id: successor } });
           }}
         />
@@ -75,7 +75,7 @@ export function ToolReviewRecovery({
           label={t('reviewRenewal.refresh')}
           disabled={state.busy || disabled}
           onPress={() => {
-            void session.refresh();
+            if (!disabled) void session.refresh(state);
           }}
         />
       ) : null}

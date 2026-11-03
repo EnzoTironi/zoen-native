@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   createReviewPort,
+  emptyReview,
+  reviewScopeKey,
   reviewAvailable,
   reviewMetadataValid,
   ToolReviewSession,
@@ -266,9 +268,13 @@ test('an in-flight request stays latched across read refreshes and cannot dispat
   assert.equal(f.session.ticket(), null);
   await f.session.renew(ticket);
   assert.equal(f.writes.length, 1);
+  const updated = request();
+  updated.tool_approval!.review!.state = 'Requested';
+  f.rows([updated]);
   pending.resolve({});
   await first;
   assert.equal(f.session.getSnapshot().busy, false);
+  assert.equal(f.session.getSnapshot().request?.tool_approval?.review?.state, 'Requested');
 });
 
 test('closed metadata and eligible expired approval never route or renew another request', async () => {
@@ -366,4 +372,69 @@ test('failure before dispatch remains a failed read, not an unknown action or an
   await f.session.refresh();
   assert.ok(f.session.ticket());
   assert.equal(f.writes.length, 0);
+});
+
+test('approval details cannot render across retirement or a new account session', async () => {
+  const f = fixture();
+  await f.session.refresh();
+  const previous = f.session.getSnapshot();
+  const owner = f.port.scope()!;
+  const key = reviewScopeKey(owner);
+  assert.ok(previous.request);
+  assert.equal(f.session.visible(previous, key), previous);
+
+  f.session.retire();
+  f.session.activate(owner);
+  assert.equal(f.session.visible(previous, key), emptyReview);
+
+  const next = { ...owner, epoch: owner.epoch + 1 };
+  f.scope(next);
+  assert.equal(f.session.visible(previous, reviewScopeKey(next)), emptyReview);
+});
+
+test('an acknowledgement with an unchanged projection keeps renewal locked', async () => {
+  const f = fixture();
+  f.effect(async () => ({}));
+  await f.session.refresh();
+  assert.equal(await f.session.renew(f.session.ticket()), true);
+  assert.equal(f.session.getSnapshot().unknown, true);
+  assert.equal(f.session.ticket(), null);
+  assert.equal(f.writes.length, 1);
+  const updated = request();
+  updated.tool_approval!.review!.state = 'Requested';
+  f.rows([updated]);
+  await f.session.refresh();
+  assert.equal(f.session.getSnapshot().unknown, false);
+  assert.equal(f.writes.length, 1);
+});
+
+test('renewal rechecks the content hash before sending a request', async () => {
+  const f = fixture();
+  await f.session.refresh();
+  const ticket = f.session.ticket();
+  assert.ok(ticket);
+  const updated = request();
+  updated.tool_approval!.content_hash = 'cd'.repeat(32);
+  f.rows([updated]);
+
+  assert.equal(await f.session.renew(ticket), false);
+  assert.deepEqual(f.writes, []);
+  assert.equal(f.session.ticket()?.hash, updated.tool_approval!.content_hash);
+  assert.equal(f.session.getSnapshot().busy, false);
+});
+
+test('a stale approval refresh cannot read on behalf of a newer review', async () => {
+  const f = fixture();
+  let reads = 0;
+  f.reads(async () => {
+    reads++;
+    return [request()];
+  });
+  await f.session.refresh();
+  const previous = f.session.getSnapshot();
+  await f.session.refresh(previous);
+  const current = f.session.getSnapshot();
+  await f.session.refresh(previous);
+  assert.equal(reads, 2);
+  assert.equal(f.session.getSnapshot(), current);
 });
