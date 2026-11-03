@@ -233,12 +233,13 @@ impl JournalState {
         path: &Path,
         request: &str,
         content_hash: &str,
-        source: Option<&str>,
+        source: &str,
     ) -> Result<bool, String> {
         if request.is_empty()
             || request.len() > 128
             || !Self::valid_hash(content_hash)
-            || source.is_some_and(|source| source.is_empty() || source.len() > 128)
+            || source.is_empty()
+            || source.len() > 128
         {
             return Err("The continuation request is invalid".into());
         }
@@ -251,15 +252,11 @@ impl JournalState {
         &mut self,
         request: &str,
         content_hash: &str,
-        source: Option<&str>,
+        source: &str,
     ) -> Result<bool, String> {
         if let Some(budget) = self.continuations.get_mut(request) {
             if budget.content_hash != content_hash
-                || (source.is_some()
-                    && budget
-                        .source
-                        .as_deref()
-                        .is_some_and(|old| Some(old) != source))
+                || budget.source.as_deref().is_some_and(|old| old != source)
             {
                 return Err("The continuation request hash changed".into());
             }
@@ -268,7 +265,7 @@ impl JournalState {
             }
             budget.attempts += 1;
             if budget.source.is_none() {
-                budget.source = source.map(str::to_string);
+                budget.source = Some(source.to_owned());
             }
         } else {
             self.continuations.insert(
@@ -276,7 +273,7 @@ impl JournalState {
                 ResumeAttempts {
                     content_hash: content_hash.into(),
                     attempts: 1,
-                    source: source.map(str::to_string),
+                    source: Some(source.to_owned()),
                     prepared: None,
                     progress: None,
                     registered: false,
