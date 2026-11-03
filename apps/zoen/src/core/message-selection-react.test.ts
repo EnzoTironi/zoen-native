@@ -218,13 +218,15 @@ test('real hook retires removed selections and search mode without reviving on l
   assert.equal(g.render().count, 0);
 });
 
-test('retained copy and forward callbacks cannot reuse a changed selected set after rerender', () => {
+test('retained selection actions cannot reuse a changed selected set after rerender', () => {
   const f = fixture();
   f.render().toggle(f.entries[0]!);
   const retained = f.render();
   retained.toggle(f.entries[1]!);
   const current = f.render();
   assert.equal(current.count, 2);
+  retained.cancel();
+  assert.equal(f.render().count, 2);
   retained.copy();
   retained.forward();
   assert.deepEqual(f.copied, []);

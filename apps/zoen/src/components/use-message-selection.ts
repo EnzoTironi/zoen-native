@@ -100,7 +100,9 @@ export function useMessageSelection(
       Boolean(messageDeletionTargets(messages, account?.identity_id, true)),
     pending,
     toggle,
-    cancel: () => setSelection(null),
+    cancel: () => {
+      if (current()) setSelection((value) => (value === selection ? null : value));
+    },
     copy: () => {
       const value = selectedMessageText(resolve());
       if (value) void Clipboard.setStringAsync(value).catch(() => {});
