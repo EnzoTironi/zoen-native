@@ -186,18 +186,14 @@ fn assert_folded(
     assert_eq!(quote.text, text);
     assert!(messages.iter().any(|m| m.thread.as_deref() == Some(target)));
     assert!(!messages.iter().any(|m| m.text.contains("oldterm")));
-    assert!(
-        !messages
-            .iter()
-            .any(|m| m.quote.as_ref().is_some_and(|q| q.text.contains("oldterm")))
-    );
+    assert!(!messages
+        .iter()
+        .any(|m| m.quote.as_ref().is_some_and(|q| q.text.contains("oldterm"))));
     if deleted {
         assert!(!messages.iter().any(|m| m.text.contains("newterm")));
-        assert!(
-            !messages
-                .iter()
-                .any(|m| m.quote.as_ref().is_some_and(|q| q.text.contains("newterm")))
-        );
+        assert!(!messages
+            .iter()
+            .any(|m| m.quote.as_ref().is_some_and(|q| q.text.contains("newterm"))));
     }
     Ok(())
 }
@@ -396,13 +392,11 @@ fn unauthorized_mutations_are_rejected_and_signed_peer_mutations_do_not_fold() -
             Annotation::Delete,
         ] {
             let before = client.saved.outbox.len();
-            assert!(
-                client
-                    .queue_annotation(SPACE, &peer, note, 18)
-                    .err()
-                    .ok_or("peer mutation was accepted")?
-                    .contains("Only the person")
-            );
+            assert!(client
+                .queue_annotation(SPACE, &peer, note, 18)
+                .err()
+                .ok_or("peer mutation was accepted")?
+                .contains("Only the person"));
             assert_eq!(client.saved.outbox.len(), before);
         }
         for restored in [false, true] {
@@ -503,11 +497,9 @@ fn invalid_edits_and_missing_or_non_message_targets_do_not_queue() -> TestResult
             "é".repeat(16_385),
         ] {
             let before = client.saved.outbox.len();
-            assert!(
-                client
-                    .queue_annotation(SPACE, &target, Annotation::Edit { text }, 12)
-                    .is_err()
-            );
+            assert!(client
+                .queue_annotation(SPACE, &target, Annotation::Edit { text }, 12)
+                .is_err());
             assert_eq!(client.saved.outbox.len(), before);
         }
         let not_message = log.events()[0].hash.clone();
