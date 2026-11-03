@@ -226,3 +226,18 @@ test('untrusted result set cannot change the reviewed source identity or retain 
   assert.ok(f.state().error instanceof Error);
   assert.equal(f.selected()!.ready, false);
 });
+
+test('Done recovers a lost acknowledgement from the same completed batch', async () => {
+  const f = fixture();
+  await f.session.confirm(await f.ready());
+  f.finish(async (record) => {
+    f.setRecord({ ...record, completed: true });
+    throw new Error('lost acknowledgement');
+  });
+
+  await f.session.finish(f.selected()!);
+  assert.equal(f.selected()!.completed, true);
+  assert.deepEqual(f.sent, ['target']);
+  await f.session.finish(f.selected()!);
+  assert.equal(ops(f, 'finish').length, 1);
+});
