@@ -167,10 +167,16 @@ impl FlyMachinesProvider {
         Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::Null))
     }
 
-    fn machine(&self, lease: &str) -> Result<String, SandboxError> {
+    fn machines(&self) -> std::sync::MutexGuard<'_, HashMap<String, (String, Lease)>> {
+        // The lock guards only map operations. Keep tracked machines available
+        // for cleanup even if a previous caller panicked while holding it.
         self.machines
             .lock()
-            .unwrap()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn machine(&self, lease: &str) -> Result<String, SandboxError> {
+        self.machines()
             .get(lease)
             .map(|(m, _)| m.clone())
             .ok_or(SandboxError::NoLease)
@@ -233,11 +239,7 @@ impl FlyMachinesProvider {
 
     /// The Machine behind a lease (for journeys that check it's gone).
     pub fn machine_of(&self, lease: &Lease) -> Option<String> {
-        self.machines
-            .lock()
-            .unwrap()
-            .get(&lease.id)
-            .map(|(m, _)| m.clone())
+        self.machines().get(&lease.id).map(|(m, _)| m.clone())
     }
 
     async fn exec_raw(
@@ -329,7 +331,7 @@ impl FlyMachinesProvider {
 #[async_trait]
 impl SandboxProvider for FlyMachinesProvider {
     async fn acquire(&self, spec: &SandboxSpec, owner: &str) -> Result<Lease, SandboxError> {
-        let id = new_lease_id();
+        let id = new_lease_id()?;
         // Fly's shared CPUs go up to 8; memory in 256 MB steps. No owner id leaves us: the
         // Machine's metadata names the lease only.
         let body = serde_json::json!({
@@ -370,10 +372,7 @@ impl SandboxProvider for FlyMachinesProvider {
             tool: spec.tool.clone(),
             tier: spec.tier,
         };
-        self.machines
-            .lock()
-            .unwrap()
-            .insert(id, (machine, lease.clone()));
+        self.machines().insert(id, (machine, lease.clone()));
         Ok(lease)
     }
 
@@ -494,9 +493,7 @@ impl SandboxProvider for FlyMachinesProvider {
     async fn resume(&self, snap: &SnapshotRef) -> Result<Lease, SandboxError> {
         let machine = self.machine(&snap.lease)?;
         self.transition(&machine, "start", "started").await?;
-        self.machines
-            .lock()
-            .unwrap()
+        self.machines()
             .get(&snap.lease)
             .map(|(_, l)| l.clone())
             .ok_or(SandboxError::NoLease)
@@ -516,12 +513,7 @@ impl SandboxProvider for FlyMachinesProvider {
     }
 
     async fn release(&self, lease: Lease) -> Result<(), SandboxError> {
-        let machine = self
-            .machines
-            .lock()
-            .unwrap()
-            .get(&lease.id)
-            .map(|(m, _)| m.clone());
+        let machine = self.machines().get(&lease.id).map(|(m, _)| m.clone());
         let Some(machine) = machine else {
             return Ok(());
         };
@@ -538,7 +530,7 @@ impl SandboxProvider for FlyMachinesProvider {
                 text.chars().take(300).collect::<String>()
             )));
         }
-        self.machines.lock().unwrap().remove(&lease.id);
+        self.machines().remove(&lease.id);
         Ok(())
     }
 }

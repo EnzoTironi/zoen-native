@@ -30,6 +30,13 @@ pub struct GvisorProvider {
 }
 
 impl GvisorProvider {
+    fn leases(&self) -> std::sync::MutexGuard<'_, HashMap<String, (Lease, SandboxSpec, ExecLock)>> {
+        // Keep leases reachable for cleanup after a panic in a map operation.
+        self.leases
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// `work` holds lease disks and runsc state; it must be private to this process.
     pub fn new(runsc: PathBuf, templates: HashMap<String, PathBuf>, work: PathBuf) -> Self {
         GvisorProvider {
@@ -56,7 +63,7 @@ impl GvisorProvider {
     }
 
     fn get(&self, lease: &Lease) -> Result<(SandboxSpec, ExecLock), SandboxError> {
-        let m = self.leases.lock().unwrap();
+        let m = self.leases();
         let (_, spec, lock) = m.get(&lease.id).ok_or(SandboxError::NoLease)?;
         Ok((spec.clone(), lock.clone()))
     }
@@ -110,7 +117,8 @@ impl GvisorProvider {
         .await
         .map_err(|e| SandboxError::Backend(e.to_string()))?;
         let mut b = [0u8; 6];
-        getrandom::getrandom(&mut b).expect("os randomness");
+        getrandom::getrandom(&mut b)
+            .map_err(|error| SandboxError::Backend(format!("container ID entropy: {error}")))?;
         let cid = format!("{}-{}", lease.id, hex::encode(b));
         let state = dir.join("state");
         let mut cmd = Command::new(&self.runsc);
@@ -136,7 +144,10 @@ impl GvisorProvider {
             .spawn()
             .map_err(|e| SandboxError::Backend(format!("runsc: {e}")))?;
         if let Some(input) = req.stdin.clone() {
-            let mut si = child.stdin.take().expect("piped");
+            let mut si = child
+                .stdin
+                .take()
+                .ok_or_else(|| SandboxError::Backend("runsc stdin pipe unavailable".into()))?;
             tokio::spawn(async move {
                 let _ = si.write_all(&input).await;
                 let _ = si.shutdown().await;
@@ -209,7 +220,7 @@ impl SandboxProvider for GvisorProvider {
             .get(&spec.template)
             .ok_or_else(|| SandboxError::Backend(format!("no template `{}`", spec.template)))?;
         let lease = Lease {
-            id: new_lease_id(),
+            id: new_lease_id()?,
             owner: owner.into(),
             tool: spec.tool.clone(),
             tier: spec.tier,
@@ -222,7 +233,7 @@ impl SandboxProvider for GvisorProvider {
             .await
             .map_err(|e| SandboxError::Backend(e.to_string()))?;
         copy_tree(template, &dir.join("bundle").join("rootfs")).await?;
-        self.leases.lock().unwrap().insert(
+        self.leases().insert(
             lease.id.clone(),
             (lease.clone(), spec.clone(), Default::default()),
         );
@@ -287,14 +298,14 @@ impl SandboxProvider for GvisorProvider {
     }
 
     async fn resume(&self, snap: &SnapshotRef) -> Result<Lease, SandboxError> {
-        let m = self.leases.lock().unwrap();
+        let m = self.leases();
         m.get(&snap.lease)
             .map(|(l, _, _)| l.clone())
             .ok_or(SandboxError::NoLease)
     }
 
     async fn release(&self, lease: Lease) -> Result<(), SandboxError> {
-        self.leases.lock().unwrap().remove(&lease.id);
+        self.leases().remove(&lease.id);
         let _ = tokio::fs::remove_dir_all(self.lease_dir(&lease.id)).await;
         Ok(())
     }
