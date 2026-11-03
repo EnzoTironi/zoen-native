@@ -248,7 +248,13 @@ impl FlyMachinesProvider {
         timeout: Duration,
     ) -> Result<ExecOutput, SandboxError> {
         let started = Instant::now();
-        let secs = timeout.as_secs().clamp(1, 3600);
+        let secs = timeout.as_secs().min(3600);
+        if secs == 0 {
+            return Ok(ExecOutput {
+                timed_out: true,
+                ..ExecOutput::default()
+            });
+        }
         let mut body = serde_json::json!({ "command": argv, "timeout": secs });
         if let Some(s) = stdin {
             body["stdin"] = serde_json::Value::String(s);

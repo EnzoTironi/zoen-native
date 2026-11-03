@@ -548,3 +548,6 @@ async fn the_actual_guest_scripts_round_trip_binary_data_and_quoted_paths() {
 
 #[path = "fly_contract/fly_lifecycle_recovery.rs"]
 mod lifecycle_recovery;
+
+#[path = "fly_contract/timeout.rs"]
+mod timeout;
