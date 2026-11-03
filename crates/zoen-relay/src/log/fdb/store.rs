@@ -176,42 +176,37 @@ impl LogStore for FdbLog {
         }
         self.cell
             .db
+            .run(|trx, _| async move { self.cell.call_pair_in(&trx, space, who, peer).await })
+            .await
+            .map_err(store_err)
+    }
+
+    async fn call_wake_event(
+        &self,
+        space: &str,
+        who: &str,
+        device: &str,
+        peer: &str,
+        seq: u64,
+    ) -> Result<Option<Sequenced>, StoreError> {
+        self.cell
+            .db
             .run(|trx, _| async move {
-                let Some(meta) = trx.get(&self.cell.space_key(space, "meta"), false).await? else {
-                    return Ok(false);
+                if !self.cell.call_pair_in(&trx, space, who, peer).await? {
+                    return Ok(None);
+                }
+                let key = self.cell.space_key(space, ("log", seq));
+                let Some(bytes) = trx.get(&key, false).await? else {
+                    return Ok(None);
                 };
-                let (kind, privacy, _): (String, String, String) =
-                    unpack(&meta).map_err(|error| custom(error.to_string()))?;
-                if parse::<SpaceKind>(&kind) != Some(SpaceKind::Direct)
-                    || parse::<Privacy>(&privacy) != Some(Privacy::EndToEnd)
-                {
-                    return Ok(false);
-                }
-                let range = self.cell.space_range(space, "m");
-                // Never allocate a group-sized list before deciding it is not a DM.
-                let members = Cell::scan(&trx, range.range(), 3, false).await?;
-                if members.len() != 2 {
-                    return Ok(false);
-                }
-                let mut found = (false, false);
-                for (key, value) in members {
-                    let (id,): (String,) = range
-                        .unpack(&key)
-                        .map_err(|error| custom(error.to_string()))?;
-                    let role = unpack::<String>(&value)
-                        .ok()
-                        .and_then(|role| parse::<Role>(&role));
-                    if !matches!(role, Some(Role::Owner | Role::Admin | Role::Member)) {
-                        return Ok(false);
-                    }
-                    if id == who {
-                        found.0 = true;
-                    }
-                    if id == peer {
-                        found.1 = true;
-                    }
-                }
-                Ok(found.0 && found.1)
+                let event = Sequenced::decode(&bytes).map_err(|e| custom(e.to_string()))?;
+                Ok((event.seq == seq
+                    && event.env.space() == space
+                    && event.env.author() == who
+                    && event.env.device() == Some(device)
+                    && event.env.sealed_kind() == Some(protocol::SealedKind::Application)
+                    && !event.env.is_pruned())
+                .then_some(event))
             })
             .await
             .map_err(store_err)

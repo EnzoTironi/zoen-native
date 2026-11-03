@@ -118,6 +118,13 @@ impl Store {
             > 0)
     }
 
+    pub fn is_blocked(&self, identity: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM blocked WHERE identity = ?1)")?
+            .query_row([identity], |row| row.get(0))?)
+    }
+
     pub fn blocked(&self) -> Result<Vec<String>> {
         let mut st = self
             .conn

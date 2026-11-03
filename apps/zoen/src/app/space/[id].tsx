@@ -15,6 +15,8 @@ import { Pressable, ScrollView, Share, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../../components/dialogs';
 import { useClient } from '../../core/provider';
+import { useCoreQuery } from '../../core/query';
+import Constants from 'expo-constants';
 import { EmptyState } from '../../components/primitives';
 import { useMemberActions } from '../../communities/use-member-actions';
 import { MemberActionsSheet } from '../../communities/member-actions-sheet';
@@ -69,6 +71,24 @@ function SpaceContent() {
     );
   }
   const chat = snapshot?.conversations.find((item) => item.id === id);
+  const account = snapshot?.account;
+  const consentCommand =
+    process.env.EXPO_OS === 'ios' &&
+    Constants.expoConfig?.extra?.zoenVoipWakeEnabled === true &&
+    chat?.kind === 'Direct' &&
+    chat.counterpart?.kind === 'Person' &&
+    account?.registered &&
+    account.unlocked
+      ? {
+          op: 'call_wake_consent' as const,
+          expected_identity_id: account.identity_id,
+          expected_device_id: account.device_id,
+          space_id: chat.id,
+          peer_id: chat.counterpart.id,
+          allowed: null,
+        }
+      : null;
+  const wakeConsent = useCoreQuery(consentCommand, String(store.sessionEpoch));
   const photo = useProfilePhoto(
     chat?.counterpart?.id,
     chat?.counterpart?.photo_sha256,
@@ -261,6 +281,24 @@ function SpaceContent() {
                 disabled={muteDisabled}
                 modifiers={preferenceModifiers}
               />
+              {consentCommand && wakeConsent.data !== null ? (
+                <Switch
+                  testID="details-preference-background-calls"
+                  label={t('chat.backgroundCalls')}
+                  value={wakeConsent.data}
+                  onValueChange={(allowed) => {
+                    void perform(async () => {
+                      try {
+                        await store.request({ ...consentCommand, allowed });
+                      } finally {
+                        if (currentOwner()) wakeConsent.retry();
+                      }
+                    });
+                  }}
+                  disabled={busy || wakeConsent.loading}
+                  modifiers={preferenceModifiers}
+                />
+              ) : null}
               <Switch
                 testID="details-preference-archived"
                 label={t('chat.archiveChat')}

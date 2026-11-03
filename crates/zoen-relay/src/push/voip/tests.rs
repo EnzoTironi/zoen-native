@@ -127,7 +127,9 @@ async fn expired_or_invalid_targets_never_reach_provider_and_dead_token_is_expli
         pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
         Outcome::Failed("apns voip 400".into())
     );
+    assert!(pusher.voip_available());
     let disabled = Pusher::new(mock, None, None).unwrap();
+    assert!(!disabled.voip_available());
     assert_eq!(
         disabled.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
         Outcome::Disabled
@@ -155,5 +157,53 @@ async fn wake_requires_an_apns_deadline_in_a_future_second() -> anyhow::Result<(
         .1
         .iter()
         .any(|(key, value)| key == "apns-expiration" && value == "2"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn saturated_voip_wakes_leave_message_wake_capacity_available() -> anyhow::Result<()> {
+    let http = Arc::new(Mock::default());
+    let pusher = Pusher::new(http.clone(), Some(apns_cfg()), None)?;
+    let permits = pusher
+        .voip_slots
+        .try_acquire_many(u32::try_from(pusher.voip_slots.available_permits())?)?;
+    assert!(matches!(
+        pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
+        Outcome::Failed(_)
+    ));
+    assert!(http.calls.lock().unwrap().is_empty());
+    assert!(pusher.try_wake_task().is_some());
+    drop(permits);
+    assert_eq!(
+        pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
+        Outcome::Sent
+    );
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn stalled_provider_request_ends_at_apns_expiration() -> anyhow::Result<()> {
+    struct Stalled;
+
+    #[async_trait::async_trait]
+    impl Http for Stalled {
+        async fn post(
+            &self,
+            _url: &str,
+            _headers: &[(&str, String)],
+            _body: String,
+        ) -> anyhow::Result<(u16, String)> {
+            std::future::pending().await
+        }
+    }
+
+    let pusher = Pusher::new(Arc::new(Stalled), Some(apns_cfg()), None)?;
+    let wake = protocol::push::CallWake::new("ab".repeat(16), 2_900, 1_000)?;
+    let start = tokio::time::Instant::now();
+    assert_eq!(
+        pusher.call_wake_at(&target(APNS_VOIP), &wake, 1_500).await,
+        Outcome::Failed("VoIP provider deadline elapsed".into())
+    );
+    assert_eq!(start.elapsed(), Duration::from_millis(500));
     Ok(())
 }

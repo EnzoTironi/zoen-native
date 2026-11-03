@@ -56,6 +56,46 @@ pub(super) async fn turn_pair_requires_exact_current_encrypted_dm_writers(
             )
         };
         landed(log.append(&add(Role::Member)?, true).await);
+        if expected {
+            let device = ana.device.as_deref().ok_or("missing fixture device")?;
+            let envelope = Envelope::sealed(
+                &ana,
+                &space,
+                &types::new_ulid(now_ms())?,
+                now_ms(),
+                Some(&seen),
+                protocol::Sealed::new(protocol::SealedKind::Application, 3, vec![9; 48]),
+            )?;
+            let event = landed(log.append(&envelope, true).await);
+            assert!(log
+                .call_wake_event(&space, &ana.identity, device, &bruno.identity, event.seq)
+                .await?
+                .is_some_and(|observed| observed.hash == event.hash));
+            assert!(log
+                .call_wake_event(
+                    &space,
+                    &ana.identity,
+                    "other-device",
+                    &bruno.identity,
+                    event.seq
+                )
+                .await?
+                .is_none());
+            assert!(log
+                .call_wake_event(&space, &ana.identity, device, &bruno.identity, genesis.seq)
+                .await?
+                .is_none());
+            assert!(log
+                .call_wake_event(
+                    &space,
+                    &ana.identity,
+                    device,
+                    &bruno.identity,
+                    event.seq + 1
+                )
+                .await?
+                .is_none());
+        }
         assert_eq!(
             log.call_pair(&space, &ana.identity, &bruno.identity)
                 .await

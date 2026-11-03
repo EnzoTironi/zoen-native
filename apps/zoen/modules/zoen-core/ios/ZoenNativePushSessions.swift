@@ -8,9 +8,26 @@ enum ZoenNativePushSessions {
     try await session.close(discardEdits: true)
   }
 
-  static func wake(deadline: ContinuousClock.Instant) async -> ZoenPushResult {
+  static func wake(deadline: ContinuousClock.Instant, voip: (payload: String, id: UUID)? = nil) async -> ZoenPushResult {
     await gate.runWake(make: { ZoenSession() }, retain: { await $0.retainsNotificationCall() }) { session, cold, lease in
-      try await session.notificationWake(cold: cold, deadline: deadline, lease: lease)
+      try await session.notificationWake(cold: cold, deadline: deadline, lease: lease, voip: voip)
+    }
+  }
+
+  /// Called from the PushKit delegate on its main queue. CallKit receives the
+  /// report before the session gate can wait on disk, authentication or sync.
+  @MainActor
+  static func reportVoipWake(id: UUID, payload: String?, completion: @escaping () -> Void) {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+    let system = ZoenCallSystem.shared
+    system.reportWake(id: id) { reported in
+      completion()
+      guard reported else { return }
+      guard let payload else { system.finishWake(id: id); return }
+      Task {
+        _ = await wake(deadline: deadline, voip: (payload, id))
+        system.finishWake(id: id)
+      }
     }
   }
 
@@ -19,10 +36,13 @@ enum ZoenNativePushSessions {
     call: @escaping @Sendable (String) -> Void, audio: @escaping @Sendable (String) -> Void) async throws -> String {
     try await gate.openAdoptingRetained(owner: owner, allowed: mode == "account") { session, lease, adopted in
       if adopted {
-        return try await session.adoptNotificationCall(locale: locale, lease: lease, changed: changed, call: call, audio: audio)
+        let result = try await session.adoptNotificationCall(locale: locale, lease: lease, changed: changed, call: call, audio: audio)
+        await ZoenVoipRegistry.shared.bind(session: session, lease: lease)
+        return result
       }
       let result = try await session.open(mode: mode, locale: locale, changed: changed)
       await session.bindCalls(lease: lease, changed: call, audio: audio)
+      if mode == "account" { await ZoenVoipRegistry.shared.bind(session: session, lease: lease) }
       return result
     }
   }

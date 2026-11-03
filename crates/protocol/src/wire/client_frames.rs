@@ -123,6 +123,26 @@ fn request_to(op: &Op) -> pb_req::Op {
             platform: platform.clone(),
             token: token.clone(),
         }),
+        Op::RequestVoipWake { space, peer, seq } => {
+            pb_req::Op::RequestVoipWake(super::schema::PbVoipWake {
+                space: space.clone(),
+                peer: peer.clone(),
+                seq: *seq,
+            })
+        }
+        Op::GetVoipConsent { space, peer } => pb_req::Op::GetVoipConsent(PbCallTurnRequest {
+            space: space.clone(),
+            peer: peer.clone(),
+        }),
+        Op::SetVoipConsent {
+            space,
+            peer,
+            allowed,
+        } => pb_req::Op::SetVoipConsent(super::schema::PbVoipConsent {
+            space: space.clone(),
+            peer: peer.clone(),
+            allowed: *allowed,
+        }),
         Op::PublishAgreementKey { public, signed } => {
             pb_req::Op::PublishAgreementKey(PbAgreementKey {
                 identity: String::new(),
@@ -205,6 +225,20 @@ fn request_from(op: pb_req::Op) -> Result<Op, DecodeError> {
         pb_req::Op::RegisterPush(p) => Op::RegisterPush {
             platform: p.platform,
             token: p.token,
+        },
+        pb_req::Op::RequestVoipWake(p) => Op::RequestVoipWake {
+            space: p.space,
+            peer: p.peer,
+            seq: p.seq,
+        },
+        pb_req::Op::GetVoipConsent(p) => Op::GetVoipConsent {
+            space: p.space,
+            peer: p.peer,
+        },
+        pb_req::Op::SetVoipConsent(p) => Op::SetVoipConsent {
+            space: p.space,
+            peer: p.peer,
+            allowed: p.allowed,
         },
         pb_req::Op::PublishAgreementKey(k) => Op::PublishAgreementKey {
             public: k.public,

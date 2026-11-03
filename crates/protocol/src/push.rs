@@ -4,6 +4,8 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 
+pub const CALL_WAKE_WINDOW_MS: i64 = 30_000;
+pub const VOIP_WAKE_CAPABILITY: &str = "voip_wake_v1";
 pub const PUSH_REGISTRATION_CAPABILITY: &str = "push_registration_v1";
 pub const APNS_BACKGROUND_PUSH_TYPE: &str = "background";
 pub const APNS_BACKGROUND_PRIORITY: &str = "5";
@@ -160,6 +162,11 @@ impl fmt::Debug for CallWake {
 }
 
 impl CallWake {
+    #[must_use]
+    pub fn nonce(&self) -> &str {
+        &self.nonce
+    }
+
     /// # Errors
     /// Rejects a nonce outside the 32-character lowercase hexadecimal format, a
     /// nonpositive current time, or expiry outside the next 60 seconds.

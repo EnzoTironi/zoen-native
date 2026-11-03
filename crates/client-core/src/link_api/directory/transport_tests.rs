@@ -261,23 +261,35 @@ async fn push_registration_accepts_the_authenticated_owner(
     };
     online(&fixture.client).await;
     let (owner, _) = fixture.client.device_directory_owner()?;
-    let result = fixture
-        .client
-        .client_request(
-            serde_json::json!({
-                "op": "register_push",
-                "expected_identity_id": owner.identity,
-                "expected_device_id": owner.device,
-                "platform": "apns",
-                "token": "aabb"
-            })
-            .to_string(),
-        )
-        .await?;
-    assert_eq!(result, "null");
+    let registrations = [
+        ("apns", "aabb"),
+        ("apns-voip-sandbox", "ccdd"),
+        ("apns-voip-sandbox", ""),
+    ];
+    for (platform, token) in registrations {
+        let result = fixture
+            .client
+            .client_request(
+                serde_json::json!({
+                    "op": "register_push",
+                    "expected_identity_id": owner.identity,
+                    "expected_device_id": owner.device,
+                    "platform": platform,
+                    "token": token
+                })
+                .to_string(),
+            )
+            .await?;
+        assert_eq!(result, "null");
+    }
+    let requests = fixture
+        ._relay
+        .push_requests
+        .lock()
+        .map_err(|_| "push requests lock poisoned")?;
     assert_eq!(
-        *fixture._relay.push_requests.lock().unwrap(),
-        [("apns".into(), "aabb".into())]
+        *requests,
+        registrations.map(|(platform, token)| (platform.to_owned(), token.to_owned()))
     );
     Ok(())
 }

@@ -366,8 +366,10 @@ impl Client {
         }
     }
 
-    /// Registers this device's push token with the relay ("apns", "apns-sandbox" or "fcm").
-    /// An empty token clears it. The relay only ever sends a content-free wake.
+    /// Registers this device's push token with the relay. Use "apns" or
+    /// "apns-sandbox" for iOS notifications, "fcm" for Android notifications,
+    /// and "apns-voip" or "apns-voip-sandbox" for PushKit.
+    /// An empty token clears only the selected purpose.
     pub async fn register_push(&self, platform: String, token: String) -> Result<(), CoreError> {
         match self.request(Op::RegisterPush { platform, token }).await? {
             Reply::Done => Ok(()),

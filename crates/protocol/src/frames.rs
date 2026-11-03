@@ -64,6 +64,20 @@ pub enum ClientFrame {
 pub enum Op {
     /// Ensure this authenticated owner's one Saved Messages genesis using normal append CAS.
     EnsureSavedMessages(crate::saved_messages::Genesis),
+    RequestVoipWake {
+        space: SpaceId,
+        peer: IdentityId,
+        seq: u64,
+    },
+    GetVoipConsent {
+        space: SpaceId,
+        peer: IdentityId,
+    },
+    SetVoipConsent {
+        space: SpaceId,
+        peer: IdentityId,
+        allowed: bool,
+    },
     /// Publishes this identity's profile and claims its handle.
     Register {
         profile: Identity,
@@ -263,6 +277,9 @@ impl Op {
             Op::RedeemAgentInvite { .. } => "redeem_agent_invite",
             Op::RevokeAgentInvite { .. } => "revoke_agent_invite",
             Op::RegisterPush { .. } => "register_push",
+            Op::RequestVoipWake { .. } => "request_voip_wake",
+            Op::GetVoipConsent { .. } => "get_voip_consent",
+            Op::SetVoipConsent { .. } => "set_voip_consent",
             Op::PublishAgreementKey { .. } => "publish_agreement_key",
             Op::AgreementKeys { .. } => "agreement_keys",
             Op::PutProfile { .. } => "put_profile",
@@ -311,6 +328,7 @@ pub struct SealedProfile {
 /// The typed answer to each [`Op`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reply {
+    VoipConsent(bool),
     SavedMessages(crate::saved_messages::Receipt),
     /// Register: the profile as stored (handle normalized).
     Registered(Identity),

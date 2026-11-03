@@ -174,6 +174,7 @@ struct Fcm {
 
 pub struct Pusher {
     wake_slots: Arc<Semaphore>,
+    voip_slots: Semaphore,
     http: Arc<dyn Http>,
     apns: Option<Apns>,
     fcm: Option<Fcm>,
@@ -242,6 +243,7 @@ impl Pusher {
         };
         Ok(Self {
             wake_slots: Arc::new(Semaphore::new(MAX_WAKE_TASKS)),
+            voip_slots: Semaphore::new(MAX_WAKE_TASKS),
             http,
             apns,
             fcm,
@@ -299,6 +301,7 @@ impl Pusher {
     fn disabled_with(http: Arc<dyn Http>) -> Self {
         Self {
             wake_slots: Arc::new(Semaphore::new(MAX_WAKE_TASKS)),
+            voip_slots: Semaphore::new(MAX_WAKE_TASKS),
             http,
             apns: None,
             fcm: None,
@@ -311,6 +314,12 @@ impl Pusher {
 
     pub fn enabled(&self) -> bool {
         self.apns.is_some() || self.fcm.is_some()
+    }
+
+    pub(crate) fn voip_available(&self) -> bool {
+        self.apns.as_ref().is_some_and(|apns| {
+            protocol::push::validate_topic(&format!("{}.voip", apns.cfg.topic)).is_ok()
+        })
     }
 
     /// Admit before cloning an audience or spawning. Wakes are best-effort: overload

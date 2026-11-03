@@ -218,6 +218,9 @@ export async function communityUi(
           }
         },
       };
+    if (name === 'expo-constants') return { expoConfig: { extra: {} } };
+    if (name.endsWith('/core/query'))
+      return { useCoreQuery: () => ({ data: null, loading: false, retry() {} }) };
     if (name.endsWith('/core/provider'))
       return { useClient: () => ({ ...store.getSnapshot(), store }) };
     if (name.endsWith('/account-scope')) return ownership;

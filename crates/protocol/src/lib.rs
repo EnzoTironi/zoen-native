@@ -81,6 +81,7 @@ pub const PROTOCOL: &str = "zoen-sync/2";
 /// Optional features; each side announces its own and uses the intersection.
 pub const AGENT_OWNER_PROOF: &str = "agent_owner_proof_v1";
 pub const CAPABILITIES: &[&str] = &[
+    push::VOIP_WAKE_CAPABILITY,
     "blobs",
     saved_messages::CAPABILITY,
     "invites",

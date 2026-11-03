@@ -1,6 +1,53 @@
 use super::*;
 
 impl Cell {
+    pub(super) async fn call_pair_in(
+        &self,
+        trx: &Transaction,
+        space: &str,
+        who: &str,
+        peer: &str,
+    ) -> Result<bool, FdbBindingError> {
+        if who == peer {
+            return Ok(false);
+        }
+        let Some(meta) = trx.get(&self.space_key(space, "meta"), false).await? else {
+            return Ok(false);
+        };
+        let (kind, privacy, _): (String, String, String) =
+            unpack(&meta).map_err(|error| custom(error.to_string()))?;
+        if parse::<SpaceKind>(&kind) != Some(SpaceKind::Direct)
+            || parse::<Privacy>(&privacy) != Some(Privacy::EndToEnd)
+        {
+            return Ok(false);
+        }
+        let range = self.space_range(space, "m");
+        // Never allocate a group-sized list before deciding it is not a DM.
+        let members = Cell::scan(trx, range.range(), 3, false).await?;
+        if members.len() != 2 {
+            return Ok(false);
+        }
+        let mut found = (false, false);
+        for (key, value) in members {
+            let (id,): (String,) = range
+                .unpack(&key)
+                .map_err(|error| custom(error.to_string()))?;
+            let role = unpack::<String>(&value)
+                .ok()
+                .and_then(|role| parse::<Role>(&role));
+            if !matches!(role, Some(Role::Owner | Role::Admin | Role::Member)) {
+                return Ok(false);
+            }
+            if id == who {
+                found.0 = true;
+            }
+            if id == peer {
+                found.1 = true;
+            }
+        }
+        Ok(found.0 && found.1)
+    }
+
     pub(super) fn space_key<T: foundationdb::tuple::TuplePack>(
         &self,
         space: &str,

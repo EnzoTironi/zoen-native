@@ -15,6 +15,27 @@ impl Client {
         serde_json::to_string(&engine.call_history(&space_id)?).map_err(|_| invalid())
     }
 
+    /// Resolve a PushKit hint only after the authenticated log has synchronized.
+    pub fn call_wake_native_state(
+        &self,
+        identity_id: String,
+        device_id: String,
+        payload: String,
+    ) -> Result<Option<String>, CoreError> {
+        self.lock()
+            .resolve_call_wake(
+                &identity_id,
+                &device_id,
+                payload.as_bytes(),
+                crate::engine::now_ms(),
+            )?
+            .map(|(space, call)| {
+                serde_json::to_string(&serde_json::json!({ "space_id": space, "call": call }))
+                    .map_err(|_| invalid())
+            })
+            .transpose()
+    }
+
     pub fn call_transport_read(
         &self,
         identity_id: String,

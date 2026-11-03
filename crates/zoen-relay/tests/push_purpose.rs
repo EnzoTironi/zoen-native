@@ -120,7 +120,56 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    let now_ms: i64 =
+        sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint")
+            .fetch_one(pool)
+            .await?;
+    let expiry = now_ms + 30_000;
+    let (first, second) = tokio::join!(
+        db::claim_voip_wake(pool, "direct", 12, expiry),
+        db::claim_voip_wake(pool, "direct", 12, expiry),
+    );
+    assert_ne!(first?, second?);
+    assert!(!db::claim_voip_wake(pool, "direct", 12, expiry).await?);
+    assert!(!db::claim_voip_wake(pool, "direct", 13, now_ms).await?);
+    assert!(db::claim_voip_wake(pool, "direct", 13, expiry).await?);
+
+    let sender = Signer::generate()?.id();
+    sqlx::query("INSERT INTO identities (id, kind, profile) VALUES ($1, 'Person', '{}'::jsonb)")
+        .bind(&sender)
+        .execute(pool)
+        .await?;
     let audience = [identity.id.clone()];
+
+    let (first_claim, second_claim) = tokio::join!(
+        db::set_push_token(pool, &identity.id, device, push::APNS_VOIP, "ABCD"),
+        db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "abcd"),
+    );
+    first_claim?;
+    second_claim?;
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
+        .await?
+        .is_empty());
+    db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true).await?;
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "other")
+        .await?
+        .is_empty());
+    assert!(
+        db::voip_push_targets(pool, &identity.id, &identity.id, "direct")
+            .await?
+            .is_empty()
+    );
+    assert_eq!(
+        tokens(db::voip_push_targets(pool, &identity.id, &sender, "direct").await?),
+        ["abcd"]
+    );
+    db::set_voip_consent(pool, &identity.id, sibling, &sender, "direct", false).await?;
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
+        .await?
+        .is_empty());
+    db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true).await?;
+    db::set_push_token(pool, &identity.id, device, push::APNS_VOIP, "").await?;
+    db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "").await?;
 
     db::set_push_token(pool, &identity.id, device, push::APNS, "aabb")
         .await
@@ -133,7 +182,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         ["aabb"]
     );
     assert_eq!(
-        tokens(db::voip_push_targets(pool, &audience).await.unwrap()),
+        tokens(
+            db::voip_push_targets(pool, &identity.id, &sender, "direct")
+                .await
+                .unwrap()
+        ),
         ["ccdd"]
     );
     db::set_push_token(pool, &identity.id, device, push::APNS_VOIP_SANDBOX, "eeff")
@@ -147,7 +200,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         ["0011"]
     );
     assert_eq!(
-        tokens(db::voip_push_targets(pool, &audience).await.unwrap()),
+        tokens(
+            db::voip_push_targets(pool, &identity.id, &sender, "direct")
+                .await
+                .unwrap()
+        ),
         ["eeff"]
     );
 
@@ -156,7 +213,9 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     sqlx::query("UPDATE push_tokens SET token = 'EEFF' WHERE purpose = 'voip' AND token = 'eeff'")
         .execute(pool)
         .await?;
-    let previous_voip = db::voip_push_targets(pool, &audience).await?.remove(0);
+    let previous_voip = db::voip_push_targets(pool, &identity.id, &sender, "direct")
+        .await?
+        .remove(0);
     db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "EEFF")
         .await
         .unwrap();
@@ -173,7 +232,7 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "")
         .await
         .unwrap();
-    assert!(db::voip_push_targets(pool, &audience)
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
         .await
         .unwrap()
         .is_empty());
@@ -195,7 +254,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     db::drop_push_token(pool, &current).await?;
     assert!(db::push_targets(pool, &audience).await.unwrap().is_empty());
     assert_eq!(
-        tokens(db::voip_push_targets(pool, &audience).await.unwrap()),
+        tokens(
+            db::voip_push_targets(pool, &identity.id, &sender, "direct")
+                .await
+                .unwrap()
+        ),
         ["0011"]
     );
     db::set_push_token(pool, &identity.id, device, push::APNS, "2233")
@@ -215,8 +278,13 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     );
     tx.commit().await.unwrap();
     assert!(registration.await.is_err());
+    assert!(
+        db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true)
+            .await
+            .is_err()
+    );
     assert_eq!(tokens(db::push_targets(pool, &audience).await?), ["4455"]);
-    assert!(db::voip_push_targets(pool, &audience)
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
         .await
         .unwrap()
         .is_empty());
