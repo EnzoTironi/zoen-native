@@ -135,21 +135,28 @@ async fn off_without_config() {
 async fn apns_wake_is_content_free_background() {
     let m = Arc::new(Mock::default());
     let p = Pusher::new(m.clone(), Some(apns_cfg()), None).unwrap();
-    assert_eq!(p.wake(&target(APNS_SANDBOX)).await, Outcome::Sent);
+    for platform in [APNS_SANDBOX, APNS] {
+        assert_eq!(p.wake(&target(platform)).await, Outcome::Sent);
+    }
     let calls = m.calls.lock().unwrap();
-    let (url, headers, body) = &calls[0];
-    assert_eq!(url, "https://api.sandbox.push.apple.com/3/device/aabb");
-    let h = |k: &str| headers.iter().find(|(n, _)| n == k).unwrap().1.clone();
-    assert_eq!(h("apns-push-type"), "background");
-    assert_eq!(h("apns-topic"), "xyz.tironi.zoen");
-    let jwt = h("authorization");
-    let header: Value = serde_json::from_slice(
-        &B64.decode(jwt.trim_start_matches("bearer ").split('.').next().unwrap())
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(header["kid"], "KEY1234567");
-    assert_eq!(body, r#"{"aps":{"content-available":1}}"#);
+    assert_eq!(calls.len(), 2);
+    for ((url, headers, body), host) in calls.iter().zip([
+        "api.sandbox.push.apple.com",
+        "api.push.apple.com",
+    ]) {
+        assert_eq!(url, &format!("https://{host}/3/device/aabb"));
+        let h = |k: &str| headers.iter().find(|(n, _)| n == k).unwrap().1.clone();
+        assert_eq!(h("apns-push-type"), "background");
+        assert_eq!(h("apns-topic"), "xyz.tironi.zoen");
+        let jwt = h("authorization");
+        let header: Value = serde_json::from_slice(
+            &B64.decode(jwt.trim_start_matches("bearer ").split('.').next().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(header["kid"], "KEY1234567");
+        assert_eq!(body, r#"{"aps":{"content-available":1}}"#);
+    }
 }
 
 #[tokio::test]
