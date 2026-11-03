@@ -48,10 +48,11 @@ pub async fn control_reviewed(
     operation: &str,
     revision: u64,
 ) -> Result<Record, AgentCitizenError> {
+    let sql_revision = i64::try_from(revision).map_err(|_| AgentCitizenError::Version)?;
     if operation.len() != 64
         || !operation.bytes().all(|b| b.is_ascii_hexdigit())
         || revision == 0
-        || revision >= i64::MAX as u64
+        || sql_revision == i64::MAX
     {
         return Err(AgentCitizenError::Version);
     }
