@@ -233,6 +233,16 @@ fn own_membership_event_changes_after_readmission() -> TestResult<()> {
     let f = Fixture::new(SpaceKind::Group)?;
     let original = f.client.own_membership_event(f.space.clone())?;
     assert!(original.is_some());
+    f.ordered(EventBody::MessagePosted {
+        message: types::new_id("message")?,
+        text: "unrelated conversation".into(),
+        attaches: None,
+        media: None,
+        reply: None,
+        forwarded: false,
+        forwarded_author: None,
+    })?;
+    assert_eq!(f.client.own_membership_event(f.space.clone())?, original);
     f.ordered(EventBody::MemberRemoved {
         identity: f.identity.clone(),
     })?;
