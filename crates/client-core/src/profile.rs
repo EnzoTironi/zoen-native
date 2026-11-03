@@ -396,16 +396,17 @@ mod own_sync_tests {
         );
     }
     #[test]
-    fn maximum_remote_version_cannot_wrap_text_photo_or_block_rotation() {
+    fn maximum_stored_version_cannot_wrap_text_photo_or_block_rotation() {
         let (mut engine, identity) = fixture();
+        let max_version = u64::try_from(i64::MAX).expect("SQLite maximum fits u64");
         let (_, _, _, fields) = engine.my_fields(&identity.id()).unwrap();
         engine
             .store
-            .set_profile_fields(&identity.id(), u64::MAX, &fields.to_bytes())
+            .set_profile_fields(&identity.id(), max_version, &fields.to_bytes())
             .unwrap();
         engine
             .save_own_profile_journal(&OwnJournal {
-                sync: OwnProfileSync::clean(u64::MAX),
+                sync: OwnProfileSync::clean(max_version),
                 upload: None,
             })
             .unwrap();
