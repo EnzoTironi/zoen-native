@@ -281,6 +281,8 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
     react_as(&bia, Some("👍"));
     react_as(&ana, Some("👍"));
     let both = reactions();
+    react_as(&ana, Some("👍"));
+    assert_eq!(reactions(), both);
     assert_eq!(both.len(), 1);
     assert!(both[0].mine);
     assert_eq!(both[0].people.len(), 2);
