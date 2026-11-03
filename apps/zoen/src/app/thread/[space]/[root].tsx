@@ -120,7 +120,7 @@ export default function Thread() {
       if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
     } catch (reason) {
-      if (normalDraft.isCurrent(attempt))
+      if (sending.current === operation && normalDraft.isCurrent(attempt))
         setFailure({
           scope: sendScope,
           message: reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'),

@@ -362,3 +362,25 @@ test('finishing an old send keeps the reopened session’s send pending', async 
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(composer().sending, false);
 });
+
+test('an old send rejection cannot replace the current session’s alert', async () => {
+  const pending: (() => void)[] = [];
+  const f = fixture(
+    false,
+    undefined,
+    false,
+    () =>
+      new Promise<void>((_resolve, reject) => pending.push(() => reject(new Error('send failed')))),
+  );
+  const composer = () => find(f.render(), 'Viewport')!.props.composer;
+  const send = () => (find(composer(), 'Composer')!.props.onSend as () => void)();
+  send();
+  f.reopen();
+  send();
+  pending[1]!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  pending[0]!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+});
