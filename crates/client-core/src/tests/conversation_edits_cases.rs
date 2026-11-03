@@ -281,7 +281,9 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
     react_as(&bia, Some("👍"));
     react_as(&ana, Some("👍"));
     let both = reactions();
+    let count = e.lock().store.event_count()?;
     react_as(&ana, Some("👍"));
+    assert_eq!(e.lock().store.event_count()?, count);
     assert_eq!(reactions(), both);
     assert_eq!(both.len(), 1);
     assert!(both[0].mine);
