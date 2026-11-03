@@ -130,6 +130,8 @@ impl Store {
         Ok(())
     }
 
+    /// Record an attempt while the event is pending. The first terminal
+    /// refusal remains authoritative when responses arrive late or repeat.
     pub fn outbox_note(&self, client_id: &str, error: &str, failed: bool) -> Result<()> {
         self.conn.execute(
             "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = ?3
