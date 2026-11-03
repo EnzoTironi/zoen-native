@@ -85,7 +85,9 @@ export default function Thread() {
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const sendScope = JSON.stringify([owner, space, root]);
+  const [sendFailure, setFailure] = useState<{ scope: string; message: string } | null>(null);
+  const failure = sendFailure?.scope === sendScope ? sendFailure.message : null;
   const actions = useMessageActions({
     spaceId: space,
     threadRootId: root,
@@ -117,7 +119,10 @@ export default function Thread() {
       else await normalDraft.send();
     } catch (reason) {
       if (normalDraft.isCurrent(attempt))
-        setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
+        setFailure({
+          scope: sendScope,
+          message: reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'),
+        });
     } finally {
       sending.current = false;
       setBusy(false);
