@@ -44,7 +44,10 @@ impl Pusher {
         let Ok(_permit) = self.voip_slots.try_acquire() else {
             return Outcome::Failed("VoIP transport overloaded".into());
         };
-        let result = async {
+        let Ok(remaining_ms) = u64::try_from(expiration * 1000 - now_ms) else {
+            return Outcome::Failed("invalid VoIP wake deadline".into());
+        };
+        let request = async {
             let host = if target.platform == APNS_VOIP_SANDBOX {
                 "api.sandbox.push.apple.com"
             } else {
@@ -71,9 +74,12 @@ impl Pusher {
                 410 => Outcome::Gone,
                 status => Outcome::Failed(format!("apns voip {status}")),
             })
+        };
+        match tokio::time::timeout(Duration::from_millis(remaining_ms), request).await {
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(_)) => Outcome::Failed("VoIP provider unavailable".into()),
+            Err(_) => Outcome::Failed("VoIP provider deadline elapsed".into()),
         }
-        .await;
-        result.unwrap_or_else(|_| Outcome::Failed("VoIP provider unavailable".into()))
     }
 }
 

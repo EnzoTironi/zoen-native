@@ -178,3 +178,30 @@ async fn saturated_voip_wakes_leave_message_wake_capacity_available() -> anyhow:
     );
     Ok(())
 }
+
+#[tokio::test(start_paused = true)]
+async fn stalled_provider_request_ends_at_apns_expiration() -> anyhow::Result<()> {
+    struct Stalled;
+
+    #[async_trait::async_trait]
+    impl Http for Stalled {
+        async fn post(
+            &self,
+            _url: &str,
+            _headers: &[(&str, String)],
+            _body: String,
+        ) -> anyhow::Result<(u16, String)> {
+            std::future::pending().await
+        }
+    }
+
+    let pusher = Pusher::new(Arc::new(Stalled), Some(apns_cfg()), None)?;
+    let wake = protocol::push::CallWake::new("ab".repeat(16), 2_900, 1_000)?;
+    let start = tokio::time::Instant::now();
+    assert_eq!(
+        pusher.call_wake_at(&target(APNS_VOIP), &wake, 1_500).await,
+        Outcome::Failed("VoIP provider deadline elapsed".into())
+    );
+    assert_eq!(start.elapsed(), Duration::from_millis(500));
+    Ok(())
+}
