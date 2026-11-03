@@ -436,3 +436,113 @@ async fn competing_exact_next_definitions_do_not_overwrite_and_owner_reads_exact
 
 #[path = "agent_citizens/control_cases.rs"]
 mod control_cases;
+
+#[tokio::test]
+async fn cursor_reads_return_the_full_limit_and_reject_excess_membership(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use protocol::complete_reads::CURSOR_ROWS;
+
+    let d = Database::new().await?;
+    let (owner, owner_dev) = d.person("cursor_limit_owner").await?;
+    let (bot, bot_dev) = d.agent("cursor_limit_bot", &owner, &owner_dev).await?;
+    let mut spaces: Vec<_> = (0..CURSOR_ROWS).map(|n| format!("sp_{n:05}")).collect();
+    sqlx::query(
+        "INSERT INTO agent_space_cursors (agent, space, last_seq)
+         SELECT $1, space, 1 FROM unnest($2::text[]) AS spaces(space)",
+    )
+    .bind(&bot.id)
+    .bind(&spaces)
+    .execute(&d.pool)
+    .await?;
+
+    let state = agents::state(&d.pool, &bot.id, dev(&bot_dev), &spaces).await?;
+    assert_eq!(state.cursors.len(), CURSOR_ROWS);
+    assert!(state
+        .cursors
+        .iter()
+        .zip(&spaces)
+        .all(|((key, seq), space)| key == space && *seq == 1));
+
+    spaces.push("sp_over_limit".into());
+    assert!(matches!(
+        agents::state(&d.pool, &bot.id, dev(&bot_dev), &spaces).await,
+        Err(AgentCitizenError::ReadProfile)
+    ));
+    d.finish().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn activity_write_failure_rolls_back_cursor_advance() -> Result<(), Box<dyn std::error::Error>>
+{
+    let d = Database::new().await?;
+    let (owner, owner_dev) = d.person("cursor_rollback_owner").await?;
+    let (bot, bot_dev) = d.agent("cursor_rollback_bot", &owner, &owner_dev).await?;
+    let device = dev(&bot_dev);
+    let spaces = ["sp_rollback".into()];
+    agents::advance_cursor(&d.pool, &bot.id, device, "sp_rollback", 5).await?;
+
+    sqlx::raw_sql(
+        "CREATE FUNCTION reject_activity_update() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN RAISE EXCEPTION 'injected activity write failure'; END; $$;
+         CREATE TRIGGER reject_activity_update BEFORE UPDATE OF last_wake_at
+         ON agent_citizens FOR EACH ROW EXECUTE FUNCTION reject_activity_update()",
+    )
+    .execute(&d.pool)
+    .await?;
+    let result = agents::advance_cursor(&d.pool, &bot.id, device, "sp_rollback", 9).await;
+    assert!(matches!(
+        result,
+        Err(AgentCitizenError::Db(sqlx::Error::Database(error)))
+            if error.message() == "injected activity write failure"
+    ));
+    let state = agents::state(&d.pool, &bot.id, device, &spaces).await?;
+    assert_eq!(state.cursors, vec![("sp_rollback".into(), 5)]);
+
+    sqlx::query("DROP TRIGGER reject_activity_update ON agent_citizens")
+        .execute(&d.pool)
+        .await?;
+    agents::advance_cursor(&d.pool, &bot.id, device, "sp_rollback", 9).await?;
+    let state = agents::state(&d.pool, &bot.id, device, &spaces).await?;
+    assert_eq!(state.cursors, vec![("sp_rollback".into(), 9)]);
+    d.finish().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn cursor_advance_respects_concurrent_revocation() -> Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let (owner, owner_dev) = d.person("cursor_revoke_owner").await?;
+    let (bot, bot_dev) = d.agent("cursor_revoke_bot", &owner, &owner_dev).await?;
+    let device = dev(&bot_dev);
+    agents::advance_cursor(&d.pool, &bot.id, device, "sp_revoked", 5).await?;
+
+    let mut revocation = d.pool.begin().await?;
+    sqlx::query("UPDATE agent_citizens SET revoked_at = now() WHERE agent = $1")
+        .bind(&bot.id)
+        .execute(&mut *revocation)
+        .await?;
+    {
+        let advance = agents::advance_cursor(&d.pool, &bot.id, device, "sp_revoked", 9);
+        tokio::pin!(advance);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut advance)
+                .await
+                .is_err()
+        );
+        revocation.commit().await?;
+        assert!(matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), advance).await?,
+            Err(AgentCitizenError::Revoked)
+        ));
+    }
+    let seq: i64 = sqlx::query_scalar(
+        "SELECT last_seq FROM agent_space_cursors WHERE agent = $1 AND space = 'sp_revoked'",
+    )
+    .bind(&bot.id)
+    .fetch_one(&d.pool)
+    .await?;
+    assert_eq!(seq, 5);
+    d.finish().await;
+    Ok(())
+}

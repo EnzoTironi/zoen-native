@@ -109,13 +109,17 @@ pub async fn claim_citizen(
 }
 
 /// The runtime session (`agent`, `device`) must be the live claim.
-async fn runtime(pool: &PgPool, agent: &str, device: &str) -> Result<(), AgentCitizenError> {
+async fn lock_runtime(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    agent: &str,
+    device: &str,
+) -> Result<(), AgentCitizenError> {
     let row: Option<(bool,)> = sqlx::query_as(
-        "SELECT revoked_at IS NULL FROM agent_citizens WHERE agent = $1 AND device = $2",
+        "SELECT revoked_at IS NULL FROM agent_citizens WHERE agent = $1 AND device = $2 FOR UPDATE",
     )
     .bind(agent)
     .bind(device)
-    .fetch_optional(pool)
+    .fetch_optional(&mut **tx)
     .await?;
     match row {
         Some((true,)) => Ok(()),
@@ -157,8 +161,12 @@ pub async fn state(
         return Err(AgentCitizenError::Device);
     }
     let definition = definition.ok_or(AgentCitizenError::ReadProfile)?;
+    let row_limit = i64::try_from(reads::CURSOR_ROWS)
+        .map_err(|_| AgentCitizenError::ReadProfile)?
+        .checked_add(1)
+        .ok_or(AgentCitizenError::ReadProfile)?;
     let rows:Vec<(Option<String>,i64)>=sqlx::query_as("SELECT CASE WHEN octet_length(space)<=128 THEN space ELSE NULL END,last_seq FROM agent_space_cursors WHERE agent=$1 AND space=ANY($2) ORDER BY space COLLATE \"C\" LIMIT $3")
-        .bind(agent).bind(member_of).bind((reads::CURSOR_ROWS+1)as i64).fetch_all(&mut *tx).await?;
+        .bind(agent).bind(member_of).bind(row_limit).fetch_all(&mut *tx).await?;
     if rows.len() > reads::CURSOR_ROWS {
         return Err(AgentCitizenError::ReadProfile);
     }
@@ -225,7 +233,7 @@ pub async fn owner_status(
     Ok(AgentStateRecord {
         status: status.into(),
         kind: kind.unwrap_or_default(),
-        definition_version: version.max(0) as u32,
+        definition_version: u32::try_from(version).unwrap_or_default(),
         definition,
         cursors: Vec::new(),
     })
@@ -240,28 +248,29 @@ pub async fn advance_cursor(
     space: &str,
     seq: u64,
 ) -> Result<(), AgentCitizenError> {
-    runtime(pool, agent, device).await?;
+    let mut tx = pool.begin().await?;
+    lock_runtime(&mut tx, agent, device).await?;
     let seq = i64::try_from(seq).map_err(|_| AgentCitizenError::Version)?;
     sqlx::query(
         r#"
+        WITH advanced AS (
         INSERT INTO agent_space_cursors (agent, space, last_seq)
         VALUES ($1, $2, $3)
         ON CONFLICT (agent, space) DO UPDATE SET
             last_seq = GREATEST(agent_space_cursors.last_seq, EXCLUDED.last_seq),
             updated_at = now()
+        RETURNING agent
+        )
+        UPDATE agent_citizens SET last_wake_at = now(), last_seen_at = now()
+        WHERE agent IN (SELECT agent FROM advanced)
         "#,
     )
     .bind(agent)
     .bind(space)
     .bind(seq)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    sqlx::query(
-        "UPDATE agent_citizens SET last_wake_at = now(), last_seen_at = now() WHERE agent = $1",
-    )
-    .bind(agent)
-    .execute(pool)
-    .await?;
+    tx.commit().await?;
     Ok(())
 }
 
