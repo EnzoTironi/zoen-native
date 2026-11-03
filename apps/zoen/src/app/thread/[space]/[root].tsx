@@ -1,10 +1,13 @@
+import { homeSpacesFor } from '../../../home/access';
 import { t } from '../../../i18n/index.ts';
+import { QuoteLayoutTransition } from '../../../components/quote-layout-transition';
+import { QuoteMotionView } from '../../../components/quote-layout-context';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { Text, View, type TextInputInstance } from 'react-native';
+import { Text, type TextInputInstance } from 'react-native';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
 import { useMessageAudioFocus } from '../../../media/message-audio-provider';
@@ -20,6 +23,12 @@ import { EmptyState, Loading, NativeButton } from '../../../components/primitive
 import { useTheme } from '../../../theme';
 import { useHome } from '../../../home/provider';
 import { MessageComposer } from '../../../components/message-composer';
+import { useMessageSelection } from '../../../components/use-message-selection';
+import {
+  MessageSelectionToolbar,
+  MessageSelectionHeader,
+  MessageSelectionCancel,
+} from '../../../components/message-selection-toolbar';
 import {
   ConversationContainer,
   ConversationViewport,
@@ -28,17 +37,19 @@ import { ConversationTimelineMessage as ConversationMessage } from '../../../com
 import { useMessageActions } from '../../../components/use-message-actions';
 
 export default function Thread() {
-  const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
+  const { space, root, jump } = useLocalSearchParams<{
+    space: string;
+    root: string;
+    jump?: string;
+  }>();
   const { store, snapshot, notice, mode } = useClient();
-  useMessageAudioFocus(
-    space,
-    JSON.stringify([
-      mode,
-      snapshot?.account?.identity_id,
-      snapshot?.account?.device_id,
-      store.sessionEpoch,
-    ]),
-  );
+  const owner = JSON.stringify([
+    mode,
+    snapshot?.account?.identity_id,
+    snapshot?.account?.device_id,
+    store.sessionEpoch,
+  ]);
+  useMessageAudioFocus(space, owner);
   const groupChat =
     snapshot?.conversations.some(
       (chat) => chat.id === space && (chat.kind === 'Group' || chat.kind === 'Community'),
@@ -56,11 +67,20 @@ export default function Thread() {
     error,
     retry,
   } = useCoreQuery({ op: 'thread', space_id: space, root_id: root });
-  const rows = useMemo(
-    () => projectConversationTimeline(entries ?? [], items, space, root, supportsMediaMosaic),
-    [entries, items, space, root],
+  const selection = useMessageSelection(space, entries ?? [], false, root);
+  const rows = useMemo<ConversationTimelineRow[]>(
+    () =>
+      selection.active
+        ? (entries ?? []).map((entry) => ({ key: entry.id, entry }))
+        : projectConversationTimeline(entries ?? [], items, space, root, supportsMediaMosaic),
+    [entries, items, space, root, selection.active],
   );
   const { colors } = useTheme();
+  const jumpIndex = jump
+    ? rows.findIndex(
+        (row) => row.entry.id === jump || row.album?.entries.some((entry) => entry.id === jump),
+      )
+    : -1;
   const normalDraft = useMessageDraft(space, root);
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
@@ -70,6 +90,8 @@ export default function Thread() {
     spaceId: space,
     threadRootId: root,
     entries: entries ?? [],
+    disabled: selection.active,
+    onSelect: selection.toggle,
     onReply: (entry, selection) => {
       updateDraft({ type: 'reply', entry, selection });
       input.current?.focus();
@@ -81,27 +103,21 @@ export default function Thread() {
     onThread: () => input.current?.focus(),
   });
   async function send() {
+    if (selection.active) return;
     const attempt = normalDraft.capture();
     if (!attempt) return;
     const text = attempt.text;
-    if ((!text.trim() && !(editing && messageCard(editing)?.kind_id === 'file')) || sending.current)
-      return;
+    if ((!text.trim() && !editing?.isCaption) || sending.current) return;
     sending.current = true;
     store.setTyping(space, false);
     setBusy(true);
     setFailure(null);
     try {
-      if (attempt.editingId)
-        await store.request({
-          op: 'edit_message',
-          space_id: space,
-          message_id: attempt.editingId,
-          text,
-        });
+      if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
-      updateDraft({ type: 'accepted', attempt });
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
+      if (normalDraft.isCurrent(attempt))
+        setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
     } finally {
       sending.current = false;
       setBusy(false);
@@ -111,64 +127,101 @@ export default function Thread() {
     <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
       <Stack.Screen
         options={{
-          title: t('chat.replies'),
+          title: selection.active ? String(selection.count) : t('chat.replies'),
+          headerBackVisible: !selection.active,
+          headerTitle: selection.active
+            ? () => <MessageSelectionHeader count={selection.count} onCancel={selection.cancel} />
+            : undefined,
+          headerLeft: selection.active && process.env.EXPO_OS !== 'ios' ? () => null : undefined,
+          headerRight:
+            selection.active && process.env.EXPO_OS !== 'ios'
+              ? () => <MessageSelectionCancel onCancel={selection.cancel} />
+              : undefined,
+          unstable_headerLeftItems:
+            selection.active && process.env.EXPO_OS === 'ios' ? () => [] : undefined,
+          unstable_headerRightItems:
+            selection.active && process.env.EXPO_OS === 'ios'
+              ? () => [{ type: 'button', label: t('chat.cancel'), onPress: selection.cancel }]
+              : undefined,
           scrollEdgeEffects: { top: 'automatic', bottom: 'hidden' },
         }}
       />
       <ConversationViewport
         composer={
           <>
-            {failure || error || notice ? (
+            {failure || error || notice || (jump && entries && jumpIndex < 0) ? (
               <Text
                 accessibilityRole="alert"
                 selectable
                 style={{ color: colors.danger, padding: 16 }}
               >
-                {failure ?? error ?? notice}
+                {failure ?? error ?? notice ?? t('chat.messageUnavailable')}
               </Text>
             ) : null}
-            <MessageComposer
-              context={
-                normalDraft.replyTo || editing
-                  ? {
-                      entry: editing ?? reply ?? undefined,
-                      quote: editing ? undefined : normalDraft.replyQuote,
-                      onCancel: () => updateDraft({ type: 'cancel' }),
-                    }
-                  : undefined
-              }
-              threadRootId={root}
-              spaceId={space}
-              inputRef={input}
-              replyTo={normalDraft.replyTo ?? root}
-              thread
-              editing={Boolean(editing)}
-              allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
-              value={editing ? editDraft : draft}
-              draft={
-                editing
-                  ? undefined
-                  : {
-                      ready: normalDraft.ready,
-                      error: Boolean(normalDraft.error),
-                      rejected: normalDraft.rejected,
-                      onRetry: normalDraft.retry,
-                    }
-              }
-              sending={busy}
-              onChangeText={(text) => {
-                updateDraft({ type: 'text', value: text });
-                store.setTyping(space, !editing && Boolean(text.trim()));
-              }}
-              onBlur={() => {
-                store.setTyping(space, false);
-                normalDraft.flush();
-              }}
-              onSend={() => {
-                void send();
-              }}
-              onMediaSent={normalDraft.mediaAccepted}
-            />
+            {selection.active ? (
+              <MessageSelectionToolbar
+                count={selection.count}
+                onCopy={selection.copy}
+                onForward={selection.forward}
+                canCopy={selection.canCopy}
+                canForward={selection.canForward}
+                canDelete={selection.canDelete}
+                onDelete={selection.remove}
+                pending={selection.pending}
+              />
+            ) : (
+              <MessageComposer
+                context={
+                  normalDraft.replyTo || editing
+                    ? {
+                        entry: editing ? undefined : (reply ?? undefined),
+                        edit: editing
+                          ? {
+                              id: editing.id,
+                              revision: editing.text_revision,
+                              text: normalDraft.messageDraft.editBaseText,
+                            }
+                          : undefined,
+                        quote: editing ? undefined : normalDraft.replyQuote,
+                        replyIntent: editing ? undefined : normalDraft.replyIntent,
+                        onCancelCaptured: normalDraft.cancelMediaReply,
+                        onCancel: () => updateDraft({ type: 'cancel' }),
+                      }
+                    : undefined
+                }
+                threadRootId={root}
+                spaceId={space}
+                inputRef={input}
+                replyTo={normalDraft.replyTo ?? root}
+                thread
+                editing={Boolean(editing)}
+                allowEmptyEdit={Boolean(editing?.isCaption)}
+                value={editing ? editDraft : draft}
+                draft={
+                  editing
+                    ? undefined
+                    : {
+                        ready: normalDraft.ready,
+                        error: Boolean(normalDraft.error),
+                        rejected: normalDraft.rejected,
+                        onRetry: normalDraft.retry,
+                      }
+                }
+                sending={busy}
+                onChangeText={(text) => {
+                  updateDraft({ type: 'text', value: text });
+                  store.setTyping(space, !editing && Boolean(text.trim()));
+                }}
+                onBlur={() => {
+                  store.setTyping(space, false);
+                  normalDraft.flush();
+                }}
+                onSend={() => {
+                  void send();
+                }}
+                onMediaSent={normalDraft.mediaAccepted}
+              />
+            )}
           </>
         }
       >
@@ -180,77 +233,111 @@ export default function Thread() {
           ) : !entries ? (
             <Loading />
           ) : (
-            <FlashList
-              style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
-              ref={list}
-              testID="conversation-timeline"
-              renderScrollComponent={ScrollComponent}
-              data={rows}
-              keyExtractor={(row) => row.key}
-              keyboardDismissMode="interactive"
-              keyboardShouldPersistTaps="handled"
-              contentInsetAdjustmentBehavior="never"
-              ListFooterComponent={composerSpacer}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingTop: Math.max(0, headerHeight - timelineTopInset) + 8,
-                paddingBottom: 12,
-              }}
-              maintainVisibleContentPosition={{
-                startRenderingFromBottom: false,
-                autoscrollToBottomThreshold: 0.15,
-              }}
-              renderItem={({ item: { entry, activity, album }, index }) => (
-                <View>
-                  <ConversationMessage
-                    spaceId={space}
-                    entry={entry}
-                    activity={activity}
-                    album={album}
-                    previous={index > 1 ? rows[index - 1]?.entry : undefined}
-                    next={index > 0 ? rows[index + 1]?.entry : undefined}
-                    groupChat={groupChat}
-                    item={items.find((item) => item.id === messageCard(entry)?.item_id)}
-                    reactionPending={actions.busy}
-                    onReply={actions.reply}
-                    onThread={actions.thread}
-                    onAuthor={actions.profile}
-                    onMenu={actions.open}
-                    onReact={(message, emoji) => {
-                      void actions.react(message, emoji);
-                    }}
-                    onQuote={(messageId) => {
-                      const target = rows.findIndex(
-                        (row) =>
-                          row.entry.id === messageId ||
-                          row.album?.entries.some((entry) => entry.id === messageId),
-                      );
-                      if (target >= 0)
-                        void list.current
-                          ?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 })
-                          .catch(() => {});
-                      else
-                        router.push({
-                          pathname: '/chat/[id]',
-                          params: { id: space, jump: messageId },
-                        });
-                    }}
-                  />
-                  {index === 0 ? (
-                    <Text
-                      style={{
-                        color: colors.secondary,
-                        fontSize: 12,
-                        textAlign: 'center',
-                        paddingVertical: 18,
-                      }}
-                    >
-                      {t('chat.originalMessage')}
-                    </Text>
-                  ) : null}
-                </View>
+            <QuoteLayoutTransition key={`${owner}:${space}:${root}:${jump ?? ''}`} list={list}>
+              {(active, commit, cancel, reading) => (
+                <FlashList
+                  style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
+                  ref={list}
+                  testID="conversation-timeline"
+                  renderScrollComponent={ScrollComponent}
+                  CellRendererComponent={
+                    process.env.EXPO_OS === 'ios' ? QuoteMotionView : undefined
+                  }
+                  onCommitLayoutEffect={commit}
+                  onScrollBeginDrag={cancel}
+                  extraData={selection.ids}
+                  data={rows}
+                  initialScrollIndex={jumpIndex >= 0 ? jumpIndex : undefined}
+                  keyExtractor={(row) => row.key}
+                  keyboardDismissMode="interactive"
+                  keyboardShouldPersistTaps="handled"
+                  contentInsetAdjustmentBehavior="never"
+                  ListFooterComponent={composerSpacer}
+                  contentContainerStyle={{
+                    paddingHorizontal: 16,
+                    paddingTop: Math.max(0, headerHeight - timelineTopInset) + 8,
+                    paddingBottom: 12,
+                  }}
+                  maintainVisibleContentPosition={{
+                    disabled: active,
+                    startRenderingFromBottom: false,
+                    autoscrollToBottomThreshold: jump || reading ? undefined : 0.15,
+                  }}
+                  renderItem={({ item: { entry, activity, album }, index }) => (
+                    <QuoteMotionView>
+                      <ConversationMessage
+                        selection={
+                          selection.active
+                            ? {
+                                selected: selection.ids.has(entry.id),
+                                disabled: selection.limitReached && !selection.ids.has(entry.id),
+                                onToggle: selection.toggle,
+                              }
+                            : undefined
+                        }
+                        disabled={selection.active}
+                        spaceId={space}
+                        entry={entry}
+                        highlighted={Boolean(
+                          jump &&
+                          (entry.id === jump || album?.entries.some((child) => child.id === jump)),
+                        )}
+                        activity={activity}
+                        album={album}
+                        previous={index > 1 ? rows[index - 1]?.entry : undefined}
+                        next={index > 0 ? rows[index + 1]?.entry : undefined}
+                        groupChat={groupChat}
+                        item={items.find((item) => item.id === messageCard(entry)?.item_id)}
+                        reactionPending={actions.busy}
+                        onReply={actions.reply}
+                        onThread={actions.thread}
+                        onAuthor={actions.profile}
+                        onMenu={actions.open}
+                        onReact={(message, emoji) => {
+                          void actions.react(message, emoji);
+                        }}
+                        onQuote={(messageId, sourceSpace) => {
+                          if (sourceSpace) {
+                            if (homeSpacesFor(store.getSnapshot()).has(sourceSpace))
+                              router.push({
+                                pathname: '/chat/[id]',
+                                params: { id: sourceSpace, jump: messageId },
+                              });
+                            return;
+                          }
+                          const target = rows.findIndex(
+                            (row) =>
+                              row.entry.id === messageId ||
+                              row.album?.entries.some((entry) => entry.id === messageId),
+                          );
+                          if (target >= 0)
+                            void list.current
+                              ?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 })
+                              .catch(() => {});
+                          else
+                            router.push({
+                              pathname: '/chat/[id]',
+                              params: { id: space, jump: messageId },
+                            });
+                        }}
+                      />
+                      {index === 0 ? (
+                        <Text
+                          style={{
+                            color: colors.secondary,
+                            fontSize: 12,
+                            textAlign: 'center',
+                            paddingVertical: 18,
+                          }}
+                        >
+                          {t('chat.originalMessage')}
+                        </Text>
+                      ) : null}
+                    </QuoteMotionView>
+                  )}
+                />
               )}
-            />
+            </QuoteLayoutTransition>
           )
         }
       </ConversationViewport>

@@ -175,6 +175,9 @@ pub struct VoiceMeta {
     /// A copied voice note is one signed file/message, without a source-chat reference.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forwarded: bool,
+    /// Same display-only attribution as MessagePosted, for implicit voice messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forwarded_author: Option<String>,
 }
 
 impl VoiceMeta {

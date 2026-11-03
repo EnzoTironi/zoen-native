@@ -11,6 +11,7 @@ mod command;
 mod content_dispatch;
 mod conversation_dispatch;
 mod draft_dispatch;
+mod forwarding_command;
 mod forwarding_dispatch;
 mod search;
 use command::Command;
@@ -19,6 +20,7 @@ mod handle;
 mod integrity;
 mod member_candidates;
 mod member_dispatch;
+mod message_info_dispatch;
 mod wire;
 
 use serde::{Deserialize, Serialize};
@@ -77,6 +79,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
         .with_large_int("string")
         .with_out_dir(path);
     Command::export_all(&config)?;
+    crate::MessageInfo::export_all(&config)?;
     crate::app_current_share::AppShareContext::export_all(&config)?;
     crate::app_current_share::AppShareResult::export_all(&config)?;
     crate::app_edit_requests::AppEditRequestResult::export_all(&config)?;
@@ -95,6 +98,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     Snapshot::export_all(&config)?;
     crate::SpaceMemberContext::export_all(&config)?;
     crate::ForwardReview::export_all(&config)?;
+    crate::ForwardBatchReview::export_all(&config)?;
     crate::chat_layout::ChatLayoutResult::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;
     crate::MessageDraftSendResult::export_all(&config)?;
@@ -232,6 +236,7 @@ fn decode(request: &str) -> Result<Command, CoreError> {
                 Command::MessageDraft { .. }
                     | Command::SaveMessageDraft { .. }
                     | Command::SendMessageDraft { .. }
+                    | Command::SendMessageEditDraft { .. }
             ))
     {
         return Err(invalid("Application request is too large."));

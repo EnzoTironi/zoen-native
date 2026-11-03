@@ -14,9 +14,11 @@ mod recent_attachments;
 mod search;
 mod universal_pages;
 pub use recent_attachments::RecentAttachmentIndexRow;
+mod read_times;
 #[cfg(test)]
 mod search_tests;
 mod sync;
+pub use read_times::ReadTimeRow;
 #[cfg(test)]
 mod universal_pages_tests;
 pub use image::MAX_MEMORY_IMAGE_BYTES;
@@ -80,6 +82,7 @@ impl Store {
         let s = Self { conn };
         s.migrate()?;
         s.migrate_sync()?;
+        s.migrate_read_times()?;
         s.migrate_profiles()?;
         Ok(s)
     }
@@ -106,6 +109,7 @@ impl Store {
         };
         s.migrate()?;
         s.migrate_sync()?;
+        s.migrate_read_times()?;
         s.migrate_profiles()?;
         Ok(s)
     }
@@ -310,7 +314,8 @@ impl Store {
     /// # Errors
     /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn wipe(&self) -> Result<()> {
-        self.conn.execute_batch("DELETE FROM events; DELETE FROM identities; DELETE FROM meta; DELETE FROM search; DELETE FROM media; DELETE FROM peer_receipts;")?;
+        self.migrate_read_times()?;
+        self.conn.execute_batch("DELETE FROM events; DELETE FROM identities; DELETE FROM meta; DELETE FROM search; DELETE FROM media; DELETE FROM peer_receipts; DELETE FROM peer_read_times;")?;
         Ok(())
     }
 

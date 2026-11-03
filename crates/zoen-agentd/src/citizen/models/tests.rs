@@ -23,7 +23,10 @@ fn retained_or_uncertain_admission_never_proves_model_non_dispatch() {
         ));
     }
 }
-use zoen_models::{image_response_budget, ImageBackground, ImageQuality, ImageRequest, ImageSize};
+use zoen_models::{
+    image_response_budget, Admission, DispatchAuthority, ImageBackground, ImageQuality,
+    ImageRequest, ImageSize,
+};
 
 #[tokio::test]
 async fn cheap_chat_quota_cannot_admit_images_or_a_chat_label_with_image_output() {
@@ -84,11 +87,7 @@ async fn cheap_chat_quota_cannot_admit_images_or_a_chat_label_with_image_output(
         .unwrap();
     chat.descriptor.image = image.descriptor.image.clone();
     assert_eq!(authority.admit(&chat).await, Err(AdmissionError::Denied));
-    assert!(authority.used.lock().unwrap().is_empty());
-    assert!(
-        authority.seen.lock().unwrap().is_empty(),
-        "rejected capability cannot consume or poison chat quota"
-    );
+    // A rejected capability must leave the full chat quota available.
     chat.descriptor.image = None;
     assert_eq!(authority.admit(&chat).await, Ok(Admission::Fresh));
     assert_eq!(authority.admit(&chat).await, Ok(Admission::AlreadyKnown));

@@ -1,3 +1,5 @@
+import { forwardPreviewEntry, DEFAULT_FORWARD_OPTIONS } from '../core/forward-options';
+import type { ForwardOptions } from '../core/generated/ForwardOptions';
 import { Text, View, useWindowDimensions } from 'react-native';
 import type { TimelineEntry } from '../core/types';
 import { MessageMedia } from '../media/MediaAttachment';
@@ -11,17 +13,20 @@ export function ForwardMessagePreview({
   entry,
   isCurrent,
   contentWidth,
+  options = DEFAULT_FORWARD_OPTIONS,
 }: {
   spaceId: string;
   entry: TimelineEntry;
   isCurrent(): boolean;
   contentWidth?: number;
+  options?: ForwardOptions;
 }) {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   useMessageAudioFocus(spaceId, `forward:${entry.id}`);
-  if (entry.deleted || !('Message' in entry.kind)) return null;
-  const { card, text } = entry.kind.Message;
+  const displayed = forwardPreviewEntry(entry, options);
+  if (displayed.deleted || !('Message' in displayed.kind)) return null;
+  const { card, text } = displayed.kind.Message;
   const media = Boolean(entry.voice || card?.kind_id === 'file');
   return (
     <View testID="forward-reviewed-content" style={{ gap: 8 }}>
@@ -33,7 +38,7 @@ export function ForwardMessagePreview({
             backgroundColor: entry.voice && entry.author.is_me ? colors.mine : 'transparent',
           }}
         >
-          <MessageMedia spaceId={spaceId} entry={entry} isCurrent={isCurrent} />
+          <MessageMedia spaceId={spaceId} entry={displayed} isCurrent={isCurrent} />
         </View>
       ) : card ? (
         <View style={{ gap: 4 }}>

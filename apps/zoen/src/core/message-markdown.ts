@@ -1,9 +1,10 @@
-/** Candidate selection only. The maintained Markdown renderer owns parsing. */
+/** Candidate selection only. The maintained renderer owns syntax and escape decoding. */
 export function messageMayContainMarkdown(text: string, nativeMediaDisabled = false): boolean {
   return (
     (nativeMediaDisabled || !messageMarkdownMayLoadMedia(text)) &&
     (/[*_`~[\]|]|(?:^|\n) {0,3}(?:#{1,6}\s|>\s?|[-+]\s|\d{1,9}[.)]\s)/u.test(text) ||
-      /https?:\/\/|www\./iu.test(text) ||
+      text.includes('\\') ||
+      /(?:https?|zoen):\/\/|www\./iu.test(text) ||
       (text.includes('@') && text.includes('.')))
   );
 }

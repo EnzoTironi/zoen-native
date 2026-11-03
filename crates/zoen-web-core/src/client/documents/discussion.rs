@@ -39,6 +39,7 @@ impl<S: Signer> Client<S> {
                 attaches: Some(source),
                 reply: None,
                 forwarded: false,
+                forwarded_author: None,
                 ..
             } => source == id,
             _ => false,

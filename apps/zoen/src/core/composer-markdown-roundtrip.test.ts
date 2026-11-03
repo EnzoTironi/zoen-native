@@ -13,6 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { messageMayContainMarkdown } from './message-markdown.ts';
+import { assertComposerQuoteRoundTrips } from './composer-quote-paragraphs.fixtures.ts';
 
 test(
   'actual MD4C parser, native stores and serializer retain composer Markdown through edits',
@@ -24,12 +26,17 @@ test(
     const input = join(pkg, 'ios/input');
     const installed = join(app, 'node_modules/react-native-enriched-markdown');
     try {
-      for (const path of ['ios/input', 'cpp/md4c']) {
+      for (const path of ['ios/input', 'cpp/md4c', 'cpp/parser']) {
         mkdirSync(join(pkg, path, '..'), { recursive: true });
         cpSync(join(installed, path), join(pkg, path), { recursive: true });
       }
       const patches = [
         ['ENRMInputParser.mm', 'parseComposerMarkdown:', '010+composer-parser'],
+        [
+          'ENRMMarkdownSerializer+Composer.mm',
+          'NSMutableIndexSet *quoteLines',
+          '028+composer-quote-paragraphs',
+        ],
         ['ENRMMarkdownSerializer+Composer.mm', 'serializeComposerText:', '012+composer-formatting'],
         [
           'ENRMComposerRanges.mm',
@@ -40,6 +47,11 @@ test(
           'ENRMComposerVariants.mm',
           'ENRMRepresentableComposerInline',
           '019+composer-inline-variants',
+        ],
+        [
+          'ENRMInputParser.mm',
+          'size_t cursor=textStart - (escaped ? 1 : 0);',
+          '023+composer-escaped-inline-import',
         ],
         [
           'ENRMComposerAvailability.mm',
@@ -109,6 +121,8 @@ test(
           '-fblocks',
           '-I' + input,
           '-I' + join(pkg, 'cpp/md4c'),
+          '-I' + join(pkg, 'cpp/parser'),
+          join(pkg, 'cpp/parser/MD4CParser.cpp'),
           join(app, 'modules/zoen-core/tests/ComposerMarkdown/RoundTripTests.mm'),
           ...files.map((name) => join(input, `${name}.mm`)),
           join(directory, 'input-state.o'),
@@ -122,11 +136,15 @@ test(
       );
       type Result = {
         plain: string;
+        viewerPlain: string;
         markdown: string;
         types: number[];
         ranges: { type: number; start: number; length: number }[];
         selection: number[];
         available: boolean;
+        reparsedPlain: string;
+        reparsedRanges: Result['ranges'];
+        reparsedBlocks: number[][];
       };
       const run = (markdown: string, options: Record<string, unknown> = {}): Result =>
         JSON.parse(
@@ -135,6 +153,21 @@ test(
             encoding: 'utf8',
           }),
         );
+      for (const literal of [
+        'QA753: nota em Mensagens Salvas.',
+        'café 🦊: 2 + 2 = 4. Pontuação!',
+        String.raw`literal \: and \. and \q`,
+        '*literal* [a](b) `z`',
+        String.raw`C:\Temp\note.txt`,
+      ]) {
+        const sent = run('', { edit: { start: 0, delete: 0, text: literal } });
+        const displayed = messageMayContainMarkdown(sent.markdown, true)
+          ? sent.viewerPlain
+          : sent.markdown;
+        assert.equal(displayed, literal, 'sent canonical text must render the original literal');
+        assert.equal(run(sent.markdown).plain, literal);
+        assert.equal(run(sent.markdown).markdown, sent.markdown);
+      }
       for (const [markdown, plain] of [
         ['**forte**', 'forte'],
         ['_ênfase_', 'ênfase'],
@@ -142,14 +175,38 @@ test(
         ['||segredo||', 'segredo'],
         ['***ambos***', 'ambos'],
         ['`a`', 'a'],
+        [String.raw`**forte** e \*literal\*`, 'forte e *literal*'],
+        ['`a\\: b\\q`', String.raw`a\: b\q`],
         ['`  a  `', ' a '],
         ['[😀 link](https://example.org/a_(b))', '😀 link'],
         ['> **citação**\n> `código`', 'citação\ncódigo'],
       ]) {
         const first = run(markdown!);
         assert.equal(first.plain, plain);
+        if (!markdown!.startsWith('>')) assert.equal(first.viewerPlain, plain);
         assert.equal(run(first.markdown).plain, plain);
         assert.deepEqual(run(first.markdown).types, first.types);
+      }
+      for (const [markdown, plain] of [
+        [String.raw`[\*link\*](https://example.org/a_(b))`, '*link*'],
+        [String.raw`**\*literal\***`, '*literal*'],
+        [String.raw`_\!café 🦊_`, '!café 🦊'],
+        [String.raw`prefix [\[link\]](https://example.org) tail`, 'prefix [link] tail'],
+        [String.raw`[\\literal\*](https://example.org/a_(b_(c)))`, String.raw`\literal*`],
+        [String.raw`café 🦊 [\!label](https://example.org/a_(b))`, 'café 🦊 !label'],
+      ]) {
+        const imported = run(markdown!);
+        assert.equal(imported.plain, plain, JSON.stringify({ source: markdown, ...imported }));
+        assert.equal(imported.viewerPlain, plain);
+        assert.equal(run(imported.markdown).plain, plain);
+        assert.deepEqual(run(imported.markdown).types, imported.types);
+        assert.equal(run(imported.markdown).markdown, imported.markdown);
+        const edited = run(markdown!, { edit: { start: 0, delete: 0, text: '😀 ' } });
+        assert.equal(edited.plain, '😀 ' + plain);
+        assert.equal(run(edited.markdown).plain, edited.plain);
+        const undone = run(markdown!, { edit: { start: 0, delete: 0, text: '😀 ' }, undo: true });
+        assert.equal(undone.plain, plain);
+        assert.equal(undone.markdown, imported.markdown);
       }
       assert.deepEqual(run('_ênfase_').types, [1], 'underscore is emphasis, never false underline');
       assert.deepEqual(
@@ -158,6 +215,8 @@ test(
         'generic article parser remains unchanged',
       );
       const opaque = [
+        // Existing nested-label fallback stays exact instead of inventing rich marks.
+        String.raw`[**\*café 🦊\***](https://example.org/a_(b))`,
         '| __a__ | b |\n| --- | --- |\n| \\| | y |',
         '- [x] __task__',
         '![__alt__](https://example.org/a.png)',
@@ -175,6 +234,7 @@ test(
       ];
       for (const source of opaque) {
         assert.equal(run(source).markdown, source, 'unsupported source must stay byte-identical');
+        assert.equal(run(run(source).markdown).viewerPlain, run(source).viewerPlain);
         const edited = run(source, { edit: { start: 0, delete: 0, text: 'prefix ' } });
         assert.equal(edited.markdown, 'prefix ' + source);
       }
@@ -192,6 +252,8 @@ test(
       assert.equal(run('ab', { code: [0, 2] }).markdown, '`ab`');
       assert.equal(run('a\nb', { code: [0, 3] }).markdown, '`a`\n`b`');
       assert.equal(run('a\nb', { quote: [0, 3] }).markdown, '> a\n> b');
+      assertComposerQuoteRoundTrips(run);
+
       const crossed = run('**ab**cd', { code: [1, 2], selection: [1, 2] });
       assert.equal(crossed.plain, 'abcd');
       assert.equal(crossed.markdown, '**a`b`**`c`d');
@@ -277,8 +339,6 @@ test(
         });
         assert.equal(undoEdit.markdown, '**café** 🦊');
       }
-      // Plausible long draft under the same native fixture deadline. Strategy
-      // count remains four; it never branches once per formatting range.
       const longText = 'café 🦊 abcdefghij '.repeat(40);
       const longToggles = Array.from({ length: 40 }, (_, i) => [
         { type: 0, start: i * 19, length: 10 },

@@ -148,12 +148,14 @@ fn media_contract_received_ordered_fixtures_match_native_projection(
                     attaches: Some(format!("fixture-{index}")),
                     media: Some(media),
                     reply: member["reply"].as_str().map(|to| types::ReplyRef {
+                        shared: None,
                         quote: None,
                         artifact: None,
                         to: to.into(),
                         thread: false,
                     }),
                     forwarded: member["forwarded"].as_bool().unwrap_or(false),
+                    forwarded_author: None,
                 },
                 20 + i64::try_from(index)?,
             )?;

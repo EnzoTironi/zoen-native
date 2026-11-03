@@ -178,15 +178,14 @@ impl Engine {
             save_receipts,
         };
         validate(&record)?;
-        self.draft_target(
-            &scope.normal(),
-            match &record.content {
-                Some(Content::Attachments { reply_to, .. } | Content::Voice { reply_to, .. }) => {
-                    reply_to.as_deref()
-                }
-                None => None,
-            },
-        )?;
+        // Retaining reviewed private context does not reauthorize publication.
+        // New context is authenticated now; explicit Send always rechecks it.
+        if let Some(content) = &record.content {
+            let reply = content.reply();
+            if previous.content.as_ref().map(Content::reply).as_ref() != Some(&reply) {
+                self.resolve_draft_reply(reply.context(&scope.normal()), reply.to)?;
+            }
+        }
         self.atomic_agent_action(|engine| {
             engine.persist_media_replacement(&storage, &previous, &record, &fresh)?;
             Ok(MediaDraftSaveResult {

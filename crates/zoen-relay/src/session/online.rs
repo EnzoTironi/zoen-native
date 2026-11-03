@@ -5,8 +5,12 @@ impl Session {
     pub(super) async fn key_packages_low(&self, claimed: &[protocol::KeyPackageRecord]) {
         let devices: Vec<(String, String)> = claimed
             .iter()
+            .filter(|package| self.st.log.managed_device(&package.device).is_none())
             .map(|k| (k.identity.clone(), k.device.clone()))
             .collect();
+        if devices.is_empty() {
+            return;
+        }
         let stock = match db::key_package_stock(&self.st.pool, &devices).await {
             Ok(stock) => stock,
             Err(error) => {
@@ -87,6 +91,11 @@ impl Session {
     }
 
     pub(super) async fn send_key_package_stock(&self) {
+        // Managed custody owns its retained batch. A generic refill hint would
+        // send it back through the ordinary publication path we must refuse.
+        if self.st.log.managed_device(&self.device).is_some() {
+            return;
+        }
         let me = [(self.identity.clone(), self.device.clone())];
         if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
             for (_, device, left) in stock {

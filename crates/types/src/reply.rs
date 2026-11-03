@@ -69,6 +69,35 @@ pub struct SelectedQuote {
     pub text: String,
 }
 
+impl SelectedQuote {
+    /// Bounds for an explicitly shared excerpt when its private source is unavailable.
+    /// The sender still validates the spans against the actual signed source revision.
+    #[must_use]
+    pub fn is_well_formed(&self) -> bool {
+        let id = |v: &str| !v.is_empty() && v.len() <= 256 && !v.chars().any(char::is_control);
+        let units = self.text.encode_utf16().count();
+        if !id(&self.source_id)
+            || !id(&self.revision)
+            || self.text.trim().is_empty()
+            || units > 4096
+            || self.spans.is_empty()
+            || self.spans.len() > 128
+        {
+            return false;
+        }
+        let mut previous = 0;
+        let mut selected_units = 0_u64;
+        for span in &self.spans {
+            if span.start_utf16 < previous || span.end_utf16 <= span.start_utf16 {
+                return false;
+            }
+            selected_units += u64::from(span.end_utf16) - u64::from(span.start_utf16);
+            previous = span.end_utf16;
+        }
+        usize::try_from(selected_units) == Ok(units)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct QuoteSpan {
@@ -76,8 +105,46 @@ pub struct QuoteSpan {
     pub end_utf16: u32,
 }
 
+/// An excerpt intentionally shared into another conversation. The enclosing event
+/// authenticates the sender's quotation, not authorship of inaccessible history.
+/// This reference conveys neither membership nor permission to read its source.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SharedReply {
+    pub space_id: String,
+    pub revision: String,
+    pub author_id: String,
+    pub author_name: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SelectedQuote>,
+}
+impl SharedReply {
+    #[must_use]
+    pub fn is_well_formed(&self) -> bool {
+        let id = |v: &str| !v.is_empty() && v.len() <= 256 && !v.chars().any(char::is_control);
+        id(&self.space_id)
+            && id(&self.revision)
+            && id(&self.author_id)
+            && !self.author_name.is_empty()
+            && self.author_name.len() <= 256
+            && !self.author_name.chars().any(char::is_control)
+            && !self.text.is_empty()
+            && self.selection.as_ref().map_or_else(
+                || self.text.chars().count() <= 141,
+                |selection| {
+                    selection.is_well_formed()
+                        && selection.revision == self.revision
+                        && selection.text == self.text
+                },
+            )
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ReplyRef {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<Box<SharedReply>>,
     /// Event hash of the message being answered (the thread root for thread replies).
     pub to: String,
     /// `true` = in the thread under `to`; `false` = inline, quoting `to`.
@@ -92,6 +159,7 @@ pub struct ReplyRef {
 impl ReplyRef {
     pub fn inline(to: impl Into<String>) -> Self {
         Self {
+            shared: None,
             to: to.into(),
             thread: false,
             artifact: None,
@@ -100,6 +168,7 @@ impl ReplyRef {
     }
     pub fn thread(root: impl Into<String>) -> Self {
         Self {
+            shared: None,
             to: root.into(),
             thread: true,
             artifact: None,
@@ -128,6 +197,7 @@ mod tests {
             reply: Some(ReplyRef::thread("h1")),
             media: None,
             forwarded: false,
+            forwarded_author: None,
         };
         let json = serde_json::to_string(&new).unwrap();
         assert!(json.contains(r#""reply":{"to":"h1","thread":true}"#));
@@ -141,6 +211,7 @@ mod tests {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         };
         assert!(!serde_json::to_string(&plain).unwrap().contains("reply"));
     }
@@ -249,6 +320,7 @@ mod tests {
             reply: Some(ReplyRef::inline("h1")),
             media: None,
             forwarded: false,
+            forwarded_author: None,
         })
         .unwrap();
         let OldBody::MessagePosted { text } = serde_json::from_str(&json).unwrap();

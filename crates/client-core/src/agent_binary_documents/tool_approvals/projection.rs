@@ -10,6 +10,9 @@ impl State {
         if !super::super::source_scope::proposal_valid(self, space, p, &req.agent) {
             return false;
         }
+        if p.schema == crate::agent_conversation_tools::SCHEMA {
+            return crate::agent_conversation_tools::matches(self, req, space);
+        }
         if p.schema == crate::agent_scenes::SCHEMA {
             return crate::agent_scenes::matches(self, req, space);
         }
@@ -68,6 +71,9 @@ impl State {
     }
 
     pub(crate) fn tool_app_act(&self, p: &ToolProposal, at: i64) -> bool {
+        if p.schema == crate::agent_conversation_tools::SCHEMA {
+            return crate::agent_conversation_tools::access(self, p);
+        }
         if p.schema == crate::agent_scenes::SCHEMA {
             return crate::agent_scenes::access(self, p, at);
         }

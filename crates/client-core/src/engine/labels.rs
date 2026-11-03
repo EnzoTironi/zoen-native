@@ -146,6 +146,7 @@ pub(crate) fn event_label(b: &EventBody) -> String {
         EventBody::CallTransportV1 { .. } => t("Conexão da chamada", "Call connection"),
         EventBody::CallV1 { .. } => t("Chamada", "Call"),
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
+        EventBody::MessagesDeletedForSelf { .. } => t("Exclusão privada", "Private deletion"),
         EventBody::MessageAnnotated { note, .. } => match note {
             types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),
             types::Annotation::Delete => t("Mensagem apagada", "Message deleted"),

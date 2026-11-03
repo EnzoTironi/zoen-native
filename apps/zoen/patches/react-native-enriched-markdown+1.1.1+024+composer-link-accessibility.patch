@@ -1,0 +1,15 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.mm
+index 67153313..ecadc409 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputLinkPrompt.mm
+@@ -13,6 +13,10 @@ dispatch_block_t ENRMShowComposerLinkPrompt(RCTUIView *sourceView, NSString *exi
+                                                           preferredStyle:UIAlertControllerStyleAlert];
+ 
+   [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
++    // The caller already owns the localized Link title. Preserve UIKit's
++    // real text/value/placeholder semantics while identifying the input itself.
++    textField.accessibilityIdentifier = @"enriched-markdown-link-url";
++    textField.accessibilityLabel = title.length ? title : @"URL";
+     textField.placeholder = @"URL";
+     textField.text = existingURL ?: @"";
+     textField.keyboardType = UIKeyboardTypeURL;

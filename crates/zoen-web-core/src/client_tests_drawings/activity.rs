@@ -229,6 +229,7 @@ fn signed_second_device_thread_on_activity_survives_annotations_and_exports_boun
             reply: Some(types::ReplyRef::thread(&activity_event.hash)),
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         40,
     )?;
@@ -446,6 +447,7 @@ fn append_foreign_collision(
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         21,
     )?;

@@ -1,10 +1,12 @@
 import { boundedText, invalid, target } from './media-draft-contract.ts';
 import type { MediaDraftChannel } from './media-draft-channel';
+import { copyMediaReply, type MediaReplyTarget } from './media-reply.ts';
 
 export type ReviewedAttachmentStage = {
   media: MediaDraftChannel;
   current(): boolean;
   replyTo(): string | null;
+  reviewedReply?: () => MediaReplyTarget;
   prepare(text: string): Promise<{ uri: string; release(): Promise<void> }>;
   nextId(): string;
   admitted(): void;
@@ -15,6 +17,7 @@ export async function stageReviewedAttachment({
   media,
   current,
   replyTo,
+  reviewedReply,
   prepare,
   nextId,
   admitted,
@@ -25,8 +28,9 @@ export async function stageReviewedAttachment({
 }: ReviewedAttachmentStage & { text: string; name: string; mime: string }): Promise<void> {
   if (!boundedText(caption, 16 * 1024)) invalid();
   if (!current()) throw new Error('retired');
-  const reply = replyTo();
-  if (!target(reply)) invalid();
+  const captured = reviewedReply?.() ?? { reply_to: replyTo() };
+  const reply = Object.freeze({ reply_to: captured.reply_to, ...copyMediaReply(captured) });
+  if (!target(reply.reply_to)) invalid();
   await media.load();
   if (!current()) throw new Error('retired');
   const before = media.getSnapshot();
@@ -57,7 +61,7 @@ export async function stageReviewedAttachment({
   await media.save(
     {
       kind: 'attachments',
-      reply_to: reply,
+      ...reply,
       options: { presentation: 'file', grouping: 'separate' },
       items: [{ asset_id: id, mutation_id: id, caption }],
     },

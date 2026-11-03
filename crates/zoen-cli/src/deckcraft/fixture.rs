@@ -107,6 +107,7 @@ pub(super) fn fixture_for_format_at(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?
         .clone();

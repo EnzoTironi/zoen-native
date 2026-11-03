@@ -15,6 +15,7 @@
 
 pub mod call_transport;
 pub mod calls;
+pub mod forwarding;
 pub mod media;
 pub use media::{
     AttachmentGrouping, AttachmentPresentation, AttachmentSendOptions, MediaGroup,
@@ -25,7 +26,7 @@ pub mod owner_budget;
 pub mod owner_policy_context;
 pub use annotation::Annotation;
 pub mod reply;
-pub use reply::{ArtifactRequest, QuoteSpan, ReplyRef, SelectedQuote};
+pub use reply::{ArtifactRequest, QuoteSpan, ReplyRef, SelectedQuote, SharedReply};
 mod app_share;
 pub use app_share::{AppCurrentShare, AppItemOrigin, AppShareRef};
 

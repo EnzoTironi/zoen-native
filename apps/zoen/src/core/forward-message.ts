@@ -1,3 +1,7 @@
+import { ownForwardReview, type ForwardMessageReview } from './forward-review.ts';
+export type { ForwardMessageReview } from './forward-review.ts';
+import type { ForwardOptions } from './generated/ForwardOptions';
+import { ownForwardOptions } from './forward-options.ts';
 import type { ForwardReview as CanonicalReview } from './generated/ForwardReview';
 import type { ForwardScope } from './generated/ForwardScope';
 import type { ForwardSource } from './generated/ForwardSource';
@@ -16,6 +20,12 @@ export type ForwardMessagePort = {
   writable?(targetId: string): boolean;
   status(source: ForwardSource): Promise<CanonicalReview | null>;
   review(scope: ForwardScope): Promise<CanonicalReview>;
+  configure?(
+    scope: ForwardScope,
+    operationId: string,
+    sourceRevision: string,
+    options: ForwardOptions,
+  ): Promise<CanonicalReview>;
   confirm(
     scope: ForwardScope,
     operationId: string,
@@ -27,13 +37,6 @@ export type ForwardMessagePort = {
     acceptedMessageId: string | null,
   ): Promise<void>;
 };
-export type ForwardMessageReview = Readonly<{
-  targetId: CanonicalReview['target_space'];
-  message: CanonicalReview['message'];
-  operationId: CanonicalReview['operation_id'];
-  sourceRevision: CanonicalReview['source_revision'];
-  acceptedMessageId: CanonicalReview['accepted_message_id'];
-}>;
 export type ForwardMessageCallbacks = {
   busy(value: boolean): void;
   error(reason: unknown | null): void;
@@ -100,15 +103,12 @@ export class ForwardMessageSession {
     );
   }
   private project(value: CanonicalReview | null) {
-    this.selected =
-      value &&
-      Object.freeze({
-        targetId: value.target_space,
-        message: value.message,
-        operationId: value.operation_id,
-        sourceRevision: value.source_revision,
-        acceptedMessageId: value.accepted_message_id,
-      });
+    if (value && value.message.id !== this.scope?.messageId) {
+      this.selected = null;
+      this.callbacks.reviewed?.(null);
+      throw new ForwardMessageChanged();
+    }
+    this.selected = value && ownForwardReview(value);
     this.callbacks.reviewed?.(this.selected);
   }
   async focus() {
@@ -176,6 +176,31 @@ export class ForwardMessageSession {
       if (!this.current(attempt)) return;
       const value = retained ?? (await this.port.review(this.target(targetId)));
       if (this.current(attempt)) this.project(value);
+    });
+  }
+  get configurable() {
+    return typeof this.port.configure === 'function';
+  }
+  async configure(review: ForwardMessageReview, options: ForwardOptions) {
+    const update = this.port.configure?.bind(this.port);
+    if (!update || review !== this.selected || review.acceptedMessageId !== null) return;
+    const next = ownForwardOptions(options);
+    await this.run(review.targetId, async (attempt) => {
+      try {
+        const value = await update(
+          this.target(review.targetId),
+          review.operationId,
+          review.sourceRevision,
+          next,
+        );
+        if (this.current(attempt)) this.project(value);
+      } catch (reason) {
+        if (!this.current(attempt)) return;
+        const value = await this.port.status(this.source());
+        if (!this.current(attempt)) return;
+        this.project(value);
+        throw reason;
+      }
     });
   }
   async confirm(review: ForwardMessageReview) {

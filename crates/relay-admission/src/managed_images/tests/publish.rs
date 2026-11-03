@@ -19,7 +19,7 @@ fn envelope(client: &str) -> Result<(Deployment, Envelope), Box<dyn std::error::
     Ok((configured, envelope))
 }
 
-fn commit(writer: &mut AnchorWriter, digest: &str) -> Result<Checkpoint, AnchorError> {
+pub(super) fn commit(writer: &mut AnchorWriter, digest: &str) -> Result<Checkpoint, AnchorError> {
     let previous = writer.reader().checkpoint()?;
     let prepared = writer.prepare(digest, &previous, &previous, false)?;
     assert_eq!(

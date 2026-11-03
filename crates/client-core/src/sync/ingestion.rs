@@ -1,9 +1,8 @@
 //! Authenticated relay admission and confirmation of pending intents.
 
 use super::{
-    chain_hash, content_hash_of, new_ulid, t, Author, CoreError, Engine, Entry, Event, EventBody,
-    Ingest, PendingCommitment, PlanReplay, Projection, Seen, Sequenced, SpaceLog, State,
-    GENESIS_PREV, R,
+    chain_hash, content_hash_of, new_ulid, t, Author, CoreError, Engine, Event, EventBody, Ingest,
+    PendingCommitment, PlanReplay, Projection, Seen, Sequenced, SpaceLog, State, GENESIS_PREV, R,
 };
 
 impl Engine {
@@ -271,27 +270,17 @@ impl Engine {
         seq: u64,
         hash: &str,
     ) -> bool {
-        let stamp = |entries: &mut Vec<Entry>| {
-            for entry in entries.iter_mut().filter(|entry| {
-                entry.hash.is_empty()
-                    && (entry.client_id == client_id
-                        || entry.client_id.strip_suffix(":result") == Some(client_id))
-            }) {
-                entry.seq = seq;
-                entry.hash = hash.to_string();
-            }
-        };
         if let Some(space_state) = self
             .space_projections
             .get_mut(space)
             .and_then(|scoped| scoped.spaces.get_mut(space))
         {
-            stamp(&mut space_state.entries);
+            space_state.confirm_pending_entries(client_id, seq, hash);
         }
         let Some(space_state) = self.state.spaces.get_mut(space) else {
             return false;
         };
-        stamp(&mut space_state.entries);
+        space_state.confirm_pending_entries(client_id, seq, hash);
         true
     }
 

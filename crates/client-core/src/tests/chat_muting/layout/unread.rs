@@ -34,6 +34,7 @@ fn peer_message(f: &Fixture, text: &str) -> Result<u64, Box<dyn std::error::Erro
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let mut relay = engine.logs[&f.space].clone();

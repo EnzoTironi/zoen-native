@@ -168,6 +168,16 @@ pub(super) async fn dispatch_frame(
             report_rejection(ctx, &outcome);
         }
         ServerFrame::Ephemeral { space, from, kind } => {
+            if let EphemeralKind::ReadTime(ref report) = kind {
+                match engine!(|engine| deferred_receipts.receive_time(engine, &space, &from, report))
+                {
+                    Ok(true) => {
+                        dirty.insert(space.clone());
+                    }
+                    Ok(false) => {}
+                    Err(e) => return Err(Exit::Retry(e.to_string())),
+                }
+            }
             let mark = match kind {
                 EphemeralKind::Delivered { seq } => Some((seq, 0)),
                 EphemeralKind::Read { seq } => Some((0, seq)),
@@ -188,6 +198,9 @@ pub(super) async fn dispatch_frame(
                     EphemeralKind::StoppedTyping => ("stopped".to_string(), String::new()),
                     EphemeralKind::Status { status } => ("status".to_string(), status),
                     EphemeralKind::Read { seq } => ("read".to_string(), seq.to_string()),
+                    EphemeralKind::ReadTime(time) => {
+                        ("read".to_string(), time.through_seq.to_string())
+                    }
                     EphemeralKind::Delivered { seq } => ("delivered".to_string(), seq.to_string()),
                 };
                 l.on_ephemeral(space, from, k, detail);
@@ -236,7 +249,8 @@ pub(super) async fn dispatch_frame(
                 engine!(|engine| engine.net.link.ask_devices = true);
                 // Ephemeral sends may have been lost before this socket existed.
                 // Rebuild receipts after catch-up, even with no new remote events.
-                let receipts = engine!(super::super::engine::Engine::receipts_to_replay);
+                let receipts = engine!(super::super::engine::Engine::receipts_with_times_to_replay)
+                    .map_err(|e| Exit::Retry(e.to_string()))?;
                 let mut failed = None;
                 for (space, kind) in receipts {
                     if let Err(e) = send(

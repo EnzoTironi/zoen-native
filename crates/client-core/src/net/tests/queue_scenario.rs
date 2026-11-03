@@ -97,6 +97,7 @@ pub(super) async fn queued_messages_round_trip(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();
@@ -115,6 +116,7 @@ pub(super) async fn queued_messages_round_trip(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();

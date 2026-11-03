@@ -367,6 +367,7 @@ fn shared_anchor_supports_the_same_scoped_agent_read_and_mutation_authority() ->
             message: types::new_id("m")?,
             text: text.into(),
             reply: types::ReplyRef {
+                shared: None,
                 quote: None,
                 to: f.original_root.id.clone(),
                 thread: true,

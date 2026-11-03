@@ -153,7 +153,7 @@ impl Engine {
             .values()
             .filter(|s| s.kind != SpaceKind::Personal)
         {
-            for e in &s.entries {
+            for e in s.entries.iter().filter(|e| self.visible_message(e)) {
                 if let EntryBody::Message { text, .. } = &e.body {
                     let snippet = if fold(text).contains(&q) {
                         Some(text.clone())
@@ -196,7 +196,7 @@ impl Engine {
         let handle = format!("@{}", self.persona(&me).name.to_lowercase());
         let mut out = Vec::new();
         for s in self.state.spaces.values() {
-            for e in &s.entries {
+            for e in s.entries.iter().filter(|e| self.visible_message(e)) {
                 if e.author == me {
                     continue;
                 }

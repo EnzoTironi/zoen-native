@@ -8,7 +8,13 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod attribution;
+mod options;
+pub use options::ForwardOptions;
+mod batch;
 mod storage;
+pub(crate) use attribution::metadata_valid;
+pub use batch::{ForwardBatchReview, ForwardBatchScope, ForwardBatchSource};
 #[cfg(test)]
 mod tests;
 
@@ -56,6 +62,7 @@ impl ForwardSource {
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ForwardReview {
     pub target_space: String,
+    pub options: ForwardOptions,
     /// Durable local acceptance marker, available even after destination access was lost.
     pub accepted_message_id: Option<String>,
     pub operation_id: String,
@@ -68,6 +75,8 @@ pub struct ForwardReview {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Record {
+    #[serde(default)]
+    options: ForwardOptions,
     target_space: String,
     operation_id: String,
     source_revision: String,
@@ -130,7 +139,9 @@ impl Engine {
             .iter()
             .find(|e| e.id() == scope.message_id)
             .ok_or_else(stale)?;
-        if !matches!(&source.body, EntryBody::Message { marks, .. } if !marks.deleted) {
+        if !self.visible_message(source)
+            || !matches!(&source.body, EntryBody::Message { marks, .. } if !marks.deleted)
+        {
             return Err(stale());
         }
         let message = self.entry_dto(source);
@@ -140,6 +151,7 @@ impl Engine {
             &scope.source_space,
             &message.id,
             &message.author.id,
+            &self.forwarded_author(source),
             message.at_ms,
             &message.kind,
             &message.voice,
@@ -165,6 +177,7 @@ impl Engine {
                 .flatten()
         });
         Ok(ForwardReview {
+            options: record.options,
             target_space: record.target_space,
             accepted_message_id: record.accepted_message,
             operation_id: record.operation_id,
@@ -192,6 +205,7 @@ impl Engine {
         }
         let (message, source_revision) = self.forward_source(scope)?;
         let record = Record {
+            options: ForwardOptions::default(),
             target_space: scope.target_space.clone(),
             operation_id: types::new_id("forward")?,
             source_revision,
@@ -229,8 +243,12 @@ impl Engine {
         }
         // The Client's single Engine lock covers the check and this transaction.
         self.atomic_agent_action(|engine| {
-            let entry =
-                engine.forward(&scope.source_space, &scope.message_id, &scope.target_space)?;
+            let entry = engine.forward_with_options(
+                &scope.source_space,
+                &scope.message_id,
+                &scope.target_space,
+                record.options,
+            )?;
             record.accepted_message = Some(entry.id);
             engine.persist_forward(scope, &record)?;
             engine.forward_result(scope, record)

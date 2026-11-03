@@ -153,6 +153,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
                 }),
                 reply: None,
                 forwarded: false,
+                forwarded_author: None,
             },
             true,
         )?;
@@ -183,6 +184,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
                         }),
                         reply: None,
                         forwarded: false,
+                        forwarded_author: None,
                     }
                 )
                 .is_err());

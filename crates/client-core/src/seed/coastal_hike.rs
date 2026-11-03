@@ -99,6 +99,7 @@ pub(super) fn seed(e: &mut Engine, com: &str, cast: &Cast, t0: i64) -> R<()> {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     Ok(())

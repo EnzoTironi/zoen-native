@@ -62,16 +62,19 @@
   {
     "id": "TG-search-jump-to-date",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "partial",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/app/search.tsx",
-      "apps/zoen/src/core/conversation-search.ts",
-      "apps/zoen/src/core/chat-search-react.test.ts"
+      "crates/client-core/src/conversation_date.rs",
+      "crates/client-core/src/message_drafts/tests/date_navigation.rs",
+      "apps/zoen/src/core/conversation-date.ts",
+      "apps/zoen/src/components/chat-date-navigation.ios.tsx",
+      "apps/zoen/src/core/conversation-date-ui.test.ts"
     ],
-    "gap": "Escolher dia e posicionar histórico real sem exigir palavra de busca.",
+    "gap": "Falta aceite final por Enzo no iPhone e reprodução do calendário próprio do Telegram: a base iOS usa a sheet e o seletor nativo do sistema. Web/Android permanecem posteriores; a consulta compartilhada não exige texto, não altera o rascunho e só retorna mensagens visíveis da conversa principal no dia local escolhido.",
     "issues": [
-      172
+      172,
+      747
     ]
   },
   {

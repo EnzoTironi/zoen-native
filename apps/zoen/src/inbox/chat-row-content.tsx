@@ -8,7 +8,7 @@ import { useTheme } from '../theme';
 import type { SpaceSummary } from '../core/generated/SpaceSummary';
 
 /** Existing Telegram inbox presentation; canonical drafts/previews stay in Core. */
-export function ChatRowContent({ chat }: { chat: SpaceSummary }) {
+export function ChatRowContent({ chat, preview }: { chat: SpaceSummary; preview: string }) {
   const { presentation: p } = useTheme();
   return (
     <>
@@ -52,10 +52,11 @@ export function ChatRowContent({ chat }: { chat: SpaceSummary }) {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text
+            testID={`inbox-preview-${chat.id}`}
             numberOfLines={2}
             style={{ flex: 1, lineHeight: 19, fontSize: 15, color: p.chatList.message }}
           >
-            {chat.last_preview}
+            {preview}
           </Text>
           {chat.unread || chat.manual_unread ? (
             <View

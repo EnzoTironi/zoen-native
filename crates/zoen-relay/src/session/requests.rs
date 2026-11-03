@@ -320,6 +320,11 @@ impl Session {
                 packages,
                 last_resort,
             } => {
+                // The ordinary socket must not bypass managed native custody
+                // when restored SQL no longer remembers a consumed publication.
+                if self.st.log.managed_device(&self.device).is_some() {
+                    return Err("managed key packages require native custody".into());
+                }
                 let publications = relay_admission::directory::key_packages::validate_publications(
                     &self.identity,
                     &self.device,

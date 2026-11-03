@@ -87,6 +87,14 @@ function Navigation() {
                 <Stack.Screen name="(tabs)" options={{ title: '' }} />
                 <Stack.Screen name="chat/[id]" options={{ title: '' }} />
                 <Stack.Screen
+                  name="reply/[space]/[message]"
+                  options={{
+                    presentation: 'formSheet',
+                    sheetGrabberVisible: true,
+                    sheetAllowedDetents: [1],
+                  }}
+                />
+                <Stack.Screen
                   name="account-budget"
                   options={{
                     presentation: process.env.EXPO_OS === 'web' ? 'modal' : 'formSheet',
@@ -145,6 +153,16 @@ function Navigation() {
                     title: t('common.newChat'),
                     presentation: 'formSheet',
                     headerTransparent: false,
+                    sheetGrabberVisible: true,
+                  }}
+                />
+                <Stack.Screen
+                  name="message-info/[space]/[message]"
+                  options={{
+                    title: t('messageInfo.title'),
+                    presentation: 'formSheet',
+                    headerTransparent: false,
+                    sheetAllowedDetents: 'fitToContents',
                     sheetGrabberVisible: true,
                   }}
                 />

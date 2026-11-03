@@ -27,6 +27,7 @@
       "telegram/groups.json",
       "telegram/inbox.json",
       "telegram/messaging.json",
+      "telegram/messaging-forwarding.json",
       "telegram/notifications.json",
       "telegram/photos.json",
       "telegram/polls.json",

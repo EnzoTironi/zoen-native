@@ -3,6 +3,7 @@
 # Reviewed Cargo roots, test commands, client coverage and embedded-resource
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
 FRONTEND_CONTRACTS = {
+    "apps/zoen/src/core/photo-editor-image.test.ts": "bccf5c4e25968b1dca8afac700c2d5c3475012b2abeb419e509686af3f16c194",
     "scripts/expo_artifact_candidate.py": "0f43561817f940cb50e607c5d94ce06ad4aafde130690b683c4bae6099332a31",
     "miniapps/pdfcraft-ui/prepare-engine.py": "4704dfe72d3608e5a48e5847d3c3fae14e5042e286ee0351003eeb9c9a6b1879",
     "miniapps/pdfcraft-ui/build-resource-manifest.mjs": "69635b70da63254efc2a96629c869e8398a6989e8890fa756b64c76c1225c586",
@@ -44,12 +45,12 @@ FRONTEND_CONTRACTS = {
     "crates/zoen-agentd/src/citizen/codex.rs": "4d5e32fb4677abf8e2429b7a8867c50ca7e9998dc2d073dc8e0d6e4f9def41df",
     "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
     "Cargo.toml": "6abf6b794f912e0e95fcb66d5ea6f89a176b04a1b2b8714d1c21f40f091827bb",
-    ".github/workflows/ci.yml": "c682599963459f11504f73b36e25da0a3473f0b5195da249dfaebea57dcd647c",
-    ".github/workflows/expo.yml": "cdf7ecf20dc72c12c564792c95043bd25e28adf59d3e18851594f815ab3e1520",
+    ".github/workflows/ci.yml": "d0c3ec2dee2c876396c5c576ff1b3ee64efc4c262f55e168e7e84730ec22025a",
+    ".github/workflows/expo.yml": "ef1e1404e180c34f62bd0b9f82aaa7f660860e9fcad1e43a7f96d74240c4ecf7",
     # Android installer and its invoked fixtures are real workflow inputs.
     "scripts/install-android-sdk.py": "aff7527c4fb23ca29e9d9eeace380837e9a23eb20b88d5499e33fd4e30cf1144",
     "scripts/test-install-android-sdk.py": "986a43af641273820ad8d50ca62a1b52e0f64bf70066b836c04dd08da82244cd",
-    "apps/zoen/package.json": "d58538007aec677d34171d4a09f883973c1c8bf9440b141d5bc72f33b2dba14b",
+    "apps/zoen/package.json": "d93f7c3a6961d2627b6aa24415fcc3b92cefa88a43daf764249a78b7a3bdcab7",
     "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "2f0eccb5f4de55d63dd56a287685921b4acdb4224308d9d7747edd2eec2464cd",
     "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "3bd56bac1f1f496a2213c69c2242c6233891cd377fc298db94260b14fcd91318",
     "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json": "10c784d78a451c963826cbbcc8335de1485d89b0e90a84b36c14777b21f6c0b4",

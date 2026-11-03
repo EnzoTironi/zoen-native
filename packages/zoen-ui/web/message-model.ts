@@ -82,6 +82,7 @@ export function parseMessage(input: unknown, space: string) {
   return {
     id: string(value.id),
     entry: value.entry ? string(value.entry) : null,
+    text_revision: value.text_revision == null ? null : string(value.text_revision),
     seq: sequence,
     author: publicKey(value.author),
     name: string(value.name),

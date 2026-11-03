@@ -9,6 +9,10 @@ import { MediaDraftChannel } from '../media/media-draft-channel.ts';
 import type { MediaDraftDto, MediaDraftPort } from '../media/media-draft-types.ts';
 import type { StaticLocation } from '../media/types.ts';
 import * as actions from '../media/attachment-route-actions.ts';
+import * as mediaReply from '../media/media-reply.ts';
+import * as messageDraft from './message-draft.ts';
+import { PollDraftOwner } from '../media/poll-draft-owner.ts';
+import type { MediaReplyTarget } from '../media/media-reply.ts';
 import {
   NormalMessageDrafts,
   type NormalDraftScope,
@@ -30,6 +34,7 @@ const routeCode = compile(
   process.env.ZOEN_ATTACHMENT_ROUTE_SOURCE ?? '../media/attachment-route.tsx',
 );
 const locationPickerCode = compile('../media/location-picker.tsx');
+const pollEditorCode = compile('../media/poll-attachment-editor.tsx');
 const pollFieldsCode = compile('../media/poll-attachment-fields.tsx');
 export const editorCode = compile('../media/article-editor.tsx');
 export type Element = { type: unknown; props: Record<string, any> };
@@ -153,17 +158,31 @@ export function fixture(kind = 'article') {
     threadRootId: null,
   };
   const controller = new NormalMessageDrafts({
+    replyIntent: () => `reply_${++uuid}`,
     load: async () => ({ ...stored }),
-    save: async (_, expected, text, reply) => {
+    save: async (_, expected, text, reply, reply_quote, shared_reply, edit, reply_intent) => {
       assert.equal(expected, stored.revision);
-      stored = { revision: String(++revision), text, reply_to: reply };
+      stored = {
+        revision: String(++revision),
+        text,
+        reply_to: reply,
+        reply_quote,
+        shared_reply,
+        edit,
+        reply_intent,
+      };
       return { ...stored };
     },
     send: async (_, expected) => {
       assert.equal(expected, stored.revision);
       sends++;
       stored = { revision: String(++revision), text: '', reply_to: null };
-      return { entry: { id: 'synthetic-message' } as TimelineEntry, draft: { ...stored } };
+      return {
+        message_id: 'synthetic-message',
+        text_revision: null,
+        entry: { id: 'synthetic-message' } as TimelineEntry,
+        draft: { ...stored },
+      };
     },
   });
   const channel = { scope, controller };
@@ -177,7 +196,9 @@ export function fixture(kind = 'article') {
   const prepared: string[] = [];
   const searches: string[] = [];
   let gpsGate: Promise<StaticLocation | null> | null = null;
+  let contactGate: Promise<content.SharedContact | null> | null = null;
   let searchGate: Promise<readonly StaticLocation[]> | null = null;
+  const pollReceipts = new Map<string, Awaited<ReturnType<MediaDraftPort['send']>>>();
   const mediaPort: MediaDraftPort = {
     load: async () => mediaStored,
     save: async (_, expected, content, assets) => {
@@ -200,9 +221,36 @@ export function fixture(kind = 'article') {
       throw Error('not used');
     },
     release: async () => {},
-    send: async () => {
-      sends++;
-      throw Error('picker must not send');
+    send: async (_, expected) => {
+      if (kind !== 'poll') throw Error('picker must not send');
+      const old = pollReceipts.get(expected);
+      if (old) return old;
+      assert.equal(expected, mediaStored.revision);
+      const value = JSON.parse(mediaStored.content_json);
+      assert.equal(value.kind, 'poll');
+      content.pollArguments(
+        value.question,
+        value.options.map((o: { text: string }) => o.text),
+      );
+      polls++;
+      mediaStored = {
+        revision: String(Number(expected) + 1),
+        content_json: 'null',
+        assets: [],
+        attempted: false,
+        accepted_intent_json: JSON.stringify({
+          input_revision: expected,
+          messages: ['synthetic-poll'],
+          reply: { reply_to: value.reply_to, ...mediaReply.copyMediaReply(value) },
+        }),
+      };
+      const result = { entries: [{ id: 'synthetic-poll' } as TimelineEntry], draft: mediaStored };
+      pollReceipts.set(expected, result);
+      if (pollError) {
+        pollError = false;
+        throw Error('synthetic lost poll ACK');
+      }
+      return result;
     },
   };
   const mediaChannel = new MediaDraftChannel(
@@ -240,13 +288,8 @@ export function fixture(kind = 'article') {
         value === mediaChannel && owner.identityId === scope.owner.identityId,
     },
     refresh: async () => {},
-    request: async (request: any) => {
-      assert.equal(request.op, 'install_app');
-      assert.equal(request.space_id, scope.spaceId);
-      assert.equal(request.app_id, 'poll');
-      polls++;
-      if (pollError) throw new Error('synthetic unconfirmed effect');
-      return { id: 'synthetic-poll' };
+    request: async () => {
+      throw Error('Poll must use the durable conversation journal');
     },
   };
   const module: { exports: any } = { exports: {} };
@@ -320,6 +363,11 @@ export function fixture(kind = 'article') {
     if (name === '../../media/attachment-categories') return categories;
     if (name === '../../media/attachment-content') return content;
     if (name === '../../media/attachment-route-actions') return actions;
+    if (name === '../../media/media-reply') return mediaReply;
+    if (name === '../../core/message-draft') return messageDraft;
+    if (name === '../../media/poll-draft-owner') return { PollDraftOwner };
+    if (name === '../../media/attachment-reply-context')
+      return { AttachmentReplyContext: 'AttachmentReplyContext' };
     if (name === '../../media/location-map') return { LocationMap: 'LocationMap' };
     if (name === '../../media/location-selection') return { LocationSelection };
     if (name === '../../media/location-picker') {
@@ -344,18 +392,28 @@ export function fixture(kind = 'article') {
         },
         chooseSharedContact: async () => {
           contactReads++;
-          return content.sharedContact('Synthetic', ['+000']);
+          return contactGate ?? content.sharedContact('Synthetic', ['+000']);
         },
         prepareLocationFile: async (text: string) => {
           prepared.push(text);
           return { uri: 'file:///location.geojson', release: async () => {} };
         },
-        prepareContactFile: async () => {
-          throw Error('not used');
+        prepareContactFile: async (text: string) => {
+          prepared.push(text);
+          return { uri: 'file:///contact.vcf', release: async () => {} };
         },
       };
     if (name === '../../media/cache-work')
       return { sensitiveCacheWork: { run: (work: () => unknown) => work() } };
+    if (name === '../../media/poll-attachment-editor') {
+      const editor = { exports: {} };
+      runInNewContext(pollEditorCode, {
+        module: editor,
+        exports: editor.exports,
+        require: routeDependency,
+      });
+      return editor.exports;
+    }
     if (name === '../../media/poll-attachment-fields') {
       const fields = { exports: {} };
       runInNewContext(pollFieldsCode, {
@@ -415,7 +473,7 @@ export function fixture(kind = 'article') {
   };
   return {
     render: () => {
-      if (kind === 'location') render();
+      if (kind === 'location' || kind === 'poll') render();
       return render();
     },
     button,
@@ -425,6 +483,13 @@ export function fixture(kind = 'article') {
     prepared,
     searches,
     mediaChannel,
+    chooseReply: (reply: MediaReplyTarget) => {
+      if (reply.shared_reply) controller.setSharedReply(scope, reply.shared_reply);
+      else controller.setReply(scope, reply.reply_to, reply.reply_quote ?? null);
+    },
+    contactGate: (value: Promise<content.SharedContact | null>) => {
+      contactGate = value;
+    },
     gpsGate: (gate: Promise<StaticLocation | null>) => {
       gpsGate = gate;
     },

@@ -231,6 +231,7 @@ fn valid_member_same_cid_is_not_confirmation_and_does_not_mask_the_later_exact_e
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let event = log.sequence(signed)?.clone();

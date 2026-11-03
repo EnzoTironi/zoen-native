@@ -34,6 +34,7 @@ pub(super) fn native_image_upgrades_only_exact_previous_outbox_schema_without_ch
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )
         })

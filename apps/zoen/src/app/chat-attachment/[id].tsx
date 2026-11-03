@@ -25,8 +25,7 @@ export default function ChatAttachment() {
   };
   if (
     !kind ||
-    Object.values(destination).some((value) => value !== null && typeof value !== 'string') ||
-    (kind === 'poll' && destination.thread)
+    Object.values(destination).some((value) => value !== null && typeof value !== 'string')
   )
     return <Text accessibilityRole="alert">{t('attachmentTabs.unavailable')}</Text>;
   return (

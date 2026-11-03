@@ -1,4 +1,5 @@
 import type { MediaDraftState, Stage, Write } from './media-draft-contract.ts';
+import { mediaAcceptedIntent } from './media-acceptance.ts';
 import {
   boundedText,
   contentValue,
@@ -417,6 +418,15 @@ export class MediaDraftChannel {
           const result = await this.port.send(this.scope, intent.revision);
           this.draining();
           if (!Array.isArray(result.entries)) invalid();
+          const candidate = dtoValue(result.draft).value;
+          const receipt = mediaAcceptedIntent(candidate);
+          if (
+            receipt
+              ? receipt.input_revision !== intent.revision ||
+                result.entries.some((entry) => !receipt.messages.includes(entry.id))
+              : !result.entries.length
+          )
+            invalid();
           const draft = this.accept(result.draft);
           this.work.intent = null;
           return Object.freeze({ entries: Object.freeze([...result.entries]), draft });

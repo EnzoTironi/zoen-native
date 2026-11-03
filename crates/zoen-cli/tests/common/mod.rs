@@ -366,6 +366,7 @@ impl RawClient {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         Ok(self.publish(Envelope::plain(&e)?).await)
@@ -389,6 +390,7 @@ impl RawClient {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let mut forged = SignedContent::parse(&e.content).unwrap();

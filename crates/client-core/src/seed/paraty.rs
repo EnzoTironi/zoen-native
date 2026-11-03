@@ -184,7 +184,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
             ),
         },
     )?;
-    e.append_at(&paraty, zoen, at(187), EventBody::MessagePosted { message: new_id("msg")?, text: t(&t("Montei o plano: ônibus, 2 noites na Casa Azul e escuna. R$ 1.348 de R$ 1.500 · sobra R$ 152.", "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), attaches: Some(plan_item.clone()), reply: None, media: None, forwarded: false, })?;
+    e.append_at(&paraty, zoen, at(187), EventBody::MessagePosted { message: new_id("msg")?, text: t(&t("Montei o plano: ônibus, 2 noites na Casa Azul e escuna. R$ 1.348 de R$ 1.500 · sobra R$ 152.", "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), attaches: Some(plan_item.clone()), reply: None, media: None, forwarded: false, forwarded_author: None, })?;
     e.append_at(
         &paraty,
         zoen,
@@ -255,6 +255,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<()> {
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
 

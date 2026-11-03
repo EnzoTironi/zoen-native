@@ -1,3 +1,6 @@
+import type { SharedReplyDraft } from './generated/SharedReplyDraft';
+import type { MessageInfo } from './generated/MessageInfo';
+import type { ForwardBatchReview } from './generated/ForwardBatchReview';
 import type { ReplySelection } from './generated/ReplySelection';
 import type { SpaceSummary } from './generated/SpaceSummary';
 import type { SpaceMemberContext } from './generated/SpaceMemberContext';
@@ -124,7 +127,16 @@ type Results = {
   snapshot: Snapshot;
   timeline: TimelinePage;
   send_message: TimelineEntry;
+  delete_messages: string[];
+  message_info: MessageInfo;
+  forward_batch_status: ForwardBatchReview | null;
+  forward_batch_review: ForwardBatchReview;
+  set_forward_batch_options: ForwardBatchReview;
+  confirm_forward_batch: ForwardBatchReview;
+  finish_forward_batch: ForwardBatchReview;
+  abandon_forward_batch: ForwardBatchReview;
   forward_review: ForwardReview;
+  set_forward_options: ForwardReview;
   forward_status: ForwardReview | null;
   confirm_forward: ForwardReview;
   dismiss_forward: void;
@@ -133,9 +145,11 @@ type Results = {
   app_current_share_context: AppShareContext;
   share_app_current: AppShareResult;
   review_reply_selection: ReplySelection;
+  review_shared_reply: SharedReplyDraft;
   message_draft: MessageDraftDto;
   save_message_draft: MessageDraftDto;
   send_message_draft: MessageDraftSendResult;
+  send_message_edit_draft: MessageDraftSendResult;
   recover_failed_media_draft: Omit<MediaDraftDto, 'assets'> & {
     assets: (Omit<MediaDraftDto['assets'][number], 'size'> & { size: string })[];
   };
@@ -199,6 +213,7 @@ type Results = {
   log_events_page: LogEventsPage;
   log_events: LogEventDto[];
   search_messages: MessageSearchPage;
+  message_date_target: string | null;
   recent_attachments: RecentAttachmentPage;
   attachment_reference_validate: RecentAttachment;
   page_apply: PageEditResult;
@@ -258,6 +273,8 @@ export type CommandResult<C extends Command> = C['op'] extends keyof Results
 export interface CoreDriver {
   /** Native Rust owns encrypted, device-local normal composer drafts. */
   durableMessageDrafts?: boolean;
+  /** A local intent identity, never a grant of publication authority. */
+  localIntentId?(): string;
   canAuthorizeDevice?(): boolean;
   assistant?: AssistantPort;
   pageInput?: PageInputPort;

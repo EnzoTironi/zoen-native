@@ -42,7 +42,7 @@ READERS = {
 }
 CORPUS = "crates/zoen-cli/tests/journey_files.rs"
 CORPUS_HASH = "28ac64c7f3550871e36f23664122dd885281711b82fd07c0c21d3862c6d09c83"
-SELECTORS = {"scripts/ci_static_documents.py", "scripts/ci-documentation-scope.py",
+SELECTORS = {"scripts/ci_ui_scope.py", "scripts/tests/test_ci_ui_scope.py", "scripts/ci_static_documents.py", "scripts/ci-documentation-scope.py",
              "scripts/expo-artifact-scope.py", "scripts/tests/test_ci_static_scope.py",
              "scripts/tests/test_ci_documentation_scope.py",
              "scripts/tests/test_ci_frontend_readers_scope.py"}

@@ -46,6 +46,7 @@ mod item_versions;
 mod items;
 pub(crate) use item_versions::ItemVersions;
 mod labels;
+mod message_forward;
 mod persistence;
 mod plans;
 mod requests;
@@ -154,6 +155,7 @@ pub(crate) struct MessageMarks {
     pub edited: bool,
     pub deleted: bool,
     pub forwarded: bool,
+    pub forwarded_author: Option<String>,
     pub media: Option<types::MessageMedia>,
     /// One reaction per person, in the order people first reacted.
     pub reactions: Vec<(IdentityId, String)>,
@@ -300,6 +302,8 @@ pub(crate) struct State {
     pub(crate) waiting_spaces: HashSet<SpaceId>,
     /// My per-chat prefs (pin, archive, mute), from my Personal Space.
     pub(crate) chat_prefs: HashMap<SpaceId, types::ChatPrefs>,
+    /// Derived only from signed Personal events, keyed by owner and source Space.
+    pub(crate) deleted_for_self: HashMap<IdentityId, HashMap<SpaceId, HashSet<String>>>,
 }
 
 // ───────────────────────────── motor ─────────────────────────────
@@ -328,6 +332,7 @@ pub struct Engine {
 
 pub(crate) type R<T> = Result<T, CoreError>;
 
+mod entry_order;
 mod errors;
 
 fn not_found(what: &str) -> CoreError {

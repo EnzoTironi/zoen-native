@@ -167,6 +167,8 @@ for (const kind of ['plain', 'formatted', 'caption'] as const)
       },
       '../theme': { useTheme: () => ({ colors: {}, scheme: 'light' }) },
       './use-link-launch': { useLinkLaunch: () => () => {} },
+      './use-quote-collapse': { useQuoteCollapse: () => ({}) },
+      './quote-layout-context': { useQuoteLayoutTransition: () => null },
       './use-message-code-copy': { useMessageCodeCopy: () => () => {} },
       './message-context-ports': { MessageTextSelection },
     });

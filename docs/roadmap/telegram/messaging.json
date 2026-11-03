@@ -46,29 +46,59 @@
   {
     "id": "TG-messaging-selected-text-quotes",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "crates/client-core/src/selected_quotes.rs",
+      "crates/client-core/src/message_drafts/tests/selected_quotes.rs",
+      "apps/zoen/src/components/use-reply-options.ts",
+      "apps/zoen/src/core/reply-options-hook.test.ts",
+      "crates/client-core/src/media_drafts/replies.rs",
+      "crates/client-core/src/media_drafts/tests/reply_context_cases.rs",
+      "crates/zoen-cli/tests/journey_message_deletion/media_reply.rs",
+      "apps/zoen/src/core/media-reply-context.test.ts",
+      "apps/zoen/src/core/media-voice-reply.test.ts",
+      "apps/zoen/src/media/stage-reviewed-attachment.ts",
+      "apps/zoen/src/core/attachment-form-reply.test.ts",
+      "apps/zoen/src/core/attachment-form-stage.test.ts"
     ],
-    "gap": "Selecionar trecho e preservar intervalo citado na resposta; ReplyQuote hoje transporta texto integral sem intervalo.",
+    "gap": "Texto, arquivos/fotos/vídeos, voz, contatos e localização nativos preservam o trecho revisto no rascunho criptografado, revalidam no Enviar e recuperam o recibo sem apagar resposta posterior; o token privado não vai para a mensagem. Continuam pendentes contexto de resposta em enquetes, recuperação durável Web e aceite de gestos/teclado no iPhone por Enzo.",
     "issues": [
-      172
+      172,
+      709,
+      737,
+      739
     ]
   },
   {
     "id": "TG-messaging-reply-in-another-chat",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "partial",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
+      "crates/client-core/src/replies/external.rs",
+      "crates/client-core/src/message_drafts/tests/shared_replies.rs",
+      "apps/zoen/src/app/reply/[space]/[message].tsx",
+      "apps/zoen/src/core/shared-reply.test.ts",
+      "apps/zoen/src/core/shared-reply-render.test.ts",
+      "crates/client-core/src/message_drafts/tests/shared_selections.rs",
+      "apps/zoen/src/core/reply-options-hook.test.ts",
+      "crates/client-core/src/media_drafts/replies.rs",
+      "crates/client-core/src/media_drafts/tests/reply_context_cases.rs",
+      "crates/zoen-cli/tests/journey_message_deletion/media_reply.rs",
+      "apps/zoen/src/core/media-reply-context.test.ts",
+      "apps/zoen/src/core/media-voice-reply.test.ts",
+      "apps/zoen/src/media/stage-reviewed-attachment.ts",
+      "apps/zoen/src/core/attachment-form-reply.test.ts",
+      "apps/zoen/src/core/attachment-form-stage.test.ts"
     ],
-    "gap": "Escolher outro destino mantendo citação e acesso à origem; encaminhar não equivale a responder.",
+    "gap": "Texto, arquivos/fotos/vídeos, voz, contatos e localização nativos preservam o trecho revisto no rascunho criptografado, revalidam no Enviar e recuperam o recibo sem apagar resposta posterior; o token privado não vai para a mensagem. Continuam pendentes contexto de resposta em enquetes, recuperação durável Web e aceite de gestos/teclado no iPhone por Enzo.",
     "issues": [
-      172
+      172,
+      705,
+      709,
+      737,
+      739
     ]
   },
   {
@@ -78,11 +108,23 @@
     "acceptance": "scoped",
     "evidence": [
       "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "apps/zoen/src/core/generated/TimelineEntry.ts",
+      "crates/client-core/src/message_edit.rs",
+      "crates/protocol/src/message_edit.rs",
+      "crates/zoen-web-core/src/client/message_edit.rs",
+      "apps/zoen/src/core/message-edit-react.test.ts",
+      "crates/zoen-cli/tests/journey_message_deletion.rs",
+      "crates/client-core/src/message_drafts/editing.rs",
+      "crates/client-core/src/message_drafts/tests/editing.rs",
+      "apps/zoen/src/core/message-edit-recovery.test.ts",
+      "crates/zoen-cli/tests/journey_message_deletion/edit_recovery.rs"
     ],
-    "gap": "Fechar edição de texto e legenda com falha/retomada sem editar uma mensagem aposentada.",
+    "gap": "Texto/legenda usam conta, aparelho e revisão conhecidos; rascunhos de edição recuperam localmente no registro criptografado do compositor, sem publicar ao reabrir. Confirmação/consumo são atômicos e preservam digitação posterior. Restam conflito remoto ainda não observado, recuperação durável Web e aceite manual iPhone por Enzo; não equivale a CAS global ou rascunho cloud.",
     "issues": [
-      172
+      172,
+      724,
+      727,
+      729
     ]
   },
   {
@@ -118,15 +160,17 @@
   {
     "id": "TG-messaging-edit-timestamps",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "crates/client-core/src/message_info.rs",
+      "apps/zoen/src/components/message-info-sheet.tsx",
+      "apps/zoen/src/core/message-info-sheet.test.ts"
     ],
-    "gap": "Exibir horário da última edição; o DTO lido só oferece edited booleano.",
+    "gap": "Detalhes já exibem horário de edição canônico quando disponível; legado sem horário permanece explícito. Aceite manual das variantes editadas e acessibilidade segue em #678.",
     "issues": [
-      172
+      172,
+      678
     ]
   },
   {
@@ -136,12 +180,28 @@
     "acceptance": "scoped",
     "evidence": [
       "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "apps/zoen/src/core/generated/TimelineEntry.ts",
+      "crates/client-core/src/message_deletion.rs",
+      "crates/client-core/src/message_deletion/tests.rs",
+      "apps/zoen/src/components/delete-message-action.ts",
+      "crates/client-core/src/message_deletion/private.rs",
+      "crates/client-core/src/message_deletion/tests/private/projections.rs",
+      "apps/zoen/src/components/dialogs.ios.tsx",
+      "apps/zoen/src/core/message-deletion-dialog-react.test.ts",
+      "apps/zoen/src/components/message-actions-model.ts",
+      "apps/zoen/src/core/message-actions-model.test.ts",
+      "apps/zoen/src/core/message-accessibility-row-actions.cases.ts",
+      "crates/zoen-cli/tests/journey_message_deletion.rs"
     ],
-    "gap": "Qualificar remoção nos dois clientes, offline e recuperação; ação atual limita-se à própria autoria.",
+    "gap": "Exclusão global restrita à própria autoria. Dois clientes MLS reais comprovam remoção local, seleção desatualizada, exclusão offline e retomada sem duplicação. Restam replicação privada (#176) e aceite manual iPhone por Enzo.",
     "issues": [
       172,
-      176
+      176,
+      712,
+      714,
+      717,
+      718,
+      720
     ]
   },
   {
@@ -173,73 +233,37 @@
     ]
   },
   {
-    "id": "TG-messaging-message-forwarding",
-    "scope": "active",
-    "implementation": "partial",
-    "acceptance": "scoped",
-    "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
-    ],
-    "gap": "Qualificar atribuição da origem e envio real; DTO distingue forwarded mas não expõe autoria original.",
-    "issues": [
-      172
-    ]
-  },
-  {
-    "id": "TG-messaging-forward-without-sender-or-caption",
-    "scope": "active",
-    "implementation": "missing",
-    "acceptance": "pending",
-    "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
-    ],
-    "gap": "Revisar ocultação de autoria/legenda antes de encaminhar, com proteção de conteúdo.",
-    "issues": [
-      172
-    ]
-  },
-  {
-    "id": "TG-messaging-forward-to-several-destinations",
-    "scope": "active",
-    "implementation": "missing",
-    "acceptance": "pending",
-    "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
-    ],
-    "gap": "Selecionar vários destinos e mostrar resultado individual sem repetir os já aceitos.",
-    "issues": [
-      172
-    ]
-  },
-  {
-    "id": "TG-messaging-change-forwarding-destination",
-    "scope": "active",
-    "implementation": "partial",
-    "acceptance": "scoped",
-    "evidence": [
-      "apps/zoen/src/app/forward/[space]/[message].tsx",
-      "apps/zoen/src/core/forward-message.test.ts"
-    ],
-    "gap": "Trocar destinatário em revisão explícita antes de aceitar envio; toque atual já envia.",
-    "issues": [
-      172
-    ]
-  },
-  {
     "id": "TG-messaging-multi-message-selection",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "partial",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "apps/zoen/src/components/use-message-selection.ts",
+      "apps/zoen/src/components/message-selection-toolbar.tsx",
+      "crates/client-core/src/forwarding/batch.rs",
+      "apps/zoen/src/core/thread-message-selection.test.ts",
+      "crates/client-core/src/message_deletion.rs",
+      "crates/client-core/src/message_deletion/tests.rs",
+      "apps/zoen/src/core/message-deletion.test.ts",
+      "apps/zoen/src/core/message-delete-action-react.test.ts",
+      "crates/client-core/src/message_deletion/private.rs",
+      "crates/client-core/src/message_deletion/tests/private/projections.rs",
+      "apps/zoen/src/components/dialogs.ios.tsx",
+      "apps/zoen/src/core/message-deletion-dialog-react.test.ts",
+      "apps/zoen/src/components/message-actions-model.ts",
+      "apps/zoen/src/core/message-actions-model.test.ts",
+      "apps/zoen/src/core/message-accessibility-row-actions.cases.ts",
+      "crates/zoen-cli/tests/journey_message_deletion.rs"
     ],
-    "gap": "Selecionar várias mensagens e aplicar encaminhamento/cópia/exclusão com alcance visível.",
+    "gap": "Seleção mista, placeholders e exclusão atômica compartilham o contrato individual; encaminhar e copiar exigem conteúdo disponível. Restam replicação privada (#176) e aceite manual iPhone por Enzo.",
     "issues": [
-      172
+      172,
+      670,
+      712,
+      714,
+      717,
+      718,
+      720
     ]
   },
   {
@@ -388,29 +412,34 @@
   {
     "id": "TG-messaging-read-timestamps",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "crates/client-core/src/message_info/receipts.rs",
+      "apps/zoen/src/components/message-info-sheet.tsx",
+      "apps/zoen/src/core/message-info-session.test.ts"
     ],
-    "gap": "Expor horário de leitura autorizado, separado do estado agregado Read.",
+    "gap": "Horário declarado pelo participante é separado da observação local, com persistência/replay e indicação de ausência no legado. Restam variantes de acesso, privacidade e aceite manual em #678.",
     "issues": [
-      172
+      172,
+      678
     ]
   },
   {
     "id": "TG-messaging-small-group-read-receipts",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
+      "crates/client-core/src/message_info.rs",
+      "crates/client-core/src/message_info/receipts.rs",
+      "apps/zoen/src/components/message-info-sheet.tsx",
+      "apps/zoen/src/core/message-info-hook.test.ts"
     ],
-    "gap": "Mostrar participantes que leram com atualização e permissões, sem inferir pela presença.",
+    "gap": "Participantes e recibos canônicos são exibidos quando o escopo permite; presença não cria leitura. Qualificação manual de grupos, mudanças de membros e acessibilidade permanece pendente.",
     "issues": [
-      172
+      172,
+      678
     ]
   },
   {
@@ -430,16 +459,20 @@
   {
     "id": "TG-messaging-message-links",
     "scope": "active",
-    "implementation": "partial",
-    "acceptance": "scoped",
+    "implementation": "present",
+    "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/app/search.tsx",
-      "apps/zoen/src/core/conversation-search.ts",
-      "apps/zoen/src/core/chat-search-react.test.ts"
+      "apps/zoen/src/notifications/links.ts",
+      "apps/zoen/src/core/message-link.ts",
+      "apps/zoen/src/components/message-link-actions.ts",
+      "apps/zoen/src/app/message/[space]/[message].tsx",
+      "apps/zoen/src/core/message-link.test.ts",
+      "apps/zoen/src/core/message-link-route.test.ts"
     ],
-    "gap": "Compartilhar e resolver link autenticado para mensagem; salto interno por ID já existe, URL externa não foi qualificada.",
+    "gap": "Menu copia endereço zoen:// sem texto ou credenciais; abertura resolve conversa/thread pelo núcleo, revalida sessão/acesso e revela mensagem ou filho do álbum. Restam aceite manual iPhone por Enzo e associação/publicação de universal links HTTPS no lançamento.",
     "issues": [
-      172
+      172,
+      707
     ]
   },
   {

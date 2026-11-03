@@ -12,6 +12,8 @@ import { t } from '../i18n';
 import { useTheme } from '../theme';
 import { SwipeActionPanel } from './swipe-action-panel';
 import { ChatRowContent } from './chat-row-content';
+import { useSemanticMessagePreview } from '../components/use-semantic-message-preview';
+import { messageMayContainMarkdown } from '../core/message-markdown';
 import { rowActions, type InboxAction } from './row-actions';
 
 export function InboxChatRow({
@@ -28,6 +30,14 @@ export function InboxChatRow({
   onAction(action: InboxAction): void;
 }) {
   const { presentation: p, reducedMotion } = useTheme();
+  const preview =
+    useSemanticMessagePreview({
+      owner: `inbox:${chat.id}`,
+      text: chat.last_preview,
+      literal:
+        !chat.last_preview_is_markdown || !messageMayContainMarkdown(chat.last_preview, true),
+      target: { spaceId: chat.id },
+    }).text ?? '…';
   const swipe = useRef<SwipeableMethods | null>(null);
   const actions = enabled ? rowActions(chat) : [];
   useEffect(() => {
@@ -46,16 +56,16 @@ export function InboxChatRow({
           ? t('chat.conversationUnreadLabel', {
               title: conversationTitle(chat),
               count: chat.unread,
-              preview: chat.last_preview,
+              preview,
             })
           : chat.manual_unread
             ? t('inboxActions.manuallyUnreadLabel', {
                 title: conversationTitle(chat),
-                preview: chat.last_preview,
+                preview,
               })
             : t('chat.conversationLabel', {
                 title: conversationTitle(chat),
-                preview: chat.last_preview,
+                preview,
               })
       }
       accessibilityState={{ busy: pending }}
@@ -76,7 +86,7 @@ export function InboxChatRow({
             : 'transparent',
       })}
     >
-      <ChatRowContent chat={chat} />
+      <ChatRowContent chat={chat} preview={preview} />
     </Pressable>
   );
   if (!enabled) return content;

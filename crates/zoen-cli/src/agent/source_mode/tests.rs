@@ -1,12 +1,15 @@
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
+mod approval_delivery;
 mod file_import;
 mod fixture;
+mod history_search;
 mod known_result;
 mod known_tools;
 mod lifecycle;
 mod owner_controls;
+mod owner_note_recovery;
 mod publication_recovery;
 mod reconnect;
 mod relay;

@@ -130,6 +130,7 @@ impl<S: Signer> Client<S> {
                     .resolve_post(space, &to)
                     .map_or(to, |event| event.hash.clone());
                 Some(types::ReplyRef {
+                    shared: None,
                     quote: None,
                     artifact: None,
                     to,
@@ -150,6 +151,7 @@ impl<S: Signer> Client<S> {
                 reply,
                 media: None,
                 forwarded,
+                forwarded_author: None,
             },
             now_ms,
             Vec::new(),

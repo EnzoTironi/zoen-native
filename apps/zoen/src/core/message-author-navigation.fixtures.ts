@@ -1,3 +1,4 @@
+import { messageInfoNavigation } from './message-info-navigation.fixtures.ts';
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import type {
 } from '../components/message-actions.types';
 import type { ClientState } from './store';
 import type { Snapshot, TimelineEntry } from './types';
+import type { DialogChoiceOptions } from '../components/dialog-types';
 
 export const require = createRequire(import.meta.url);
 export const { transformSync } = require('@babel/core') as {
@@ -50,6 +52,7 @@ export const externalPorts = new Set([
   './dialogs',
   './message-actions',
   './reaction-details',
+  './message-info-navigation',
 ]);
 export const bundled = await build({
   stdin: { contents: compiled, resolveDir: dirname(sourcePath), loader: 'js' },
@@ -125,7 +128,7 @@ export function clientState(): ClientState {
         unlocked: true,
         setup_pending: false,
       },
-      conversations: [{ id: spaceId, members: [author('alice'), author()] }],
+      conversations: [{ id: spaceId, can_write: true, members: [author('alice'), author()] }],
     } as unknown as Snapshot,
     timelines: {},
     notice: null,
@@ -146,6 +149,7 @@ export type Effect = () => void | (() => void);
 export type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
 export type Options = { spaceId: string; entries: readonly TimelineEntry[]; disabled: boolean };
 export type Actions = {
+  busy: boolean;
   profile(entry: TimelineEntry): Promise<void>;
   react(entry: TimelineEntry, emoji: string | null): Promise<void>;
   open(
@@ -161,7 +165,7 @@ export type Actions = {
   selectedId: string | null;
   panel: { props: MessageActionsProps & { selectedEmoji?: string } };
 };
-export type Route = { pathname: string; params: { id: string } };
+export type Route = { pathname: string; params: Record<string, string> };
 export type Read = { op: string; space_id: string; message_id: string };
 
 export function fixture() {
@@ -170,6 +174,8 @@ export function fixture() {
   let options: Options = { spaceId, entries: [message()], disabled: false };
   let read: (command: Read) => Promise<TimelineEntry> = async () => message();
   let mutate: () => Promise<unknown> = async () => undefined;
+  let choose: (options: DialogChoiceOptions) => Promise<string | null> = () =>
+    assert.fail('Profile navigation must not ask for mutation confirmation');
   let push: (route: Route) => void = () => {};
   let keyboardVisible = false;
   let dismiss: () => Promise<void> = async () => {
@@ -180,6 +186,7 @@ export function fixture() {
   const mutations: unknown[] = [];
   const routes: Route[] = [];
   const alerts: unknown[][] = [];
+  const confirmations: DialogChoiceOptions[] = [];
   const writes: unknown[] = [];
   const listeners = new Set<() => void>();
   const slots: Slot[] = [];
@@ -218,6 +225,8 @@ export function fixture() {
     });
   };
   const store = {
+    sessionEpoch: 1,
+    isSessionRetiring: false,
     getSnapshot: () => live,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
@@ -282,7 +291,7 @@ export function fixture() {
       router: {
         push: (route: Route) => {
           push(route);
-          routes.push({ pathname: route.pathname, params: { id: route.params.id } });
+          routes.push({ pathname: route.pathname, params: { ...route.params } });
         },
       },
       useFocusEffect: undefined,
@@ -306,7 +315,10 @@ export function fixture() {
     '../i18n/index.ts': { t: (key: string) => key, locale: 'en' },
     './dialogs': {
       useDialogs: () => ({
-        confirm: () => assert.fail('Profile navigation must not ask for mutation confirmation'),
+        choose: (options: DialogChoiceOptions) => {
+          confirmations.push(options);
+          return choose(options);
+        },
         inform: (...args: unknown[]) => {
           alerts.push(args);
           return Promise.resolve();
@@ -316,6 +328,9 @@ export function fixture() {
     './message-actions': { MessageActions: () => null },
     './reaction-details': { ReactionDetails: () => null },
   };
+  modules['./message-info-navigation'] = messageInfoNavigation(
+    (modules['expo-router'] as { router: unknown }).router,
+  );
   // Execute the installed Expo hook: each call owns its own React effect and
   // navigation listeners. A single fixture callback silently overwrote earlier hooks.
   const focusModule = { exports: {} as { useFocusEffect: (callback: Effect) => void } };
@@ -345,6 +360,7 @@ export function fixture() {
   runInNewContext(bundled.outputFiles[0]!.text, {
     module,
     exports: module.exports,
+    AbortController,
     // Driver and router errors belong to the same JS realm as the hook in-app.
     Error,
     require: (name: string) => {
@@ -376,6 +392,11 @@ export function fixture() {
     mutations,
     routes,
     alerts,
+    confirmations,
+    store,
+    choose: (next: typeof choose) => {
+      choose = next;
+    },
     writes,
     render,
     state: () => live,

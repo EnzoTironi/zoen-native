@@ -139,7 +139,10 @@ test(
                 path: join(pkg, 'src/native/EnrichedMarkdownText.tsx'),
               }));
               builder.onResolve(
-                { filter: /^(\.\.\/theme|\.\/use-link-launch|\.\/use-message-code-copy)$/ },
+                {
+                  filter:
+                    /^(\.\.\/theme|\.\/use-link-launch|\.\/use-message-code-copy|\.\/use-quote-collapse)$/,
+                },
                 ({ path }) => ({ path, external: true }),
               );
 
@@ -189,6 +192,7 @@ test(
               }),
             };
           if (name === './use-link-launch') return { useLinkLaunch: () => () => {} };
+          if (name === './use-quote-collapse') return { useQuoteCollapse: () => ({}) };
           if (name === './use-message-code-copy') return { useMessageCodeCopy: () => () => {} };
           if (name === 'react-native')
             return {

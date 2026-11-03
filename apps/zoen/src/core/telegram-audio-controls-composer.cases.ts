@@ -136,7 +136,12 @@ test('reply/edit accessory uses the pinned45pt frame, source typography and real
   for (const editing of [false, true]) {
     const tree = f.render('MessageContext', {
       editing,
-      entry: { id: 'quote', author: { name: 'Ana' }, text: 'Original accepted message' },
+      entry: {
+        id: 'quote',
+        author: { name: 'Ana' },
+        text: 'Original accepted message',
+        kind: { Message: { text: 'Original accepted message', card: null } },
+      },
       onCancel: () => cancelled++,
     });
     assert.equal(tree.props.style.height, 45);

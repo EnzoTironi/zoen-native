@@ -32,6 +32,7 @@ pub(super) fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_work
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();

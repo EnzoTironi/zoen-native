@@ -1,3 +1,5 @@
+import { voicePort } from './voice-native.fixtures.ts';
+export { voicePort } from './voice-native.fixtures.ts';
 import assert from 'node:assert/strict';
 import type { RecordingStatus } from 'expo-audio';
 import { runInNewContext } from 'node:vm';
@@ -6,13 +8,16 @@ import { VoiceDraftOwner, frozenVoicePreview } from '../media/voice-draft-owner.
 import * as voiceEdit from '../media/voice-edit.ts';
 import { VoiceReviewOwner } from '../media/voice-review-owner.ts';
 import type { VoiceSession } from '../media/voice-session.ts';
-import { VoiceSessionFailure, type VoiceNativePort } from '../media/voice-session.ts';
+import { VoiceSessionFailure } from '../media/voice-session.ts';
 import * as voiceSuggestions from '../media/voice-suggestions.ts';
 import * as voiceTrimPreview from '../media/voice-trim-preview.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 import { telegramAudio } from './telegram-audio-presentation.ts';
 import type { files } from './voice-controls-compile.ts';
 import { compiled } from './voice-controls-compile.ts';
+import * as mediaReply from '../media/media-reply.ts';
+import * as mediaAcceptance from '../media/media-acceptance.ts';
+import type { MediaDraftChannel } from '../media/media-draft-channel.ts';
 
 export type Element = { type: unknown; props: Record<string, any> };
 export type Slot = {
@@ -54,6 +59,9 @@ export function component(name: (typeof files)[number], ports: Record<string, un
   const jsx = (type: unknown, props: Element['props']) => ({ type, props });
   const module = { exports: {} as Record<string, (props: Element['props']) => Element> };
   const dependencies = {
+    './media-reply': mediaReply,
+    './media-acceptance': mediaAcceptance,
+    './attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     react: {
       useState(initial: unknown) {
         const slot = next();
@@ -226,34 +234,11 @@ export function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-export function voicePort(): VoiceNativePort {
-  let renders = 0;
-  return {
-    prepare: async () => ({
-      id: 'synthetic-voice',
-      uri: 'file:///voice/original.m4a',
-      sampleRate: 1000,
-      frameCount: 4000,
-      durationMs: 4000,
-      levels: [0.2, 0.8],
-    }),
-    render: async (_id, ranges) => {
-      const durationMs = ranges.reduce((sum, range) => sum + range.endFrame - range.startFrame, 0);
-      return {
-        uri: `file:///voice/render-${++renders}.m4a`,
-        frameCount: durationMs,
-        durationMs,
-        mime: 'audio/mp4',
-        levels: [0.2, 0.8],
-      };
-    },
-    transcribe: async () => ({ status: 'unavailable', text: '', words: [] }),
-    releaseRender: async () => {},
-    cancel: async () => {},
-    release: async () => {},
-  };
-}
-export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
+export function recording(
+  editable = false,
+  platform: 'ios' | 'web' = 'ios',
+  channel?: MediaDraftChannel,
+) {
   let stopFailure = false;
   let restoreFailure = false;
   let confirmationFailure = false;
@@ -394,6 +379,9 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
     },
   };
   const store = {
+    mediaDrafts: channel
+      ? { channel: () => channel, isCurrent: (value: MediaDraftChannel) => value === channel }
+      : undefined,
     driver: {
       media: {
         voiceEditor: editable ? voice : undefined,
@@ -440,7 +428,10 @@ export function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
     },
     '../components/dialogs': { useDialogs: () => ({ inform }) },
     '../core/provider': {
-      useClient: () => ({ store }),
+      useClient: () => ({
+        store,
+        ...(channel ? { phase: 'ready', mode: 'account', snapshot: { account: {} } } : {}),
+      }),
     },
     './cache-files': {
       discardCacheCopy: (uri?: string) => {

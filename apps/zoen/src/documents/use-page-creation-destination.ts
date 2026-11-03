@@ -35,6 +35,7 @@ export function usePageCreationDestination(initial: string) {
   const [revision, setRevision] = useState(0);
   const [pendingSnapshot, setPendingSnapshot] = useState<typeof client.snapshot>(null);
   const stampNow = useRef<string | null>(null);
+  const pickerReview = useRef({ stamp: '', epoch: 0 });
   const retireNow = useRef<() => void>(() => {});
   const chat = client.snapshot?.conversations.find((c) => c.id === space);
   const requiresRole = chat?.kind === 'Group' || chat?.kind === 'Community';
@@ -125,9 +126,18 @@ export function usePageCreationDestination(initial: string) {
   // Direct membership is its own contract; never call group member-context as a fallback.
   const allowed = !!chat && member && fresh && (chat.kind === 'Direct' || roleAllowed);
   const stamp = JSON.stringify([scope, space, revision, checking, read.error, context, member]);
+  const pickerStamp = JSON.stringify([scope, space, read.error, context, member]);
   useLayoutEffect(() => {
     stampNow.current = stamp;
   }, [stamp]);
+  useLayoutEffect(() => {
+    // Refreshing is not a permission change. This file belongs to the user;
+    // publishing still requires the fresh projection and Core admission below.
+    if (checking) return;
+    const review = pickerReview.current;
+    if (review.stamp && review.stamp !== pickerStamp) review.epoch++;
+    review.stamp = pickerStamp;
+  }, [checking, pickerStamp]);
   const baseCurrent = () =>
     viewCurrent() && (!space || homeSpacesFor(store.getSnapshot()).has(space));
   return {
@@ -162,10 +172,13 @@ export function usePageCreationDestination(initial: string) {
       const flight = activity.begin();
       if (!flight) return null;
       setBusy(true);
+      const pickerEpoch = pickerReview.current.epoch;
       return {
         // A Core-accepted creation may refresh this projection; that is not a lost ACK.
         current: () =>
-          flight.current() && baseCurrent() && (mode === 'create' || stampNow.current === stamp),
+          flight.current() &&
+          baseCurrent() &&
+          (mode === 'create' || pickerReview.current.epoch === pickerEpoch),
         finish: () => {
           if (flight.finish() && viewCurrent()) setBusy(false);
         },

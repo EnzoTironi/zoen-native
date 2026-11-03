@@ -8,6 +8,8 @@
 //!
 //! Threads are one level deep: replying in a thread to a thread reply re-points at the root.
 
+pub(crate) mod external;
+
 use std::collections::HashMap;
 
 use types::{EventBody, ReplyRef};
@@ -69,6 +71,7 @@ impl Engine {
                 let mut root = self.entry_dto(entry);
                 root.thread_replies = entries
                     .iter()
+                    .filter(|reply| self.visible_message(reply))
                     .filter(|reply| {
                         matches!(
                             &reply.body,
@@ -91,11 +94,18 @@ impl Engine {
         let EntryBody::Message { reply: Some(r), .. } = &e.body else {
             return (None, None);
         };
+        if let Some(shared) = &r.shared {
+            return (Some(self.shared_reply_quote(&r.to, shared)), None);
+        }
         let thread = r.thread.then(|| r.to.clone());
         if let Some(selection) = &r.quote {
             let quote = self.space_state(&e.space).ok().and_then(|s| {
                 let source = s.entries.iter().find(|x| x.id() == selection.source_id)?;
+                if !self.visible_message(source) {
+                    return None;
+                }
                 Some(ReplyQuote {
+                    origin: None,
                     id: selection.source_id.clone(),
                     author: self.persona(&source.author),
                     text: selection.text.clone(),
@@ -109,7 +119,11 @@ impl Engine {
         }
         let quote = self.space_state(&e.space).ok().and_then(|s| {
             let target = s.entries.iter().find(|x| x.id() == r.to)?;
+            if !self.visible_message(target) {
+                return None;
+            }
             Some(ReplyQuote {
+                origin: None,
                 id: r.to.clone(),
                 author: self.persona(&target.author),
                 text: self.quote_text(target),
@@ -119,7 +133,7 @@ impl Engine {
         (quote, None)
     }
 
-    fn quote_text(&self, e: &Entry) -> String {
+    pub(crate) fn quote_text(&self, e: &Entry) -> String {
         let EntryBody::Message { text, attaches, .. } = &e.body else {
             return String::new();
         };
@@ -248,6 +262,7 @@ impl Engine {
                 reply: Some(reply),
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let s = self.space_state(space)?;
@@ -288,6 +303,11 @@ impl Engine {
                 ),
             });
         };
+        if !self.visible_message(target) && !thread {
+            return Err(CoreError::NotFound {
+                what: t("mensagem", "message"),
+            });
+        }
         // One level deep: a thread reply to a thread reply belongs to the same root.
         let to = match target_reply {
             Some(r) if thread && r.thread => r.to.clone(),
@@ -302,23 +322,23 @@ impl Engine {
 
     /// The thread under `root`: the root message, then its replies oldest first.
     pub fn thread(&self, space: &str, root: &str) -> R<Vec<TimelineEntry>> {
+        self.check_private_message_view()?;
         let s = self.space_state(space)?;
+        let replies: Vec<_> = s.entries.iter()
+            .filter(|entry| self.visible_message(entry))
+            .filter(|entry| matches!(&entry.body, EntryBody::Message { reply: Some(reply), .. } if reply.thread && reply.to == root))
+            .map(|entry| self.entry_dto(entry)).collect();
         let r = s
             .entries
             .iter()
-            .find(|e| e.id() == root)
+            .find(|e| e.id() == root && (self.visible_message(e) || !replies.is_empty()))
             .map(|r| self.entry_dto(r))
             .or_else(|| self.shared_app_root_by_anchor(space, root))
             .ok_or_else(|| CoreError::NotFound {
                 what: t("mensagem", "message"),
             })?;
         let mut out = vec![r];
-        out.extend(
-            s.entries
-                .iter()
-                .filter(|e| matches!(&e.body, EntryBody::Message { reply: Some(x), .. } if x.thread && x.to == root))
-                .map(|e| self.entry_dto(e)),
-        );
+        out.extend(replies);
         out[0].thread_replies = (out.len() - 1) as u32;
         Ok(out)
     }

@@ -10,9 +10,12 @@ import type {
 import type { ApprovalPresentation } from './durable-attachment-types';
 import type { MediaDraftAttachments } from './media-draft-types';
 import { mediaPlayback } from './playback-owner';
+import { sameMediaReply } from './media-reply';
+import { mediaAcceptedIntent } from './media-acceptance';
 
 const sameAttachmentSelection = (value: MediaDraftAttachments, observed: MediaDraftAttachments) =>
   value.reply_to === observed.reply_to &&
+  sameMediaReply(value, observed) &&
   (value.options?.presentation ?? 'media') === (observed.options?.presentation ?? 'media') &&
   (value.options?.grouping ?? 'separate') === (observed.options?.grouping ?? 'separate') &&
   value.items.length === observed.items.length &&
@@ -263,6 +266,7 @@ export async function edit(
       !presentation.closing &&
       after?.kind === 'attachments' &&
       after.reply_to === before.reply_to &&
+      sameMediaReply(after, before) &&
       after.items.length === before.items.length &&
       after.items.every(
         (item, position) =>
@@ -366,9 +370,10 @@ export async function send(
         return;
     }
     const result = await sensitiveCacheWork.run(() => channel.send());
-    if (result.entries.length) {
+    const accepted = mediaAcceptedIntent(result.draft);
+    if (result.entries.length || accepted?.messages.length) {
       retireApproval();
-      if (!runtime.closed && store.mediaDrafts.isCurrent(channel)) sent?.();
+      if (!runtime.closed && store.mediaDrafts.isCurrent(channel)) sent?.(accepted?.reply);
       void store.refresh().catch(() => {});
     }
   } catch (reason) {

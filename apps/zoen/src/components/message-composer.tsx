@@ -1,5 +1,4 @@
-import type { ReplySelection } from '../core/generated/ReplySelection';
-import { createRef, type ReactNode, type Ref } from 'react';
+import { createRef, type ReactNode, type Ref, type ComponentProps } from 'react';
 import { Text, View, Pressable, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardMotion } from './keyboard-motion';
@@ -12,10 +11,10 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { t } from '../i18n/index.ts';
 import { conversationQueryFits, type ConversationSearchState } from '../core/conversation-search';
 import { MediaComposer } from '../media/MediaComposer';
+import type { AcceptedMediaReply } from '../media/media-acceptance';
 import type { AttachmentComposerField } from '../media/attachment-composer';
 import { AttachmentReplyContext } from '../media/attachment-reply-context';
-import type { TimelineEntry } from '../core/types';
-import { MessageContext } from './message-context';
+import { ComposerReplyContext } from './composer-reply-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
 import { ComposerGlassContainer, ComposerGlassSurface } from './composer-glass';
@@ -68,6 +67,7 @@ function ComposerInputAccessory({ minimumHeight }: { minimumHeight: number }) {
 }
 
 export type ComposerSearchMode = {
+  calendar?: ReactNode;
   state: ConversationSearchState;
   status: string;
   onClose: () => void;
@@ -103,7 +103,7 @@ export function MessageComposer({
   onFocus?: () => void;
   onBlur: () => void;
   onSend: () => void;
-  onMediaSent?: () => void;
+  onMediaSent?: (reply?: AcceptedMediaReply) => void;
   sending: boolean;
   editing?: boolean;
   allowEmptyEdit?: boolean;
@@ -114,11 +114,20 @@ export function MessageComposer({
   mediaEnabled?: boolean;
   suspended?: boolean;
   search?: ComposerSearchMode;
-  context?: { entry?: TimelineEntry; quote?: ReplySelection | null; onCancel: () => void };
+  context?: Pick<
+    ComponentProps<typeof ComposerReplyContext>,
+    'entry' | 'edit' | 'quote' | 'shared'
+  > & {
+    onCancel: () => void;
+    replyIntent?: string | null;
+    onCancelCaptured?: (reply: AcceptedMediaReply) => void;
+  };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
   const { colors, scheme, presentation: p, reducedMotion } = useTheme();
   const client = useClient();
+  const mediaReplyAvailable =
+    client.mode === 'account' && Boolean(client.store.driver.media?.drafts);
   const sessionScope = JSON.stringify([
     homeOwnerFor(client),
     client.store.sessionEpoch,
@@ -148,11 +157,13 @@ export function MessageComposer({
     voice,
     review,
     files,
+    reply: mediaReply,
   }: {
     attachment: ReactNode;
     voice: ReactNode;
     review?: ReactNode;
     files?: AttachmentComposerField;
+    reply?: ReactNode;
   }) {
     const fieldText = files ? files.value : value;
     const native = process.env.EXPO_OS === 'ios';
@@ -179,7 +190,7 @@ export function MessageComposer({
           spaceId,
           threadRootId ?? null,
           search ? 'search' : files ? 'caption' : editing ? 'edit' : 'normal',
-          files?.mutationId ?? (editing ? (context?.entry?.id ?? null) : null),
+          files?.mutationId ?? (editing ? (context?.edit?.id ?? context?.entry?.id ?? null) : null),
           sessionScope,
         ])}
         testID="message-input"
@@ -326,39 +337,51 @@ export function MessageComposer({
     );
     return (
       <>
-        {files?.scope.replyTo ? (
+        {files && (files.scope.replyTo || files.scope.sharedReply) ? (
           <AttachmentReplyContext
             scope={files.scope}
             onCancel={
-              files.targetFrozen || (files.scope.thread && files.scope.replyTo === threadRootId)
-                ? undefined
-                : context?.onCancel
+              files.onCancelReply
+                ? () => {
+                    const previous = files.onCancelReply?.();
+                    if (previous) context?.onCancelCaptured?.(previous);
+                  }
+                : undefined
             }
           />
+        ) : mediaReply !== undefined ? (
+          mediaReply
         ) : !files && context ? (
-          <MessageContext
+          <ComposerReplyContext
             entry={context.entry}
             quote={context.quote}
+            shared={context.shared}
+            spaceId={spaceId}
+            threadRootId={threadRootId}
             editing={editing}
             onCancel={context.onCancel}
           />
         ) : null}
         {search ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            numberOfLines={3}
-            style={{
-              color: search.state.error ? colors.danger : colors.secondary,
-              fontSize: 12,
-              lineHeight: 17,
-              paddingHorizontal: 8,
-            }}
-          >
-            {search.status}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {search.calendar}
+            <Text
+              accessibilityLiveRegion="polite"
+              numberOfLines={3}
+              style={{
+                color: search.state.error ? colors.danger : colors.secondary,
+                fontSize: 12,
+                lineHeight: 17,
+                paddingHorizontal: 8,
+                flex: 1,
+              }}
+            >
+              {search.status}
+            </Text>
+          </View>
         ) : (
           <>
-            {context?.quote ? (
+            {!mediaReplyAvailable && (context?.quote || context?.shared) ? (
               <Text
                 accessibilityLiveRegion="polite"
                 style={{ color: colors.secondary, paddingHorizontal: 12, paddingBottom: 6 }}
@@ -458,7 +481,9 @@ export function MessageComposer({
             >
               {t(
                 draft.rejected
-                  ? 'chat.draftSendRejected'
+                  ? editing
+                    ? 'chat.editCouldNotBeSaved'
+                    : 'chat.draftSendRejected'
                   : draft.ready
                     ? 'chat.draftSaveFailed'
                     : 'chat.draftLoadFailed',
@@ -477,18 +502,28 @@ export function MessageComposer({
             key={`${spaceId}:${threadRootId ?? 'chat'}`}
             spaceId={spaceId}
             replyTo={replyTo}
+            replyQuote={context?.quote}
+            sharedReply={context?.shared}
+            replyIntent={context?.replyIntent}
             threadRootId={threadRootId ?? null}
             thread={thread}
             disabled={sending || editing || Boolean(search) || draft?.ready === false}
-            suspended={suspended || Boolean(search) || Boolean(context?.quote)}
+            suspended={
+              suspended ||
+              Boolean(search) ||
+              (!mediaReplyAvailable && Boolean(context?.quote || context?.shared))
+            }
             onSent={onMediaSent}
-            renderControls={({ attachment, voice, review, files }) =>
+            onReplyAccepted={onMediaSent}
+            onReplyCancelled={context?.onCancelCaptured}
+            renderControls={({ attachment, voice, review, files, reply }) =>
               controls({
                 attachment: editing ? null : attachment,
                 // Keep the same gesture owner mounted while editing hides its slot.
                 voice,
                 review,
                 files: editing || search ? undefined : files,
+                reply,
               })
             }
           />

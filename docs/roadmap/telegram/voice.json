@@ -7,11 +7,14 @@
     "evidence": [
       "apps/zoen/src/media/media-composer-capture.ts",
       "apps/zoen/src/media/voice-record-button.tsx",
-      "apps/zoen/src/core/voice-controls-recording.cases.ts"
+      "apps/zoen/src/core/voice-controls-recording.cases.ts",
+      "apps/zoen/src/core/media-voice-reply.test.ts",
+      "crates/zoen-cli/tests/journey_message_deletion/media_reply.rs"
     ],
-    "gap": "Qualificar gravação real, permissão, interrupção e envio/recebimento sem captura ou envio duplicado.",
+    "gap": "Captura mantém a resposta selecionada no início, mesmo com mudança posterior do compositor; testes compilados cobrem parar/remover citação sem enviar. Qualificar permissão, interrupção, bytes reproduzidos e gestos reais no iPhone por Enzo; testes automatizados não são aceite manual.",
     "issues": [
-      170
+      170,
+      737
     ]
   },
   {

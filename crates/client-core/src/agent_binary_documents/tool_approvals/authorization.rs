@@ -16,6 +16,7 @@ impl Engine {
                 | "read_page"
                 | "read_site"
                 | "read_scene"
+                | "search_conversation_history"
         ) {
             ActionClass::Reply
         } else {

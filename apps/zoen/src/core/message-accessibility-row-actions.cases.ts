@@ -84,13 +84,14 @@ test('the grouped label retains actual author, body, quoted author/body, edit ti
   f.unmount();
 });
 
-test('disabled and deleted rows remain readable static text with no advertised or executable actions', async () => {
+test('disabled rows remain readable without content actions', async () => {
   for (const deleted of [false, true]) {
     const entry = message({
       deleted,
+      thread_replies: deleted ? 2 : 0,
       reply_to: quote('private-target', 'Private quoted body'),
     });
-    const f = fixture(entry, !deleted);
+    const f = fixture(entry, true);
     const { group, bubble } = await f.enable();
     assert.equal(group.props.accessible, true);
     assert.equal(group.props.accessibilityRole, 'text');
@@ -201,4 +202,48 @@ test('Web App shares retain a visible author menu while iOS keeps the native hol
     }
     f.unmount();
   }
+});
+
+test('VoiceOver can open only the action menu for a deleted leaf without exposing its old body', async () => {
+  const entry = message({
+    deleted: true,
+    text_revision: undefined,
+    thread_replies: 0,
+    reply_to: quote('old-target', 'Removed quote'),
+  });
+  const f = fixture(entry);
+  const { group, bubble } = await f.enable();
+  assert.equal(group.props.accessibilityRole, 'button');
+  assert.deepEqual(
+    Array.from(actions(group) ?? [], (action) => action.name),
+    ['actions'],
+  );
+  const label = group.props.accessibilityLabel as string;
+  assert.ok(label.includes('Message deleted'));
+  assert.ok(!label.includes('Canonical message body') && !label.includes('Removed quote'));
+  for (const action of ['reply', 'thread', 'quote']) act(group, action);
+  assert.equal(f.calls.length, 0);
+  (bubble.props.onAccessibilityTap as () => void)();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0]?.action, 'menu');
+  assert.equal(f.calls[0]?.mode, 'actions');
+  f.unmount();
+});
+
+test('a redacted parent keeps only accessible thread navigation and no source content actions', async () => {
+  const entry = message({ deleted: true, text_revision: undefined, thread_replies: 2 });
+  const f = fixture(entry);
+  const { group } = await f.enable();
+  assert.equal(group.props.accessibilityRole, 'button');
+  assert.deepEqual(
+    Array.from(actions(group) ?? [], (action) => action.name),
+    ['thread'],
+  );
+  for (const name of ['reply', 'quote', 'actions']) act(group, name);
+  assert.equal(f.calls.length, 0);
+  (group.props.onAccessibilityTap as () => void)();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0]?.action, 'thread');
+  assert.equal(f.calls[0]?.entry, entry);
+  f.unmount();
 });

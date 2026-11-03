@@ -1,3 +1,4 @@
+import type { RenderedMessageText } from './use-rendered-message-text';
 import { MessageTextSelection } from './message-context-ports';
 import { t } from '../i18n/index.ts';
 import { memo, useMemo, use, type ReactNode } from 'react';
@@ -7,6 +8,8 @@ import { messageMarkdownLink, messageMarkdownMayLoadMedia } from '../core/messag
 import { useTheme } from '../theme';
 import { useLinkLaunch } from './use-link-launch';
 import { useMessageCodeCopy } from './use-message-code-copy';
+import { useQuoteLayoutTransition } from './quote-layout-context';
+import { useQuoteCollapse } from './use-quote-collapse';
 
 export type MessageMarkdownProps = {
   text: string;
@@ -14,9 +17,12 @@ export type MessageMarkdownProps = {
   fontSize: number;
   maxWidth: number;
   testID?: string;
+  revision?: string;
+  expandedForReveal?: boolean;
   selectable?: boolean;
   onQuoteSelection?: (text: string, sourceRangesJSON?: string) => void;
   onLayout?: (event: LayoutChangeEvent) => void;
+  accessibilityText?: RenderedMessageText;
 };
 
 /** Same native Markdown engine as the document editor, within the message face. */
@@ -26,12 +32,22 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   fontSize,
   maxWidth,
   testID,
+  revision,
+  expandedForReveal = false,
   selectable = false,
   onLayout,
   onQuoteSelection,
+  accessibilityText,
 }: MessageMarkdownProps) {
   const { colors, scheme } = useTheme();
   const selection = use(MessageTextSelection);
+  const quoteMotion = useQuoteLayoutTransition();
+  const quotePresentation = useQuoteCollapse(
+    text,
+    testID,
+    revision,
+    expandedForReveal || selectable || selection?.active === true,
+  );
   const quote = onQuoteSelection ?? (selection?.active ? selection.quote : undefined);
   const launchLink = useLinkLaunch(text);
   const copyCode = useMessageCodeCopy(text, testID);
@@ -130,11 +146,14 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         {text}
       </Text>
     );
-  const rendered = (
+  const nativeRendered = (
     <EnrichedMarkdownText
+      {...(process.env.EXPO_OS === 'ios' ? quotePresentation : {})}
       testID={testID}
       onLayout={onLayout}
       markdown={text}
+      accessibilityRevision={accessibilityText?.revision}
+      onResolvedAccessibilityText={accessibilityText?.accept}
       flavor="github"
       markdownStyle={markdownStyle}
       containerStyle={{ minWidth: 0, maxWidth, flexShrink: 1 }}
@@ -168,16 +187,19 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       enableTaskListItemToggle={false}
       streamingAnimation={false}
       onCodeBlockPress={({ code }) => {
-        if (selection?.active) return;
+        if (selection?.active || onQuoteSelection) return;
         void copyCode(code);
       }}
       onLinkPress={({ url }) => {
-        if (selection?.active) return;
+        if (selection?.active || onQuoteSelection) return;
         const target = messageMarkdownLink(url);
         if (target) void launchLink(target);
       }}
     />
   );
+  const rendered = quoteMotion
+    ? quoteMotion.markdown(nativeRendered, quotePresentation.quoteCollapse.generation)
+    : nativeRendered;
   return selection?.active && selection.error ? (
     <>
       {rendered}

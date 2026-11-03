@@ -1,7 +1,13 @@
+import { homeSpacesFor } from '../home/access';
+import { router } from 'expo-router';
+import { QuoteMotionView } from './quote-layout-context';
+import { QuoteLayoutTransition } from './quote-layout-transition';
 import { FlashList } from '@shopify/flash-list';
 import { Pressable, Text, View } from 'react-native';
 import { launchConversationAssistant } from '../assistant/launch';
+import { MessageSelectionToolbar } from './message-selection-toolbar';
 import { ChatHeader } from '../components/chat-header';
+import { ChatDateNavigation } from './chat-date-navigation';
 import { ConversationRail, ConversationRailSpacer } from '../components/conversation-rail';
 import { ConversationTimelineMessage as ConversationMessage } from '../components/conversation-timeline-message';
 import { ConversationContainer, ConversationViewport } from '../components/conversation-viewport';
@@ -20,6 +26,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     chat,
     id,
     activityLabel,
+    selection,
     nativeScrollTag,
     bindNativeTimeline,
     searchState,
@@ -81,6 +88,9 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
       <ChatHeader
         id={id}
+        selection={
+          selection.active ? { count: selection.count, onCancel: selection.cancel } : undefined
+        }
         scrollViewTag={nativeScrollTag}
         navigationMetrics={navigationMetrics}
         title={conversationTitle(chat)}
@@ -119,108 +129,145 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
         onComposerLayout={onComposerLayout}
         composer={
           <>
-            <MessageComposer
-              context={
-                !searchState.active && (normalDraft.replyTo || editing)
-                  ? {
-                      entry: editing ?? reply ?? undefined,
-                      quote: editing ? undefined : normalDraft.replyQuote,
-                      onCancel: () => updateDraft({ type: 'cancel' }),
-                    }
-                  : undefined
-              }
-              spaceId={id}
-              suspended={searchState.active}
-              inputRef={input}
-              onFocus={cancelInitialEnd}
-              value={searchState.active ? searchState.query : composerText}
-              sending={sending}
-              editing={Boolean(editing) && !searchState.active}
-              allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
-              replyTo={normalDraft.replyTo}
-              draft={
-                searchState.active || editing
-                  ? undefined
-                  : {
-                      ready: normalDraft.ready,
-                      error: Boolean(normalDraft.error),
-                      rejected: normalDraft.rejected,
-                      onRetry: normalDraft.retry,
-                    }
-              }
-              onChangeText={(text) => {
-                if (searchState.active) {
-                  search.setQuery(text);
-                  store.setTyping(id, false);
-                } else if (editing) {
-                  updateDraft({ type: 'text', value: text });
-                  store.setTyping(id, false);
-                } else {
-                  updateDraft({ type: 'text', value: text });
-                  store.setTyping(id, Boolean(text.trim()));
+            {selection.active ? (
+              <MessageSelectionToolbar
+                count={selection.count}
+                onCopy={selection.copy}
+                onForward={selection.forward}
+                canCopy={selection.canCopy}
+                canForward={selection.canForward}
+                canDelete={selection.canDelete}
+                onDelete={selection.remove}
+                pending={selection.pending}
+              />
+            ) : (
+              <MessageComposer
+                context={
+                  !searchState.active && (normalDraft.replyTo || normalDraft.sharedReply || editing)
+                    ? {
+                        entry: editing ? undefined : (reply ?? undefined),
+                        edit: editing
+                          ? {
+                              id: editing.id,
+                              revision: editing.text_revision,
+                              text: normalDraft.messageDraft.editBaseText,
+                            }
+                          : undefined,
+                        quote: editing ? undefined : normalDraft.replyQuote,
+                        shared: editing ? undefined : normalDraft.sharedReply,
+                        replyIntent: editing ? undefined : normalDraft.replyIntent,
+                        onCancelCaptured: normalDraft.cancelMediaReply,
+                        onCancel: () => updateDraft({ type: 'cancel' }),
+                      }
+                    : undefined
                 }
-              }}
-              onBlur={() => {
-                store.setTyping(id, false);
-                normalDraft.flush();
-              }}
-              onSend={() => {
-                if (!searchState.active) void send();
-              }}
-              search={
-                searchState.active
-                  ? {
-                      state: searchState,
-                      status: [
-                        !conversationQueryFits(searchState.query.trim())
-                          ? t('chat.searchQueryTooLong')
-                          : searchState.loading || searchRevealBusy
-                            ? t('chat.searchingMessages')
-                            : searchState.error ||
-                              searchRevealError ||
-                              (searchState.completed
-                                ? searchState.hits.length
-                                  ? t('chat.searchPosition', {
-                                      position: searchState.index + 1,
-                                      count: searchState.hits.length,
-                                      more: searchState.cursor ? '+' : '',
-                                    })
-                                  : t('chat.noResults')
-                                : t('chat.searchUsesTheHistoryAvailableOnThisDevice')),
-                        searchThread ? t('chat.searchThreadResult') : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · '),
-                      onClose: () => {
-                        setScrollTarget(null);
-                        search.close();
-                        input.current?.focus();
-                      },
-                      onMove: (direction) => {
-                        void search.move(direction);
-                      },
-                      onSearch: () => {
-                        void search.search();
-                      },
-                      onAsk: () => {
-                        const current = search.getSnapshot();
-                        if (
-                          search.isCurrent() &&
-                          current.completed &&
-                          !current.loading &&
-                          !current.error &&
-                          !current.hits.length &&
-                          !current.cursor &&
-                          current.query.trim() &&
-                          conversationQueryFits(current.query.trim())
-                        )
-                          launchConversationAssistant(id, current.query.trim(), store);
-                      },
-                    }
-                  : undefined
-              }
-              onMediaSent={normalDraft.mediaAccepted}
-            />
+                spaceId={id}
+                suspended={searchState.active}
+                inputRef={input}
+                onFocus={cancelInitialEnd}
+                value={searchState.active ? searchState.query : composerText}
+                sending={sending}
+                editing={Boolean(editing) && !searchState.active}
+                allowEmptyEdit={Boolean(editing?.isCaption)}
+                replyTo={normalDraft.replyTo}
+                draft={
+                  searchState.active || editing
+                    ? undefined
+                    : {
+                        ready: normalDraft.ready,
+                        error: Boolean(normalDraft.error),
+                        rejected: normalDraft.rejected,
+                        onRetry: normalDraft.retry,
+                      }
+                }
+                onChangeText={(text) => {
+                  if (searchState.active) {
+                    search.setQuery(text);
+                    store.setTyping(id, false);
+                  } else if (editing) {
+                    updateDraft({ type: 'text', value: text });
+                    store.setTyping(id, false);
+                  } else {
+                    updateDraft({ type: 'text', value: text });
+                    store.setTyping(id, Boolean(text.trim()));
+                  }
+                }}
+                onBlur={() => {
+                  store.setTyping(id, false);
+                  normalDraft.flush();
+                }}
+                onSend={() => {
+                  if (!searchState.active) void send();
+                }}
+                search={
+                  searchState.active
+                    ? {
+                        calendar: (
+                          <ChatDateNavigation
+                            spaceId={id}
+                            onOpen={() => {
+                              cancelInitialEnd();
+                              input.current?.blur();
+                            }}
+                            reveal={reveal}
+                            onSelect={(target) => {
+                              search.close();
+                              setScrollTarget(target);
+                            }}
+                          />
+                        ),
+                        state: searchState,
+                        status: [
+                          !conversationQueryFits(searchState.query.trim())
+                            ? t('chat.searchQueryTooLong')
+                            : searchState.loading || searchRevealBusy
+                              ? t('chat.searchingMessages')
+                              : searchState.error ||
+                                searchRevealError ||
+                                (searchState.completed
+                                  ? searchState.hits.length
+                                    ? t('chat.searchPosition', {
+                                        position: searchState.index + 1,
+                                        count: searchState.hits.length,
+                                        more: searchState.cursor ? '+' : '',
+                                      })
+                                    : t('chat.noResults')
+                                  : t('chat.searchUsesTheHistoryAvailableOnThisDevice')),
+                          searchThread ? t('chat.searchThreadResult') : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · '),
+                        onClose: () => {
+                          setScrollTarget(null);
+                          search.close();
+                          input.current?.focus();
+                        },
+                        onMove: (direction) => {
+                          void search.move(direction);
+                        },
+                        onSearch: () => {
+                          void search.search();
+                        },
+                        onAsk: () => {
+                          const current = search.getSnapshot();
+                          if (
+                            search.isCurrent() &&
+                            current.completed &&
+                            !current.loading &&
+                            !current.error &&
+                            !current.hits.length &&
+                            !current.cursor &&
+                            current.query.trim() &&
+                            conversationQueryFits(current.query.trim())
+                          )
+                            launchConversationAssistant(id, current.query.trim(), store);
+                        },
+                      }
+                    : undefined
+                }
+                onMediaSent={normalDraft.mediaAccepted}
+              />
+            )}
           </>
         }
         overlay={
@@ -291,103 +338,133 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
           !page ? (
             <Loading />
           ) : (
-            <FlashList
-              style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
-              key={initialEnd.scope}
-              ref={list}
-              testID="conversation-timeline"
-              renderScrollComponent={ScrollComponent}
-              onLoad={() => {
-                bindNativeTimeline();
-                setLoadedSpace(timelineKey);
-                initialEnd.onLoad();
-              }}
-              onContentSizeChange={(width, height) => {
-                initialEnd.onContentSizeChange(width, height);
-                searchReveal.onContentSize(width, height);
-              }}
-              onCommitLayoutEffect={() => {
-                initialEnd.onCommitLayoutEffect();
-                searchReveal.onCommit(visibleEntries);
-                // Preserve the native keyboard scroller when search changes the
-                // timeline, and address its new indices only after SDK commit.
-                if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
-              }}
-              onScrollBeginDrag={() => {
-                cancelInitialEnd();
-                searchReveal.cancel();
-              }}
-              data={rows}
-              keyExtractor={(row) => row.key}
-              keyboardDismissMode="interactive"
-              keyboardShouldPersistTaps="handled"
-              contentInsetAdjustmentBehavior="never"
-              ListHeaderComponent={<ConversationRailSpacer motion={rail} />}
-              ListFooterComponent={composerSpacer}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingTop: Math.max(0, headerHeight - timelineTopInset) + noticeHeight + 8,
-                paddingBottom: 12,
-              }}
-              maintainVisibleContentPosition={{
-                startRenderingFromBottom: true,
-                autoscrollToBottomThreshold: 0.12,
-              }}
-              onStartReached={() => {
-                if (!searchThread && page.has_more)
-                  void store.loadTimeline(id, true).catch(() => {});
-              }}
-              onStartReachedThreshold={0.1}
-              ListEmptyComponent={
-                <EmptyState
-                  title={
-                    chat.kind === 'saved'
-                      ? t('settings.savedMessages')
-                      : t('chat.theStartOfSomethingGood')
+            <QuoteLayoutTransition key={initialEnd.scope} list={list} onBegin={cancelInitialEnd}>
+              {(quoteTransitionActive, quoteCommit, quoteCancel, quoteReading) => (
+                <FlashList
+                  style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
+                  key={initialEnd.scope}
+                  ref={list}
+                  testID="conversation-timeline"
+                  renderScrollComponent={ScrollComponent}
+                  CellRendererComponent={
+                    process.env.EXPO_OS === 'ios' ? QuoteMotionView : undefined
                   }
-                  detail={t(
-                    chat.kind === 'saved'
-                      ? 'settings.savedMessagesEmpty'
-                      : 'chat.writeTheFirstMessageInThisChat',
+                  onLoad={() => {
+                    bindNativeTimeline();
+                    setLoadedSpace(timelineKey);
+                    initialEnd.onLoad();
+                  }}
+                  onContentSizeChange={(width, height) => {
+                    initialEnd.onContentSizeChange(width, height);
+                    searchReveal.onContentSize(width, height);
+                  }}
+                  onCommitLayoutEffect={() => {
+                    quoteCommit();
+                    initialEnd.onCommitLayoutEffect();
+                    searchReveal.onCommit(visibleEntries);
+                    // Preserve the native keyboard scroller when search changes the
+                    // timeline, and address its new indices only after SDK commit.
+                    if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
+                  }}
+                  onScrollBeginDrag={() => {
+                    quoteCancel();
+                    cancelInitialEnd();
+                    searchReveal.cancel();
+                  }}
+                  extraData={selection.ids}
+                  data={rows}
+                  keyExtractor={(row) => row.key}
+                  keyboardDismissMode="interactive"
+                  keyboardShouldPersistTaps="handled"
+                  contentInsetAdjustmentBehavior="never"
+                  ListHeaderComponent={<ConversationRailSpacer motion={rail} />}
+                  ListFooterComponent={composerSpacer}
+                  contentContainerStyle={{
+                    paddingHorizontal: 16,
+                    paddingTop: Math.max(0, headerHeight - timelineTopInset) + noticeHeight + 8,
+                    paddingBottom: 12,
+                  }}
+                  maintainVisibleContentPosition={{
+                    disabled: quoteTransitionActive,
+                    startRenderingFromBottom: true,
+                    autoscrollToBottomThreshold: quoteReading ? undefined : 0.12,
+                  }}
+                  onStartReached={() => {
+                    if (!searchThread && page.has_more)
+                      void store.loadTimeline(id, true).catch(() => {});
+                  }}
+                  onStartReachedThreshold={0.1}
+                  ListEmptyComponent={
+                    <EmptyState
+                      title={
+                        chat.kind === 'saved'
+                          ? t('settings.savedMessages')
+                          : t('chat.theStartOfSomethingGood')
+                      }
+                      detail={t(
+                        chat.kind === 'saved'
+                          ? 'settings.savedMessagesEmpty'
+                          : 'chat.writeTheFirstMessageInThisChat',
+                      )}
+                    />
+                  }
+                  renderItem={({ item: { entry, activity, album }, index }) => (
+                    <ConversationMessage
+                      selection={
+                        selection.active
+                          ? {
+                              selected: selection.ids.has(entry.id),
+                              disabled: selection.limitReached && !selection.ids.has(entry.id),
+                              onToggle: selection.toggle,
+                            }
+                          : undefined
+                      }
+                      spaceId={id}
+                      entry={entry}
+                      activity={activity}
+                      album={album}
+                      previous={rows[index - 1]?.entry}
+                      next={rows[index + 1]?.entry}
+                      groupChat={chat.kind === 'Group' || chat.kind === 'Community'}
+                      item={items.find((item) => item.id === messageCard(entry)?.item_id)}
+                      highlighted={entry.id === selectedSearchId}
+                      revealQuery={searchState.query}
+                      onRevealLayout={
+                        entry.id === selectedSearchId ? onSearchContentLayout : undefined
+                      }
+                      disabled={searchState.active || selection.active}
+                      reactionPending={actions.busy}
+                      onReply={actions.reply}
+                      onThread={actions.thread}
+                      onAuthor={actions.profile}
+                      onMenu={actions.open}
+                      onReact={(message, emoji) => {
+                        void actions.react(message, emoji);
+                      }}
+                      onQuote={(messageId, sourceSpace) => {
+                        if (sourceSpace) {
+                          if (homeSpacesFor(store.getSnapshot()).has(sourceSpace))
+                            router.push({
+                              pathname: '/chat/[id]',
+                              params: { id: sourceSpace, jump: messageId },
+                            });
+                          return;
+                        }
+                        void reveal(messageId)
+                          .then((target) => setScrollTarget(target))
+                          .catch(
+                            () =>
+                              void inform(
+                                t('chat.theMessageCouldNotBeOpened'),
+                                t('chat.tryAgainInAMoment'),
+                              ),
+                          );
+                      }}
+                    />
                   )}
                 />
-              }
-              renderItem={({ item: { entry, activity, album }, index }) => (
-                <ConversationMessage
-                  spaceId={id}
-                  entry={entry}
-                  activity={activity}
-                  album={album}
-                  previous={rows[index - 1]?.entry}
-                  next={rows[index + 1]?.entry}
-                  groupChat={chat.kind === 'Group' || chat.kind === 'Community'}
-                  item={items.find((item) => item.id === messageCard(entry)?.item_id)}
-                  highlighted={entry.id === selectedSearchId}
-                  revealQuery={searchState.query}
-                  onRevealLayout={entry.id === selectedSearchId ? onSearchContentLayout : undefined}
-                  disabled={searchState.active}
-                  reactionPending={actions.busy}
-                  onReply={actions.reply}
-                  onThread={actions.thread}
-                  onAuthor={actions.profile}
-                  onMenu={actions.open}
-                  onReact={(message, emoji) => {
-                    void actions.react(message, emoji);
-                  }}
-                  onQuote={(messageId) => {
-                    void reveal(messageId)
-                      .then((target) => setScrollTarget(target))
-                      .catch(
-                        () =>
-                          void inform(
-                            t('chat.theMessageCouldNotBeOpened'),
-                            t('chat.tryAgainInAMoment'),
-                          ),
-                      );
-                  }}
-                />
               )}
-            />
+            </QuoteLayoutTransition>
           )
         }
       </ConversationViewport>

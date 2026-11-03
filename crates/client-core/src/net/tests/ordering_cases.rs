@@ -219,6 +219,7 @@ pub(super) async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_fo
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?)?,
         &mut head,

@@ -40,6 +40,7 @@ pub(super) fn a_voice_note_is_an_encrypted_audio_file_with_its_waveform() {
         .iter()
         .any(|x| matches!(&x.body, crate::engine::EntryBody::Message { text, .. } if text.starts_with("⟦voice:"))));
     let s = find_space(&e, "Paraty com a Marina");
+    assert!(!s.last_preview_is_markdown);
     assert!(
         s.last_preview.contains("Voice message") || s.last_preview.contains("Mensagem de voz"),
         "{}",

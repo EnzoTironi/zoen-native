@@ -54,6 +54,7 @@ impl OlderFixture {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let (content, sig) = author.sign_sealed(
@@ -195,6 +196,7 @@ impl OlderFixture {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         large.seq = self.outer.seq;

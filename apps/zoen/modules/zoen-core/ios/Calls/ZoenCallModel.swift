@@ -69,6 +69,30 @@ struct ZoenCallPort: Sendable {
   let turn: @Sendable () async throws -> ZoenCallTurn
   let action: @Sendable (String) async throws -> Void
 
+  func mediaRecord() async throws -> ZoenCallRecord {
+    let call = try await current()
+    guard !call.terminal, call.callId == scope.call, call.invitation == scope.invitation,
+          call.invitationConfirmed, call.acceptanceConfirmed,
+          (call.callerDevice == scope.device || call.acceptedDevice == scope.device) else { throw ZoenCallFailure.retired }
+    return call
+  }
+
+  /// The caller and callee renew through the same scoped authority. The native
+  /// owner/generation fence must survive both the issuer and canonical reads.
+  @MainActor
+  func renewedTurn(isCurrent: () -> Bool) async throws -> ZoenCallTurn {
+    guard isCurrent() else { throw ZoenCallFailure.retired }
+    _ = try await mediaRecord()
+    guard isCurrent() else { throw ZoenCallFailure.retired }
+    let result = try await turn()
+    _ = try await mediaRecord()
+    guard isCurrent() else { throw ZoenCallFailure.retired }
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    guard result.expiresAtMs > now, !result.username.isEmpty, !result.credential.isEmpty,
+          !result.urls.isEmpty, result.urls.allSatisfy({ $0.hasPrefix("turns:") }) else { throw ZoenCallFailure.unavailable }
+    return result
+  }
+
   /// Re-read policy/canonical state after crossing to system presentation. The
   /// snapshot used to construct a coordinator cannot authorize a later report.
   func presentationRecord() async throws -> ZoenCallRecord {

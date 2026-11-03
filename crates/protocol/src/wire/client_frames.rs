@@ -88,7 +88,7 @@ impl ClientFrame {
             },
             F::Ephemeral(e) => ClientFrame::Ephemeral {
                 space: e.space,
-                kind: ephemeral_kind(e.kind)?,
+                kind: ephemeral_kind(e.kind, e.read_time)?,
             },
             F::Ping(_) => ClientFrame::Ping,
         })

@@ -21,11 +21,16 @@
     "evidence": [
       "miniapps/builtins/src/poll.tsx",
       "apps/zoen/src/media/attachment-route.tsx",
-      "docs/product/telegram-ios-attachment-tabs.md"
+      "docs/product/telegram-ios-attachment-tabs.md",
+      "crates/client-core/src/media_drafts/polls.rs",
+      "crates/client-core/src/media_drafts/tests/poll_cases.rs",
+      "apps/zoen/src/media/poll-draft-owner.ts",
+      "apps/zoen/src/core/poll-draft-owner.test.ts"
     ],
-    "gap": "Oferecer enquete na conversa/thread com voto público; hoje cria App separado sem vínculo de resposta/thread.",
+    "gap": "Criação agora usa o rascunho criptografado, resposta local/selecionada/entre conversas, thread e publicação/recibo atômicos do App existente (#741). Faltam apresentação inline de enquete e identidade canônica dos votos (o App atual usa nomes, que podem colidir), além do aceite manual; não constitui paridade Telegram.",
     "issues": [
-      173
+      173,
+      741
     ]
   },
   {

@@ -111,6 +111,7 @@ pub(super) fn everything_persists_and_reverifies_after_reopen(
     assert!(!e.stats().all_logs_valid);
     let s = e.space(zoen_dm.id).unwrap();
     assert!(s.last_preview.contains("Log inválido"));
+    assert!(!s.last_preview_is_markdown);
     let _ = std::fs::remove_dir_all(dir);
 
     Ok(())

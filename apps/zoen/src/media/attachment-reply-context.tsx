@@ -15,7 +15,7 @@ type Props = { scope: AttachmentDraftScope; onCancel?: () => void };
 export function AttachmentReplyContext({ scope, onCancel }: Props) {
   const client = useClient();
   const owner = homeOwnerFor(client);
-  if (!scope.replyTo) return null;
+  if (!scope.replyTo && !scope.sharedReply) return null;
   if (
     !owner ||
     owner.mode !== scope.mode ||
@@ -24,6 +24,7 @@ export function AttachmentReplyContext({ scope, onCancel }: Props) {
     !homeSpacesFor(client).has(scope.spaceId)
   )
     return <ReplyNotice label={t('media.attachmentDraftUnavailable')} />;
+  if (scope.sharedReply) return <MessageContext shared={scope.sharedReply} onCancel={onCancel} />;
   return (
     <ReplyReader
       key={JSON.stringify([
@@ -46,7 +47,7 @@ function ReplyReader({ scope, onCancel }: Props) {
     message_id: scope.replyTo!,
   });
   if (!error && data && data.id === scope.replyTo && messageCanInteract(data))
-    return <MessageContext entry={data} onCancel={onCancel} />;
+    return <MessageContext entry={data} quote={scope.replyQuote} onCancel={onCancel} />;
   return (
     <ReplyNotice
       label={t(error || data ? 'chat.messageUnavailable' : 'media.loading')}

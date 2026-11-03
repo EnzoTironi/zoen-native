@@ -402,6 +402,7 @@ mod tests {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let (content, sig) = author.sign_sealed(

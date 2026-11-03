@@ -17,18 +17,20 @@ import { randomUUID } from 'expo-crypto';
 import { useDialogs } from '../components/dialogs';
 import { Field, Loading, NativeButton } from '../components/primitives';
 import { useClient } from '../core/provider';
+import { canConsumeAcceptedMediaReply } from '../core/message-draft';
 import { homeOwnerFor, homeSpacesFor } from '../home/access';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
 import type { ConversationAttachmentCategory } from './attachment-categories';
 import { captureArticleDraft, stageContactAttachment } from './attachment-route-actions';
-import { articleText, pollArguments, type SharedContact } from './attachment-content';
+import { articleText, type SharedContact } from './attachment-content';
 import { ArticleEditor } from './article-editor';
 import type { ArticleEditorHandle } from './article-editor.types';
 import { chooseSharedContact, prepareContactFile } from './attachment-route-platform';
 import { sensitiveCacheWork } from './cache-work';
 import { LocationPicker } from './location-picker';
-import { PollAttachmentFields } from './poll-attachment-fields';
+import { PollAttachmentEditor } from './poll-attachment-editor';
+import { captureMediaReply, type MediaReplyTarget } from './media-reply';
 
 import type { AttachmentDestination } from './attachment-route-types';
 
@@ -74,7 +76,6 @@ export function AttachmentRoute({
     focused = useRef(false),
     foreground = useRef(AppState.currentState === 'active');
   const working = useRef(false),
-    pollAttempted = useRef(false),
     contactAttempted = useRef(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
@@ -89,11 +90,10 @@ export function AttachmentRoute({
       if (liveEditor.current === editorGeneration) liveEditor.current = null;
     };
   }, [editorGeneration]);
-  const [contact, setContact] = useState<SharedContact | null>(null),
-    [question, setQuestion] = useState(''),
-    [options, setOptions] = useState(['', '']);
-  const [unknownPoll, setUnknownPoll] = useState(false),
-    [heldContact, setHeldContact] = useState(false);
+  const [contact, setContact] = useState<(SharedContact & { reply: MediaReplyTarget }) | null>(
+    null,
+  );
+  const [heldContact, setHeldContact] = useState(false);
   const allowed = useCallback(() => {
     const state = store.getSnapshot();
     const owner = homeOwnerFor(state);
@@ -210,6 +210,12 @@ export function AttachmentRoute({
       router.back();
     }
   }
+  function captureReply(): MediaReplyTarget {
+    if (!channel || !current()) throw new Error('retired');
+    const state = channel.controller.getSnapshot(channel.scope);
+    if (!state.loaded) throw new Error('retired');
+    return Object.freeze({ reply_to: state.replyTo, ...captureMediaReply(state) });
+  }
   async function stageContact() {
     if (!contact || !media || !channel || !store.mediaDrafts.isCurrent(media)) return;
     if (contactAttempted.current) {
@@ -227,7 +233,8 @@ export function AttachmentRoute({
         media,
         contact,
         current: () => current() && store.mediaDrafts.isCurrent(media),
-        replyTo: () => channel.controller.getSnapshot(channel.scope).replyTo,
+        replyTo: () => contact.reply.reply_to,
+        reviewedReply: () => contact.reply,
         prepare: prepareContactFile,
         nextId: randomUUID,
         admitted: () => {
@@ -236,35 +243,6 @@ export function AttachmentRoute({
         },
       }),
     );
-    if (current()) {
-      disableGuard();
-      routeClosed.current = true;
-      setLeaving(true);
-      router.back();
-    }
-  }
-  async function createPoll() {
-    if (pollAttempted.current) return;
-    let args;
-    try {
-      args = pollArguments(question, options);
-    } catch {
-      setError(t('attachmentTabs.pollLimit'));
-      return;
-    }
-    if (!current()) return;
-    pollAttempted.current = true;
-    try {
-      await store.request({
-        op: 'install_app',
-        space_id: target.id,
-        app_id: 'poll',
-        args_json: JSON.stringify(args),
-      });
-    } catch {
-      if (mounted.current) setUnknownPoll(true);
-      throw new Error('poll-unknown');
-    }
     if (current()) {
       disableGuard();
       routeClosed.current = true;
@@ -399,6 +377,7 @@ export function AttachmentRoute({
                 Boolean(media && store.mediaDrafts.isCurrent(media))
               }
               replyTo={() => channel?.controller.getSnapshot(channel.scope).replyTo ?? null}
+              reviewedReply={captureReply}
               onStaged={() => {
                 if (!current()) return;
                 disableGuard();
@@ -416,8 +395,9 @@ export function AttachmentRoute({
                 onPress={() => {
                   void perform(async () => {
                     if (contactAttempted.current) return;
+                    const reply = captureReply();
                     const value = await chooseSharedContact(current);
-                    if (current() && value) setContact(value);
+                    if (current() && value) setContact({ ...value, reply });
                   });
                 }}
               />
@@ -471,20 +451,39 @@ export function AttachmentRoute({
               ) : null}
             </>
           ) : null}
-          {kind === 'poll' ? (
-            <PollAttachmentFields
-              question={question}
-              options={options}
-              locked={locked}
-              unknownPoll={unknownPoll}
-              colors={colors}
-              current={current}
-              working={working}
-              pollAttempted={pollAttempted}
-              setQuestion={setQuestion}
-              setOptions={setOptions}
-              perform={perform}
-              createPoll={createPoll}
+          {kind === 'poll' && media && pickerActivation !== null ? (
+            <PollAttachmentEditor
+              key={JSON.stringify([target, pickerActivation])}
+              channel={media}
+              reply={{ reply_to: normal.replyTo, ...captureMediaReply(normal) }}
+              current={() =>
+                current() &&
+                editLease.current === pickerActivation &&
+                store.mediaDrafts.isCurrent(media)
+              }
+              onCreated={() => {
+                void store.refresh().catch(() => {});
+                if (!current()) return;
+                disableGuard();
+                routeClosed.current = true;
+                setLeaving(true);
+                router.back();
+              }}
+              onReplyCancelled={(previous) => {
+                if (!channel || !store.messageDrafts.isCurrent(channel)) return;
+                const value = channel.controller.getSnapshot(channel.scope);
+                if (
+                  canConsumeAcceptedMediaReply(
+                    {
+                      reply_to: value.replyTo,
+                      ...captureMediaReply(value),
+                      editing: Boolean(value.edit),
+                    },
+                    previous,
+                  )
+                )
+                  channel.controller.setReply(channel.scope, null);
+              }}
             />
           ) : null}
         </>

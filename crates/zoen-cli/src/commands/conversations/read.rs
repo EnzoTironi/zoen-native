@@ -25,15 +25,19 @@ impl Options {
     }
 }
 
-pub(super) fn members(client: &Client, space: &str) -> Result<Vec<MemberRoleDto>, String> {
+fn includes_account(client: &Client, roles: &[MemberRoleDto]) -> Result<bool, String> {
     let account = client
         .account()
         .filter(|a| a.unlocked && !a.setup_pending)
         .ok_or("This conversation requires an unlocked account")?;
+    Ok(roles.iter().any(|r| r.identity_id == account.identity_id))
+}
+
+pub(super) fn members(client: &Client, space: &str) -> Result<Vec<MemberRoleDto>, String> {
     let roles = client
         .member_roles(space.into())
         .map_err(|e| e.to_string())?;
-    if !roles.iter().any(|r| r.identity_id == account.identity_id) {
+    if !includes_account(client, &roles)? {
         return Err("This account is not a current member of this conversation".into());
     }
     Ok(roles)
@@ -58,8 +62,12 @@ pub(super) fn keys_json(client: &Client, space: &str) -> Result<String, String> 
 }
 
 pub(super) async fn read(client: &Client, space: &str, options: Options) -> Result<String, String> {
-    if options.json || options.peek {
-        members(client, space)?;
+    let roles = client
+        .member_roles(space.into())
+        .map_err(|e| e.to_string())?;
+    let current_member = includes_account(client, &roles)?;
+    if (options.json || options.peek) && !current_member {
+        return Err("This account is not a current member of this conversation".into());
     }
     let mut prefix = String::new();
     if options.older {
@@ -95,8 +103,12 @@ pub(super) async fn read(client: &Client, space: &str, options: Options) -> Resu
                 .collect::<Vec<_>>()
                 .join("\n")
     };
-    if !options.peek {
-        let _ = client.mark_read(space.into());
+    // Retained local history remains readable after removal. There is no valid
+    // receipt to publish then; errors from an eligible mark still propagate.
+    if !options.peek && current_member {
+        client
+            .mark_read(space.into())
+            .map_err(|error| error.to_string())?;
     }
     Ok(output)
 }

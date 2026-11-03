@@ -117,6 +117,7 @@ fn add(
                 attaches: Some(item.clone()),
                 reply: None,
                 forwarded: false,
+                forwarded_author: None,
                 media: explicit_file.then_some(types::MessageMedia {
                     presentation: AttachmentPresentation::File,
                     group: None,
@@ -236,6 +237,7 @@ fn classifications_follow_current_file_presentation_and_all_author_music_without
             media: None,
             reply: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )
     .unwrap();
@@ -249,6 +251,7 @@ fn classifications_follow_current_file_presentation_and_all_author_music_without
             media: None,
             reply: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )
     .unwrap();

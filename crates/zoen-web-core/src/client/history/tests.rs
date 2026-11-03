@@ -72,6 +72,7 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let (content, sig) = author.sign_sealed(

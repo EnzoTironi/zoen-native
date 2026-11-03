@@ -37,10 +37,8 @@ final class ZoenCallRTC: NSObject {
 
   private func current() async throws -> ZoenCallRecord {
     guard live else { throw ZoenCallFailure.retired }
-    let call = try await port.current()
-    guard live, !call.terminal, call.callId == port.scope.call, call.invitation == port.scope.invitation,
-          call.invitationConfirmed, call.acceptanceConfirmed,
-          (call.callerDevice == port.scope.device || call.acceptedDevice == port.scope.device) else { throw ZoenCallFailure.retired }
+    let call = try await port.mediaRecord()
+    guard live else { throw ZoenCallFailure.retired }
     return call
   }
 
@@ -59,11 +57,7 @@ final class ZoenCallRTC: NSObject {
   private func prepare() async throws {
     guard !didStart else { return }
     let call = try await current()
-    let turn = try await port.turn()
-    _ = try await current()
-    let now = Int64(Date().timeIntervalSince1970 * 1000)
-    guard turn.expiresAtMs > now, !turn.username.isEmpty, !turn.credential.isEmpty,
-          !turn.urls.isEmpty, turn.urls.allSatisfy({ $0.hasPrefix("turns:") }) else { throw ZoenCallFailure.unavailable }
+    let turn = try await port.renewedTurn { live && !didStart }
     let configuration = RTCConfiguration()
     configuration.sdpSemantics = .unifiedPlan
     // Relay-only avoids disclosing either person's local/public IP to their peer.
@@ -99,6 +93,13 @@ final class ZoenCallRTC: NSObject {
     if cameraAllowed && intent.cameraEnabled { try await startCamera() }
     if call.callerDevice == port.scope.device { try await offer() }
     try await receive()
+  }
+
+  private func renewTurn(_ connection: RTCPeerConnection, generation expected: UInt8) async throws {
+    let turn = try await port.renewedTurn { live && peer === connection && generation == expected }
+    let configuration = connection.configuration
+    configuration.iceServers = [RTCIceServer(urlStrings: turn.urls, username: turn.username, credential: turn.credential)]
+    guard connection.setConfiguration(configuration) else { throw ZoenCallFailure.negotiation }
   }
 
   private func offer() async throws {
@@ -170,6 +171,9 @@ final class ZoenCallRTC: NSObject {
       switch payload.type {
       case "offer":
         guard let sdp = payload.sdp else { throw ZoenCallFailure.negotiation }
+        // A network change may need a new allocation after REST credentials
+        // expire, even though the previous allocation could still be alive.
+        if generation > 0 { try await renewTurn(peer, generation: generation) }
         try await remote(RTCSessionDescription(type: .offer, sdp: sdp))
         let answer: RTCSessionDescription = try await withCheckedThrowingContinuation { continuation in
           peer.answer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { sdp, error in
@@ -298,12 +302,8 @@ extension ZoenCallRTC {
         rtc.boundRecovery()
         guard call.callerDevice == rtc.port.scope.device else { rtc.changed("reconnecting"); return }
         guard rtc.generation < 7 else { throw ZoenCallFailure.exhausted }
-        let turn = try await rtc.port.turn()
-        _ = try await rtc.current()
-        guard let peer = rtc.peer, turn.expiresAtMs > Int64(Date().timeIntervalSince1970 * 1000), turn.urls.allSatisfy({ $0.hasPrefix("turns:") }) else { throw ZoenCallFailure.unavailable }
-        let configuration = peer.configuration
-        configuration.iceServers = [RTCIceServer(urlStrings: turn.urls, username: turn.username, credential: turn.credential)]
-        guard peer.setConfiguration(configuration) else { throw ZoenCallFailure.negotiation }
+        guard let peer = rtc.peer else { throw ZoenCallFailure.retired }
+        try await rtc.renewTurn(peer, generation: rtc.generation)
         rtc.generation += 1
         peer.restartIce()
         try await rtc.offer()

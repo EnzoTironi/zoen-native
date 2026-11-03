@@ -9,6 +9,7 @@ import type {
 import { sensitiveCacheWork } from './cache-work';
 import { contentValue } from './media-draft-contract';
 import { MediaDraftFailure, type MediaDraftChannel } from './media-draft-channel';
+import { copyMediaReply, type MediaReplyFields } from './media-reply';
 import type {
   MaterializedMediaDraftAsset,
   MediaDraftAttachments,
@@ -28,13 +29,18 @@ export class AttachmentGalleryJournal {
   private previews = new Map<string, Promise<MaterializedMediaDraftAsset>>();
   private port: PhotoPickerPort | null = null;
   private readonly baseline: MediaDraftAttachments | null;
+  private readonly replyContext: MediaReplyFields;
+  private readonly replyTo: string | null;
   constructor(
     private readonly channel: MediaDraftChannel,
     private readonly current: () => boolean,
     private readonly id: () => string,
-    private readonly replyTo: string | null,
+    replyTo: string | null,
+    replyContext: MediaReplyFields = {},
   ) {
     const value = this.attachments();
+    this.replyTo = value ? value.reply_to : replyTo;
+    this.replyContext = copyMediaReply(value ?? replyContext);
     const ids = new Set(value?.gallery?.entries.map((entry) => entry.asset_id));
     const items = value?.items.filter((item) => !ids.has(item.asset_id)) ?? [];
     this.baseline =
@@ -42,6 +48,7 @@ export class AttachmentGalleryJournal {
         ? {
             kind: 'attachments',
             reply_to: value.reply_to,
+            ...copyMediaReply(value),
             items,
             ...(value.options ? { options: value.options } : {}),
           }
@@ -68,6 +75,7 @@ export class AttachmentGalleryJournal {
         ? {
             kind: value.kind,
             reply_to: value.reply_to,
+            ...copyMediaReply(value),
             items,
             ...(value.options ? { options: value.options } : {}),
           }
@@ -169,6 +177,7 @@ export class AttachmentGalleryJournal {
               ? {
                   kind: 'attachments',
                   reply_to: this.baseline ? this.baseline.reply_to : this.replyTo,
+                  ...this.replyContext,
                   items,
                   ...(this.baseline?.options ? { options: this.baseline.options } : {}),
                   ...(entries.length
@@ -306,6 +315,7 @@ export class AttachmentGalleryJournal {
     const next: MediaDraftAttachments = {
       kind: 'attachments',
       reply_to: latest.reply_to,
+      ...copyMediaReply(latest),
       items: [...(this.baseline?.items ?? []), ...selected],
       ...(options ? { options } : {}),
     };

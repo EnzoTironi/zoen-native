@@ -38,6 +38,7 @@ pub(super) fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_n
                     reply: Some(types::ReplyRef::thread(root.id)),
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )
             .unwrap();

@@ -78,6 +78,7 @@ pub(super) fn seed(e: &mut Engine, cast: &Cast, t0: i64) -> R<(String, u64, u64)
             reply: Some(ReplyRef::thread(group_read.client_id.clone())),
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     e.append_at(

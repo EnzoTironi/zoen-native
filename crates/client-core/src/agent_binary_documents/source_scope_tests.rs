@@ -316,6 +316,7 @@ fn a_scoped_prompt_under_the_legacy_discriminator_is_not_projected_or_dispatched
                 reply,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();

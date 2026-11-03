@@ -9,13 +9,10 @@ use super::host::{
 };
 use super::profile::Definition;
 use async_trait::async_trait;
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Mutex;
 use std::time::Duration;
 use zoen_models::{
-    Admission, AdmissionError, AttemptContext, DispatchAuthority, DispatchRequest, EndpointPolicy,
-    GatewayConfig, InputMessage, ModelGateway, ModelLimits, ModelRequest, Operation, OutputBlock,
-    ToolDefinition,
+    AdmissionError, AttemptContext, EndpointPolicy, GatewayConfig, InputMessage, ModelGateway,
+    ModelLimits, ModelRequest, Operation, OutputBlock, ToolDefinition,
 };
 
 pub const CHEAP_CHAT_PROFILE: &str = zoen_models::CHAT_PROFILE;
@@ -39,54 +36,8 @@ fn gateway_failure(error: zoen_models::GatewayError) -> BrainError {
     }
 }
 
-/// Admits each attempt id once and at most `daily_cap` attempts per owner per UTC day.
-pub struct CheapTierAuthority {
-    daily_cap: u32,
-    seen: Mutex<BTreeSet<String>>,
-    used: Mutex<BTreeMap<(String, i64), u32>>,
-}
-
-impl CheapTierAuthority {
-    pub fn new(daily_cap: u32) -> Self {
-        Self {
-            daily_cap,
-            seen: Mutex::default(),
-            used: Mutex::default(),
-        }
-    }
-}
-
-#[async_trait]
-impl DispatchAuthority for CheapTierAuthority {
-    async fn admit(&self, r: &DispatchRequest) -> Result<Admission, AdmissionError> {
-        // This staging quota is chat-only, never image billing authority.
-        if r.profile != CHEAP_CHAT_PROFILE
-            || r.descriptor.operation != Operation::ChatCompletion
-            || r.descriptor.image.is_some()
-        {
-            return Err(AdmissionError::Denied);
-        }
-        if !self
-            .seen
-            .lock()
-            .unwrap()
-            .insert(r.context.attempt_id.clone())
-        {
-            return Ok(Admission::AlreadyKnown);
-        }
-        let day = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64 / 86_400)
-            .unwrap_or(0);
-        let mut used = self.used.lock().unwrap();
-        let n = used.entry((r.context.owner.clone(), day)).or_insert(0);
-        if *n >= self.daily_cap {
-            return Err(AdmissionError::Denied);
-        }
-        *n += 1;
-        Ok(Admission::Fresh)
-    }
-}
+mod quota;
+pub use quota::CheapTierAuthority;
 
 pub struct ModelBrain {
     gateway: ModelGateway,
@@ -259,3 +210,6 @@ pub fn system_prompt(def: &Definition) -> String {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod admission_regressions;

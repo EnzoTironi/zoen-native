@@ -7,8 +7,12 @@ import UIKit
   override var contentHost: UIView { self }
   private let edge = UIScrollEdgeElementContainerInteraction()
   let onMetricsChanged = EventDispatcher()
-  var scrollViewTag = 0 { didSet { if oldValue != scrollViewTag { retireMetrics() } } }
-  var metricsBinding = "" { didSet { if oldValue != metricsBinding { retireMetrics() } } }
+  var scrollViewTag = 0 { didSet {
+    if oldValue != scrollViewTag { retireEdge(); retireMetrics() }
+  } }
+  var metricsBinding = "" { didSet {
+    if oldValue != metricsBinding { retireEdge(); retireMetrics() }
+  } }
   private weak var metricsScroll: UIScrollView?
   private var observations: [NSKeyValueObservation] = []
   private var metricsState = ZoenScrollMetricsState()
@@ -17,7 +21,6 @@ import UIKit
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     edge.edge = .top
-    addInteraction(edge)
     isAccessibilityElement = false
   }
 
@@ -26,12 +29,22 @@ import UIKit
           let root = appContext?.findView(withTag: scrollViewTag, ofType: UIView.self),
           root.window === window, let scroll = scrollView(in: root) else {
       retireMetrics()
-      edge.scrollView = nil
+      retireEdge()
       return
     }
     scroll.topEdgeEffect.isHidden = false
-    scroll.topEdgeEffect.style = .automatic
-    edge.scrollView = scroll
+    scroll.topEdgeEffect.style = .soft
+    // The title host is only one navigation item. Register its public bar
+    // ancestor so Back and right items also contribute to UIKit's edge shape.
+    if let bar = navigationBar(), bar.window === window {
+      if edge.view !== bar {
+        retireEdge()
+        bar.addInteraction(edge)
+      }
+      edge.scrollView = scroll
+    } else {
+      retireEdge()
+    }
     guard !metricsBinding.isEmpty else { return }
     if metricsScroll !== scroll {
       retireMetrics()
@@ -52,6 +65,20 @@ import UIKit
       ]
       scheduleMetrics()
     }
+  }
+
+  private func navigationBar() -> UINavigationBar? {
+    var candidate = superview
+    while let view = candidate {
+      if let bar = view as? UINavigationBar { return bar }
+      candidate = view.superview
+    }
+    return nil
+  }
+
+  private func retireEdge() {
+    edge.scrollView = nil
+    edge.view?.removeInteraction(edge)
   }
 
   private func retireMetrics() {
@@ -93,7 +120,10 @@ import UIKit
   }
 
   override func willMove(toWindow newWindow: UIWindow?) {
-    if newWindow !== window { retireMetrics() }
+    if newWindow !== window {
+      retireEdge()
+      retireMetrics()
+    }
     super.willMove(toWindow: newWindow)
   }
 

@@ -115,15 +115,18 @@
   {
     "id": "TG-inbox-mark-read-or-unread",
     "scope": "active",
-    "implementation": "partial",
+    "implementation": "present",
     "acceptance": "scoped",
     "evidence": [
-      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
-      "apps/zoen/src/app/space/[id].tsx"
+      "apps/zoen/src/inbox/row-actions.ts",
+      "apps/zoen/src/inbox/use-inbox-actions.ts",
+      "apps/zoen/src/core/inbox-manual-unread.test.ts",
+      "apps/zoen/src/core/inbox-manual-unread-ui.test.ts"
     ],
-    "gap": "Oferecer marcar não lida sem falsificar recibo remoto; abertura já marca leitura canônica.",
+    "gap": "Marcar lida/não lida está disponível no gesto/menu; não lida manual permanece distinta do recibo remoto. Aceite manual completo após retomada e troca de conta segue pendente.",
     "issues": [
-      172
+      172,
+      664
     ]
   },
   {
@@ -143,15 +146,18 @@
   {
     "id": "TG-inbox-chat-list-swipe-actions",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
-      "apps/zoen/src/app/space/[id].tsx"
+      "apps/zoen/src/inbox/chat-row.tsx",
+      "apps/zoen/src/inbox/row-actions.ts",
+      "apps/zoen/src/inbox/action-feedback.tsx",
+      "apps/zoen/src/core/inbox-ui.test.ts"
     ],
-    "gap": "Adicionar gestos por linha para ações frequentes com desfazer e alternativa acessível.",
+    "gap": "Gestos Read/Pin e Mute/Archive, menu alternativo, feedback e desfazer existem. Timing, VoiceOver, Reduce Motion e aceite manual completo seguem pendentes.",
     "issues": [
-      172
+      172,
+      664
     ]
   },
   {
@@ -199,13 +205,15 @@
   {
     "id": "TG-inbox-saved-messages",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
-      "apps/zoen/src/app/space/[id].tsx"
+      "apps/zoen/src/app/saved-messages.tsx",
+      "apps/zoen/src/saved-messages/use-saved-messages.ts",
+      "apps/zoen/src/saved-messages/session.ts",
+      "apps/zoen/src/core/saved-messages.test.ts"
     ],
-    "gap": "Criar conversa pessoal canônica para guardar mensagens/arquivos e encontrá-la sempre.",
+    "gap": "Salvos usa conversa pessoal canônica, entrada por conta e a mesma composição/mídia. Qualificar recuperação e acessibilidade no lote manual final; organização por origem continua em outra linha.",
     "issues": [
       172
     ]

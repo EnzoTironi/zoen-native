@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { THEME_PROFILES } from '../theme/catalog.ts';
+import { t } from '../i18n/index.ts';
 import { DEFAULT_THEME_CUSTOMIZATION } from '../theme/telegram.ts';
 import { contrastRatio, mixColor, resolveSkyTheme } from '../theme/sky.ts';
 
@@ -23,6 +24,7 @@ const nativePorts = new Set([
   'react-native',
   'react-native-enriched-markdown',
   '../theme',
+  '../i18n/index.ts',
   './use-link-launch',
   './use-message-code-copy',
 ]);
@@ -90,6 +92,7 @@ function fixture() {
       if (name === 'react-native-enriched-markdown')
         return { EnrichedMarkdownText: NativeMarkdownText };
       if (name === '../theme') return { useTheme: () => React.use(themeContext) };
+      if (name === '../i18n/index.ts') return { t };
       if (name === './use-link-launch') return { useLinkLaunch: () => () => {} };
       if (name === './use-message-code-copy') return { useMessageCodeCopy: () => () => {} };
       throw new Error(`Unexpected native port ${name}`);

@@ -30,6 +30,7 @@ impl Engine {
             .get(space)?
             .entries
             .iter()
+            .filter(|entry| self.visible_message(entry))
             .map(|entry| entry.seq)
             .filter(|seq| *seq > 0)
             .max()
@@ -53,7 +54,18 @@ impl Engine {
         target: Option<u64>,
         expected_manual_revision: Option<&str>,
     ) -> R<Option<u64>> {
+        self.check_private_message_view()?;
         self.space_state(space)?;
+        if target.is_some_and(|seq| {
+            self.state.spaces.get(space).is_some_and(|state| {
+                state
+                    .entries
+                    .iter()
+                    .any(|entry| entry.seq == seq && !self.visible_message(entry))
+            })
+        }) {
+            return Err(invalid());
+        }
         if let Some(account) = &self.net.account {
             self.chat_mute_owner(space, &account.identity, &account.device)?;
         }
@@ -96,6 +108,7 @@ impl Engine {
             if let Some(seq) = raise {
                 self.store
                     .set_meta(&format!("read:{space}"), &seq.to_string())?;
+                self.record_local_read_time(space, previous, seq)?;
             }
             self.store.raw_execute("RELEASE chat_read")?;
             Ok(raise)
@@ -122,7 +135,13 @@ impl Client {
                 ChatLayoutInput::MarkRead {
                     scope, through_seq, ..
                 } if engine.net.synced.contains(&scope.space_id) => {
-                    through(through_seq.as_deref())?.map(|seq| (scope.space_id.clone(), seq))
+                    through(through_seq.as_deref())?
+                        .map(|seq| {
+                            engine
+                                .read_time_announcement(&scope.space_id, seq)
+                                .map(|kind| (scope.space_id.clone(), kind))
+                        })
+                        .transpose()?
                 }
                 _ => None,
             };
@@ -130,8 +149,8 @@ impl Client {
         };
         // The exact observed prefix is idempotent on the existing receipt path.
         // Manual unread itself never sends a receipt or alters anyone else's marks.
-        if let Some((space, seq)) = signal {
-            self.with_net(|net| net.ephemeral(space, protocol::EphemeralKind::Read { seq }));
+        if let Some((space, kind)) = signal {
+            self.with_net(|net| net.ephemeral(space, kind));
         }
         Ok(result)
     }

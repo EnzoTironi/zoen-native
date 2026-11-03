@@ -20,6 +20,8 @@ pub enum EphemeralKind {
     Read {
         seq: u64,
     },
+    /// Optional authenticated peer-clock evidence; legacy peers still decode Read(seq).
+    ReadTime(crate::read_time::ReadTime),
     /// This person's devices hold everything up to and including `seq`. Like `Read`, one
     /// aggregated watermark per person per Space; the relay keeps the newest and replays it
     /// on sync, so a sender who was offline still sees its ticks.

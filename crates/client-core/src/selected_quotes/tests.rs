@@ -34,6 +34,7 @@ fn post(text: &str, reply: Option<ReplyRef>) -> EventBody {
         reply,
         media: None,
         forwarded: false,
+        forwarded_author: None,
     }
 }
 fn append(log: &mut SpaceLog, by: &Author, id: &str, body: EventBody) -> TestResult<Event> {

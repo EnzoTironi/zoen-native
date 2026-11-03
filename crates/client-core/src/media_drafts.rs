@@ -13,7 +13,9 @@ use std::collections::{HashMap, HashSet};
 use zeroize::Zeroizing;
 
 mod gallery;
+mod polls;
 mod recovery;
+mod replies;
 
 pub const MEDIA_DRAFT_REVISION_ZERO: &str = "0";
 const PREFIX: &str = "media.draft.";
@@ -66,6 +68,9 @@ pub struct MediaDraftDto {
     pub content_json: String,
     pub assets: Vec<MediaDraftAsset>,
     pub attempted: bool,
+    /// Owned acceptance survives missing visible messages. This does not grant history access.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accepted_intent_json: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
 pub struct MediaDraftSaveResult {
@@ -81,8 +86,25 @@ pub struct MediaDraftSendResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Content {
+    Poll {
+        reply_to: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_quote: Option<crate::ReplySelection>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shared_reply: Option<crate::replies::external::SharedReplyDraft>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_intent: Option<String>,
+        question: String,
+        options: Vec<polls::PollOption>,
+    },
     Attachments {
         reply_to: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_quote: Option<crate::ReplySelection>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shared_reply: Option<crate::replies::external::SharedReplyDraft>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_intent: Option<String>,
         items: Vec<Attachment>,
         #[serde(
             default,
@@ -94,6 +116,12 @@ enum Content {
     },
     Voice {
         reply_to: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_quote: Option<crate::ReplySelection>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shared_reply: Option<crate::replies::external::SharedReplyDraft>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_intent: Option<String>,
         source_asset_id: String,
         editor: serde_json::Value,
         render: Option<VoiceRender>,
@@ -120,6 +148,8 @@ struct VoiceRender {
 struct Receipt {
     input_revision: String,
     messages: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reply: Option<replies::AcceptedReply>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -220,13 +250,18 @@ fn references(content: &Option<Content>) -> R<Vec<&str>> {
     let Some(content) = content else {
         return Ok(Vec::new());
     };
-    let reply = match content {
-        Content::Attachments { reply_to, .. } | Content::Voice { reply_to, .. } => reply_to,
-    };
-    if reply.as_deref().is_some_and(|id| !target_id(id)) {
+    if !content.reply().valid_shape() {
         return Err(invalid());
     }
     match content {
+        Content::Poll {
+            question, options, ..
+        } => {
+            if !polls::valid_shape(question, options) {
+                return Err(invalid());
+            }
+            Ok(Vec::new())
+        }
         Content::Attachments {
             items,
             options,
@@ -308,6 +343,7 @@ fn validate(record: &Record) -> R<()> {
                 || r.messages.is_empty()
                 || r.messages.len() > 10
                 || r.messages.iter().any(|id| !target_id(id))
+                || r.reply.as_ref().is_some_and(|reply| !reply.valid_shape())
         })
     {
         return Err(invalid());
@@ -368,6 +404,12 @@ impl Record {
             content_json: content_json(&self.content)?,
             assets: self.assets.clone(),
             attempted: self.attempted,
+            accepted_intent_json: self
+                .last_accepted
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()
+                .map_err(|_| storage_error())?,
         })
     }
 }

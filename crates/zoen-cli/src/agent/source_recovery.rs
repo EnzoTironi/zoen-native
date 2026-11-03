@@ -81,6 +81,11 @@ impl SourceTools<'_, '_> {
     fn recover_step(&self, call: &ToolCall) -> Result<String, String> {
         self.tools.check_selection()?;
         let current = self.tools.fresh();
+        if call.name == history_search::TOOL {
+            // This is a read, not an App effect receipt. Repeat its authorized
+            // index query without repeating the known model proposal.
+            return current.search_history(call);
+        }
         let (_, item, tool) = current
             .names
             .iter()

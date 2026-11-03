@@ -1,11 +1,14 @@
-//! Independent single-host Images checkpoints. The owned local directory MUST
+//! Independent single-host runtime checkpoints. The owned local directory MUST
 //! be excluded from SQL/FDB snapshots and restore. This is not a financial
 //! ledger, a network filesystem protocol, or authority to invoke a provider.
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+mod deployment;
 mod file;
 mod history;
 mod lock;
 mod publish;
 mod state;
+pub use deployment::RuntimeDeployment;
 pub use file::{AnchorReader, AnchorWriter, GenerationGuard};
 pub use publish::{publish_digest, ConsumePublish, ManagedPublishPermit, PublishCondition};
 pub use state::{Checkpoint, Deployment, Prepared, Recovery};

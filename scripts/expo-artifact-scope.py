@@ -15,6 +15,7 @@ import tempfile
 from expo_artifact_dependencies import compiler_inputs, graph
 from expo_artifact_candidate import tested_candidate
 from ci_static_documents import validate as validate_static_documents
+from ci_ui_scope import ui_document_paths
 
 _proof = importlib.util.spec_from_file_location(
     "expo_frontend_proof", Path(__file__).with_name("ci-documentation-scope.py"))
@@ -134,8 +135,12 @@ def classify(base, head, event, cargo="cargo", candidate=None):
             return result
         except ValueError:
             pass  # Unknown paths/consumers retain the full existing artifact lane.
-        if event == "pull_request" and all(FRONTEND_PROOF.frontend_path(path) for path in paths):
-            FRONTEND_PROOF.validate_frontend(base, head, base, paths)
+        partition = ui_document_paths(paths, FRONTEND_PROOF.frontend_path)
+        if event == "pull_request" and partition is not None:
+            frontend, documents = partition
+            if documents:
+                validate_static_documents(git, base, head, documents, artifacts=True)
+            FRONTEND_PROOF.validate_frontend(base, head, base, frontend)
             result.update(run_android=False, run_android_js=True,
                           reason="Verified frontend inputs; Android JS bundle/checks replace only native compilation")
             return result

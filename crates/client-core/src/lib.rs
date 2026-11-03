@@ -7,6 +7,9 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod agent_binary_documents;
+pub mod agent_conversation_tools;
+mod agent_history_search;
+pub use agent_history_search::AGENT_HISTORY_PAGE_LIMIT;
 #[path = "agent_pages/contract.rs"]
 pub mod agent_page_tools;
 mod agent_pages;
@@ -59,7 +62,10 @@ pub use backup_api::BackupStatusDto;
 pub use client_api::export_typescript;
 mod files;
 mod forwarding;
-pub use forwarding::{ForwardReview, ForwardScope, ForwardSource};
+pub use forwarding::{
+    ForwardBatchReview, ForwardBatchScope, ForwardBatchSource, ForwardOptions, ForwardReview,
+    ForwardScope, ForwardSource,
+};
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
 mod file_demand;
@@ -88,7 +94,13 @@ pub use recent_attachments::{
 pub mod chat_layout;
 mod chat_mute;
 pub use universal_pages::UniversalSearchPage;
+mod message_info;
+pub use message_info::{MessageInfo, MessageInfoScope};
+mod message_deletion;
+mod message_edit;
+pub use message_edit::MessageEdit;
 mod message_drafts;
+pub use message_deletion::{MessageDeletion, MessageDeletionTarget};
 mod native_surfaces;
 pub use chat_mute::ChatMuteMode;
 pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};
@@ -126,6 +138,7 @@ pub use sync::Ingest;
 mod approvals;
 pub use localization::tr;
 use miniapps as apps;
+mod conversation_date;
 pub mod dto;
 pub mod engine;
 pub mod i18n;
@@ -137,22 +150,8 @@ pub use engine::Engine;
 
 uniffi::setup_scaffolding!();
 
-#[derive(Debug, thiserror::Error, uniffi::Error)]
-pub enum CoreError {
-    #[error("{}{message}", crate::i18n::ts("Armazenamento: ", "Storage: "))]
-    Storage { message: String },
-    #[error("{}{what}", crate::i18n::ts("Não encontrado: ", "Not found: "))]
-    NotFound { what: String },
-    #[error("{reason}")]
-    Forbidden { reason: String },
-    #[error("{reason}")]
-    Invalid { reason: String },
-    #[error("{reason}")]
-    Stale { reason: String },
-    /// Only a current, unaccepted private-draft intent refused before append.
-    #[error("{reason}")]
-    DraftRejected { reason: String },
-}
+mod error;
+pub use error::CoreError;
 
 #[derive(uniffi::Object)]
 pub struct Client {

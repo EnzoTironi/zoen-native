@@ -174,7 +174,14 @@ async fn canonical_cursor_ack_and_cold_selector_do_not_replay_a_retired_silent_t
     assert!(timeline
         .iter()
         .all(|t| t.reply_to.as_ref().is_none_or(|r| r.id != f.source)));
-    assert!(owner_note(&f.client, &cx, &f.source).is_none());
+    assert!(owner_note(
+        &f.client,
+        &cx,
+        &f.space,
+        timeline.iter().find(|t| t.id == f.source).unwrap()
+    )
+    .unwrap()
+    .is_none());
     f.client.wait_until_settled(3000).await.unwrap();
     // The ordinary host's order: actual relay ACK first, then retire local budget.
     f.client.agent_advance(f.space.clone(), seq).await.unwrap();

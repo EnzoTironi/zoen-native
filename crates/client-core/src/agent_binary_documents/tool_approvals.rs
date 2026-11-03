@@ -65,6 +65,9 @@ pub(super) struct ApprovalBinding {
 }
 
 fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
+    if p.schema == crate::agent_conversation_tools::SCHEMA {
+        return crate::agent_conversation_tools::parsed(p);
+    }
     if p.schema == crate::agent_scenes::SCHEMA {
         return crate::agent_scenes::parsed(p);
     }
@@ -187,6 +190,7 @@ pub(crate) fn mutation_id(p: &ToolProposal, intent: &str) -> String {
 pub(crate) fn operation(tool: &str) -> String {
     use crate::i18n::t;
     match tool {
+        "search_conversation_history" => t("Buscar na conversa", "Search conversation"),
         "read_scene" => t("Ler desenho", "Read drawing"),
         "replace_scene" => t("Editar desenho", "Edit drawing"),
         "create_site" => t("Criar site", "Create Site"),

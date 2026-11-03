@@ -13,10 +13,15 @@ import {
   type TextLayoutEvent,
 } from 'react-native';
 import type { ItemDetail } from '../core/generated/ItemDetail';
+import { useQuoteLayoutTransition } from './quote-layout-context';
+import { useRenderedMessageText, type RenderedMessageText } from './use-rendered-message-text';
+import { useSemanticMessagePreview } from './use-semantic-message-preview';
 import { messageMayContainMarkdown } from '../core/message-markdown';
 import {
   largeEmojiFontSize,
   messageCanInteract,
+  messageForwardLabel,
+  messageCanSelect,
   messageCard,
   messageHasStandaloneAppCard,
   messagesAreGrouped,
@@ -36,6 +41,7 @@ import { useConversationRevealAnchor } from './conversation-reveal-content-view'
 
 export type ConversationMessageProps = {
   spaceId: string;
+  accessibilityText?: RenderedMessageText;
   entry: TimelineEntry;
   previous?: TimelineEntry;
   next?: TimelineEntry;
@@ -69,7 +75,7 @@ export type ConversationMessageProps = {
     nativeSource?: MessageContextRequest,
   ) => void;
   onReact: (entry: TimelineEntry, emoji: string | null) => void;
-  onQuote: (id: string) => void;
+  onQuote: (id: string, sourceSpace?: string) => void;
 };
 export function useConversationMessage({
   spaceId,
@@ -88,8 +94,10 @@ export function useConversationMessage({
   onAuthor,
   onMenu,
   onQuote,
+  accessibilityText: sharedAccessibilityText,
 }: ConversationMessageProps) {
   const { colors, presentation: p, reducedMotion } = useTheme();
+  const quoteLayout = useQuoteLayoutTransition();
   const revealAnchor = useConversationRevealAnchor(entry.id);
   const { width, scale, fontScale } = useWindowDimensions();
   const pixel = 1 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
@@ -105,6 +113,27 @@ export function useConversationMessage({
       measures.clear();
     };
   }, [entry.id]);
+  const replyPreview = useSemanticMessagePreview({
+    owner: JSON.stringify([
+      spaceId,
+      entry.id,
+      entry.text_revision,
+      entry.reply_to?.id,
+      entry.reply_to?.selection?.revision,
+    ]),
+    text: entry.reply_to?.selection?.text ?? entry.reply_to?.text ?? '',
+    enabled: !entry.deleted && !!entry.reply_to,
+    literal: !!(entry.reply_to?.selection || entry.reply_to?.origin),
+    target:
+      entry.reply_to && !entry.reply_to.selection && !entry.reply_to.origin
+        ? { spaceId, messageId: entry.reply_to.id }
+        : undefined,
+  });
+  const openQuote = () => {
+    const quote = entry.reply_to;
+    if (!quote || entry.deleted || disabled || quote.origin?.available === false) return;
+    onQuote(quote.id, quote.origin?.space_id);
+  };
   const mine = entry.author.is_me;
   const card = messageCard(entry);
   const appCard = card?.kind_id === 'app' && !!card.app;
@@ -167,6 +196,12 @@ export function useConversationMessage({
     !standaloneAppCard &&
     !emojiFont &&
     messageMayContainMarkdown(text, process.env.EXPO_OS === 'ios');
+  const accessibilityText = useRenderedMessageText(
+    JSON.stringify([spaceId, entry.id]),
+    text,
+    formattedText && process.env.EXPO_OS === 'ios',
+    sharedAccessibilityText,
+  );
   const availableWidth = Math.max(0, width - 32 - authorGutter);
   const mediaLimit = Math.min(availableWidth, Math.max(160, Math.min(294, availableWidth * 0.87)));
   const mediaWidth = appCard
@@ -292,18 +327,23 @@ export function useConversationMessage({
   // VoiceOver groups text bubbles, so their nested quote and metadata must also
   // be represented on the group. Native media keeps its independent controls.
   const accessibilityMessageLabel = [
-    `${entry.author.name}: ${text}`,
+    accessibilityText.text === undefined
+      ? entry.author.name
+      : `${entry.author.name}: ${accessibilityText.text}`,
     !entry.deleted && entry.reply_to
-      ? `${t('chat.replyingTo', { name: entry.reply_to.author.name })}: ${entry.reply_to.text}`
+      ? [t('chat.replyingTo', { name: entry.reply_to.author.name }), replyPreview.text]
+          .filter(Boolean)
+          .join(': ')
       : null,
-    !entry.deleted && entry.forwarded ? t('chat.forwarded') : null,
+    messageForwardLabel(entry),
     entry.edited ? t('chat.editedAt', { time }) : time,
     mine ? messageDeliveryLabel(albumContent?.delivery ?? entry.delivery) : null,
   ]
     .filter(Boolean)
     .join('. ');
   const open = (mode: MessageActionMode, emoji?: string, nativeSource?: MessageContextRequest) => {
-    if (disabled || !messageCanInteract(entry)) return;
+    if (disabled || !(mode === 'actions' ? messageCanSelect(entry) : messageCanInteract(entry)))
+      return;
     // The keyboard can move this row before the popover is presented. Measure
     // only after it closes, and reject a row recycled while that was pending.
     const measureAnchor = () =>
@@ -333,25 +373,44 @@ export function useConversationMessage({
   };
   // Native media owns its touch stream; a Pressable ancestor can still receive
   // AVKit taps even when the row pan is correctly fenced by a native gesture.
-  const Bubble = attachment ? View : Pressable;
+  const Bubble = attachment ? (quoteLayout?.View ?? View) : (quoteLayout?.Pressable ?? Pressable);
   const bubbleInteraction = attachment
     ? { accessible: false }
     : {
         accessible: true,
-        accessibilityRole: entry.deleted ? ('text' as const) : ('button' as const),
+        accessibilityRole: messageCanSelect(entry) ? ('button' as const) : ('text' as const),
         accessibilityLabel: accessibilityMessageLabel,
         accessibilityHint:
-          disabled || !messageCanInteract(entry)
+          disabled || !messageCanSelect(entry)
             ? undefined
             : t('chat.touchAndHoldToReplyOrSeeActions'),
-        onPress: () => open('reactions'),
+        onPress: () => open(entry.deleted ? 'actions' : 'reactions'),
         onLongPress: () => open('actions'),
         onAccessibilityTap: () => open('actions'),
         delayLongPress: 350,
-        disabled: disabled || !messageCanInteract(entry),
+        disabled: disabled || !messageCanSelect(entry),
       };
 
+  const rowInteraction = {
+    messageId: entry.id,
+    mine,
+    disabled: disabled || !(messageCanSelect(entry) || entry.thread_replies > 0),
+    swipeEnabled: !albumContent && messageCanInteract(entry),
+    accessibilityLabel: !attachment ? accessibilityMessageLabel : undefined,
+    onReply: !entry.deleted ? () => onReply(entry) : undefined,
+    onThread: !entry.deleted || entry.thread_replies > 0 ? () => onThread(entry) : undefined,
+    onActions: messageCanSelect(entry) ? () => open('actions') : undefined,
+    actionsAccessibilityLabel: messageCanSelect(entry)
+      ? t('chat.messageActions', { name: entry.author.name })
+      : t('chat.viewReplies', { count: entry.thread_replies }),
+    onQuote:
+      !entry.deleted && entry.reply_to && entry.reply_to.origin?.available !== false
+        ? openQuote
+        : undefined,
+  };
+
   return {
+    rowInteraction,
     entry,
     revealAnchor,
     onStatusLayout,
@@ -377,6 +436,8 @@ export function useConversationMessage({
     reducedMotion,
     bubble,
     accessibilityMessageLabel,
+    accessibilityText,
+    replyPreview,
     formattedText,
     p,
     Math,
@@ -392,6 +453,7 @@ export function useConversationMessage({
     authorDisabled,
     openAuthor,
     onQuote,
+    openQuote,
     textMaxWidth,
     attachmentWidth,
     Bubble,

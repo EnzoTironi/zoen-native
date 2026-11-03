@@ -6,6 +6,14 @@
 #import "ENRMComposerRanges.h"
 #import "ENRMComposerInputState.h"
 #import "ENRMComposerAvailability.h"
+#import "ENRMBlockEditCoordinator.h"
+#include "MD4CParser.hpp"
+
+static std::string viewerText(const std::shared_ptr<Markdown::MarkdownASTNode> &node) {
+  std::string text = node->content;
+  for (const auto &child : node->children) text += viewerText(child);
+  return text;
+}
 
 int main() { @autoreleasepool {
   NSError *error=nil;
@@ -70,6 +78,12 @@ int main() { @autoreleasepool {
     [styles setRanges:ENRMNormalizeComposerRanges(text, styles.allRanges)];
   }
   [styles setRanges:ENRMNormalizeComposerRanges(text, styles.allRanges)];
+  NSDictionary *blockProbe = request[@"blockAvailability"];
+  if (blockProbe) available = ENRMComposerCanToggleBlock(text, styles.allRanges, blocks.allRanges, ENRMInputBlockTypeQuote, 1, NSMakeRange([blockProbe[@"start"] unsignedIntegerValue], [blockProbe[@"length"] unsignedIntegerValue]));
+  for (NSArray *range in request[@"toggleQuotes"]) {
+    ENRMBlockEditCoordinator *coordinator = [[ENRMBlockEditCoordinator alloc] initWithBlockStore:blocks];
+    [coordinator toggleBlockType:ENRMInputBlockTypeQuote level:1 selectionRange:NSMakeRange([range[0] unsignedIntegerValue], [range[1] unsignedIntegerValue]) inText:text];
+  }
   NSArray *quote=request[@"quote"];
   if(quote)[blocks setBlockType:ENRMInputBlockTypeQuote level:1 forParagraphRange:NSMakeRange([quote[0] unsignedIntegerValue],[quote[1] unsignedIntegerValue]) inText:text];
   NSString *markdown=generic ? [ENRMMarkdownSerializer serializePlainText:text ranges:styles.allRanges] :
@@ -80,12 +94,24 @@ int main() { @autoreleasepool {
     [undo undo];
     markdown = [ENRMMarkdownSerializer serializeComposerText:text ranges:styles.allRanges blockRanges:blocks.allRanges];
   }
+  if ([request[@"redo"] boolValue]) { [undo redo]; markdown = [ENRMMarkdownSerializer serializeComposerText:text ranges:styles.allRanges blockRanges:blocks.allRanges]; }
+  ENRMParseResult *round = [parser parseComposerMarkdown:markdown];
+  NSMutableArray *roundBlocks=[NSMutableArray new];
+  for (ENRMBlockRange *block in round.blockRanges) [roundBlocks addObject:@[@(block.type), @(block.range.location), @(block.range.length)]];
+  NSMutableArray *roundRanges=[NSMutableArray new];
+  for (ENRMFormattingRange *range in round.formattingRanges) [roundRanges addObject:@{@"type":@(range.type),@"start":@(range.range.location),@"length":@(range.range.length)}];
   NSMutableArray *types=[NSMutableArray new];for(ENRMFormattingRange *range in styles.allRanges)[types addObject:@(range.type)];
   NSMutableArray *ranges=[NSMutableArray new];
   for (ENRMFormattingRange *range in styles.allRanges)
     [ranges addObject:@{@"type":@(range.type),@"start":@(range.range.location),@"length":@(range.range.length)}];
-  NSData *output=[NSJSONSerialization dataWithJSONObject:@{@"plain":text,@"markdown":markdown,@"types":types,@"ranges":ranges,
-    @"selection":@[@(selection.location),@(selection.length)],@"available":@(available)} options:0 error:&error];
+  Markdown::MD4CParser viewer;
+  Markdown::Md4cFlags flags;
+  flags.hardSoftBreaks = true; flags.preserveBlankLines = true;
+  flags.latexMath = false; flags.noMedia = true;
+  std::string displayed = viewerText(viewer.parse(markdown.UTF8String, flags, true));
+  NSString *viewerPlain = [[NSString alloc] initWithBytes:displayed.data() length:displayed.size() encoding:NSUTF8StringEncoding];
+  NSData *output=[NSJSONSerialization dataWithJSONObject:@{@"plain":text,@"markdown":markdown,@"viewerPlain":viewerPlain,@"types":types,@"ranges":ranges,
+    @"selection":@[@(selection.location),@(selection.length)],@"available":@(available),@"reparsedPlain":round.plainText,@"reparsedRanges":roundRanges,@"reparsedBlocks":roundBlocks} options:0 error:&error];
   [undo removeAllActions]; recursiveRestore = nil;
   if(error)return 4;[[NSFileHandle fileHandleWithStandardOutput] writeData:output];return 0;
 }}

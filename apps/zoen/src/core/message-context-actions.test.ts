@@ -1,3 +1,4 @@
+import { messageMenuActions } from '../components/message-actions-model.ts';
 import { selectedMessageQuote } from './selected-message-quote.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -50,6 +51,8 @@ function fixture(
     row?: boolean;
     recover?: boolean;
     quote?: boolean;
+    info?: boolean;
+    copyLink?: boolean;
   } = {},
 ) {
   const result = deferred<string | null>(),
@@ -113,6 +116,8 @@ function fixture(
     onClose: () => calls.push('close'),
     onReact: (value: string | null) => calls.push(`react:${value}`),
     onMore: () => calls.push('more'),
+    onInfo: options.info ? () => calls.push('info') : undefined,
+    onCopyLink: options.copyLink ? () => calls.push('copy-link') : undefined,
     onReply: () => calls.push('reply'),
     onThread: () => calls.push('thread'),
     onForward: () => calls.push('forward'),
@@ -145,6 +150,7 @@ function fixture(
   };
   const module = { exports: {} as { ExtractedMessageActions(props: any): unknown } };
   const ports: Record<string, unknown> = {
+    './message-actions-model': { messageMenuActions },
     react: {
       useRef: (value: unknown) => (refs[cursor++] ??= { current: value }),
       useLayoutEffect: (effect: () => void) => layouts.push(effect),
@@ -214,12 +220,22 @@ test('actual compiled menu offers only supplied real actions and receives the sh
   await tick();
   assert.deepEqual(
     f.configurations[0].actions.map((value: any) => value.id),
-    ['reply', 'thread', 'forward', 'copy', 'share'],
+    ['reply', 'thread', 'forward', 'copy', 'share', 'delete'],
   );
   assert.deepEqual(f.configurations[0].theme, f.theme);
   assert.equal(f.configurations[0].reducedMotion, true);
   f.result.resolve(null);
   await tick();
+});
+test('copy message link is an admitted native action and waits for real native dismissal', async () => {
+  const f = fixture({ copyLink: true });
+  f.render();
+  await tick();
+  assert.ok(f.configurations[0].actions.some((row: any) => row.id === 'copyLink'));
+  assert.deepEqual(f.calls, []);
+  f.result.resolve('copyLink');
+  await tick();
+  assert.deepEqual(f.calls, ['close', 'copy-link']);
 });
 test('deleted messages cannot gain forward/edit/delete capabilities from native UI', async () => {
   const f = fixture({ deleted: true });
@@ -227,7 +243,7 @@ test('deleted messages cannot gain forward/edit/delete capabilities from native 
   await tick();
   assert.deepEqual(
     f.configurations[0].actions.map((value: any) => value.id),
-    ['reply', 'thread', 'copy', 'share'],
+    [],
   );
   f.result.resolve('delete');
   await tick();
@@ -359,3 +375,23 @@ for (const failure of ['source', 'revision', 'spans'] as const)
     assert.ok(!f.calls.includes('quoted'));
     assert.ok(f.calls.includes('close'));
   });
+
+test('actual compiled Info delegates after native completion and refuses a revoked row', async () => {
+  const f = fixture({ info: true });
+  f.render();
+  await tick();
+  assert.equal(
+    f.configurations[0].actions.some((action: any) => action.id === 'info'),
+    true,
+  );
+  f.result.resolve('info');
+  await tick();
+  assert.deepEqual(f.calls, ['close', 'info']);
+  const stale = fixture({ info: true });
+  stale.render();
+  await tick();
+  stale.revoke();
+  stale.result.resolve('info');
+  await tick();
+  assert.equal(stale.calls.includes('info'), false);
+});

@@ -153,6 +153,7 @@ impl<S: Signer> Client<S> {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             });
         }
         self.queue_domain_batch(space, bodies, now_ms)?;

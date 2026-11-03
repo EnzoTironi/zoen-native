@@ -11,6 +11,8 @@ import { Driver, draftSession } from './store.fixtures.ts';
 import * as access from '../home/access.ts';
 import * as attachment from '../media/attachment-draft.ts';
 import * as contract from '../media/media-draft-contract.ts';
+import * as mediaReply from '../media/media-reply.ts';
+import * as mediaAcceptance from '../media/media-acceptance.ts';
 import * as location from '../media/location-file.ts';
 import * as categories from '../media/attachment-categories.ts';
 import { AttachmentReview } from '../media/attachment-review.ts';
@@ -29,6 +31,7 @@ const files = new Map([
   ['durable-attachment-composer', 'tsx'],
   ['use-durable-attachment-controller', 'ts'],
   ['durable-attachment-view', 'tsx'],
+  ['poll-draft-review', 'tsx'],
   ['durable-attachment-commands', 'ts'],
   ['durable-attachment-pick', 'ts'],
   ['durable-attachment-review', 'ts'],
@@ -211,6 +214,7 @@ export async function attachmentOwnerReactFixture(open = true) {
         ...React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot),
       }),
     },
+    './attachment-reply-context': { AttachmentReplyContext: () => null },
     '../components/primitives': { NativeButton: native },
     '../components/dialogs': {
       useDialogs: () => ({
@@ -225,6 +229,8 @@ export async function attachmentOwnerReactFixture(open = true) {
     '../theme': { useTheme: () => ({ colors: {} }) },
     './attachment-draft': attachment,
     './media-draft-contract': contract,
+    './media-reply': mediaReply,
+    './media-acceptance': mediaAcceptance,
     './attachment-review': { AttachmentReview },
     './media-draft-channel': { MediaDraftFailure },
     './location-file': location,

@@ -1,3 +1,5 @@
+import { DialogChoices } from './dialog-choices.web';
+import { useDialogChoices } from './use-dialog-choices';
 import { t } from '../i18n/index.ts';
 import {
   createContext,
@@ -128,6 +130,7 @@ function Dialog({
 }
 
 export function DialogsProvider({ children }: { children: ReactNode }) {
+  const choices = useDialogChoices();
   const queue = useRef<Pending[]>([]);
   const sequence = useRef(0);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -153,16 +156,20 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
   );
   const api = useMemo<Dialogs>(
     () => ({
+      choose: choices.choose,
       confirm: enqueue,
       inform: async (title, message) => {
         await enqueue({ title, message }, true);
       },
     }),
-    [enqueue],
+    [enqueue, choices.choose],
   );
   return (
     <Context value={api}>
       {children}
+      {choices.pending ? (
+        <DialogChoices key={choices.pending.id} pending={choices.pending} finish={choices.finish} />
+      ) : null}
       {pending ? <Dialog key={pending.id} pending={pending} finish={finish} /> : null}
     </Context>
   );

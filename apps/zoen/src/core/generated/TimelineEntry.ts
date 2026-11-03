@@ -42,6 +42,10 @@ edited: boolean,
  */
 deleted: boolean, forwarded: boolean, 
 /**
+ * Forwarder-signed original display name; not a profile link or proof of origin.
+ */
+forwarded_author?: string, 
+/**
  * Grouped by emoji, in the order they first appeared.
  */
 reactions: Array<ReactionDto>, 

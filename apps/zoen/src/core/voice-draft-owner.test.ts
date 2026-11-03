@@ -130,7 +130,10 @@ async function fixture(canonicalize = false, importedFinal = false) {
       assert.equal(expected, value.revision);
       ++publications;
       value = { ...empty(), revision: `revision_${++revision}` };
-      const result: MediaDraftSendResult = { entries: [], draft: clone(value) };
+      const result: MediaDraftSendResult = {
+        entries: [{ id: `voice_${publications}` } as MediaDraftSendResult['entries'][number]],
+        draft: clone(value),
+      };
       accepted.set(expected, result);
       if (loseSendAck) {
         loseSendAck = false;

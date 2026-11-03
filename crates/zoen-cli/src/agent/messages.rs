@@ -177,16 +177,56 @@ pub(super) fn tell_owner(
     }
 }
 
-/// Our earlier note to the owner about `source`, if one went out.
-pub(super) fn owner_note(e: &Arc<Client>, cx: &Ctx, source: &str) -> Option<serde_json::Value> {
-    let dm = e.start_direct(cx.owner.clone()).ok()?;
-    let needle = format!("\"source\":\"{source}\"");
-    e.timeline(dm).unwrap_or_default().iter().find_map(|m| {
-        let x = text_of(m).filter(|x| m.author.id == cx.me && x.contains(&needle))?;
-        let body = x
-            .trim()
-            .trim_start_matches("```json")
-            .trim_end_matches("```");
-        Some(serde_json::from_str(body.trim()).unwrap_or(serde_json::Value::Null))
-    })
+/// Recover only our exact structured note from the owner's signed timeline.
+/// Unavailable history is not evidence that delivery never happened.
+pub(super) fn owner_note(
+    e: &Arc<Client>,
+    cx: &Ctx,
+    space: &str,
+    source: &TimelineEntry,
+) -> Result<Option<serde_json::Value>, client_core::CoreError> {
+    let Some(timeline) = e.agent_owner_timeline(&cx.owner)? else {
+        return Ok(None);
+    };
+    Ok(timeline.iter().find_map(|message| {
+        if message.author.id != cx.me {
+            return None;
+        }
+        owner_note_body(text_of(message)?, space, source)
+    }))
+}
+
+fn owner_note_body(text: &str, space: &str, source: &TimelineEntry) -> Option<serde_json::Value> {
+    let body = text.trim().strip_prefix("```json")?.strip_suffix("```")?;
+    let note: serde_json::Value = serde_json::from_str(body.trim()).ok()?;
+    let object = note.as_object()?;
+    if object.len() != 1 {
+        return None;
+    }
+    let (kind, payload) = object.iter().next()?;
+    if payload.get("space")?.as_str()? != space || payload.get("source")?.as_str()? != source.id {
+        return None;
+    }
+    match kind.as_str() {
+        "agent_proposal" if matches!(source.kind, EntryKind::Message { .. }) => {
+            serde_json::from_value::<AgentSpec>(payload.get("spec")?.clone()).ok()?;
+            if payload
+                .get("confirmation")
+                .is_some_and(|value| !value.is_null() && !value.is_string())
+            {
+                return None;
+            }
+        }
+        "ask_owner" if matches!(source.kind, EntryKind::Message { .. }) => {
+            if payload.get("from")?.as_str()? != source.author.id {
+                return None;
+            }
+            for key in ["draft", "rule"] {
+                payload.get(key)?.as_str()?;
+            }
+        }
+        "booking" if matches!(source.kind, EntryKind::ItemEdited { .. }) => {}
+        _ => return None,
+    }
+    Some(note)
 }

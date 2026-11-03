@@ -82,6 +82,27 @@ class QaDeviceTest(unittest.TestCase):
                 self.assertIn("fill and type are disabled", result.stderr)
                 self.assertEqual([], self.events())
 
+    def test_destructive_deployment_never_dispatches_even_for_a_private_candidate(self):
+        for verb in ("reinstall", "uninstall"):
+            for private in ({}, {"ZOEN_QA_DRIVER_ROOT": "/invalid/private/candidate"}):
+                with self.subTest(verb=verb, private=bool(private)):
+                    result = self.run_wrapper(
+                        verb, "xyz.tironi.zoen", "/synthetic/Zoen.app",
+                        "--session", "synthetic", extra_env=private,
+                    )
+                    self.assertEqual(2, result.returncode)
+                    self.assertIn("refused before dispatch", result.stderr)
+                    self.assertIn("erase the app's local data", result.stderr)
+                    self.assertIn("use install <app> <binary>", result.stderr)
+                    self.assertEqual([], self.events())
+
+    def test_update_install_passes_through_once_without_reinstalling(self):
+        arguments = ("install", "xyz.tironi.zoen", "/synthetic/Zoen.app",
+                     "--session", "synthetic")
+        result = self.run_wrapper(*arguments)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([list(arguments)], [event["argv"] for event in self.events()])
+
     def test_missing_verb_leading_options_and_malformed_verbs_fail_closed(self):
         for arguments in [(), ("--session", "synthetic", "fill", "@e1", ""),
                           ("--", "fill", "@e1", ""), ("-h",),

@@ -6,11 +6,14 @@
     "acceptance": "scoped",
     "evidence": [
       "apps/zoen/src/components/message-markdown.tsx",
-      "apps/zoen/src/core/message-markdown.test.ts"
+      "apps/zoen/src/components/composer-rich-input.tsx",
+      "apps/zoen/src/core/composer-rich-native.test.ts",
+      "apps/zoen/src/core/composer-rich-paste.test.ts"
     ],
-    "gap": "Qualificar negrito/itálico/riscado/link e composição; renderizador Markdown não garante sublinhado nem toolbar do compositor.",
+    "gap": "Compositor nativo oferece negrito, itálico, riscado, código, citação, Link e undo/redo com Markdown canônico. Sublinhado e spoiler do compositor seguem desabilitados; completar esses formatos e aceite manual em #660.",
     "issues": [
-      172
+      172,
+      660
     ]
   },
   {
@@ -58,15 +61,17 @@
   {
     "id": "TG-formatting-collapsible-quotes",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/components/message-markdown.tsx",
-      "apps/zoen/src/core/message-markdown.test.ts"
+      "apps/zoen/src/components/use-quote-collapse.ts",
+      "apps/zoen/src/core/quote-collapse-native.test.ts",
+      "apps/zoen/src/core/quote-collapse-react.test.ts"
     ],
-    "gap": "Recolher citações longas mantendo expansão, acessibilidade e posição de leitura.",
+    "gap": "Renderer nativo expande/recolhe por bloco e compartilha a transição da lista para preservar posição. Há prova parcial histórica no Simulator; VoiceOver, Reduce Motion e variantes finais aguardam Enzo em #677.",
     "issues": [
-      172
+      172,
+      677
     ]
   },
   {
@@ -90,12 +95,14 @@
     "acceptance": "scoped",
     "evidence": [
       "apps/zoen/src/media/article-editor.tsx",
-      "apps/zoen/src/documents/markdown-files.ts"
+      "apps/zoen/src/components/composer-rich-input.tsx",
+      "apps/zoen/src/core/composer-rich-event.test.ts"
     ],
-    "gap": "Fechar criação/revisão de Artigo no editor nativo; compositor comum permanece texto, sem fingir equivalência.",
+    "gap": "Artigo e compositor usam edição visual nativa; o rascunho canônico preserva texto/formatação e recibos de edição. Restam formatos desabilitados do compositor e aceite completo das duas superfícies.",
     "issues": [
       172,
-      173
+      173,
+      660
     ]
   },
   {

@@ -119,6 +119,7 @@ impl Engine {
         };
         let me = self.me.as_deref()?;
         if entry.seq == 0
+            || !self.visible_message(entry)
             || marks.deleted
             || self.state.is_recovery_item(id)
             || !self.is_member(&entry.space, me)

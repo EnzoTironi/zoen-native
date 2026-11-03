@@ -51,9 +51,7 @@ export function useDurableAttachmentController(
     () =>
       channel && routesAvailable
         ? {
-            categories: conversationAttachmentCategories.filter(
-              (kind) => kind !== 'poll' || channel.scope.thread_root_id === null,
-            ),
+            categories: conversationAttachmentCategories,
             open: (kind: ConversationAttachmentCategory, pickerCurrent: () => boolean) => {
               if (!pickerCurrent() || !store.mediaDrafts.isCurrent(channel)) return;
               const latest = channel.getSnapshot();
@@ -91,6 +89,7 @@ export function useDurableAttachmentController(
       focused: false,
       foreground: AppState.currentState !== 'background' && AppState.currentState !== 'inactive',
       picking: false,
+      routeOpening: false,
       pickerAdmission: null as object | null,
       submitting: false,
       approval: null as ApprovalPresentation | null,
@@ -225,6 +224,7 @@ export function useDurableAttachmentController(
   useFocusEffect(
     useCallback(() => {
       runtime.focused = true;
+      runtime.routeOpening = false;
       return () => {
         runtime.focused = false;
         cancelPhotos();

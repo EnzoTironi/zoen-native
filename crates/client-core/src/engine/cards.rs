@@ -130,6 +130,9 @@ impl Engine {
     }
 
     pub(super) fn entry_voice(&self, e: &Entry) -> Option<VoiceNoteDto> {
+        if !self.visible_message(e) {
+            return None;
+        }
         let EntryBody::Message {
             text,
             attaches,
@@ -258,36 +261,49 @@ impl Engine {
         for r in &mut reactions {
             r.mine = r.people.iter().any(|p| p.id == me);
         }
-        TimelineEntry {
-            text_revision: matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted)
-                .then(|| {
-                    marks
-                        .text_revision
-                        .clone()
-                        .unwrap_or_else(|| e.id().to_string())
-                }),
-            media: (!marks.deleted)
-                .then(|| marks.media.as_ref().map(MessageMediaDto::from))
-                .flatten(),
-            edited: marks.edited,
-            deleted: marks.deleted,
-            forwarded: marks.forwarded,
-            reactions,
-            id: e.id().to_string(),
-            seq: e.seq,
-            author: self.persona(&e.author),
-            at_ms: e.at_ms,
-            kind,
-            delivery: self.delivery(e),
-            voice: self.entry_voice(e),
-            reply_to,
-            in_thread,
-            thread_replies: 0,
-        }
+        self.redact_deleted_for_self(
+            e,
+            TimelineEntry {
+                text_revision:
+                    matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted).then(
+                        || {
+                            marks
+                                .text_revision
+                                .clone()
+                                .unwrap_or_else(|| e.id().to_string())
+                        },
+                    ),
+                media: (!marks.deleted)
+                    .then(|| marks.media.as_ref().map(MessageMediaDto::from))
+                    .flatten(),
+                edited: marks.edited,
+                deleted: marks.deleted,
+                forwarded: marks.forwarded,
+                forwarded_author: (!marks.deleted).then_some(marks.forwarded_author).flatten(),
+                reactions,
+                id: e.id().to_string(),
+                seq: e.seq,
+                author: self.persona(&e.author),
+                at_ms: e.at_ms,
+                kind,
+                delivery: self.delivery(e),
+                voice: self.entry_voice(e),
+                reply_to,
+                in_thread,
+                thread_replies: 0,
+            },
+        )
     }
 
-    pub(super) fn preview(&self, s: &SpaceState) -> (String, Option<Persona>, Option<Delivery>) {
+    pub(super) fn preview(
+        &self,
+        s: &SpaceState,
+    ) -> (String, bool, Option<Persona>, Option<Delivery>) {
         for e in s.entries.iter().rev() {
+            if !self.visible_message(e) {
+                continue;
+            }
+            let mut markdown = false;
             let text = match &e.body {
                 EntryBody::Message { marks, .. } if marks.deleted => {
                     t("Mensagem apagada", "Message deleted")
@@ -301,14 +317,17 @@ impl Engine {
                 EntryBody::Message { text, attaches, .. } => {
                     match attaches.as_deref().and_then(|i| self.card(i)) {
                         Some(c) if text.is_empty() => format!("{} · {}", c.kind_label, c.title),
-                        _ => text.clone(),
+                        _ => {
+                            markdown = !text.is_empty();
+                            text.clone()
+                        }
                     }
                 }
                 EntryBody::ItemEdited { note, .. } => note.clone(),
                 EntryBody::Request { request } => {
                     if let Some(r) = self.state.requests.get(request) {
                         // A request's title already describes the action in natural language.
-                        return (r.req.title.clone(), None, None);
+                        return (r.req.title.clone(), false, None, None);
                     }
                     continue;
                 }
@@ -331,8 +350,13 @@ impl Engine {
             } else {
                 None
             };
-            return (text, Some(self.persona(&e.author)), delivery);
+            return (text, markdown, Some(self.persona(&e.author)), delivery);
         }
-        (t("Nenhuma mensagem ainda", "No messages yet"), None, None)
+        (
+            t("Nenhuma mensagem ainda", "No messages yet"),
+            false,
+            None,
+            None,
+        )
     }
 }

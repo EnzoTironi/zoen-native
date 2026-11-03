@@ -1,0 +1,20 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -779,6 +779,16 @@
+ - (NSString *)composerQuoteLabel { return _composerQuoteLabel ?: @""; }
+ - (NSString *)zoenComposerCanonicalText { return _composer.binding.length ? [self currentMarkdown] : nil; }
+ - (NSNumber *)zoenComposerBaseFontSize { return _composer.binding.length ? @(_formatterStyle.baseFont.pointSize) : nil; }
++
++- (NSNumber *)zoenComposerFittingHeight
++{
++  CGFloat width = _textView.bounds.size.width;
++  if (!_composer.binding.length || _composerConfigurationRejected || !isfinite(width) || width <= 0) {
++    return nil;
++  }
++  CGFloat height = [self measureSize:width].height;
++  return isfinite(height) && height > 0 ? @(height) : nil;
++}
+ - (NSDictionary *)composerReceiptForMarkdown:(NSString *)markdown { return [_composer receiptForMarkdown:markdown]; }
+ 
+ - (void)composerMutationWillBegin

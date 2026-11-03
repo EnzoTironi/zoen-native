@@ -226,6 +226,7 @@ fn msg() -> EventBody {
         reply: None,
         media: None,
         forwarded: false,
+        forwarded_author: None,
     }
 }
 

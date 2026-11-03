@@ -1,19 +1,22 @@
 import type { ReplySelection } from '../core/generated/ReplySelection';
+import { messageInfoAction } from './message-info-navigation';
+import { copyMessageLink } from './message-link-actions';
+import { currentMessageAction, resolveMessageAuthor } from './message-action-current';
+import { canDeleteMessage, bindMessageDeletion } from './delete-message-action';
 import { useMessageQuoteSelection } from './use-message-quote-selection';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
+import { copyableMessageText, copyMessageText } from './message-copy';
 import { KeyboardController } from 'react-native-keyboard-controller';
 import type { TimelineEntry } from '../core/types';
 import { useClient } from '../core/provider';
 import {
   messageCanEdit,
   messageCanSelectText,
-  messageCanInteract,
+  messageCanSelect,
   messageCanRecoverMedia,
   messageCard,
 } from '../core/message-presentation';
-import { messageText } from '../core/presentation';
 import { shareMessageMedia } from '../media/share-message';
 import { t } from '../i18n/index.ts';
 import { homeSpacesFor } from '../home/access';
@@ -34,6 +37,7 @@ export function useMessageActions({
   onReply,
   onEdit,
   onThread,
+  onSelect,
   threadRootId = null,
 }: {
   spaceId: string;
@@ -43,15 +47,18 @@ export function useMessageActions({
   onReply: (entry: TimelineEntry, selection?: ReplySelection) => void;
   onEdit: (entry: TimelineEntry) => void;
   onThread?: (entry: TimelineEntry) => void;
+  onSelect?: (entry: TimelineEntry) => void;
 }) {
   const client = useClient();
   const { store, snapshot, mode } = client;
-  const { confirm, inform } = useDialogs();
+  const infoEpoch = store.sessionEpoch;
+  const { choose, inform } = useDialogs();
   const scope = `${mode}:${snapshot?.account?.identity_id ?? snapshot?.me?.id}:${snapshot?.account?.device_id}:${spaceId}`;
   const latest = useRef({ entries, disabled, scope });
   const focused = useRef(true);
   const mounted = useRef(false);
   const pending = useRef(false);
+  const confirmation = useRef<AbortController | null>(null);
   const profileEpoch = useRef(0);
   const profileAttempt = useRef<{ epoch: number; scope: string; messageId: string } | null>(null);
   const openAttempt = useRef<{
@@ -97,6 +104,7 @@ export function useMessageActions({
       setBusy(pending.current);
       return () => {
         focused.current = false;
+        confirmation.current?.abort();
         ++profileEpoch.current;
         profileAttempt.current = null;
         openAttempt.current = null;
@@ -105,21 +113,8 @@ export function useMessageActions({
     }, []),
   );
   const current = useCallback(
-    (entry: TimelineEntry) => {
-      const state = store.getSnapshot();
-      if (
-        !focused.current ||
-        latest.current.disabled ||
-        latest.current.scope !== scope ||
-        state.phase !== 'ready' ||
-        !homeSpacesFor(state).has(spaceId) ||
-        `${state.mode}:${state.snapshot?.account?.identity_id ?? state.snapshot?.me?.id}:${state.snapshot?.account?.device_id}:${spaceId}` !==
-          scope
-      )
-        return undefined;
-      const value = latest.current.entries.find((value) => value.id === entry.id);
-      return value && messageCanInteract(value) ? value : undefined;
-    },
+    (entry: TimelineEntry, purpose: 'content' | 'delete' | 'thread' = 'content') =>
+      currentMessageAction(store, spaceId, scope, focused.current, latest.current, entry, purpose),
     [scope, spaceId, store],
   );
   const quote = useMessageQuoteSelection(
@@ -150,7 +145,10 @@ export function useMessageActions({
       ? (entries.find((entry) => entry.id === selection.id) ?? null)
       : null;
   const selected =
-    homeSpacesFor(client).has(spaceId) && candidate && messageCanInteract(candidate)
+    homeSpacesFor(client).has(spaceId) &&
+    candidate &&
+    messageCanSelect(candidate) &&
+    (!candidate.deleted || !selection?.nativeSource)
       ? candidate
       : null;
   const close = () => {
@@ -165,10 +163,11 @@ export function useMessageActions({
     }
   };
   const thread = (entry: TimelineEntry) => {
-    const value = current(entry);
-    if (value && !value.deleted) openAttempt.current = null;
-    if (value && !value.deleted && onThread) onThread(value);
-    else if (value && !value.deleted)
+    const value = current(entry, 'thread');
+    if (!value) return;
+    openAttempt.current = null;
+    if (onThread) onThread(value);
+    else
       router.push({
         pathname: '/thread/[space]/[root]',
         params: { space: spaceId, root: value.in_thread ?? value.id },
@@ -187,22 +186,10 @@ export function useMessageActions({
       Boolean(current(value));
     let navigated = false;
     try {
-      // A recycled row supplies only message identity. Resolve the signed current
-      // author again, and keep late reads from opening a different account's route.
-      const canonical = await store.driver.request({
-        op: 'message',
-        space_id: spaceId,
-        message_id: attempt.messageId,
-      });
-      if (!active()) return;
-      if (
-        canonical.id !== attempt.messageId ||
-        !messageCanInteract(canonical) ||
-        !canonical.author.id.trim()
-      )
-        throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
+      const author = await resolveMessageAuthor(store, spaceId, attempt.messageId, active);
+      if (!author) return;
       close();
-      router.push({ pathname: '/person/[id]', params: { id: canonical.author.id } });
+      router.push({ pathname: '/person/[id]', params: { id: author } });
       navigated = true;
     } catch (reason) {
       if (active())
@@ -233,8 +220,7 @@ export function useMessageActions({
         });
     } finally {
       pending.current = false;
-      // This releases an interaction latch, never old account content. A scope
-      // change must not leave the newly focused conversation permanently busy.
+      // Release only the latch, never old content after a scope change.
       if (mounted.current) setBusy(false);
     }
   }
@@ -272,19 +258,19 @@ export function useMessageActions({
       measureAnchor?: MeasureMessageAnchor,
       nativeSource?: MessageContextRequest,
     ) => {
-      const value = current(entry);
+      const purpose = actionMode === 'actions' ? 'delete' : 'content';
+      const value = current(entry, purpose);
       if (
         !mounted.current ||
         !value ||
+        (value.deleted && Boolean(nativeSource)) ||
         pending.current ||
         profileAttempt.current ||
         (nativeSource && !nativeSource.current())
       )
         return;
       if (nativeSource?.kind === 'double') {
-        // Exact native admission fences a held/replayed event after a NEW touch.
-        // The native view has no mutation authority; current() still checks the
-        // account, access, signed message and focus again after this bridge await.
+        // Native admission fences a touch; current() rechecks account, access, message and focus.
         const attempt = {
           epoch: profileEpoch.current,
           scope,
@@ -298,7 +284,7 @@ export function useMessageActions({
             nativeSource.binding,
             nativeSource.gestureId,
           );
-          const canonical = current(value);
+          const canonical = current(value, purpose);
           if (
             admitted &&
             mounted.current &&
@@ -321,7 +307,7 @@ export function useMessageActions({
             mounted.current &&
             openAttempt.current === attempt &&
             nativeSource.current() &&
-            current(value)
+            current(value, purpose)
           )
             void inform(
               t('chat.thisCouldNotBeCompleted'),
@@ -351,7 +337,7 @@ export function useMessageActions({
         openAttempt.current === attempt &&
         profileEpoch.current === attempt.epoch &&
         !pending.current &&
-        Boolean(current(value)) &&
+        Boolean(current(value, purpose)) &&
         (!nativeSource || nativeSource.current());
       try {
         // A native modal hides the keyboard. Finish that movement before
@@ -453,7 +439,11 @@ export function useMessageActions({
           mode={selection?.mode === 'reactions' ? 'reactions' : 'actions'}
           anchor={selection?.anchor}
           nativeSource={selection?.nativeSource}
-          isCurrent={() => Boolean(selected && current(selected))}
+          isCurrent={() =>
+            Boolean(
+              selected && current(selected, selection?.mode === 'actions' ? 'delete' : 'content'),
+            )
+          }
           pending={busy}
           error={failure?.scope === scope && failure.id === selected?.id ? failure.text : undefined}
           onClose={close}
@@ -468,8 +458,26 @@ export function useMessageActions({
           onReply={() => {
             if (selected) reply(selected);
           }}
+          onInfo={
+            selected && !selected.deleted && mode === 'account'
+              ? () => messageInfoAction(store, spaceId, selected, current, infoEpoch)()
+              : undefined
+          }
+          onCopyLink={
+            selected && !selected.deleted && 'Message' in selected.kind && mode === 'account'
+              ? () => copyMessageLink(store, spaceId, selected, current, infoEpoch, inform)
+              : undefined
+          }
           onQuoteReview={quote.review}
           onQuote={quote.accept}
+          onSelect={
+            selected && messageCanSelect(selected) && onSelect
+              ? () => {
+                  const value = current(selected, 'delete');
+                  if (value && messageCanSelect(value)) onSelect(value);
+                }
+              : undefined
+          }
           onSelectText={
             process.env.EXPO_OS === 'ios' &&
             mode === 'account' &&
@@ -493,13 +501,10 @@ export function useMessageActions({
               : undefined
           }
           onCopy={
-            selected &&
-            !selected.voice &&
-            (!messageCard(selected) || messageCard(selected)?.kind_id === 'file') &&
-            messageText(selected).trim()
+            selected && copyableMessageText(selected)
               ? () => {
-                  if (current(selected))
-                    void Clipboard.setStringAsync(messageText(selected)).catch(() => {});
+                  const value = current(selected);
+                  if (value) copyMessageText(value);
                 }
               : undefined
           }
@@ -520,23 +525,17 @@ export function useMessageActions({
               : undefined
           }
           onDelete={
-            selected?.author.is_me && !selected.deleted
-              ? () => {
-                  const entry = selected;
-                  if (!current(entry)) return;
-                  void confirm({
-                    title: t('chat.deleteMessage'),
-                    message: t('chat.theMessageWillBeRemovedForEveryoneIn'),
-                    confirmLabel: t('chat.delete'),
-                    destructive: true,
-                  }).then((accepted) => {
-                    const value = current(entry);
-                    if (accepted && value?.author.is_me && !value.deleted)
-                      void store
-                        .request({ op: 'delete_message', space_id: spaceId, message_id: value.id })
-                        .catch(() => {});
-                  });
-                }
+            canDeleteMessage(store, spaceId, selected)
+              ? () =>
+                  bindMessageDeletion(store, spaceId, selected, choose, {
+                    epoch: infoEpoch,
+                    pending,
+                    mounted,
+                    activation: profileEpoch,
+                    confirmation,
+                    resolve: (entry) => current(entry, 'delete'),
+                    setBusy,
+                  })()
               : undefined
           }
           onShare={

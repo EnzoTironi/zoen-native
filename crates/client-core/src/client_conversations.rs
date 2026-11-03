@@ -20,15 +20,18 @@ impl Client {
     /// Marks the chat read on this device and tells the others (blue ✓✓) and my other
     /// devices (their unread clears too) with one "read up to" watermark.
     pub fn mark_read(&self, space_id: String) -> Result<(), CoreError> {
-        let (seq, synced) = {
+        let signal = {
             let mut engine = self.lock();
-            (
-                engine.mark_read(&space_id)?,
-                engine.net.synced.contains(&space_id),
-            )
+            let seq = engine.mark_read(&space_id)?;
+            if engine.net.synced.contains(&space_id) {
+                seq.map(|seq| engine.read_time_announcement(&space_id, seq))
+                    .transpose()?
+            } else {
+                None
+            }
         };
-        if let (Some(seq), true) = (seq, synced) {
-            self.with_net(|n| n.ephemeral(space_id, protocol::EphemeralKind::Read { seq }));
+        if let Some(kind) = signal {
+            self.with_net(|n| n.ephemeral(space_id, kind));
         }
         Ok(())
     }

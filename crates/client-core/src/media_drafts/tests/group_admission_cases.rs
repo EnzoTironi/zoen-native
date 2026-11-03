@@ -188,6 +188,7 @@ pub(super) fn media_contract_grouped_preexisting_confirmed_files_need_no_new_cre
                                 .unwrap(),
                             reply: None,
                             forwarded: false,
+                            forwarded_author: None,
                         },
                     )?
                     .client_id,
@@ -398,6 +399,7 @@ pub(super) fn media_contract_forwarded_group_is_rejected_and_single_forward_pres
                 media: metadata,
                 reply: None,
                 forwarded: true,
+                forwarded_author: None,
             }
         )
         .is_err());

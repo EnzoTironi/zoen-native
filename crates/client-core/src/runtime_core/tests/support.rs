@@ -57,6 +57,7 @@ pub(super) fn colliding_native_reply(
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let bytes = fork
@@ -100,6 +101,7 @@ pub(super) fn receipt_source_message(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();

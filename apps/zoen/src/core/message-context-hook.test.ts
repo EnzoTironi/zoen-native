@@ -1,8 +1,15 @@
+import { messageCanSelect } from './message-presentation.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { messageInfoNavigation } from './message-info-navigation.fixtures.ts';
+import * as messageCopyText from './message-copy-text.ts';
+import * as conversationScope from './conversation-scope.ts';
+import * as messageLinks from '../notifications/links.ts';
+import * as messageDeletionAction from '../components/delete-message-action.ts';
 const code = (
   await build({
     stdin: {
@@ -11,6 +18,7 @@ const code = (
         'utf8',
       ),
       loader: 'tsx',
+      resolveDir: fileURLToPath(new URL('../components/', import.meta.url)),
     },
     bundle: true,
     format: 'cjs',
@@ -22,12 +30,39 @@ const code = (
       {
         name: 'context-hook-ports',
         setup(builder) {
-          builder.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
+          builder.onResolve({ filter: /./ }, ({ path }) =>
+            ['./message-action-current', './message-link-actions'].includes(path)
+              ? undefined
+              : { path, external: true },
+          );
         },
       },
     ],
   })
 ).outputFiles[0]!.text;
+const copyCode = (
+  await build({
+    stdin: {
+      contents: readFileSync(new URL('../components/message-copy.ts', import.meta.url), 'utf8'),
+      loader: 'ts',
+    },
+    bundle: true,
+    external: ['*'],
+    format: 'cjs',
+    platform: 'node',
+    write: false,
+  })
+).outputFiles[0]!.text;
+const copy = { exports: {} };
+runInNewContext(copyCode, {
+  module: copy,
+  exports: copy.exports,
+  require(name: string) {
+    if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
+    assert.equal(name, '../core/message-copy-text');
+    return messageCopyText;
+  },
+});
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((yes) => {
@@ -53,7 +88,14 @@ function fixture() {
     mountedCleanup: () => void = () => {};
   let row = true,
     visible = true;
-  let entry = { id: 'm1', author: { is_me: false }, reactions: [] as any[], deleted: false };
+  let entry = {
+    id: 'm1',
+    kind: { Message: { text: 'message', card: null } },
+    voice: null,
+    author: { is_me: false },
+    reactions: [] as any[],
+    deleted: false,
+  };
   const state = {
     phase: 'ready',
     mode: 'native',
@@ -121,18 +163,21 @@ function fixture() {
       useClient: () => ({ store, snapshot: state.snapshot, mode: state.mode }),
     },
     '../core/message-presentation': {
+      messageCanSelect,
       messageCanInteract: () => true,
       messageCanRecoverMedia: () => false,
       messageCanEdit: () => false,
       messageCard: () => null,
     },
     '../core/presentation': { messageText: () => '' },
+    '../core/conversation-scope': conversationScope,
+    '../notifications/links': messageLinks,
     '../media/share-message': {},
     '../i18n/index.ts': { t: (key: string) => key },
     '../home/access': { homeSpacesFor: () => new Set(['space']) },
     './dialogs': {
       useDialogs: () => ({
-        confirm: async () => true,
+        choose: async () => 'everyone',
         inform: (...value: unknown[]) => calls.push(value),
       }),
     },
@@ -140,6 +185,9 @@ function fixture() {
     './use-message-quote-selection': {
       useMessageQuoteSelection: () => ({ open() {}, panel: null }),
     },
+    './message-copy': copy.exports,
+    './delete-message-action': messageDeletionAction,
+    './message-info-navigation': messageInfoNavigation({ push() {} }),
     './message-actions': { MessageActions: 'MessageActions' },
     './reaction-details': { ReactionDetails: 'ReactionDetails' },
   };

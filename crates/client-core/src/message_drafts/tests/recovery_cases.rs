@@ -79,14 +79,20 @@ pub(super) fn send_and_consume_are_atomic_idempotent_and_preserve_newer_text_aft
         .unwrap();
     assert!(accepted.draft.text.is_empty());
     assert_eq!(counts(&f.engine), (before.0, before.1 + 1));
-    assert_eq!(accepted.entry.reply_to.as_ref().unwrap().id, root.id);
+    assert_eq!(
+        visible_acceptance(&accepted).reply_to.as_ref().unwrap().id,
+        root.id
+    );
     let new = save(&f, &accepted.draft.revision, "New unsubmitted text", None);
     let again = f
         .engine
         .lock()
         .send_message_draft(&f.scope, &saved.revision)
         .unwrap();
-    assert_eq!(again.entry.id, accepted.entry.id);
+    assert_eq!(
+        visible_acceptance(&again).id,
+        visible_acceptance(&accepted).id
+    );
     assert_eq!(again.draft, new);
     assert_eq!(counts(&f.engine), (before.0, before.1 + 1));
     let scope = f.scope.clone();
@@ -100,14 +106,16 @@ pub(super) fn send_and_consume_are_atomic_idempotent_and_preserve_newer_text_aft
             .send_message_draft(&scope, &saved.revision)
             .unwrap()
             .entry
+            .as_ref()
+            .expect("visible accepted source")
             .id,
-        accepted.entry.id
+        visible_acceptance(&accepted).id
     );
     assert_eq!(
         e.timeline(scope.space_id.clone())
             .unwrap()
             .iter()
-            .filter(|m| m.id == accepted.entry.id)
+            .filter(|m| m.id == visible_acceptance(&accepted).id)
             .count(),
         1
     );
@@ -154,8 +162,10 @@ pub(super) fn storage_failure_rolls_back_send_and_keeps_exact_previous_draft_for
                 .send_message_draft(&f.scope, &saved.revision)
                 .unwrap()
                 .entry
+                .as_ref()
+                .expect("visible accepted source")
                 .id,
-            accepted.entry.id
+            visible_acceptance(&accepted).id
         );
     }
 }
@@ -204,7 +214,10 @@ pub(super) fn unsent_text_never_enters_signed_peer_history_and_atomic_send_repla
         .lock()
         .send_message_draft(&f.scope, &saved.revision)
         .unwrap();
-    assert_eq!(result.entry.id, again.entry.id);
+    assert_eq!(
+        visible_acceptance(&result).id,
+        visible_acceptance(&again).id
+    );
     let mut relay = event_log::SpaceLog::new(f.scope.space_id.clone());
     let pending = f.engine.lock().store.outbox().unwrap();
     for pending in pending
@@ -225,7 +238,7 @@ pub(super) fn unsent_text_never_enters_signed_peer_history_and_atomic_send_repla
     let timeline = peer.engine.timeline(f.scope.space_id.clone()).unwrap();
     let entries: Vec<_> = timeline
         .iter()
-        .filter(|e| e.id == result.entry.id)
+        .filter(|e| e.id == visible_acceptance(&result).id)
         .collect();
     assert_eq!(entries.len(), 1);
     assert!(
@@ -240,7 +253,7 @@ pub(super) fn unsent_text_never_enters_signed_peer_history_and_atomic_send_repla
             .timeline(f.scope.space_id)
             .unwrap()
             .iter()
-            .filter(|e| e.id == result.entry.id)
+            .filter(|e| e.id == visible_acceptance(&result).id)
             .count(),
         1
     );
@@ -360,7 +373,10 @@ pub(super) fn accepted_send_cold_restart_never_recovers_sent_text_or_sends_a_dup
         .lock()
         .send_message_draft(&scope, &draft.revision)
         .unwrap();
-    assert_eq!(retry.entry.id, accepted.entry.id);
+    assert_eq!(
+        visible_acceptance(&retry).id,
+        visible_acceptance(&accepted).id
+    );
     assert_eq!(counts(&e), before);
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();

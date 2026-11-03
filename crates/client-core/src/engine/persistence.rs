@@ -39,6 +39,15 @@ impl Engine {
                     .iter()
                     .map(|(k, v)| (k.clone(), v.clone())),
             );
+            for (owner, spaces) in &scoped.deleted_for_self {
+                let target = state.deleted_for_self.entry(owner.clone()).or_default();
+                for (space, messages) in spaces {
+                    target
+                        .entry(space.clone())
+                        .or_default()
+                        .extend(messages.iter().cloned());
+                }
+            }
             for (item, projected) in &scoped.items {
                 if item_spaces.get(item.as_str()) == Some(&1) {
                     state.items.insert(item.clone(), projected.clone());
@@ -146,6 +155,19 @@ impl Engine {
                     self.logs.insert(space.clone(), log);
                 }
                 Err(err) => {
+                    // Classification is trusted only when the signed genesis itself
+                    // verifies. An unknown broken log may contain private removals.
+                    let verified_genesis = events.first().filter(|first| {
+                        SpaceLog::from_events(space.clone(), vec![(*first).clone()]).is_ok()
+                    });
+                    let (kind, members) = match verified_genesis {
+                        Some(Event {
+                            author,
+                            body: EventBody::SpaceCreated { kind, .. },
+                            ..
+                        }) => (*kind, vec![(author.clone(), types::Role::Owner)]),
+                        _ => (SpaceKind::Group, vec![]),
+                    };
                     // Log adulterado: não projetamos nada dele, mas o Espaço aparece com o erro.
                     let title = events
                         .iter()
@@ -161,9 +183,9 @@ impl Engine {
                             call_transport: Vec::new(),
                             id: space.clone(),
                             title,
-                            kind: SpaceKind::Group,
+                            kind,
                             privacy: Privacy::EndToEnd,
-                            members: vec![],
+                            members,
                             entries: vec![],
                             last_at_ms: 0,
                             integrity_error: Some(err.to_string()),
@@ -227,6 +249,14 @@ impl Engine {
         body: EventBody,
     ) -> R<Event> {
         self.saved_messages_admit(space, author, &body)?;
+        if !self
+            .state
+            .private_message_deletion_valid(space, author, &body)
+        {
+            return Err(CoreError::Forbidden {
+                reason: t("exclusão privada inválida", "invalid private deletion"),
+            });
+        }
         if self.approval_replay_needed {
             self.reproject_approval_overlay()?;
         }

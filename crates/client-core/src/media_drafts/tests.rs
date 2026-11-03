@@ -3,7 +3,9 @@ use crate::{PrivacyDto, SecretVault};
 use std::sync::{Arc, Mutex};
 
 mod gallery_cases;
+mod poll_cases;
 mod recovery;
+mod reply_context_cases;
 
 #[derive(Default)]
 struct Vault(Mutex<HashMap<String, Vec<u8>>>);
@@ -254,12 +256,14 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser(
                     attaches: Some(items[index].clone()),
                     media: Some(media),
                     reply: member["reply"].as_str().map(|to| types::ReplyRef {
+                        shared: None,
                         quote: None,
                         artifact: None,
                         to: to.into(),
                         thread: false,
                     }),
                     forwarded: member["forwarded"].as_bool().unwrap_or(false),
+                    forwarded_author: None,
                 },
                 false,
             )

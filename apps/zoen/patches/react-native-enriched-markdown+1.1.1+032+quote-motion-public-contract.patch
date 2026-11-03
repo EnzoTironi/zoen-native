@@ -1,0 +1,136 @@
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+index bd42318a..e8ca0133 100644
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+@@ -428,6 +428,7 @@ type ResolvedAccessibilityTextEvent = Readonly<{ revision: string; markdown: str
+ export interface NativeProps extends ViewProps {
+   accessibilityRevision?: string;
+   onResolvedAccessibilityText?: CodegenTypes.BubblingEventHandler<ResolvedAccessibilityTextEvent>;
++  quoteMotion?: Readonly<{progress: CodegenTypes.Float; sequence: CodegenTypes.Int32; generation: CodegenTypes.Int32}>;
+   quoteCollapse?: Readonly<QuoteCollapseConfig>;
+   onBlockquoteToggle?: CodegenTypes.DirectEventHandler<QuoteToggleEvent>;
+ 
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+index 447b52e8..cbaa595a 100644
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+@@ -427,6 +427,7 @@ type ResolvedAccessibilityTextEvent = Readonly<{ revision: string; markdown: str
+ export interface NativeProps extends ViewProps {
+   accessibilityRevision?: string;
+   onResolvedAccessibilityText?: CodegenTypes.BubblingEventHandler<ResolvedAccessibilityTextEvent>;
++  quoteMotion?: Readonly<{progress: CodegenTypes.Float; sequence: CodegenTypes.Int32; generation: CodegenTypes.Int32}>;
+   quoteCollapse?: Readonly<QuoteCollapseConfig>;
+   onBlockquoteToggle?: CodegenTypes.DirectEventHandler<QuoteToggleEvent>;
+ 
+diff --git a/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts b/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
+index 0a5f0178..09739032 100644
+--- a/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
++++ b/node_modules/react-native-enriched-markdown/src/types/MarkdownTextProps.ts
+@@ -120,6 +120,7 @@ export interface StreamingConfig {
+ 
+ export interface EnrichedMarkdownTextProps extends Omit<ViewProps, 'style'> {
+   /** Controlled local quote presentation. iOS GitHub renderer only. */
++  quoteMotion?: Readonly<{progress: number; sequence: number; generation: number}>;
+   quoteCollapse?: {
+     enabled: boolean;
+     expanded: readonly number[];
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
+index 812fe2bb..f6d431c5 100644
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownTextProps.d.ts
+@@ -114,6 +114,7 @@ export interface StreamingConfig {
+ }
+ export interface EnrichedMarkdownTextProps extends Omit<ViewProps, 'style'> {
+   /** Controlled local quote presentation. iOS GitHub renderer only. */
++  quoteMotion?: Readonly<{progress: number; sequence: number; generation: number}>;
+   quoteCollapse?: {
+     enabled: boolean;
+     expanded: readonly number[];
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+index 6b173f9c..ba11694a 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+@@ -18,6 +18,52 @@
+ 
+ namespace facebook::react {
+ 
++struct EnrichedMarkdownQuoteMotionStruct {
++  Float progress{0.0};
++  int sequence{0};
++  int generation{0};
++
++
++#ifdef RN_SERIALIZABLE_STATE
++  bool operator==(const EnrichedMarkdownQuoteMotionStruct&) const = default;
++
++  folly::dynamic toDynamic() const {
++    folly::dynamic result = folly::dynamic::object();
++    result["progress"] = progress;
++    result["sequence"] = sequence;
++    result["generation"] = generation;
++    return result;
++  }
++#endif
++};
++
++static inline void fromRawValue(const PropsParserContext& context, const RawValue &value, EnrichedMarkdownQuoteMotionStruct &result) {
++  auto map = (std::unordered_map<std::string, RawValue>)value;
++
++  auto tmp_progress = map.find("progress");
++  if (tmp_progress != map.end()) {
++    fromRawValue(context, tmp_progress->second, result.progress);
++  }
++  auto tmp_sequence = map.find("sequence");
++  if (tmp_sequence != map.end()) {
++    fromRawValue(context, tmp_sequence->second, result.sequence);
++  }
++  auto tmp_generation = map.find("generation");
++  if (tmp_generation != map.end()) {
++    fromRawValue(context, tmp_generation->second, result.generation);
++  }
++}
++
++static inline std::string toString(const EnrichedMarkdownQuoteMotionStruct &value) {
++  return "[Object EnrichedMarkdownQuoteMotionStruct]";
++}
++
++#ifdef RN_SERIALIZABLE_STATE
++static inline folly::dynamic toDynamic(const EnrichedMarkdownQuoteMotionStruct &value) {
++  return value.toDynamic();
++}
++#endif
++
+ struct EnrichedMarkdownQuoteCollapseStruct {
+   bool enabled{false};
+   std::vector<int> expanded{};
+@@ -3199,6 +3245,7 @@ class EnrichedMarkdownProps final : public ViewProps {
+ #pragma mark - Props
+ 
+   std::string accessibilityRevision{};
++  EnrichedMarkdownQuoteMotionStruct quoteMotion{};
+   EnrichedMarkdownQuoteCollapseStruct quoteCollapse{};
+   std::string markdown{};
+   EnrichedMarkdownMarkdownStyleStruct markdownStyle{};
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+index 213c3525..229eb310 100644
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.cpp
+@@ -20,6 +20,7 @@ EnrichedMarkdownProps::EnrichedMarkdownProps(
+     const RawProps &rawProps): ViewProps(context, sourceProps, rawProps),
+ 
+     accessibilityRevision(convertRawProp(context, rawProps, "accessibilityRevision", sourceProps.accessibilityRevision, {})),
++    quoteMotion(convertRawProp(context, rawProps, "quoteMotion", sourceProps.quoteMotion, {})),
+     quoteCollapse(convertRawProp(context, rawProps, "quoteCollapse", sourceProps.quoteCollapse, {})),
+     markdown(convertRawProp(context, rawProps, "markdown", sourceProps.markdown, {})),
+     markdownStyle(convertRawProp(context, rawProps, "markdownStyle", sourceProps.markdownStyle, {})),
+@@ -69,6 +70,10 @@ folly::dynamic EnrichedMarkdownProps::getDiffProps(
+     result["accessibilityRevision"] = accessibilityRevision;
+   }
+     
++  if (quoteMotion != oldProps->quoteMotion) {
++    result["quoteMotion"] = toDynamic(quoteMotion);
++  }
++    
+   if (quoteCollapse != oldProps->quoteCollapse) {
+     result["quoteCollapse"] = toDynamic(quoteCollapse);
+   }

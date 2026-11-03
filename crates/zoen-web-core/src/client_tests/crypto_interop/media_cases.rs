@@ -129,6 +129,7 @@ fn assert_file_post_variants(
         (
             "",
             Some(types::ReplyRef {
+                shared: None,
                 quote: None,
                 artifact: None,
                 to: "root".into(),
@@ -140,6 +141,7 @@ fn assert_file_post_variants(
         (
             "",
             Some(types::ReplyRef {
+                shared: None,
                 quote: None,
                 artifact: None,
                 to: "root".into(),
@@ -210,6 +212,7 @@ pub(super) fn assert_voice_reply_identity(
     let mut voice = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None)?.doc;
     voice.voice = Some(types::VoiceMeta {
         reply: Some(types::ReplyRef {
+            shared: None,
             quote: None,
             artifact: None,
             to: target,

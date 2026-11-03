@@ -5,15 +5,17 @@ import {
   type PlaybackOwner,
 } from './playback-owner.ts';
 import type { MediaDraftScope } from './media-draft-types.ts';
+import type { MediaReplyFields } from './media-reply';
 
-export type AttachmentReviewRequest = Readonly<{
-  scope: MediaDraftScope;
-  revision: string;
-  assetId: string;
-  mutationId: string;
-  sha256: string;
-  replyTo: string | null;
-}>;
+export type AttachmentReviewRequest = MediaReplyFields &
+  Readonly<{
+    scope: MediaDraftScope;
+    revision: string;
+    assetId: string;
+    mutationId: string;
+    sha256: string;
+    replyTo: string | null;
+  }>;
 export type AttachmentReviewState = Readonly<{
   mutationId: string | null;
   error: Error | null;

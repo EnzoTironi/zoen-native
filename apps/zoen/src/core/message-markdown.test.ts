@@ -34,6 +34,7 @@ test('ordinary messages keep measured text while Markdown candidates reach the r
     '||spoiler||',
     'See https://example.invalid/help',
     'HTTP://example.invalid',
+    'Veja zoen://message/read-chat/message.',
     'Visit www.example.invalid.',
     'Email person@example.invalid',
   ])
@@ -47,6 +48,7 @@ test('Markdown links admit explicit user navigation but reject executable and lo
     'mailto:person@example.com',
     'tel:+5511999999999',
     'zoen://page/example',
+    'zoen://message/read-chat/message',
   ])
     assert.equal(messageMarkdownLink(url), new URL(url).href);
   for (const url of [
@@ -73,6 +75,8 @@ const nativePorts = new Set([
   'react-native-enriched-markdown',
   '../theme',
   './message-context-ports',
+  './use-quote-collapse',
+  './quote-layout-context',
   'expo-clipboard',
   'expo-haptics',
   '../i18n/index.ts',
@@ -193,6 +197,8 @@ function fixture(
       if (name === '../i18n/index.ts') return localization;
       if (name === 'react-native-enriched-markdown')
         return { EnrichedMarkdownText: 'NativeMarkdownText' };
+      if (name === './use-quote-collapse') return { useQuoteCollapse: () => ({}) };
+      if (name === './quote-layout-context') return { useQuoteLayoutTransition: () => null };
       if (name === './message-context-ports') return { MessageTextSelection: {} };
       if (name === '../theme') return { useTheme: () => ({ colors }) };
       throw new Error(`Unexpected native port ${name}`);
@@ -322,6 +328,7 @@ test('bare links stay passive until the native link gesture crosses the existing
   const f = fixture();
   for (const text of [
     'https://example.invalid/help',
+    'zoen://message/read-chat/message',
     'www.example.invalid',
     'person@example.invalid',
   ]) {

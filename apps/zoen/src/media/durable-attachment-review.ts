@@ -2,6 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import { AttachmentDraftFailure } from './attachment-draft';
 import { AttachmentReview } from './attachment-review';
 import type { DurableAttachmentRuntime } from './durable-attachment-contract';
+import { copyMediaReply, sameMediaReply } from './media-reply';
 
 export function createDurableAttachmentReview(
   context: Pick<DurableAttachmentRuntime, 'channel' | 'current' | 'store' | 'runtime' | 'setLocal'>,
@@ -26,6 +27,7 @@ export function createDurableAttachmentReview(
         mutationId,
         sha256: asset.sha256,
         replyTo: latest.content.reply_to,
+        ...copyMediaReply(latest.content),
       });
     },
     current: (request) => {
@@ -37,6 +39,7 @@ export function createDurableAttachmentReview(
         !latest.sending &&
         content?.kind === 'attachments' &&
         content.reply_to === request.replyTo &&
+        sameMediaReply(content, request) &&
         content.items.some(
           (item) => item.mutation_id === request.mutationId && item.asset_id === request.assetId,
         ) &&

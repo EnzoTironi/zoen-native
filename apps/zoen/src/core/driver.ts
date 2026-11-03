@@ -275,6 +275,7 @@ export function createDriver(): CoreDriver {
   };
   return {
     durableMessageDrafts: true,
+    localIntentId: randomUUID,
     pageInput: Platform.OS === 'ios' ? createNativePageInputPort(NativeCore) : undefined,
     assistant:
       Platform.OS === 'ios' && typeof NativeCore?.openAssistant === 'function'

@@ -58,19 +58,23 @@ impl Engine {
         } else {
             None
         };
-        let (last_preview, last_author, last_delivery) = match &s.integrity_error {
-            Some(err) => (
-                tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"),
-                None,
-                None,
-            ),
-            None => self.preview(s),
-        };
+        let private_error = self.private_message_view_error();
+        let (last_preview, last_preview_is_markdown, last_author, last_delivery) =
+            match s.integrity_error.as_ref().or(private_error.as_ref()) {
+                Some(err) => (
+                    tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"),
+                    false,
+                    None,
+                    None,
+                ),
+                None => self.preview(s),
+            };
         let read_seq = self.read_up_to(id);
         let unread = s
             .entries
             .iter()
             .filter(|e| e.author != me && read_seq.is_none_or(|r| e.seq > r))
+            .filter(|e| self.visible_message(e))
             .filter(|e| matches!(e.body, EntryBody::Message { .. }))
             .count() as u32;
         let pending = self
@@ -108,8 +112,23 @@ impl Engine {
             members,
             counterpart,
             last_preview,
+            last_preview_is_markdown,
             last_author,
-            last_at_ms: s.last_at_ms,
+            last_at_ms: if self
+                .state
+                .deleted_for_self
+                .get(&me)
+                .is_some_and(|spaces| spaces.contains_key(id))
+            {
+                s.entries
+                    .iter()
+                    .filter(|entry| self.visible_message(entry))
+                    .map(|entry| entry.at_ms)
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                s.last_at_ms
+            },
             unread,
             last_delivery,
             pending_requests: pending,
@@ -151,8 +170,25 @@ impl Engine {
     }
 
     pub fn timeline(&self, space: &str) -> R<Vec<TimelineEntry>> {
+        self.check_private_message_view()?;
         let s = self.space_state(space)?;
-        let mut out: Vec<TimelineEntry> = s.entries.iter().map(|e| self.entry_dto(e)).collect();
+        let roots: std::collections::HashSet<&str> = s
+            .entries
+            .iter()
+            .filter(|entry| self.visible_message(entry))
+            .filter_map(|entry| match &entry.body {
+                EntryBody::Message {
+                    reply: Some(reply), ..
+                } if reply.thread => Some(reply.to.as_str()),
+                _ => None,
+            })
+            .collect();
+        let mut out: Vec<TimelineEntry> = s
+            .entries
+            .iter()
+            .filter(|entry| self.visible_message(entry) || roots.contains(entry.id()))
+            .map(|e| self.entry_dto(e))
+            .collect();
         crate::replies::count_thread_replies(&mut out);
         Ok(out)
     }
@@ -163,6 +199,43 @@ impl Engine {
         }
         let me = self.me_id()?;
         self.post_as(space, &me, text, None)
+    }
+
+    pub(crate) fn validate_message_edit_text(
+        &self,
+        space: &str,
+        entry: &Entry,
+        text: &str,
+    ) -> R<()> {
+        // Empty text clears a file's caption, but must never erase the body of
+        // an ordinary message, voice note or miniapp card. Resolve the Item
+        // in this exact Space instead of trusting the caller's card type.
+        let file_caption = match &entry.body {
+            EntryBody::Message {
+                attaches: Some(item),
+                ..
+            } => self
+                .space_projections
+                .get(space)
+                .and_then(|scoped| scoped.items.get(item))
+                .is_some_and(|item| {
+                    item.kind == ItemKind::File
+                        && matches!(&item.current().content, ItemContent::File(file) if !file.is_voice())
+                }),
+            _ => false,
+        };
+        if file_caption {
+            if text.len() > crate::files::MAX_FILE_CAPTION_BYTES || text.contains('\0') {
+                return Err(CoreError::Invalid {
+                    reason: t("legenda de arquivo inválida", "invalid file caption"),
+                });
+            }
+        } else if text.trim().is_empty() {
+            return Err(CoreError::Invalid {
+                reason: t("mensagem vazia", "empty message"),
+            });
+        }
+        Ok(())
     }
 
     /// Edit, delete for everyone, react or unreact on a message in `space`. Only the author
@@ -180,6 +253,9 @@ impl Engine {
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
+        if !self.visible_message(entry) {
+            return Err(not_found(&t("Mensagem", "Message")));
+        }
         if marks.deleted || (note.author_only() && *author != me) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -196,34 +272,7 @@ impl Engine {
             }
         }
         if let types::Annotation::Edit { text } = &note {
-            // Empty text clears a file's caption, but must never erase the body of
-            // an ordinary message, voice note or miniapp card. Resolve the Item
-            // in this exact Space instead of trusting the caller's card type.
-            let file_caption = match &entry.body {
-                EntryBody::Message {
-                    attaches: Some(item),
-                    ..
-                } => self
-                    .space_projections
-                    .get(space)
-                    .and_then(|scoped| scoped.items.get(item))
-                    .is_some_and(|item| {
-                        item.kind == ItemKind::File
-                            && matches!(&item.current().content, ItemContent::File(file) if !file.is_voice())
-                    }),
-                _ => false,
-            };
-            if file_caption {
-                if text.len() > crate::files::MAX_FILE_CAPTION_BYTES || text.contains('\0') {
-                    return Err(CoreError::Invalid {
-                        reason: t("legenda de arquivo inválida", "invalid file caption"),
-                    });
-                }
-            } else if text.trim().is_empty() {
-                return Err(CoreError::Invalid {
-                    reason: t("mensagem vazia", "empty message"),
-                });
-            }
+            self.validate_message_edit_text(space, entry, text)?;
         }
         if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
@@ -242,99 +291,6 @@ impl Engine {
             },
         )?;
         Ok(())
-    }
-
-    /// Sends a copy of a message (text and attachment) to another chat, marked forwarded.
-    pub fn forward(&mut self, from_space: &str, target: &str, to_space: &str) -> R<TimelineEntry> {
-        let me = self.me_id()?;
-        if !self.is_member(from_space, &me) || !self.state.writer(to_space, &me) {
-            return Err(CoreError::Forbidden {
-                reason: t(
-                    "só membros encaminham mensagens para conversas em que podem escrever",
-                    "only members can forward messages to chats they can write in",
-                ),
-            });
-        }
-        let source = self
-            .space_state(from_space)?
-            .entries
-            .iter()
-            .find(|entry| entry.id() == target)
-            .ok_or_else(|| not_found(&t("Mensagem", "Message")))?;
-        let EntryBody::Message {
-            text,
-            attaches,
-            marks,
-            ..
-        } = &source.body
-        else {
-            return Err(not_found(&t("Mensagem", "Message")));
-        };
-        if marks.deleted {
-            return Err(not_found(&t("Mensagem", "Message")));
-        }
-        let media = marks.media.as_ref().map(types::MessageMedia::without_group);
-        let (text, attaches) = (text.clone(), attaches.clone());
-        // Resolve the canonical entry, including old Android markers. Its current
-        // audio and metadata are copied; source item/reply/thread ids never travel.
-        if from_space != to_space {
-            if let Some(voice) = self.entry_voice(source) {
-                return self.forward_file_message(
-                    from_space,
-                    &voice.item_id,
-                    to_space,
-                    "",
-                    Some(&voice),
-                    None,
-                );
-            }
-            if text.starts_with("⟦voice:") {
-                return Err(CoreError::Invalid {
-                    reason: t(
-                        "esta mensagem de voz não está mais disponível",
-                        "this voice message is no longer available",
-                    ),
-                });
-            }
-            if let Some(item) = attaches.as_deref() {
-                if self.state.items.get(item).is_some_and(|item| item.space==from_space && matches!(&item.current().content,ItemContent::App(app) if app.app=="excalidraw")) {
-                    return self.forward_app_document(from_space,item,to_space,&text);
-                }
-                if !self.state.items.get(item).is_some_and(|item| {
-                    item.space == from_space
-                        && matches!(&item.current().content, ItemContent::File(_))
-                }) {
-                    return Err(CoreError::Invalid {
-                        reason: t(
-                            "este item ainda não pode ser encaminhado a outra conversa",
-                            "this item cannot be forwarded to another chat yet",
-                        ),
-                    });
-                }
-                return self.forward_file_message(from_space, item, to_space, &text, None, media);
-            }
-        }
-        let appended = self.append(
-            to_space,
-            &me,
-            EventBody::MessagePosted {
-                message: new_id("msg")?,
-                text,
-                attaches,
-                reply: None,
-                media,
-                forwarded: true,
-            },
-        )?;
-        let s = self.space_state(to_space)?;
-        let entry = s
-            .entries
-            .iter()
-            .find(|entry| entry.id() == appended.client_id)
-            .ok_or_else(|| CoreError::Storage {
-                message: "The appended entry is missing from its projection.".into(),
-            })?;
-        Ok(self.entry_dto(entry))
     }
 
     /// The Engine lock covers owner validation, current preference merge and the
@@ -385,6 +341,17 @@ impl Engine {
         text: &str,
         attaches: Option<ItemId>,
     ) -> R<TimelineEntry> {
+        self.post_as_with_reply(space, author, text, attaches, None)
+    }
+
+    pub(crate) fn post_as_with_reply(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        attaches: Option<ItemId>,
+        reply: Option<types::ReplyRef>,
+    ) -> R<TimelineEntry> {
         if !self.state.writer(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -406,9 +373,10 @@ impl Engine {
                 message: new_id("msg")?,
                 text: text.to_string(),
                 attaches,
-                reply: None,
+                reply,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let s = self.space_state(space)?;

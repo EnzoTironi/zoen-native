@@ -12,6 +12,7 @@ pub(in crate::agent) enum Phase {
     DeckPermit,
     PagePermit,
     ScenePermit,
+    ConversationPermit,
     SelectionAfter,
     FamilySelection,
 }
@@ -22,6 +23,7 @@ impl Phase {
             Self::DeckPermit => "deck_permit",
             Self::PagePermit => "page_permit",
             Self::ScenePermit => "scene_permit",
+            Self::ConversationPermit => "conversation_permit",
             Self::SelectionAfter => "selection_after",
             Self::FamilySelection => "family_selection",
         }

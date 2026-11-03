@@ -1,26 +1,67 @@
+import type { SharedReplyDraft } from '../core/generated/SharedReplyDraft';
 import type { ReplySelection } from '../core/generated/ReplySelection';
 import Animated, { Easing, FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { telegramAudio } from '../core/telegram-audio-presentation';
 import { t } from '../i18n/index.ts';
 import { messageText } from '../core/presentation';
 import type { TimelineEntry } from '../core/types';
 import { useTheme } from '../theme';
 import { Icon, IconButton } from './primitives';
+import { useSemanticMessagePreview } from './use-semantic-message-preview';
 
 /** The quote belongs to the composer, so keyboard and quote always move together. */
 export function MessageContext({
   entry,
+  edit,
   editing = false,
   quote,
+  shared,
+  onOptions,
   onCancel,
 }: {
   entry?: TimelineEntry;
+  edit?: { id: string; revision?: string; text: string };
   editing?: boolean;
   quote?: ReplySelection | null;
+  shared?: SharedReplyDraft | null;
+  onOptions?: () => void;
   onCancel?: () => void;
 }) {
   const { presentation: p, reducedMotion } = useTheme();
+  const literalSelection = editing ? null : quote;
+  const source = edit
+    ? edit.text
+    : shared
+      ? shared.text
+      : literalSelection
+        ? literalSelection.text
+        : entry
+          ? entry.voice
+            ? t('media.voiceMessage')
+            : messageText(entry)
+          : t('chat.messageUnavailable');
+  const preview = useSemanticMessagePreview({
+    owner: JSON.stringify([
+      editing,
+      edit?.id ?? entry?.id,
+      edit?.revision ?? entry?.text_revision,
+      quote?.source_id,
+      quote?.revision,
+      shared?.message_id,
+      shared?.revision,
+    ]),
+    text: source,
+    literal: Boolean(
+      shared ||
+      literalSelection ||
+      (!edit &&
+        (!entry ||
+          entry.voice ||
+          !('Message' in entry.kind) ||
+          entry.kind.Message.text.length === 0)),
+    ),
+  });
   return (
     <View
       testID={editing ? 'editing-message-context' : 'reply-message-context'}
@@ -71,7 +112,7 @@ export function MessageContext({
         }}
       />
       <Animated.View
-        key={`${editing ? 'edit' : 'reply'}:${entry?.id ?? 'missing'}`}
+        key={`${editing ? 'edit' : 'reply'}:${shared?.message_id ?? edit?.id ?? entry?.id ?? 'missing'}`}
         entering={
           reducedMotion
             ? undefined
@@ -84,28 +125,36 @@ export function MessageContext({
         }
         style={{ flex: 1, alignSelf: 'stretch', paddingLeft: 10, paddingTop: 7 }}
       >
-        <Text
-          numberOfLines={1}
-          style={{ color: p.chat.input.action, fontSize: 15, lineHeight: 18, fontWeight: '500' }}
+        <Pressable
+          disabled={!onOptions}
+          onPress={onOptions}
+          accessibilityRole={onOptions ? 'button' : undefined}
+          accessibilityLabel={onOptions ? t('replyOptions.title') : undefined}
         >
-          {editing
-            ? t('chat.editMessage')
-            : entry
-              ? t('chat.replyingTo', { name: entry.author.name })
-              : t('chat.replyingToMessage')}
-        </Text>
-        <Text
-          numberOfLines={1}
-          style={{ color: p.chat.input.placeholder, fontSize: 15, lineHeight: 18 }}
-        >
-          {quote && !editing
-            ? quote.text
-            : entry
-              ? entry.voice
-                ? t('media.voiceMessage')
-                : messageText(entry)
-              : t('chat.messageUnavailable')}
-        </Text>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: p.chat.input.action,
+              fontSize: 15,
+              lineHeight: 18,
+              fontWeight: '500',
+            }}
+          >
+            {editing
+              ? t('chat.editMessage')
+              : shared
+                ? t('chat.replyingTo', { name: shared.author_name })
+                : entry
+                  ? t('chat.replyingTo', { name: entry.author.name })
+                  : t('chat.replyingToMessage')}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={{ color: p.chat.input.placeholder, fontSize: 15, lineHeight: 18 }}
+          >
+            {preview.text ?? '…'}
+          </Text>
+        </Pressable>
       </Animated.View>
       {onCancel ? (
         <View style={{ position: 'absolute', right: -8, top: 2 }}>

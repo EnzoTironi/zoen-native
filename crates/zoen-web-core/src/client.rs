@@ -31,6 +31,7 @@ mod history;
 mod integrity;
 mod linking;
 mod membership;
+mod message_edit;
 mod message_view;
 mod profile;
 mod profile_photo;
@@ -165,6 +166,7 @@ fn item_edit_key(event: &Event) -> ItemEditKey {
 
 #[derive(Serialize)]
 pub struct MessageView {
+    text_revision: Option<String>,
     id: String,
     /// Timeline entry id (event hash) once the relay ordered it: the target of replies,
     /// threads, reactions, edits and deletes.
@@ -200,6 +202,7 @@ pub struct MessageView {
 
 #[derive(Default)]
 struct Folded {
+    text_revision: Option<String>,
     text: Option<String>,
     deleted: bool,
     reactions: BTreeMap<String, String>,

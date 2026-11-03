@@ -4,6 +4,7 @@ use super::*;
 use client_core::agent_page_tools as page;
 
 pub(super) enum CanonicalPermit {
+    Conversation(client_core::agent_conversation_tools::ApprovedConversationSearch),
     Deck(client_core::ApprovedToolTurn),
     Page(client_core::ApprovedPageTurn),
     Create(client_core::agent_app_creation::ApprovedAppCreation),
@@ -16,6 +17,11 @@ impl CanonicalPermit {
             .check_selection()
             .map_err(|_| Refusal::selection(Phase::SelectionBefore))?;
         let result = match schema {
+            client_core::agent_conversation_tools::SCHEMA => tools
+                .e
+                .approved_conversation_search(request)
+                .map(Self::Conversation)
+                .map_err(|error| Refusal::core(Phase::ConversationPermit, error)),
             1 => {
                 let binding = tools
                     .binary_binding(request)
@@ -55,6 +61,7 @@ impl CanonicalPermit {
     }
     pub(super) fn proposal(&self) -> (&str, &str) {
         let p = match self {
+            Self::Conversation(p) => p.proposal(),
             Self::Deck(p) => p.proposal(),
             Self::Page(p) => p.proposal(),
             Self::Create(p) => p.proposal(),
@@ -65,6 +72,10 @@ impl CanonicalPermit {
     }
     pub(super) fn execute(&self, tools: &SpaceTools<'_>) -> Result<String, String> {
         match self {
+            Self::Conversation(permit) => tools
+                .e
+                .execute_conversation_search(permit)
+                .map_err(|error| error.to_string()),
             Self::Scene(permit) => scene_tools::execute(tools.e, permit),
             Self::Site(permit) => tools
                 .e
@@ -205,6 +216,9 @@ impl SpaceTools<'_> {
     ) -> Result<String, String> {
         self.check_selection()?;
         let result = match schema {
+            client_core::agent_conversation_tools::SCHEMA => {
+                self.e.recover_conversation_search_results(request, steps)
+            }
             1 => self
                 .e
                 .recover_tool_results(request, self.binary_binding(request)?, steps),

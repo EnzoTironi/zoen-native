@@ -40,6 +40,7 @@ mod ephemeral;
 mod managed;
 mod online;
 mod publishing;
+mod read_time;
 mod requests;
 mod saved_messages;
 mod syncing;

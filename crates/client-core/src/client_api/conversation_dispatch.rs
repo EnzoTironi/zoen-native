@@ -15,22 +15,24 @@ impl Client {
             AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
             AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
             AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
-            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ConfirmForward,
-            ControlAgent, CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite,
-            DeleteMessage, DismissForward, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ControlAgent,
+            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
+            DeleteMessages, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
-            ForwardMessage, ForwardReview, ForwardStatus, InviteCall, JoinInvite, LeaveSpace,
-            MarkRead, Message, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
+            ForwardMessage, Forwarding, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
+            MessageDateTarget, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
             OwnerPolicyStatus, PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy,
             PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
             RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
             RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
-            RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft,
-            SetChatMute, SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping,
-            ShareAppCurrent, Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect,
-            SubmitOwnerPolicy, Thread, Timeline, UniversalSearch, UniversalSearchPage,
+            ReviewSharedReply, RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage,
+            SendMessageDraft, SendMessageEditDraft, SetChatMute, SetChatMuted, SetChatPrefs,
+            SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot, SpaceMemberContext,
+            StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline,
+            UniversalSearch, UniversalSearchPage,
         };
         match command {
+            MessageDateTarget(input) => encode(&self.lock().message_date_target(&input)?),
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
             ShareAppCurrent {
                 context,
@@ -149,7 +151,9 @@ impl Client {
             command @ (MessageDraft { .. }
             | SaveMessageDraft { .. }
             | SendMessageDraft { .. }
-            | ReviewReplySelection { .. }) => self.dispatch_draft(command),
+            | SendMessageEditDraft { .. }
+            | ReviewReplySelection { .. }
+            | ReviewSharedReply { .. }) => self.dispatch_draft(command),
             RecoverFailedMediaDraft {
                 scope,
                 message_id,
@@ -180,24 +184,18 @@ impl Client {
                     encode(&self.send_message(space_id, text)?)
                 }
             }
-            EditMessage {
-                space_id,
-                message_id,
-                text,
-            } => encode(&self.edit_message(space_id, message_id, text)?),
+            EditMessage { edit } => encode(&self.edit_reviewed_message(edit)?),
             DeleteMessage {
                 space_id,
                 message_id,
             } => encode(&self.delete_message(space_id, message_id)?),
+            DeleteMessages { selection } => encode(&self.delete_messages(selection)?),
             React {
                 space_id,
                 message_id,
                 emoji,
             } => encode(&self.react(space_id, message_id, emoji)?),
-            command @ (ForwardReview { .. }
-            | ForwardStatus { .. }
-            | ConfirmForward { .. }
-            | DismissForward { .. }) => self.dispatch_forwarding(command),
+            Forwarding(command) => self.dispatch_forwarding(command),
             ForwardMessage {
                 source_space,
                 message_id,

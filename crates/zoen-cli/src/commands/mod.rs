@@ -21,9 +21,9 @@ pub(crate) struct Context {
 
 pub(crate) async fn run(cmd: String, cli: &mut Cli, context: Context) {
     match cmd.as_str() {
-        "whoami" | "status" | "people" | "dm" | "group" | "send" | "read" | "add" | "remove"
-        | "encrypt" | "keys" | "members" | "member-role" | "chats" | "invite" | "agent"
-        | "join" | "typing" => conversations::run(cmd, cli, context).await,
+        "whoami" | "status" | "people" | "dm" | "group" | "send" | "read" | "message-info"
+        | "add" | "remove" | "encrypt" | "keys" | "members" | "member-role" | "chats"
+        | "invite" | "agent" | "join" | "typing" => conversations::run(cmd, cli, context).await,
         "backup" | "link" | "history" | "devices" | "unlink" | "background" | "photo"
         | "profile" | "block" | "unblock" => account::run(cmd, cli, context).await,
         "app" | "growth-sync" | "variant" | "sync" | "verify" | "authorize-agent"

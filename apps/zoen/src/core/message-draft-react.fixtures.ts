@@ -7,7 +7,11 @@ import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { ClientStore } from './store.ts';
 import { Driver, draftSession } from './store.fixtures.ts';
 import * as draft from './message-draft.ts';
+import * as i18n from '../i18n/index.ts';
+import * as presentation from './message-presentation.ts';
 import type { useMessageDraft } from './use-message-draft.ts';
+import type { MessageDraftEdit } from './generated/MessageDraftEdit';
+import type { ReplyContextFields } from './reply-context.ts';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -31,19 +35,51 @@ export async function messageDraftReactFixture(open = true) {
   const calls: any[] = [];
   let text = 'Owner A private unsent text';
   let revision = 1;
+  let edit: MessageDraftEdit | undefined;
+  let reply: ReplyContextFields = { reply_to: null };
+  let intentSerial = 0;
+  Object.assign(driver, { localIntentId: () => `native_intent_${++intentSerial}` });
+  const draftValue = () => ({
+    revision: String(revision),
+    text,
+    ...reply,
+    ...(edit ? { edit } : {}),
+  });
   driver.durableMessageDrafts = true;
   driver.opening = async () => structuredClone(snapshot);
   driver.operation = async (command) => {
     calls.push(structuredClone(command));
     if (command.op === 'snapshot') return structuredClone(snapshot);
-    if (command.op === 'message_draft') return { revision: String(revision), text, reply_to: null };
+    if (command.op === 'message_draft') return draftValue();
     if (command.op === 'save_message_draft') {
       assert.equal(command.expected_identity_id, snapshot.account!.identity_id);
       assert.equal(command.expected_device_id, snapshot.account!.device_id);
       assert.equal(command.expected_revision, String(revision));
       text = command.text;
-      return { revision: String(++revision), text, reply_to: command.reply_to };
+      reply = {
+        reply_to: command.reply_to,
+        reply_quote: command.reply_quote,
+        shared_reply: command.shared_reply,
+        reply_intent: command.reply_intent,
+      };
+      edit = command.edit;
+      ++revision;
+      return draftValue();
     }
+    if (command.op === 'send_message_edit_draft') {
+      assert.equal(command.expected_revision, String(revision));
+      assert.ok(edit);
+      const entry = { id: edit.message_id, text_revision: 'accepted-source-revision' };
+      edit = undefined;
+      ++revision;
+      return {
+        message_id: entry.id,
+        text_revision: entry.text_revision ?? null,
+        entry,
+        draft: draftValue(),
+      };
+    }
+    if (command.op === 'message') throw Error('Synthetic source unavailable');
     throw Error(`Unexpected draft operation ${command.op}`);
   };
   const store = new ClientStore(driver);
@@ -98,6 +134,8 @@ export async function messageDraftReactFixture(open = true) {
       }),
     },
     './message-draft': draft,
+    './message-presentation': presentation,
+    '../i18n/index.ts': i18n,
   };
   const module = { exports: {} as { useMessageDraft: typeof useMessageDraft } };
   runInNewContext(compiled, {
@@ -118,6 +156,7 @@ export async function messageDraftReactFixture(open = true) {
     return null;
   }
   return {
+    driver,
     store,
     snapshot,
     calls,
@@ -128,6 +167,7 @@ export async function messageDraftReactFixture(open = true) {
       return current;
     },
     render: () => root.render(React.createElement(Surface)),
+    unmount: () => root.render(null),
     open: () => root.act(() => store.open('account')),
     async reopen(change?: 'identity' | 'device' | 'relay', preserve = false) {
       await root.act(async () => {
@@ -143,6 +183,7 @@ export async function messageDraftReactFixture(open = true) {
         if (!preserve) {
           text = 'New session canonical draft';
           revision = 1;
+          edit = undefined;
         }
         await store.open('account');
       });

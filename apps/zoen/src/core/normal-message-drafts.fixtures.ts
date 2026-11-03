@@ -60,7 +60,12 @@ export function fixture() {
       await hooks.send?.();
       const receipt = receipts.get(key(scope));
       if (receipt?.revision === expected)
-        return { entry: receipt.entry, draft: { ...current(scope) } };
+        return {
+          message_id: receipt.entry.id,
+          text_revision: receipt.entry.text_revision ?? null,
+          entry: receipt.entry,
+          draft: { ...current(scope) },
+        };
       assert.equal(expected, current(scope).revision, 'send consumes the exact stored intent');
       const value = current(scope);
       posts.push({ text: value.text, replyTo: value.reply_to, scope });
@@ -68,7 +73,12 @@ export function fixture() {
       stored.set(key(scope), { revision: `opaque-${++revision}`, text: '', reply_to: null });
       receipts.set(key(scope), { revision: expected, entry });
       await hooks.sent?.();
-      return { entry, draft: { ...current(scope) } };
+      return {
+        message_id: entry.id,
+        text_revision: entry.text_revision ?? null,
+        entry,
+        draft: { ...current(scope) },
+      };
     },
   };
   return { drafts: new NormalMessageDrafts(port), port, hooks, stored, current, calls, posts };

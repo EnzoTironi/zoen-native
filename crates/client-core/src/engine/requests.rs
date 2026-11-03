@@ -33,7 +33,9 @@ impl Engine {
                 artifact_id: p.artifact.clone(),
                 artifact_title: self.state.items.get(&p.artifact)
                     .and_then(|i|i.versions.iter().find(|version|version.number==p.version)).map_or_else(|| {
-                        if p.schema == 5 {
+                        if p.schema == crate::agent_conversation_tools::SCHEMA {
+                            self.state.spaces.get(&r.space).map_or_else(|| t("Conversa", "Conversation"), |space| space.title.clone())
+                        } else if p.schema == 5 {
                             crate::agent_sites::parsed(p).ok().and_then(|(_, args)| args)
                                 .and_then(|args| args["title"].as_str().map(str::to_owned)).unwrap_or_default()
                         } else if p.schema == 3 {
@@ -46,7 +48,7 @@ impl Engine {
                 version: p.version,
                 operation: crate::agent_binary_documents::tool_approvals::operation(&p.canonical_tool),
                 expires_ms: p.expires_at_ms,
-                preview_kind: if p.schema==5 { Some("site".into()) } else if p.schema==6 && p.canonical_tool=="replace_scene" { Some("scene".into()) } else { None },
+                preview_kind: if p.schema==crate::agent_conversation_tools::SCHEMA { Some("conversation".into()) } else if p.schema==5 { Some("site".into()) } else if p.schema==6 && p.canonical_tool=="replace_scene" { Some("scene".into()) } else { None },
                 review: Some(self.tool_review_dto(r, p)),
                 canonical_tool: Some(p.canonical_tool.clone()),
                 image: self.image_generation_review(p),

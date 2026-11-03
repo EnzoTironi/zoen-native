@@ -1,5 +1,9 @@
 import { Text, View } from 'react-native';
-import { isSystemMessage, messageCanInteract } from '../core/message-presentation';
+import {
+  isSystemMessage,
+  messageCanInteract,
+  messageForwardAuthor,
+} from '../core/message-presentation';
 import { t } from '../i18n/index.ts';
 import { MessageMedia } from '../media/MediaAttachment';
 import { MiniappMessageCard } from '../miniapps/message-card';
@@ -35,13 +39,12 @@ export function renderConversationMessage(context: MessageFace) {
     open,
     albumPart,
     fileCaption,
-    onReply,
-    onThread,
     JSON,
     spaceId,
     reducedMotion,
     bubble,
-    accessibilityMessageLabel,
+    accessibilityText,
+    replyPreview,
     formattedText,
     p,
     Math,
@@ -55,11 +58,12 @@ export function renderConversationMessage(context: MessageFace) {
     showAvatar,
     authorDisabled,
     openAuthor,
-    onQuote,
+    openQuote,
     textMaxWidth,
     attachmentWidth,
     Bubble,
     bubbleInteraction,
+    rowInteraction,
     textMinWidth,
     textCorners,
     voice,
@@ -125,20 +129,7 @@ export function renderConversationMessage(context: MessageFace) {
           </View>
         ) : null}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <MessageInteraction
-            messageId={entry.id}
-            mine={mine}
-            disabled={disabled || !messageCanInteract(entry)}
-            swipeEnabled={!albumContent}
-            accessibilityLabel={!attachment ? accessibilityMessageLabel : undefined}
-            onReply={() => onReply(entry)}
-            onThread={() => onThread(entry)}
-            onActions={() => open('actions')}
-            actionsAccessibilityLabel={t('chat.messageActions', { name: entry.author.name })}
-            onQuote={
-              !entry.deleted && entry.reply_to ? () => onQuote(entry.reply_to!.id) : undefined
-            }
-          >
+          <MessageInteraction {...rowInteraction}>
             <View style={{ width: '100%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
               <MessageContextSource
                 ownerKey={JSON.stringify([spaceId, entry.id])}
@@ -212,10 +203,16 @@ export function renderConversationMessage(context: MessageFace) {
                   {!entry.deleted && entry.reply_to ? (
                     <MessageContextControl controlKey={`quote:${entry.id}`}>
                       <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={t('chat.goToQuotedMessage')}
-                        disabled={disabled}
-                        onPress={() => onQuote(entry.reply_to!.id)}
+                        accessibilityRole={
+                          entry.reply_to.origin?.available === false ? 'text' : 'button'
+                        }
+                        accessibilityLabel={
+                          entry.reply_to.origin?.available === false
+                            ? undefined
+                            : t('chat.goToQuotedMessage')
+                        }
+                        disabled={disabled || entry.reply_to.origin?.available === false}
+                        onPress={openQuote}
                         style={{
                           borderLeftWidth: 3,
                           borderLeftColor: face.accent,
@@ -246,7 +243,7 @@ export function renderConversationMessage(context: MessageFace) {
                             opacity: 0.75,
                           }}
                         >
-                          {entry.reply_to.text}
+                          {replyPreview.text ?? '…'}
                         </Text>
                       </Pressable>
                     </MessageContextControl>
@@ -256,13 +253,17 @@ export function renderConversationMessage(context: MessageFace) {
                       style={{
                         color: attachment && !voice && !appCard ? colors.secondary : ink,
                         opacity: 0.7,
-                        fontSize: 12,
-                        fontStyle: 'italic',
+                        fontSize: Math.floor((messageFontSize * 14) / 17),
                         paddingHorizontal: attachment ? 12 : 0,
                         paddingVertical: 4,
                       }}
                     >
                       {t('chat.forwarded')}
+                      {messageForwardAuthor(entry) ? (
+                        <Text
+                          style={{ fontWeight: '500' }}
+                        >{`\n${messageForwardAuthor(entry)}`}</Text>
+                      ) : null}
                     </Text>
                   ) : null}
                   {!voice && !standaloneAppCard && card?.kind_id !== 'file' && text.trim() ? (
@@ -274,9 +275,12 @@ export function renderConversationMessage(context: MessageFace) {
                         }}
                       >
                         <MessageMarkdown
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           testID={`message-body-${entry.id}`}
                           onLayout={revealAnchor?.onLayout}
                           text={text}
+                          accessibilityText={accessibilityText}
                           color={attachment && !appCard ? colors.text : ink}
                           fontSize={messageFontSize}
                           maxWidth={Math.max(
@@ -287,6 +291,8 @@ export function renderConversationMessage(context: MessageFace) {
                       </View>
                     ) : (
                       <MessageTextSelectionLeaf
+                        revision={entry.text_revision}
+                        expandedForReveal={Boolean(revealAnchor)}
                         text={text}
                         color={attachment && !appCard ? colors.text : ink}
                         fontSize={emojiFont ?? messageFontSize}
@@ -376,7 +382,10 @@ export function renderConversationMessage(context: MessageFace) {
                     >
                       {formattedText ? (
                         <MessageMarkdown
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           text={fileCaption}
+                          accessibilityText={accessibilityText}
                           onLayout={revealAnchor?.onLayout}
                           color={ink}
                           fontSize={p.typography.message.fontSize}
@@ -384,6 +393,8 @@ export function renderConversationMessage(context: MessageFace) {
                         />
                       ) : (
                         <MessageTextSelectionLeaf
+                          revision={entry.text_revision}
+                          expandedForReveal={Boolean(revealAnchor)}
                           text={fileCaption!}
                           color={ink}
                           fontSize={p.typography.message.fontSize}

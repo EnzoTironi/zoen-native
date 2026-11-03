@@ -1,4 +1,4 @@
-import { boundedText, hasControl, invalid, keys, object } from './media-draft-contract.ts';
+import { boundedText, hasControl, invalid, keys, object } from './media-draft-values.ts';
 import type { MediaDraftAttachment, MediaDraftGallery } from './media-draft-types.ts';
 
 /** Same strict private content contract as media_drafts::gallery in Rust. */

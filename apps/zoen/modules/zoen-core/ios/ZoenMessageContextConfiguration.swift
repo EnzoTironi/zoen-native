@@ -10,7 +10,10 @@ struct ZoenMessageContextConfiguration: Decodable {
       case "reply": "arrowshape.turn.up.left"
       case "thread": "bubble.left.and.bubble.right"
       case "select": "text.cursor"
+      case "info": "info.circle"
+      case "selectMessages": "checkmark.circle"
       case "copy": "doc.on.doc"
+      case "copyLink": "link"
       case "edit": "pencil"
       case "recover": "arrow.clockwise"
       case "forward": "arrowshape.turn.up.right"
@@ -36,7 +39,7 @@ struct ZoenMessageContextConfiguration: Decodable {
   static func decode(_ json: String) throws -> Self {
     guard let data = json.data(using: .utf8), data.count <= 16_384 else { throw ZoenMessageContextSource.Failure.configuration }
     let config = try JSONDecoder().decode(Self.self, from: data)
-    guard config.actions.count <= 8, config.reactions.count <= 6,
+    guard config.actions.count <= 12, config.reactions.count <= 6,
           !config.actions.isEmpty || !config.reactions.isEmpty,
           Set(config.actions.map(\.id)).count == config.actions.count,
           Set(config.reactions.map(\.emoji)).count == config.reactions.count,

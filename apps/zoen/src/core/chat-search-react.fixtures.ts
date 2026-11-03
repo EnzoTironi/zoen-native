@@ -1,3 +1,5 @@
+import { messageCanInteract } from './message-presentation.ts';
+import * as deleteMessageAction from '../components/delete-message-action.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -14,6 +16,8 @@ import * as conversationTimeline from './conversation-timeline.ts';
 import * as initialEnd from './initial-timeline-end.ts';
 import * as activity from './live-activity.ts';
 import * as conversationScope from './conversation-scope.ts';
+import * as messageSelection from './message-selection.ts';
+import * as messageDeletion from './message-deletion.ts';
 import type { useChatController } from '../components/use-chat-controller.ts';
 import type { TimelinePage } from './generated/TimelinePage';
 import type { MessageSearchPage } from './generated/MessageSearchPage';
@@ -121,7 +125,7 @@ export async function chatSearchReactFixture(qa = false) {
     '../core/initial-timeline-end': initialEnd,
     '../core/live-activity': activity,
     '../core/conversation-scope': conversationScope,
-    '../core/message-presentation': { messageCard: () => null },
+    '../core/message-presentation': { messageCard: () => null, messageCanInteract },
     '../core/presentation': { messageText: () => '' },
     '../core/provider': {
       useClient: () => ({
@@ -163,6 +167,56 @@ export async function chatSearchReactFixture(qa = false) {
     },
   });
   ports['../core/use-conversation-search'] = hook.exports;
+  const replyFocusFile = new URL('./use-reply-destination-focus.ts', import.meta.url);
+  const replyFocusCode = transformSync(readFileSync(replyFocusFile, 'utf8'), {
+    filename: replyFocusFile.pathname,
+    babelrc: false,
+    configFile: false,
+    presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+    plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+    caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
+  }).code as string;
+  const replyFocus = { exports: {} };
+  runInNewContext(replyFocusCode, {
+    module: replyFocus,
+    exports: replyFocus.exports,
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
+    require(name: string) {
+      if (name.startsWith('@babel/runtime/helpers/')) return require(name);
+      assert.ok(name in ports, name);
+      return ports[name];
+    },
+  });
+  ports['../core/use-reply-destination-focus'] = replyFocus.exports;
+  const selectionFile = new URL('../components/use-message-selection.ts', import.meta.url);
+  const selectionCode = transformSync(readFileSync(selectionFile, 'utf8'), {
+    filename: selectionFile.pathname,
+    babelrc: false,
+    configFile: false,
+    presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+    plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+    caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
+  }).code as string;
+  const selection = { exports: {} };
+  runInNewContext(selectionCode, {
+    module: selection,
+    exports: selection.exports,
+    require(name: string) {
+      if (name.startsWith('@babel/runtime/helpers/')) return require(name);
+      if (name === 'react-native') return { Keyboard: { dismiss() {} } };
+      if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
+      if (name === '../core/message-selection') return messageSelection;
+      if (name === '../core/message-deletion') return messageDeletion;
+      if (name === './dialogs') return { useDialogs: () => ({ choose: async () => null }) };
+      if (name === './delete-message-action') return deleteMessageAction;
+      if (name === '../i18n') return ports['../i18n/index.ts'];
+      assert.ok(name in ports, name);
+      return ports[name];
+    },
+  });
+  ports['./use-message-selection'] = selection.exports;
+
   const module = { exports: {} as { useChatController: typeof useChatController } };
   runInNewContext(compiled, {
     module,

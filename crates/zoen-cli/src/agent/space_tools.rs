@@ -51,6 +51,13 @@ impl<'a> SpaceTools<'a> {
             .and_then(|r| r.as_ref())
             .map(|r| r.item_id.as_str());
         let mut names: Vec<(ToolDef, String, String)> = Vec::new();
+        if unrestricted {
+            names.push((
+                history_search::definition(),
+                space.into(),
+                history_search::TOOL.into(),
+            ));
+        }
         if unrestricted && image_tools::configured() {
             names.push((
                 image_tools::definition(),

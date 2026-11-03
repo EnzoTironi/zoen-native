@@ -201,6 +201,7 @@ pub(super) fn receipt_prefix_validates_original_pending_before_reading_unrelated
                         reply: None,
                         media: None,
                         forwarded: false,
+                        forwarded_author: None,
                     },
                 )?;
                 fixture.core.engine.store.outbox_remove(&cid).unwrap();

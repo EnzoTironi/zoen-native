@@ -1,7 +1,6 @@
-import { build } from 'esbuild';
+import { compiled } from './durable-attachment-compile.ts';
+export { compiled } from './durable-attachment-compile.ts';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import type { AttachmentApprovalProps } from '../media/attachment-approval.types.ts';
 import * as locationFile from '../media/location-file.ts';
@@ -14,6 +13,10 @@ import type {
 } from '../media/attachment-photo-session.ts';
 import { AttachmentReview } from '../media/attachment-review.ts';
 import * as mediaDraftContract from '../media/media-draft-contract.ts';
+import * as mediaReply from '../media/media-reply.ts';
+import * as mediaAcceptance from '../media/media-acceptance.ts';
+import type { MediaReplyOptions, MediaReplyTarget } from '../media/media-reply.ts';
+import type { useAttachmentPhotoPicker } from '../media/attachment-photo-picker.tsx';
 import { MediaDraftChannel, MediaDraftFailure } from '../media/media-draft-channel.ts';
 import type { MediaDraftDto, MediaDraftPort, MediaDraftScope } from '../media/media-draft-types.ts';
 import { PlaybackCoordinator } from '../media/playback-owner.ts';
@@ -31,47 +34,14 @@ export type Result = {
     editable: boolean;
     onChange(text: string): void;
     onSend(finalCaption?: string): void;
-    scope: { replyTo: string | null; thread: boolean };
+    onCancelReply?: () => MediaReplyTarget | null;
+    scope: {
+      replyTo: string | null;
+      thread: boolean;
+    } & MediaReplyOptions;
   };
   review: Element | null;
 };
-export const compiled = await build({
-  stdin: {
-    contents: readFileSync(
-      process.env.ZOEN_ATTACHMENT_COMPOSER_SOURCE ??
-        new URL('../media/durable-attachment-composer.tsx', import.meta.url),
-      'utf8',
-    ),
-    loader: 'tsx',
-  },
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  jsx: 'automatic',
-  write: false,
-  plugins: [
-    {
-      name: 'native-attachment-hook-ports',
-      setup(builder) {
-        builder.onResolve(
-          {
-            filter:
-              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review)|attachment-gallery-journal)$/,
-          },
-          ({ path }) => ({
-            path: fileURLToPath(
-              new URL(
-                `../media/${path.slice(2)}.${path.endsWith('-view') ? 'tsx' : 'ts'}`,
-                import.meta.url,
-              ),
-            ),
-          }),
-        );
-        builder.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
-      },
-    },
-  ],
-});
 export const scope = {
   expected_identity_id: 'owner',
   expected_device_id: 'device',
@@ -142,7 +112,9 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       writes.push(json);
       const content = JSON.parse(json);
       const refs: string[] =
-        content?.items.map((item: { asset_id: string }) => item.asset_id) ?? [];
+        content?.kind === 'attachments'
+          ? content.items.map((item: { asset_id: string }) => item.asset_id)
+          : [];
       durable = {
         revision: String(revision++),
         content_json: json,
@@ -205,6 +177,7 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   const channel = new MediaDraftChannel(owner, port, () => active);
   let observedChannel = channel;
   const store = {
+    sessionEpoch: 7,
     driver: {
       media: {
         drafts: port,
@@ -256,6 +229,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   let nextPhotoSubmission: PhotoPickerSubmission | null = null;
   let photoSubmission: PhotoPickerSubmission | null = null;
   const photoAdmissions: (PhotoPickerAdmission | undefined)[] = [];
+  let routes: Parameters<typeof useAttachmentPhotoPicker>[1];
+  const navigations: unknown[] = [];
   let nativePhotoCancel: (() => void) | undefined;
   let nativePhotoPick:
     | ((
@@ -284,6 +259,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     './attachment-categories': attachmentCategories,
     './media-draft-channel': { MediaDraftFailure },
     './media-draft-contract': mediaDraftContract,
+    './media-reply': mediaReply,
+    './media-acceptance': mediaAcceptance,
     'expo-media-library': { MediaType: { IMAGE: 'image', VIDEO: 'video' } },
     react: {
       useMemo: memo,
@@ -324,9 +301,13 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
         },
       },
     },
-    'expo-router': { useFocusEffect: (read: () => () => void) => effect(read, [read]) },
+    'expo-router': {
+      useFocusEffect: (read: () => () => void) => effect(read, [read]),
+      router: { push: (value: unknown) => navigations.push(value) },
+    },
     'expo-crypto': { randomUUID: () => `asset-${++sequence}` },
-    '../components/primitives': { NativeButton: 'NativeButton' },
+    '../components/primitives': { NativeButton: 'NativeButton', IconButton: 'IconButton' },
+    './attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     '../core/provider': {
       useClient: () => ({
         store,
@@ -356,7 +337,10 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     './playback-owner': { mediaPlayback: coordinator },
     './attachment-picker': { pickAttachmentAssets: () => selection() },
     './attachment-photo-picker': {
-      useAttachmentPhotoPicker: () => photoPicker,
+      useAttachmentPhotoPicker: (_config: unknown, value: typeof routes) => {
+        routes = value;
+        return photoPicker;
+      },
     },
     './cache-files': { discardCacheCopy: (uri: string) => discarded.push(uri) },
     './cache-work': { sensitiveCacheWork: { run: (work: () => unknown) => work() } },
@@ -422,6 +406,8 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     sent,
     journalEvents,
     photoAdmissions,
+    routes: () => routes,
+    navigations,
     previews,
     canceled,
     previewStarted: previewStarted.promise,

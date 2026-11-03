@@ -157,6 +157,7 @@ pub(super) fn own_echo_requires_valid_original_inner_and_historical_sealing_copy
                             reply: None,
                             media: None,
                             forwarded: false,
+                            forwarded_author: None,
                         },
                     )?;
                 event_log::verify_author(&pending).unwrap();
@@ -426,6 +427,7 @@ pub(super) fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
     )?;
     let plaintext = event_log::content::InnerEvent {

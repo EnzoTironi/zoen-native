@@ -7,6 +7,7 @@ import test from 'node:test';
 import { build } from 'esbuild';
 import { dirname } from 'node:path';
 import { HomeController, projectHomeItems } from '../home/preferences.ts';
+import * as homeAccess from '../home/access.ts';
 import {
   projectConversationTimeline,
   type ConversationTimelineRow,
@@ -48,7 +49,9 @@ const compiled = Object.fromEntries(
             name: 'actual-chat-owner-and-view',
             setup(builder) {
               builder.onResolve({ filter: /./ }, ({ path }) =>
-                /\/(?:chat-screen|use-chat-controller|use-conversation-search)$/.test(path)
+                /\/(?:chat-screen|use-chat-controller|use-conversation-search|use-reply-destination-focus)$/.test(
+                  path,
+                )
                   ? undefined
                   : { path, external: true },
               );
@@ -154,6 +157,7 @@ function renderScreen(
   home: ReturnType<Awaited<ReturnType<typeof fixture>>['home']>,
   timelineOverride?: TimelineEntry[],
   mosaic = false,
+  onInitialEndCancel: () => void = () => {},
 ) {
   const timeline = timelineOverride ?? entries(name === 'Thread');
   const snapshot = {
@@ -176,7 +180,7 @@ function renderScreen(
   }
   class LayoutPort {
     scope = 'chat:alice-phone';
-    cancel = noop;
+    cancel = onInitialEndCancel;
   }
   const components = (names: string[]) => Object.fromEntries(names.map((key) => [key, key]));
   function port(path: string): unknown {
@@ -244,6 +248,9 @@ function renderScreen(
       return { conversationScope };
     if (path.endsWith('/core/initial-timeline-end')) return { InitialTimelineEnd: LayoutPort };
     if (path === './navigation-container') return { navigationMetricsAvailable: false };
+    if (path.endsWith('/quote-layout-context')) return { QuoteMotionView: 'QuoteMotionView' };
+    if (path.endsWith('/quote-layout-transition'))
+      return { QuoteLayoutTransition: 'QuoteLayoutTransition' };
     if (path === './use-chat-native-metrics')
       return { useChatNativeMetrics: () => ({ navigationMetrics: {}, observe: undefined }) };
     if (path === './use-conversation-rail')
@@ -253,6 +260,27 @@ function renderScreen(
     if (path.endsWith('/core/live-activity')) return { chatActivityLabel: () => '' };
     if (path.endsWith('/components/keyboard-motion'))
       return { useKeyboardMotion: () => ({ progress: { value: 0 } }) };
+    if (path.endsWith('/use-message-selection'))
+      return {
+        useMessageSelection: () => ({
+          active: false,
+          ids: new Set<string>(),
+          count: 0,
+          limitReached: false,
+          canCopy: false,
+          canForward: false,
+          toggle: noop,
+          cancel: noop,
+          copy: noop,
+          forward: noop,
+        }),
+      };
+    if (path.endsWith('/message-selection-toolbar'))
+      return components([
+        'MessageSelectionToolbar',
+        'MessageSelectionHeader',
+        'MessageSelectionCancel',
+      ]);
     if (path.endsWith('/components/use-message-actions'))
       return { useMessageActions: () => ({ busy: false }) };
     if (path.endsWith('/components/dialogs')) return { useDialogs: () => ({ inform: noop }) };
@@ -269,6 +297,7 @@ function renderScreen(
       return { ConversationTimelineMessage: 'ConversationMessage' };
     if (path.endsWith('/saved-messages/presentation')) return { conversationTitle };
     if (path.endsWith('/components/chat-header')) return { ChatHeader: 'ChatHeader' };
+    if (path.endsWith('/chat-date-navigation')) return { ChatDateNavigation: 'ChatDateNavigation' };
     if (path.endsWith('/miniapps/rail')) return { MiniappRail: 'MiniappRail' };
     if (path.endsWith('/conversation-provider'))
       return {
@@ -280,6 +309,7 @@ function renderScreen(
         }),
       };
     if (path.endsWith('/home/menus')) return { HomeCardMenu: 'HomeCardMenu' };
+    if (path.endsWith('/home/access')) return homeAccess;
     if (path === './deck-version-selection') return { selectedDeckHead };
     if (path === './state-view') return { MiniappState: 'MiniappState' };
     if (path === './view-host') return { MiniappView: 'MiniappView' };
@@ -311,9 +341,16 @@ function nodes(value: unknown): Element[] {
   if (!value || typeof value !== 'object' || !('props' in value)) return [];
   const node = value as Element;
   const children =
-    node.type === 'ConversationViewport' && typeof node.props.children === 'function'
-      ? node.props.children('ComposerSpacer', 'NativeScroll')
-      : node.props.children;
+    node.type === 'QuoteLayoutTransition' && typeof node.props.children === 'function'
+      ? node.props.children(
+          false,
+          () => {},
+          () => {},
+          false,
+        )
+      : node.type === 'ConversationViewport' && typeof node.props.children === 'function'
+        ? node.props.children('ComposerSpacer', 'NativeScroll')
+        : node.props.children;
   return [node, ...nodes(children), ...nodes(node.props.overlay)];
 }
 
@@ -417,4 +454,30 @@ test('actual Chat and Thread pass every complete signed album to the shared rend
       }
     }
   }
+});
+
+for (const screen of ['Chat'] as const)
+  test(`${screen} hands initial-end ownership to an explicit quote interaction`, async () => {
+    const f = await fixture();
+    let cancelled = 0;
+    const quote = nodes(
+      renderScreen(screen, f.home(), undefined, false, () => {
+        cancelled++;
+      }),
+    ).find((node) => node.type === 'QuoteLayoutTransition');
+    assert.ok(quote);
+    assert.equal(typeof quote.props.onBegin, 'function');
+    quote.props.onBegin();
+    assert.equal(cancelled, 1);
+  });
+
+test('Thread uses the same scoped quote motion and reading policy as the main conversation', async () => {
+  const f = await fixture();
+  const rendered = nodes(renderScreen('Thread', f.home()));
+  assert.ok(rendered.find((node) => node.type === 'QuoteLayoutTransition'));
+  const list = rendered.find((node) => node.type === 'FlashList');
+  assert.ok(list);
+  assert.equal(list.props.CellRendererComponent, 'QuoteMotionView');
+  assert.equal(typeof list.props.onCommitLayoutEffect, 'function');
+  assert.equal(typeof list.props.onScrollBeginDrag, 'function');
 });

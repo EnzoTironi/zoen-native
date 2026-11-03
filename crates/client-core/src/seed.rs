@@ -69,6 +69,7 @@ fn msg(text: &str) -> R<EventBody> {
         reply: None,
         media: None,
         forwarded: false,
+        forwarded_author: None,
     })
 }
 

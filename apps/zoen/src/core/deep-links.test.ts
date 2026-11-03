@@ -1,6 +1,43 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { nativeLinkPath, parseZoenLink, validLocalNotification } from '../notifications/links.ts';
+import {
+  messageAddress,
+  nativeLinkPath,
+  parseZoenLink,
+  validLocalNotification,
+} from '../notifications/links.ts';
+
+test('message links carry exact IDs and route through canonical resolution', () => {
+  assert.equal(messageAddress('space_1', 'message-2'), 'zoen://message/space_1/message-2');
+  for (const prefix of ['zoen://', 'https://tryzoen.com/', 'https://www.tryzoen.com/']) {
+    const address = `${prefix}message/space_1/message-2`;
+    assert.deepEqual(parseZoenLink(address), {
+      kind: 'message',
+      space: 'space_1',
+      message: 'message-2',
+    });
+    assert.equal(nativeLinkPath(address), '/message/space_1/message-2');
+  }
+  for (const suffix of [
+    '/space',
+    '/space/message/extra',
+    '/space//message',
+    '/space/message/',
+    '/space/message?approve=1',
+    '/space/message#run',
+    '/space/%2Fmessage',
+    '/space/%00',
+    '/space/../message',
+    '/space/message?thread=private',
+    '/space/' + 'x'.repeat(129),
+  ]) {
+    assert.equal(parseZoenLink(`zoen://message${suffix}`), null, suffix);
+  }
+  for (const invalid of ['', '..', 'x/y', 'x?send=1', 'x\n', 'x'.repeat(129)]) {
+    assert.equal(messageAddress(invalid, 'message'), null);
+    assert.equal(messageAddress('space', invalid), null);
+  }
+});
 
 test('documented Zoen links preserve signed IDs and require review for capability invitations', () => {
   assert.equal(nativeLinkPath('zoen://app/it_signed'), '/item/it_signed');

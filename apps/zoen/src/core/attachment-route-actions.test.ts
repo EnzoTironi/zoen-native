@@ -51,7 +51,12 @@ function normalFixture() {
       assert.equal(revision, stored.revision);
       sent.push({ scope: target, text: stored.text, reply: stored.reply_to });
       stored = { revision: String(++writes), text: '', reply_to: null };
-      return { entry: { id: 'synthetic-message' } as TimelineEntry, draft: { ...stored } };
+      return {
+        message_id: 'synthetic-message',
+        text_revision: null,
+        entry: { id: 'synthetic-message' } as TimelineEntry,
+        draft: { ...stored },
+      };
     },
   };
   const controller = new NormalMessageDrafts(port);

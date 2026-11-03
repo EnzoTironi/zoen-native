@@ -1,7 +1,9 @@
 //! Operator-only single-host managed device bindings, outside restored SQL/FDB.
 //! Nothing in a client request can select a directory, witness or deployment.
 mod config;
+mod runtimes;
 pub use config::CONFIG_ENV;
+pub use runtimes::{ManagedPrincipal, ManagedRuntime};
 
 use relay_admission::managed_images::{AnchorReader, Checkpoint, Deployment, GenerationGuard};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
@@ -21,6 +23,15 @@ impl ManagedDevices {
     /// Trusted host configuration only; open never creates replacement history.
     pub fn open(
         configured: impl IntoIterator<Item = (Deployment, PathBuf)>,
+    ) -> anyhow::Result<Self> {
+        Self::open_with_runtimes(configured, [])
+    }
+
+    /// Multiple explicitly certified principals can share the same independent
+    /// runtime checkpoint. A namespace cannot mix device and runtime anchors.
+    pub fn open_with_runtimes(
+        configured: impl IntoIterator<Item = (Deployment, PathBuf)>,
+        runtimes: impl IntoIterator<Item = ManagedRuntime>,
     ) -> anyhow::Result<Self> {
         let mut registry = Self::default();
         let mut namespaces = std::collections::BTreeSet::new();
@@ -47,6 +58,7 @@ impl ManagedDevices {
                 Arc::new(ManagedDevice { deployment, anchor }),
             );
         }
+        registry.add_runtimes(runtimes, &mut namespaces)?;
         Ok(registry)
     }
 

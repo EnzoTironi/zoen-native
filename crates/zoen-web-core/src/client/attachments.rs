@@ -163,6 +163,7 @@ impl<S: Signer> Client<S> {
                     .resolve_post(space, &reference)
                     .ok_or("That message is no longer available.")?;
                 Some(types::ReplyRef {
+                    shared: None,
                     quote: None,
                     artifact: None,
                     to: event.hash.clone(),
@@ -325,6 +326,7 @@ impl<S: Signer> Client<S> {
                     attaches: Some(item.clone()),
                     reply,
                     forwarded: false,
+                    forwarded_author: None,
                     media: request
                         .options
                         .metadata(
@@ -426,6 +428,7 @@ impl<S: Signer> Client<S> {
                 attaches: Some(item.clone()),
                 reply: reply.clone(),
                 forwarded: false,
+                forwarded_author: None,
                 media: request
                     .options
                     .metadata(

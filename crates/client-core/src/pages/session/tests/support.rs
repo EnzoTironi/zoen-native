@@ -359,6 +359,7 @@ pub(super) fn encrypted_exact_source_and_peer_readability(
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )
         .unwrap();

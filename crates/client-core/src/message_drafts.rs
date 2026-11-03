@@ -2,13 +2,21 @@
 use crate::{
     engine::{Engine, EntryBody, R},
     i18n::t,
-    CoreError, TimelineEntry,
+    replies::external::SharedReplyDraft,
+    CoreError,
 };
 use hkdf::Hkdf;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
+
+mod acceptance;
+mod contract;
+pub(crate) use contract::{DraftContent, DraftScope};
+pub use contract::{MessageDraftDto, MessageDraftSendResult};
+mod editing;
+pub use editing::MessageDraftEdit;
 
 pub const MESSAGE_DRAFT_REVISION_ZERO: &str = "0";
 const DOMAIN: &[u8] = b"zoen.message.draft.v1";
@@ -18,54 +26,38 @@ const MAX_RETAINED_BYTES: usize = 64 << 20;
 const MAX_PLAIN_BYTES: usize = crate::client_api::MAX_REQUEST_BYTES + 16 * 1024;
 const MAX_CIPHER_BYTES: usize = (MAX_PLAIN_BYTES + 40).div_ceil(3) * 4 + 3;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
-#[serde(deny_unknown_fields)]
-pub struct MessageDraftDto {
-    pub revision: String,
-    pub text: String,
-    pub reply_to: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "client-types", ts(optional))]
-    pub reply_quote: Option<crate::ReplySelection>,
-}
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
-pub struct MessageDraftSendResult {
-    pub entry: TimelineEntry,
-    pub draft: MessageDraftDto,
-}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Receipt {
     input_revision: String,
     message_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    text_revision: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Record {
     draft: MessageDraftDto,
     last_accepted: Option<Receipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_accepted_edit: Option<Receipt>,
 }
 impl Default for Record {
     fn default() -> Self {
         Self {
             draft: MessageDraftDto {
+                reply_intent: None,
                 revision: MESSAGE_DRAFT_REVISION_ZERO.into(),
                 text: String::new(),
+                edit: None,
                 reply_to: None,
                 reply_quote: None,
+                shared_reply: None,
             },
             last_accepted: None,
+            last_accepted_edit: None,
         }
     }
-}
-#[derive(Debug, Clone)]
-pub(crate) struct DraftScope {
-    pub expected_identity_id: String,
-    pub expected_device_id: String,
-    pub space_id: String,
-    pub thread_root_id: Option<String>,
 }
 struct StorageScope {
     id: String,
@@ -105,6 +97,15 @@ fn valid_revision(id: &str) -> bool {
         && id
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+impl Receipt {
+    fn valid(&self) -> bool {
+        valid_revision(&self.input_revision)
+            && self.input_revision != MESSAGE_DRAFT_REVISION_ZERO
+            && valid_id(&self.message_id)
+            && self.text_revision.as_deref().is_none_or(valid_id)
+    }
 }
 
 impl Engine {
@@ -177,6 +178,9 @@ impl Engine {
             if !matches!(&entry.body, EntryBody::Message { marks, .. } if !marks.deleted) {
                 return Err(stale());
             }
+            if !self.visible_message(entry) && scope.thread_root_id.is_none() {
+                return Err(stale());
+            }
             if let Some(root) = &scope.thread_root_id {
                 if self.reply_ref(&scope.space_id, target, true)?.to != *root {
                     return Err(stale());
@@ -190,6 +194,7 @@ impl Engine {
         text: &str,
         reply: Option<&str>,
         quote: Option<&crate::ReplySelection>,
+        shared: Option<&SharedReplyDraft>,
     ) -> R<()> {
         if text.len() > crate::client_api::MAX_REQUEST_BYTES {
             return Err(invalid());
@@ -201,6 +206,9 @@ impl Engine {
         }
         if let Some(quote) = quote {
             message["reply_quote"] = serde_json::to_value(quote).map_err(|_| invalid())?;
+        }
+        if let Some(shared) = shared {
+            message["shared_reply"] = serde_json::to_value(shared).map_err(|_| invalid())?;
         }
         if scope.thread_root_id.is_some() {
             message["thread"] = true.into();
@@ -233,11 +241,15 @@ impl Engine {
                 .reply_to
                 .as_deref()
                 .is_some_and(|id| !valid_id(id))
-            || record.last_accepted.as_ref().is_some_and(|r| {
-                !valid_revision(&r.input_revision)
-                    || r.input_revision == MESSAGE_DRAFT_REVISION_ZERO
-                    || !valid_id(&r.message_id)
-            })
+            || record.last_accepted.as_ref().is_some_and(|r| !r.valid())
+            || record
+                .draft
+                .reply_intent
+                .as_deref()
+                .is_some_and(|id| !valid_revision(id) || id == "0")
+            || (record.draft.reply_intent.is_some()
+                && record.draft.reply_to.is_none()
+                && record.draft.shared_reply.is_none())
         {
             return Err(storage_error());
         }
@@ -246,8 +258,17 @@ impl Engine {
             &record.draft.text,
             record.draft.reply_to.as_deref(),
             record.draft.reply_quote.as_ref(),
+            record.draft.shared_reply.as_ref(),
         )
         .map_err(|_| storage_error())?;
+        Self::validate_edit_shape(record.draft.edit.as_ref()).map_err(|_| storage_error())?;
+        if record
+            .last_accepted_edit
+            .as_ref()
+            .is_some_and(|r| !r.valid())
+        {
+            return Err(storage_error());
+        }
         Ok(record)
     }
     fn persist_message_draft(&self, storage: &StorageScope, record: &Record) -> R<()> {
@@ -285,6 +306,7 @@ impl Engine {
     ) -> R<MessageDraftDto> {
         self.save_message_draft_selected(scope, expected, text, reply_to, None)
     }
+    #[cfg(test)]
     pub(crate) fn save_message_draft_selected(
         &self,
         scope: &DraftScope,
@@ -293,26 +315,112 @@ impl Engine {
         reply_to: Option<String>,
         reply_quote: Option<crate::ReplySelection>,
     ) -> R<MessageDraftDto> {
+        self.save_message_draft_content(
+            scope,
+            expected,
+            DraftContent {
+                reply_intent: None,
+                text,
+                edit: None,
+                reply_to,
+                reply_quote,
+                shared_reply: None,
+            },
+        )
+    }
+    pub(crate) fn validate_draft_reply(
+        &self,
+        scope: &DraftScope,
+        to: Option<&str>,
+        quote: Option<&crate::ReplySelection>,
+        shared: Option<&SharedReplyDraft>,
+    ) -> R<()> {
+        if let Some(shared) = shared {
+            if to.is_some() || quote.is_some() {
+                return Err(invalid());
+            }
+            self.validate_shared_reply(scope, shared)
+        } else {
+            self.draft_target(scope, to)?;
+            self.validate_reply_selection(&scope.space_id, to, quote)
+        }
+    }
+    pub(crate) fn save_message_draft_content(
+        &self,
+        scope: &DraftScope,
+        expected: &str,
+        content: DraftContent,
+    ) -> R<MessageDraftDto> {
+        let DraftContent {
+            text,
+            edit,
+            reply_to,
+            reply_quote,
+            shared_reply,
+            reply_intent,
+        } = content;
         let storage = self.draft_storage_scope(scope)?;
         let mut record = self.load_message_draft(scope, &storage)?;
         if !valid_revision(expected) || record.draft.revision != expected {
             return Err(stale());
         }
-        Self::draft_text_budget(scope, &text, reply_to.as_deref(), reply_quote.as_ref())?;
-        self.draft_target(scope, reply_to.as_deref())?;
-        self.validate_reply_selection(&scope.space_id, reply_to.as_deref(), reply_quote.as_ref())?;
-        if (!text.is_empty() || reply_to.is_some())
+        Self::draft_text_budget(
+            scope,
+            &text,
+            reply_to.as_deref(),
+            reply_quote.as_ref(),
+            shared_reply.as_ref(),
+        )?;
+        // Private user work survives stale, deleted or unloaded sources. Scope,
+        // encryption, CAS and quotas protect storage; publication reauthorizes.
+        Self::validate_edit_shape(edit.as_ref())?;
+        // The encrypted record already owns this exact reviewed context. New
+        // private typing must survive source loss; changing the context and
+        // publishing still require the live source independently.
+        let same_reply = record.draft.reply_to == reply_to
+            && record.draft.reply_quote == reply_quote
+            && record.draft.shared_reply == shared_reply;
+        // Older clients omit the token on text-only edits; preserve the known
+        // intent. A new explicit selection, even of the same text, renews it.
+        let reply_intent = reply_intent.or_else(|| {
+            same_reply
+                .then(|| record.draft.reply_intent.clone())
+                .flatten()
+        });
+        if reply_intent
+            .as_deref()
+            .is_some_and(|id| !valid_revision(id) || id == "0")
+            || (reply_intent.is_some() && reply_to.is_none() && shared_reply.is_none())
+        {
+            return Err(invalid());
+        }
+        let retained_reply = same_reply && record.draft.reply_intent == reply_intent;
+        if !retained_reply {
+            self.validate_draft_reply(
+                scope,
+                reply_to.as_deref(),
+                reply_quote.as_ref(),
+                shared_reply.as_ref(),
+            )?;
+        }
+        if (!text.is_empty() || reply_to.is_some() || edit.is_some())
+            && record.draft.edit == edit
             && record.draft.text == text
             && record.draft.reply_to == reply_to
             && record.draft.reply_quote == reply_quote
+            && record.draft.shared_reply == shared_reply
+            && record.draft.reply_intent == reply_intent
         {
             return Ok(record.draft);
         }
         record.draft = MessageDraftDto {
+            reply_intent,
             revision: types::new_id("draft")?,
             text,
+            edit,
             reply_to,
             reply_quote,
+            shared_reply,
         };
         self.persist_message_draft(&storage, &record)?;
         Ok(record.draft)
@@ -332,15 +440,7 @@ impl Engine {
             .as_ref()
             .filter(|r| r.input_revision == expected)
         {
-            let entry = self
-                .timeline(&scope.space_id)?
-                .into_iter()
-                .find(|entry| entry.id == receipt.message_id)
-                .ok_or_else(stale)?;
-            return Ok(MessageDraftSendResult {
-                entry,
-                draft: record.draft,
-            });
+            return Ok(self.message_draft_acceptance(scope, receipt, record.draft));
         }
         if record.draft.revision != expected || expected == MESSAGE_DRAFT_REVISION_ZERO {
             return Err(stale());
@@ -349,15 +449,13 @@ impl Engine {
         // these memory-only checks can prove definitive refusal. Owner, storage,
         // CAS and response-encoding errors must never acquire this meaning.
         if self
-            .draft_target(scope, record.draft.reply_to.as_deref())
+            .validate_draft_reply(
+                scope,
+                record.draft.reply_to.as_deref(),
+                record.draft.reply_quote.as_ref(),
+                record.draft.shared_reply.as_ref(),
+            )
             .is_err()
-            || self
-                .validate_reply_selection(
-                    &scope.space_id,
-                    record.draft.reply_to.as_deref(),
-                    record.draft.reply_quote.as_ref(),
-                )
-                .is_err()
         {
             return Err(CoreError::DraftRejected {
                 reason: t(
@@ -383,37 +481,48 @@ impl Engine {
             });
         }
         self.atomic_agent_action(|engine| {
-            let entry = match record
-                .draft
-                .reply_to
-                .as_deref()
-                .or(scope.thread_root_id.as_deref())
-            {
-                Some(to) => engine.reply_selected(
-                    &scope.space_id,
-                    &scope.expected_identity_id,
-                    &record.draft.text,
-                    to,
-                    scope.thread_root_id.is_some(),
-                    record.draft.reply_quote.as_ref(),
-                )?,
-                None => engine.send_message(&scope.space_id, &record.draft.text)?,
+            let entry = if let Some(shared) = &record.draft.shared_reply {
+                engine.send_shared_reply(scope, &record.draft.text, shared)?
+            } else {
+                match record
+                    .draft
+                    .reply_to
+                    .as_deref()
+                    .or(scope.thread_root_id.as_deref())
+                {
+                    Some(to) => engine.reply_selected(
+                        &scope.space_id,
+                        &scope.expected_identity_id,
+                        &record.draft.text,
+                        to,
+                        scope.thread_root_id.is_some(),
+                        record.draft.reply_quote.as_ref(),
+                    )?,
+                    None => engine.send_message(&scope.space_id, &record.draft.text)?,
+                }
             };
             let cleared = Record {
                 draft: MessageDraftDto {
+                    reply_intent: None,
                     revision: types::new_id("draft")?,
                     text: String::new(),
+                    edit: record.draft.edit.clone(),
                     reply_to: None,
                     reply_quote: None,
+                    shared_reply: None,
                 },
+                last_accepted_edit: record.last_accepted_edit.clone(),
                 last_accepted: Some(Receipt {
                     input_revision: expected.into(),
                     message_id: entry.id.clone(),
+                    text_revision: entry.text_revision.clone(),
                 }),
             };
             engine.persist_message_draft(&storage, &cleared)?;
             Ok(MessageDraftSendResult {
-                entry,
+                message_id: entry.id.clone(),
+                text_revision: entry.text_revision.clone(),
+                entry: Some(entry),
                 draft: cleared.draft,
             })
         })

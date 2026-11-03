@@ -1,0 +1,23 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
+index bf367ffa..155f170d 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputParser.mm
+@@ -400,13 +400,16 @@ static int onText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, void *use
+     context->opaqueStart = std::min(context->opaqueStart,textStart); context->opaqueEnd = textEnd;
+   }
+ 
+-  if (textStart > 0 && context->buffer[textStart - 1] == '\\' && (textStart - 1) >= context->lastTextEnd) {
++  bool escaped = textStart > 0 && context->buffer[textStart - 1] == '\\' && (textStart - 1) >= context->lastTextEnd;
++  if (escaped) {
+     context->escapeByteOffsets.push_back(textStart - 1);
+   }
+ 
+   if (context->composer) {
+     if (std::any_of(context->taskItems.begin(),context->taskItems.end(),[](bool value){return value;}))context->opaque.push_back({textStart,textEnd});
+-    size_t cursor=textStart;
++    // md4c starts an escaped text run after its backslash. Delimiters precede
++    // the raw escape as well as its decoded character; retain both in syntax.
++    size_t cursor=textStart - (escaped ? 1 : 0);
+     for(auto span=context->openStack.rbegin();span!=context->openStack.rend();++span) {
+       if(span->contentStartByteOffset!=kByteOffsetUnset)break;
+       if(span->type==ENRMInputStyleTypeCode) {

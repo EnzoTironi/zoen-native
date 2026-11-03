@@ -37,6 +37,10 @@ pub enum EventBody {
         /// messages keep their exact bytes.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         forwarded: bool,
+        /// Display attribution asserted by the forwarder, never an original-author proof
+        /// or a source/profile access grant. No source identifiers travel with it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        forwarded_author: Option<String>,
     },
     /// A scoped App request uses its own discriminator: older consumers retain
     /// these signed bytes as Unsupported, never as an unrestricted chat prompt.
@@ -67,6 +71,12 @@ pub enum EventBody {
         /// Optional exact-operation receipt metadata; old preference events remain valid.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         operation: Option<ChatPrefsOperation>,
+    },
+    /// Private, monotonic removal from the author's local view. Valid only in
+    /// that identity's Personal log; it never changes the source conversation.
+    MessagesDeletedForSelf {
+        space: SpaceId,
+        messages: Vec<String>,
     },
     /// An edit, delete for everyone or reaction on an earlier message (see [`crate::annotation`]).
     MessageAnnotated {

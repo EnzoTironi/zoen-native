@@ -1,0 +1,50 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+index 31fc8dda..9098f365 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/EnrichedMarkdownTextInput.mm
+@@ -268,6 +268,7 @@ static const NSTimeInterval kENRMAtomicSnapPollInterval = 0.1;
+   _textView = inputTextView;
+   ENRMConfigureMarkdownTextInputTextView(_textView);
+ #if !TARGET_OS_OSX
++  _textView.isAccessibilityElement = YES;
+   _textView.adjustsFontForContentSizeCategory = YES;
+   _textView.delegate = self;
+ #else
+@@ -309,30 +310,17 @@ static const NSTimeInterval kENRMAtomicSnapPollInterval = 0.1;
+ #if !TARGET_OS_OSX
+ #pragma mark - Accessibility
+ 
+-// The custom TextKit 1 stack leaves the inner UITextView invisible to VoiceOver, so
+-// the host vends the content itself as one readable element.
+-- (BOOL)isAccessibilityElement
+-{
+-  return YES;
+-}
+-
+-- (NSString *)accessibilityValue
++// Match RCTTextInputComponentView: Fabric's accessibility props belong to the
++// actual editor, which supplies UIKit's editable value, selection and actions.
++// Making the host an element would hide that UITextView behind a generic UIView.
++- (NSObject *)accessibilityElement
+ {
+-  NSString *text = ENRMGetPlainText(_textView);
+-  if (text.length > 0) {
+-    return text;
+-  }
+-  if (_placeholderLabel.text.length > 0) {
+-    return _placeholderLabel.text;
+-  }
+-  return [super accessibilityValue];
++  return _textView;
+ }
+ 
+-- (BOOL)accessibilityActivate
++- (BOOL)isAccessibilityElement
+ {
+-  ENRMFocusTextView(_textView);
+-  [super accessibilityActivate];
+-  return YES;
++  return NO;
+ }
+ #endif
+ 

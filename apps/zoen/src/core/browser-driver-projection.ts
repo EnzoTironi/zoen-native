@@ -31,6 +31,7 @@ export function browserTimelineEntry(
     : undefined;
   return {
     id: message.id,
+    ...(message.text_revision ? { text_revision: message.text_revision } : {}),
     seq: message.seq ?? '0',
     author: persona(message.author, message.name),
     at_ms: String(message.at_ms),
@@ -99,6 +100,7 @@ export function browserSnapshot({
               .map((member) => persona(member.id, 'Desconhecido'))[0] ?? null)
           : null,
       last_preview: last?.deleted ? 'Mensagem apagada' : (last?.text ?? ''),
+      last_preview_is_markdown: !!last && !last.deleted && last.text.length > 0,
       last_author: last ? persona(last.author, last.name) : null,
       last_at_ms: String(last?.at_ms ?? 0),
       unread: conversation.unread,

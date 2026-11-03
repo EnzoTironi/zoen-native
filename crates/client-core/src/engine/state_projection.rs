@@ -12,7 +12,13 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !crate::forwarding::metadata_valid(&e.body) {
+            return Projection::Refused;
+        }
         if !crate::app_resources::event_valid(self, e, identities) {
+            return Projection::Refused;
+        }
+        if !self.private_message_deletion_valid(&e.space, &e.author, &e.body) {
             return Projection::Refused;
         }
         // Scoped prompts must use the discriminator old consumers cannot dispatch.
@@ -126,6 +132,7 @@ impl State {
                 attaches,
                 reply,
                 forwarded,
+                forwarded_author,
                 media,
                 ..
             } => {
@@ -163,6 +170,7 @@ impl State {
                         marks: MessageMarks {
                             text_revision: Some(event_log::content_hash_of(e)),
                             forwarded: *forwarded,
+                            forwarded_author: forwarded_author.clone(),
                             media: media.clone(),
                             ..Default::default()
                         },
@@ -196,6 +204,9 @@ impl State {
                 if mine {
                     self.chat_prefs.insert(space.clone(), prefs.clone());
                 }
+            }
+            EventBody::MessagesDeletedForSelf { space, messages } => {
+                self.apply_private_message_deletion(&e.author, space, messages);
             }
             EventBody::MessageAnnotated { target, note } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {

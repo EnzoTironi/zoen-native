@@ -32,7 +32,12 @@ test(
         { timeout: 45_000 },
       );
       assert.match(
-        execFileSync(binary, { encoding: 'utf8', timeout: 5_000 }),
+        // Hosted macOS exceeded the former 5s execution limit (run 40500782585).
+        execFileSync(binary, {
+          encoding: 'utf8',
+          timeout: 15_000,
+          stdio: ['ignore', 'pipe', 'inherit'],
+        }),
         /Photo editor pixels PASS/,
       );
     } finally {

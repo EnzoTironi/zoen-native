@@ -3,6 +3,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use std::path::{Path, PathBuf};
 mod publish;
 mod release;
+mod runtime;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 

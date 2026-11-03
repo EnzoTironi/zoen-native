@@ -1,0 +1,59 @@
+diff --git a/node_modules/@shopify/flash-list/src/recyclerview/hooks/useBoundDetection.ts b/node_modules/@shopify/flash-list/src/recyclerview/hooks/useBoundDetection.ts
+--- a/node_modules/@shopify/flash-list/src/recyclerview/hooks/useBoundDetection.ts
++++ b/node_modules/@shopify/flash-list/src/recyclerview/hooks/useBoundDetection.ts
+@@ -141,6 +141,14 @@
+   }, [recyclerViewManager]);
+ 
+   const runAutoScrollToBottomCheck = useCallback(() => {
++    const autoScrollAllowed = () => {
++      const policy = recyclerViewManager.props.maintainVisibleContentPosition;
++      return !policy?.disabled && (policy?.autoscrollToBottomThreshold ?? -1) >= 0;
++    };
++    if (!autoScrollAllowed()) {
++      pendingAutoscrollToBottom.current = false;
++      return;
++    }
+     // Suppress MVCP autoscroll while a programmatic scrollToIndex is in
+     // flight. FlashList disables offset projection at the start of
+     // scrollToIndex and reenables it ~200-300ms after settling. Without
+@@ -152,6 +160,7 @@
+     if (pendingAutoscrollToBottom.current) {
+       pendingAutoscrollToBottom.current = false;
+       requestAnimationFrame(() => {
++        if (!autoScrollAllowed()) return;
+         const shouldAnimate =
+           recyclerViewManager.props.maintainVisibleContentPosition
+             ?.animateAutoScrollToBottom ?? true;
+diff --git a/node_modules/@shopify/flash-list/dist/recyclerview/hooks/useBoundDetection.js b/node_modules/@shopify/flash-list/dist/recyclerview/hooks/useBoundDetection.js
+--- a/node_modules/@shopify/flash-list/dist/recyclerview/hooks/useBoundDetection.js
++++ b/node_modules/@shopify/flash-list/dist/recyclerview/hooks/useBoundDetection.js
+@@ -100,6 +100,15 @@
+         }
+     }, [recyclerViewManager]);
+     const runAutoScrollToBottomCheck = useCallback(() => {
++        const autoScrollAllowed = () => {
++            var _a;
++            const policy = recyclerViewManager.props.maintainVisibleContentPosition;
++            return !(policy === null || policy === void 0 ? void 0 : policy.disabled) && ((_a = policy === null || policy === void 0 ? void 0 : policy.autoscrollToBottomThreshold) !== null && _a !== void 0 ? _a : -1) >= 0;
++        };
++        if (!autoScrollAllowed()) {
++            pendingAutoscrollToBottom.current = false;
++            return;
++        }
+         // Suppress MVCP autoscroll while a programmatic scrollToIndex is in
+         // flight. FlashList disables offset projection at the start of
+         // scrollToIndex and reenables it ~200-300ms after settling. Without
+@@ -112,6 +121,8 @@
+             pendingAutoscrollToBottom.current = false;
+             requestAnimationFrame(() => {
+                 var _a, _b, _c;
++                if (!autoScrollAllowed())
++                    return;
+                 const shouldAnimate = (_b = (_a = recyclerViewManager.props.maintainVisibleContentPosition) === null || _a === void 0 ? void 0 : _a.animateAutoScrollToBottom) !== null && _b !== void 0 ? _b : true;
+                 (_c = scrollViewRef.current) === null || _c === void 0 ? void 0 : _c.scrollToEnd({
+                     animated: shouldAnimate && !recyclerViewManager.ignoreScrollEvents,
+@@ -144,4 +155,3 @@
+         checkBounds,
+     };
+ }
+-//# sourceMappingURL=useBoundDetection.js.map

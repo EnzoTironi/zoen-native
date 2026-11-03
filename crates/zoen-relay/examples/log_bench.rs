@@ -86,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         queues[i % writers].push(Envelope::plain(&e)?);

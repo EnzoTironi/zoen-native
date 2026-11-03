@@ -1,3 +1,4 @@
+import { useReplyDestinationFocus } from '../core/use-reply-destination-focus';
 import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
@@ -7,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../components/dialogs';
 import { useKeyboardMotion } from '../components/keyboard-motion';
 import { useMessageActions } from '../components/use-message-actions';
+import { useMessageSelection } from './use-message-selection';
 import { useChatNativeMetrics } from './use-chat-native-metrics';
 import { useConversationRail } from './use-conversation-rail';
 import { ConversationReveal } from '../core/conversation-reveal';
@@ -24,7 +26,6 @@ import {
 import type { UniversalHit } from '../core/generated/UniversalHit';
 import { InitialTimelineEnd } from '../core/initial-timeline-end';
 import { chatActivityLabel } from '../core/live-activity';
-import { messageCard } from '../core/message-presentation';
 import { messageText } from '../core/presentation';
 import { useClient } from '../core/provider';
 import type { TimelineEntry } from '../core/types';
@@ -38,7 +39,11 @@ import { useTheme } from '../theme';
 
 const revealQaEnabled = process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA === '1';
 export function useChatController() {
-  const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
+  const { id, jump, compose } = useLocalSearchParams<{
+    id: string;
+    jump?: string;
+    compose?: string;
+  }>();
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors } = useTheme();
   const home = useHome();
@@ -54,6 +59,11 @@ export function useChatController() {
   const list = useRef<FlashListRef<ConversationTimelineRow>>(null);
   const focused = useRef(false);
   const normalDraft = useMessageDraft(id);
+  useReplyDestinationFocus(
+    `${id}:${compose ?? ''}`,
+    Boolean(compose && normalDraft.ready && normalDraft.sharedReply),
+    input,
+  );
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
   const [sending, setSending] = useState(false);
@@ -95,21 +105,24 @@ export function useChatController() {
         : timelines[id],
     [searchThread, timelines, id],
   );
+  const selection = useMessageSelection(id, page?.entries ?? [], searchState.active);
   const [revealedActivity, setRevealedActivity] = useState<{ scope: string; id: string } | null>(
     null,
   );
-  const rows = useMemo(
+  const rows = useMemo<ConversationTimelineRow[]>(
     () =>
-      projectConversationTimeline(
-        page?.entries ?? [],
-        items,
-        id,
-        selectedSearchId ??
-          (revealedActivity?.scope === `${id}:${owner}` ? revealedActivity.id : null) ??
-          jump,
-        supportsMediaMosaic,
-      ),
-    [page, items, id, owner, selectedSearchId, revealedActivity, jump],
+      selection.active
+        ? (page?.entries ?? []).map((entry) => ({ key: entry.id, entry }))
+        : projectConversationTimeline(
+            page?.entries ?? [],
+            items,
+            id,
+            selectedSearchId ??
+              (revealedActivity?.scope === `${id}:${owner}` ? revealedActivity.id : null) ??
+              jump,
+            supportsMediaMosaic,
+          ),
+    [page, items, id, owner, selectedSearchId, revealedActivity, jump, selection.active],
   );
   const visibleEntries = useMemo(() => rows.map((row) => row.entry), [rows]);
   const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
@@ -468,23 +481,19 @@ export function useChatController() {
     const attempt = normalDraft.capture();
     if (!attempt) return;
     const text = attempt.text;
-    if (!text.trim() && !(attempt.editingId && editing && messageCard(editing)?.kind_id === 'file'))
-      return;
+    if (!text.trim() && !(attempt.editingId && editing?.isCaption)) return;
     sendingNow.current = true;
     store.setTyping(id, false);
     setSending(true);
     try {
-      if (attempt.editingId)
-        await store.request({
-          op: 'edit_message',
-          space_id: id,
-          message_id: attempt.editingId,
-          text,
-        });
+      if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
-      updateDraft({ type: 'accepted', attempt });
-    } catch {
-      /* Keep the text for a retry. */
+    } catch (reason) {
+      if (normalDraft.isCurrent(attempt))
+        void inform(
+          t(attempt.editingId ? 'chat.editCouldNotBeSaved' : 'chat.theReplyCouldNotBeSent'),
+          reason instanceof Error ? reason.message : t('chat.tryAgain'),
+        );
     } finally {
       sendingNow.current = false;
       setSending(false);
@@ -494,7 +503,11 @@ export function useChatController() {
   const actions = useMessageActions({
     spaceId: id,
     entries: page?.entries ?? [],
-    disabled: searchState.active,
+    disabled: searchState.active || selection.active,
+    onSelect: (entry) => {
+      cancelInitialEnd();
+      selection.toggle(entry);
+    },
     onReply: (entry, selection) => {
       cancelInitialEnd();
       updateDraft({ type: 'reply', entry, selection });
@@ -511,6 +524,7 @@ export function useChatController() {
     chat,
     id,
     activityLabel,
+    selection,
     nativeScrollTag,
     bindNativeTimeline,
     searchState,

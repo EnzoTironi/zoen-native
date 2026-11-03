@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import { messageMenuActions } from './message-actions-model';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -70,52 +71,10 @@ function SafeMessageActions(props: MessageActionsProps) {
   }, [incomingId, props.mode]);
   const current = props.entry?.id === presentation?.entry?.id ? props : presentation;
   const entry = current?.entry;
-  type ActionRow = {
-    label: string;
-    image: ComponentProps<typeof Button>['systemImage'];
-    run?: (entry: NonNullable<MessageActionsProps['entry']>) => void;
-    destructive?: boolean;
-  };
-  const rawRows: ActionRow[] = entry
-    ? [
-        { label: t('chat.reply'), image: 'arrowshape.turn.up.left', run: current?.onReply },
-        {
-          label: t('chat.openReplies'),
-          image: 'bubble.left.and.bubble.right',
-          run: current?.onThread,
-        },
-        {
-          label: t('chat.forward'),
-          image: 'arrowshape.turn.up.right',
-          run: !entry.deleted ? current?.onForward : undefined,
-        },
-        { label: t('chat.copyText'), image: 'doc.on.doc', run: current?.onCopy },
-        { label: t('media.share'), image: 'square.and.arrow.up', run: current?.onShare },
-        {
-          label: t('media.prepareNewSend'),
-          image: 'arrow.clockwise',
-          run:
-            entry.author.is_me && !entry.deleted && entry.delivery === 'Failed'
-              ? current?.onRecover
-              : undefined,
-        },
-        {
-          label: t('chat.edit'),
-          image: 'pencil',
-          run: entry.author.is_me && !entry.deleted ? current?.onEdit : undefined,
-        },
-        {
-          label: t('chat.deleteForEveryone'),
-          image: 'trash',
-          run: entry.author.is_me && !entry.deleted ? current?.onDelete : undefined,
-          destructive: true,
-        },
-      ]
-    : [];
-  const rows = rawRows.filter((row) => row.run);
-  const measurementKey = `${entry?.id ?? ''}:${current?.mode}:${more}:${Boolean(current?.error)}:${Boolean(current?.preview)}`;
+  const rows = current?.options ?? messageMenuActions(current);
+  const measurementKey = `${entry?.id ?? ''}:${current?.mode}:${Boolean(entry?.deleted)}:${rows.length}:${more}:${Boolean(current?.error)}:${Boolean(current?.preview)}`;
   const estimatedHeight =
-    56 +
+    (current?.options || entry?.deleted ? 0 : 56) +
     (current?.mode === 'actions' ? rows.length * 48 + 10 : 0) +
     (more ? 238 : 0) +
     (current?.error ? 64 : 0) +
@@ -168,7 +127,7 @@ function SafeMessageActions(props: MessageActionsProps) {
       <VStack spacing={0}>
         {rows.map((row) => (
           <Button
-            key={row.image}
+            key={row.label}
             label={row.label}
             systemImage={row.image}
             role={row.destructive ? 'destructive' : undefined}
@@ -176,10 +135,13 @@ function SafeMessageActions(props: MessageActionsProps) {
               buttonStyle('plain'),
               foregroundStyle(row.destructive ? colors.danger : colors.text),
               frame({ minHeight: 48, maxWidth: Infinity, alignment: 'leading' }),
-              nativeDisabled(Boolean(current?.pending)),
+              nativeDisabled(Boolean(current?.pending || row.disabled)),
             ]}
             onPress={() => {
-              if (entry && !current?.pending) close(() => row.run?.(entry));
+              if (entry && !current?.pending && !row.disabled) {
+                if (row.keepOpen) row.run?.(entry);
+                else close(() => row.run?.(entry));
+              }
             }}
           />
         ))}
@@ -247,7 +209,7 @@ function SafeMessageActions(props: MessageActionsProps) {
             animated,
           ]}
         >
-          {entry ? (
+          {entry && !entry.deleted && !current?.options ? (
             <ReactionPalette
               reactions={entry.reactions}
               pending={current?.pending}
@@ -299,7 +261,21 @@ function SafeMessageActions(props: MessageActionsProps) {
             </Text>
           ) : null}
           {current?.preview ? (
-            <View style={{ maxHeight: 160, overflow: 'hidden' }}>{current.preview}</View>
+            current.options ? (
+              <ScrollView
+                style={{
+                  maxHeight: Math.max(
+                    120,
+                    window.height - insets.top - insets.bottom - rows.length * 48 - 120,
+                  ),
+                  flexShrink: 1,
+                }}
+              >
+                {current.preview}
+              </ScrollView>
+            ) : (
+              <View style={{ maxHeight: 160, overflow: 'hidden' }}>{current.preview}</View>
+            )
           ) : null}
           {current?.mode === 'actions' ? (
             <ScrollView

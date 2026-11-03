@@ -15,6 +15,7 @@ import type {
 } from './durable-attachment-contract';
 import type { MediaDraftAttachments, MediaDraftIngest } from './media-draft-types';
 import { mediaPlayback } from './playback-owner';
+import { captureMediaReply, copyMediaReply } from './media-reply';
 
 export async function pick(
   context: Pick<
@@ -74,13 +75,15 @@ export async function pick(
   let directSend: MediaDraftAttachments | null = null;
   let editAfterPicking: string | null = null;
   const pickedFor = runtime.approval;
+  const pickedReplyTo = admission.current.replyTo;
+  const pickedReply = captureMediaReply(admission.current);
   try {
     await sensitiveCacheWork.run(async () => {
       const admissionDraft = channel.getSnapshot();
       const before = admissionDraft.content;
       const gallery =
         kind === 'photo'
-          ? new AttachmentGalleryJournal(channel, current, randomUUID, admission.current.replyTo)
+          ? new AttachmentGalleryJournal(channel, current, randomUUID, pickedReplyTo, pickedReply)
           : null;
       const count =
         before?.kind === 'attachments'
@@ -190,7 +193,8 @@ export async function pick(
       });
       const next: MediaDraftAttachments = {
         kind: 'attachments',
-        reply_to: existing ? existing.reply_to : admission.current.replyTo,
+        reply_to: existing ? existing.reply_to : pickedReplyTo,
+        ...copyMediaReply(existing ?? pickedReply),
         items: [
           ...(existing?.items ?? []),
           ...additions.map(({ id }, index) => ({

@@ -10,6 +10,8 @@ const MAX_CONFIG_BYTES: u64 = 65_536;
 #[serde(deny_unknown_fields)]
 struct OperatorConfig {
     devices: Vec<OperatorDevice>,
+    #[serde(default)]
+    runtimes: Vec<ManagedRuntime>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -78,14 +80,15 @@ impl ManagedDevices {
             return Err(invalid());
         }
         let parsed: OperatorConfig = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
-        if parsed.devices.len() > 256 {
+        if parsed.devices.len() > 256 || parsed.runtimes.len() > 256 {
             return Err(invalid());
         }
-        Self::open(
+        Self::open_with_runtimes(
             parsed
                 .devices
                 .into_iter()
                 .map(|entry| (entry.deployment, entry.anchor_directory)),
+            parsed.runtimes,
         )
         .map_err(|_| invalid())
     }

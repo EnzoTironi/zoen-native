@@ -60,6 +60,12 @@ impl State {
                         reply,
                         marks: MessageMarks {
                             forwarded,
+                            forwarded_author: match content {
+                                ItemContent::File(doc) => {
+                                    doc.voice.as_ref().and_then(|v| v.forwarded_author.clone())
+                                }
+                                _ => None,
+                            },
                             ..Default::default()
                         },
                     },
@@ -213,6 +219,7 @@ impl State {
             || media
                 .as_ref()
                 .is_some_and(|media| !media.is_valid() || (*forwarded && media.group.is_some()))
+            || !crate::forwarding::metadata_valid(&event.body)
             || !self.spaces.contains_key(&event.space)
         {
             return false;
@@ -277,6 +284,12 @@ impl State {
                 marks: MessageMarks {
                     media: media.clone(),
                     forwarded: *forwarded,
+                    forwarded_author: match &event.body {
+                        EventBody::MessagePosted {
+                            forwarded_author, ..
+                        } => forwarded_author.clone(),
+                        _ => None,
+                    },
                     ..Default::default()
                 },
             },

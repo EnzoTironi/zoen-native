@@ -31,7 +31,10 @@ fn folded_annotations(events: &[Event]) -> (AuthorAliases<'_>, BTreeMap<String, 
         }
         let f = folded.entry((*hash).to_owned()).or_default();
         match note {
-            types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
+            types::Annotation::Edit { text } if !f.deleted => {
+                f.text = Some(text.clone());
+                f.text_revision = Some(event_log::content_hash_of(event));
+            }
             types::Annotation::Delete => {
                 f.deleted = true;
                 f.text = None;
@@ -245,6 +248,7 @@ impl<S: Signer> Client<S> {
                 }
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
+                    view.text_revision = if f.deleted { None } else { f.text_revision.clone().or(view.text_revision) };
                     if f.deleted { view.text.clear(); view.media = None; view.file = None; view.file_item_id = None; view.file_version = None; view.card = None; }
                     if let Some(text) = &f.text { view.text.clone_from(text); view.edited = true; }
                     let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();

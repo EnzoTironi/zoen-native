@@ -1,6 +1,6 @@
 # Dependency patches
 
-`@expo+inline-modules+0.2.7.patch` fixes the SDK 58 watched-directory lookup after
+`@expo+inline-modules+0.2.8.patch` fixes the SDK 58 watched-directory lookup after
 CocoaPods' `xcodeproj` serializer quotes the same `SOURCE_ROOT` path. It uses the
 installed Expo Xcode utility to compare the path's value and records newly created
 groups immediately. It changes no dependency version. The existing native-surfaces
@@ -39,6 +39,13 @@ fix and those checks pass, or if the trial shows regressions. Recheck upstream a
 patch applicability whenever changing the pinned `1.22.7` dependency.
 
 ## Markdown patch sequence
+
+`036+message-link-autolinks` adds the registered `zoen://` scheme to MD4C's
+existing bare-URL recognizer. Message text and source offsets remain unchanged;
+code spans and fenced code stay literal. Native link presses still pass through
+Zoen's URL and session/membership boundaries. The compiled parser regression in
+`message-link-autolinks.test.ts` covers punctuation, code and explicit links.
+Remove this patch when the maintained parser provides equivalent custom schemes.
 
 The app's existing `postinstall` runs `patch-package --error-on-fail`.
 `react-native-enriched-markdown@1.1.1` uses the numeric sequence supported by
@@ -90,7 +97,8 @@ them separately instead of replacing that overlay with a source-only package.
 
 ## Temporary Automatic theme input probe (#440)
 
-`@expo+ui+58.0.23.patch` adds only bounded native diagnostics to the existing
+`@expo+ui+58.0.25.patch` retains the RNHost touch-ownership fix and adds bounded
+native diagnostics to the existing
 Toggle Binding setter and dispatch call. It does not change the binding, events,
 gestures or control state. The SDK patch is silent unless the caller explicitly
 sets the closed `zoen-theme-automatic-probe` testID. Zoen supplies that ID only in
@@ -110,4 +118,10 @@ actual iPhone tap reaches that event. Native compilation and one controlled QA
 input on the next opt-in artifact are required. Remove this temporary patch and
 probe after that evidence identifies and verifies the actual fix. Retain the
 wrapper/provider regression. `patch-package --error-on-fail` applies the patch
-through the existing postinstall; no dependency version is changed.
+through the existing postinstall. The 28 October SDK 58 patch alignment ports the
+unchanged overlay to locked `@expo/ui@58.0.25`. It applies to the integrity-checked
+pristine 58.0.24 and 58.0.25 tarballs; all resulting iOS source bytes match. Upstream
+Android changes to DateTimePicker and FieldGroup remain intact. This source
+comparison does not qualify a new native App; previously frozen artifacts retain
+their original dependencies. Evidence is in the external
+`zoen-conversation-cohort-v765/sdk-alignment` build directory.

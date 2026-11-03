@@ -27,6 +27,8 @@ fn bad(what: &str) -> DecodeError {
     DecodeError(what.to_string())
 }
 
+mod read_time_schema;
+pub use read_time_schema::PbReadTime;
 mod schema;
 pub use schema::*;
 mod mapping;

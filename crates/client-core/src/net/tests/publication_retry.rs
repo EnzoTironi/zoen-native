@@ -107,6 +107,7 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
                     reply: None,
                     media: None,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )
             .map_err(Into::into)

@@ -288,12 +288,12 @@ class FrontendScopeTests(FrontendRepositoryFixture):
         self.assertIn("cargo clippy --workspace --all-targets -- -D warnings", shards)
         self.assertIn("fail-fast: false", shards)
         self.assertIn('run: ${{ matrix.command }}', shards)
-        self.assertIn('needs: [change-scope, rust-tests]', rust)
-        self.assertIn('run: test "$RUST_RESULT" = success', rust)
-        gate = re.search(r'^        run: (.+)$', rust, re.MULTILINE)[1]
+        self.assertIn('needs: [change-scope, rust-tests, photo-helper]', rust)
+        self.assertIn('test "$RUST_RESULT" = success', rust)
+        gate = '\n'.join(line[10:] for line in rust.split('        run: |\n', 1)[1].splitlines() if line.startswith('          '))
         for result in ("success", "failure", "cancelled", "skipped", ""):
             run = subprocess.run(['sh', '-c', gate],
-                                 env={**self.env, "RUST_RESULT": result})
+                                 env={**self.env, "RUST_RESULT": result, "PHOTO_ONLY": "false", "RUN_PHOTO": "false"})
             self.assertEqual(run.returncode == 0, result == "success")
         self.assertNotIn("frontend_only", workflow[workflow.index("  web-e2e:"):])
         self.assertIn("documentation_only != 'true'", workflow[workflow.index("  web-e2e:"):])

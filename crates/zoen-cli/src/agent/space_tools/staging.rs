@@ -14,6 +14,31 @@ impl SpaceTools<'_> {
     ) -> Result<client_core::AgentRequestDto, String> {
         self.check_selection()?;
         let prior = self.e.tool_approval_requests(&self.space, self.source);
+        if ask.call.name == history_search::TOOL
+            && self
+                .names
+                .iter()
+                .any(|(definition, _, _)| definition.name == ask.call.name)
+        {
+            let dto = self
+                .e
+                .stage_conversation_search_approval(
+                    &self.space,
+                    self.source,
+                    self.serving,
+                    client_core::AgentToolApprovalInput {
+                        canonical_tool: history_search::TOOL.into(),
+                        arguments: ask.call.arguments.clone(),
+                        worker_binding: client_core::agent_conversation_tools::executor_binding(),
+                        continuation_json: serde_json::to_string(ask)
+                            .map_err(|_| "Invalid held search")?,
+                        gate_rule: ask.rule.clone(),
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            self.check_selection()?;
+            return self.register_staged(dto, &prior);
+        }
         if let Some((_, tool)) = self.site_binding(&ask.call) {
             let dto = self
                 .e

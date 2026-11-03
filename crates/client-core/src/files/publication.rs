@@ -2,8 +2,7 @@
 
 use super::{
     invalid, invalid_file, new_id, t, CoreError, Digest, Engine, EventBody, FileAddInput, Sha256,
-    TimelineEntry, VoiceMeta, VoiceNoteDto, MAX_FILE_BYTES, MAX_FILE_CAPTION_BYTES,
-    MAX_THUMBNAIL_BYTES, R,
+    TimelineEntry, VoiceMeta, MAX_FILE_BYTES, MAX_FILE_CAPTION_BYTES, MAX_THUMBNAIL_BYTES, R,
 };
 
 /// Validated by the normal file-send boundary. A fixed ID is an optional Rust
@@ -20,6 +19,7 @@ pub(crate) struct FileSendInput<'a> {
     pub caption: &'a str,
     pub media: Option<types::MessageMedia>,
     pub fixed_item: Option<&'a str>,
+    pub draft_reply: Option<crate::replies::external::DraftReplyContext<'a>>,
 }
 
 impl Engine {
@@ -104,6 +104,7 @@ impl Engine {
             caption,
             media,
             fixed_item: None,
+            draft_reply: None,
         })
     }
 
@@ -120,6 +121,7 @@ impl Engine {
             caption,
             media,
             fixed_item,
+            draft_reply,
         } = input;
         let me = self.me_id()?;
         if !self.state.writer(space, &me) {
@@ -151,9 +153,19 @@ impl Engine {
         }
         // Resolve the target before file keys or chunks are written. Never fall back
         // to the main conversation when a thread target disappeared or is foreign.
-        let reply = reply_to
-            .map(|to| self.reply_ref(space, to, thread))
-            .transpose()?;
+        let reply = if let Some(context) = draft_reply {
+            if context.scope.space_id != space
+                || context.scope.thread_root_id.is_some() != thread
+                || context.scope.expected_identity_id != me
+            {
+                return Err(invalid_file());
+            }
+            self.resolve_draft_reply(context, reply_to)?
+        } else {
+            reply_to
+                .map(|to| self.reply_ref(space, to, thread))
+                .transpose()?
+        };
         let caption = if caption.trim().is_empty() {
             ""
         } else {
@@ -178,6 +190,17 @@ impl Engine {
             serde_json::to_vec(&(file_intent, caption))
         }
         .map_err(|_| invalid_file())?;
+        // New reviewed context is part of the immutable send. Preserve every
+        // legacy fingerprint when no selected/shared quote is present.
+        let intent = if reply
+            .as_ref()
+            .is_some_and(|r| r.quote.is_some() || r.shared.is_some())
+        {
+            serde_json::to_vec(&("zoen.file.send.reply.v1", intent, &reply))
+                .map_err(|_| invalid_file())?
+        } else {
+            intent
+        };
         let fingerprint = hex::encode(Sha256::digest(&intent));
         let key = format!("file_send:{me}:{mutation_id}");
         if let Some(receipt) = self.store.meta(&key)? {
@@ -227,6 +250,7 @@ impl Engine {
                     reply,
                     media,
                     forwarded: false,
+                    forwarded_author: None,
                 },
             )?;
             // Timeline identity is the signed event client ID, not MessagePosted.message.
@@ -264,6 +288,31 @@ impl Engine {
         reply_to: Option<&str>,
         thread: bool,
     ) -> R<TimelineEntry> {
+        let reply = reply_to
+            .map(|to| self.reply_ref(space, to, thread))
+            .transpose()?;
+        self.send_voice_note_with_meta(
+            space,
+            bytes,
+            mime,
+            VoiceMeta {
+                ms,
+                levels: VoiceMeta::encode(levels),
+                transcript: transcript.trim().to_string(),
+                reply,
+                forwarded: false,
+                forwarded_author: None,
+            },
+        )
+    }
+
+    pub(crate) fn send_voice_note_with_meta(
+        &mut self,
+        space: &str,
+        bytes: &[u8],
+        mime: &str,
+        meta: VoiceMeta,
+    ) -> R<TimelineEntry> {
         if !mime.starts_with("audio/") {
             return Err(invalid("não é um áudio", "not audio"));
         }
@@ -276,123 +325,6 @@ impl Engine {
                 ),
             });
         }
-        let reply = reply_to
-            .map(|to| self.reply_ref(space, to, thread))
-            .transpose()?;
-        self.create_voice_note(
-            space,
-            bytes,
-            mime,
-            VoiceMeta {
-                ms,
-                levels: VoiceMeta::encode(levels),
-                transcript: transcript.trim().to_string(),
-                reply,
-                forwarded: false,
-            },
-        )
-    }
-
-    /// Copies one current verified file, freshly encrypted for its new audience.
-    pub(crate) fn forward_file_message(
-        &mut self,
-        from_space: &str,
-        item_id: &str,
-        to_space: &str,
-        caption: &str,
-        voice: Option<&VoiceNoteDto>,
-        media: Option<types::MessageMedia>,
-    ) -> R<TimelineEntry> {
-        let me = self.me_id()?;
-        if !self.is_member(from_space, &me) || !self.state.writer(to_space, &me) {
-            return Err(CoreError::Forbidden {
-                reason: t(
-                    "encaminhamento de arquivo não autorizado",
-                    "file forwarding is not authorized",
-                ),
-            });
-        }
-        let (item, file) = self.file_item(item_id)?;
-        if item.space != from_space || file.is_voice() != voice.is_some() {
-            return Err(invalid_file());
-        }
-        if voice.is_some_and(|voice| {
-            voice.item_id != item_id || file.sha256 != voice.sha256 || file.mime != voice.mime
-        }) {
-            return Err(invalid_file());
-        }
-        let version = item.current().number;
-        let bytes = self
-            .file_bytes_bounded(item_id, Some(version), MAX_FILE_BYTES as u64)?
-            .ok_or_else(|| {
-                invalid(
-                    "o arquivo ainda está chegando; tente novamente quando estiver disponível",
-                    "the file is still arriving; try again when it is available",
-                )
-            })?;
-        let thumbnail = match file.thumb.as_ref() {
-            Some(chunk) => Some(
-                self.file_chunk_bytes(chunk, MAX_THUMBNAIL_BYTES)?
-                    .ok_or_else(|| {
-                        invalid(
-                            "a prévia do arquivo ainda está chegando; tente novamente quando estiver disponível",
-                            "the file preview is still arriving; try again when it is available",
-                        )
-                    })?,
-            ),
-            None => None,
-        };
-        // Keys, chunks, upload queue and the signed file/message commit together.
-        // On failure the shared atomic helper also restores the in-memory projection.
-        self.atomic_agent_action(|engine| {
-            if let Some(voice) = voice {
-                return engine.create_voice_note(
-                    to_space,
-                    &bytes,
-                    &file.mime,
-                    VoiceMeta {
-                        ms: voice.ms,
-                        levels: VoiceMeta::encode(&voice.levels),
-                        transcript: voice.transcript.clone(),
-                        reply: None,
-                        forwarded: true,
-                    },
-                );
-            }
-            // The destination starts at its own root. Treating a filename as a path
-            // could turn ordinary audio named "VoiceNotes/…" into a legacy voice note.
-            let item = engine.file_add(
-                to_space,
-                "",
-                &file.name,
-                &file.mime,
-                &bytes,
-                thumbnail.as_deref(),
-            )?;
-            let posted = engine.append(
-                to_space,
-                &me,
-                EventBody::MessagePosted {
-                    message: new_id("msg")?,
-                    text: caption.to_string(),
-                    attaches: Some(item),
-                    reply: None,
-                    media,
-                    forwarded: true,
-                },
-            )?;
-            let message = if posted.client_id.is_empty() {
-                posted.hash
-            } else {
-                posted.client_id
-            };
-            let entry = engine
-                .space_state(to_space)?
-                .entries
-                .iter()
-                .find(|entry| entry.id() == message)
-                .ok_or_else(invalid_file)?;
-            Ok(engine.entry_dto(entry))
-        })
+        self.create_voice_note(space, bytes, mime, meta)
     }
 }

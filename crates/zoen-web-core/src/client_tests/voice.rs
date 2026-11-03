@@ -55,6 +55,7 @@ impl VoiceFixture {
                 reply: None,
                 media: None,
                 forwarded: false,
+                forwarded_author: None,
             },
         )?;
         let root = log
@@ -78,6 +79,7 @@ impl VoiceFixture {
             transcript: "See you there".into(),
             reply: Some(ReplyRef::inline(&root)),
             forwarded: false,
+            forwarded_author: None,
         });
         append(&mut log, &author, post("it_voice", original.clone()))?;
         let entry = log
@@ -186,6 +188,7 @@ impl VoiceFixture {
                 reply: None,
                 media: None,
                 forwarded: true,
+                forwarded_author: None,
             },
         )?;
         self.client.logs.insert(space.into(), self.log.clone());

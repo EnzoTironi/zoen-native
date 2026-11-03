@@ -174,6 +174,7 @@ fn web_fixture() -> std::result::Result<WebFixture, Box<dyn std::error::Error>> 
             reply: None,
             media: None,
             forwarded: false,
+            forwarded_author: None,
         },
         2,
     )?;
@@ -488,3 +489,6 @@ fn attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issue
     attachments::attachment_intent_authentic_thumbnail_length_lies_preserve_snapshot_and_issued_sequence()?;
     Ok(())
 }
+
+#[path = "mutation_tests.rs"]
+mod mutations;
