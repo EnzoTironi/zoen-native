@@ -34,7 +34,7 @@ impl Database {
             .unwrap();
         let base = admin.rsplit_once('/').unwrap().0;
         let pool = PgPool::connect(&format!("{base}/{name}")).await.unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        zoen_relay::MIGRATIONS.run(&pool).await.unwrap();
         Ok(Self { pool, admin, name })
     }
     async fn finish(self) {

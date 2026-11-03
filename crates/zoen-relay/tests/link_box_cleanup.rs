@@ -14,7 +14,7 @@ async fn publication_bounds_cleanup_and_reuses_expired_id_beyond_batch(
         .unwrap();
     let base = admin.rsplit_once('/').unwrap().0;
     let pool = PgPool::connect(&format!("{base}/{name}")).await.unwrap();
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    zoen_relay::MIGRATIONS.run(&pool).await.unwrap();
     sqlx::query(
         "INSERT INTO link_boxes (id, sealed, created_at)
         SELECT 'old' || n, '\\x01'::bytea, now() - interval '1 hour'

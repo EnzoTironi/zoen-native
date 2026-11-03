@@ -557,10 +557,7 @@ async fn write_native_provider_enrollment_fixture(
     // is dropped. No shared schema/table or service is reset by this test.
     let fixture_pool = pool.clone();
     let outcome = tokio::spawn(async move {
-        sqlx::migrate!("./migrations")
-            .run(&fixture_pool)
-            .await
-            .unwrap();
+        crate::MIGRATIONS.run(&fixture_pool).await.unwrap();
         let mut fixture = produce(fixture_pool.clone()).await;
         // Keep the original 20-case oracle intact. The additive Android cases
         // exercise the migrated CHECK, persisted client parser, real RSA token,
