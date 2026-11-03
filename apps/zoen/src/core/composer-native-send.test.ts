@@ -2,44 +2,49 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { byId, find, fixture, type Handler } from './attachment-composer-ui.fixtures.ts';
 
-test('Send captures the final native correction before its JS delivery and keeps the keyboard open', () => {
-  const f = fixture();
-  let draft = 'Send teh';
-  const formattedCorrection = 'Send **the** 🪷';
-  const sent: string[] = [];
-  let blurred = false;
-  const tree = f.render(undefined, {
-    value: draft,
-    onChangeText: (text: string) => {
-      draft = text;
-    },
-    onBlur: () => {
-      blurred = true;
-    },
-    onSend: () => {
-      sent.push(draft);
-      draft = '';
-    },
+for (const [label, initialDraft] of [
+  ['a correction with formatting', 'Send teh'],
+  ['a formatting-only edit', 'Send the 🪷'],
+] as const) {
+  test(`Send captures ${label} before JS delivery and keeps the keyboard open`, () => {
+    const f = fixture();
+    let draft = initialDraft;
+    const formattedCorrection = 'Send **the** 🪷';
+    const sent: string[] = [];
+    let blurred = false;
+    const tree = f.render(undefined, {
+      value: draft,
+      onChangeText: (text: string) => {
+        draft = text;
+      },
+      onBlur: () => {
+        blurred = true;
+      },
+      onSend: () => {
+        sent.push(draft);
+        draft = '';
+      },
+    });
+    const input = find(tree, byId('message-input'));
+    f.nativeChange(input, formattedCorrection, 7);
+    assert.equal(draft, initialDraft, 'the native correction has not reached the draft writer');
+    (find(tree, byId('send-message')).props.onPress as Handler)();
+    assert.deepEqual(sent, [formattedCorrection]);
+    assert.equal(draft, '');
+    f.drainNativeEvents();
+    assert.equal(draft, '', 'late JS delivery cannot recreate the accepted message');
+    assert.equal(blurred, false);
+    const next = f.render(undefined, {
+      value: draft,
+      onChangeText: (text: string) => {
+        draft = text;
+      },
+    });
+    f.nativeChange(find(next, byId('message-input')), formattedCorrection, 8);
+    f.drainNativeEvents();
+    assert.equal(draft, formattedCorrection, 'retyping the same text with a later event is legitimate');
   });
-  const input = find(tree, byId('message-input'));
-  f.nativeChange(input, formattedCorrection, 7);
-  assert.equal(draft, 'Send teh', 'the native correction has not reached the draft writer');
-  (find(tree, byId('send-message')).props.onPress as Handler)();
-  assert.deepEqual(sent, [formattedCorrection]);
-  assert.equal(draft, '');
-  f.drainNativeEvents();
-  assert.equal(draft, '', 'late JS delivery cannot recreate the accepted message');
-  assert.equal(blurred, false);
-  const next = f.render(undefined, {
-    value: draft,
-    onChangeText: (text: string) => {
-      draft = text;
-    },
-  });
-  f.nativeChange(find(next, byId('message-input')), formattedCorrection, 8);
-  f.drainNativeEvents();
-  assert.equal(draft, formattedCorrection, 'retyping the same text with a later event is legitimate');
-});
+}
 
 for (const changed of [
   'identity',
