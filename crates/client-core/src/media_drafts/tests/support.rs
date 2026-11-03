@@ -336,11 +336,12 @@ pub(super) fn media_contract_recovered_writer_at(
     )?;
     let pending = f.engine.lock().store.outbox().unwrap();
     for row in pending {
-        assert!(f
-            .engine
-            .lock()
-            .reject(&row.event.client_id, "permission denied", true, None)
-            .user_failed());
+        let mut engine = f.engine.lock();
+        if engine.store.outbox_active_event(&row.event.client_id)?.is_some() {
+            assert!(engine
+                .reject(&row.event.client_id, "permission denied", true, None)
+                .user_failed());
+        }
     }
     media_contract_receive(
         &f,

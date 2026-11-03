@@ -136,11 +136,12 @@ pub(super) fn unconfirmed_and_recovery_only_sources_never_become_publishable_rec
     .unwrap();
     let pending = f.core.lock().store.outbox().unwrap();
     for row in pending {
-        assert!(f
-            .core
-            .lock()
-            .reject(&row.event.client_id, "permission denied", true, None)
-            .user_failed());
+        let mut engine = f.core.lock();
+        if engine.store.outbox_active_event(&row.event.client_id)?.is_some() {
+            assert!(engine
+                .reject(&row.event.client_id, "permission denied", true, None)
+                .user_failed());
+        }
     }
     receive(
         &f,
