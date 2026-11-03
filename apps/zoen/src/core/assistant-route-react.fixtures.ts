@@ -127,6 +127,7 @@ export async function assistantRouteFixture() {
     React.createElement(React.Fragment, null, children);
   let failNavigation = false;
   const routes: { params: { ticket: string } }[] = [];
+  const i18n = { locale: 'en', t: (key: string) => key };
   const ports: Record<string, unknown> = {
     react: React,
     'react/compiler-runtime': require('react/compiler-runtime'),
@@ -212,7 +213,7 @@ export async function assistantRouteFixture() {
         return null;
       },
     },
-    '../../i18n/index.ts': { locale: 'en', t: (key: string) => key },
+    '../../i18n/index.ts': i18n,
     '../../theme': { useTheme: () => ({ colors: {} }) },
   };
   ports['../core/provider'] = ports['../../core/provider'];
@@ -257,7 +258,7 @@ export async function assistantRouteFixture() {
     useTicket: (next: string) => { ticket = next; },
     mount: () => root.render(React.createElement(Route)),
     changeLocale: (locale: string) => {
-      ports['../../i18n/index.ts'].locale = locale;
+      i18n.locale = locale;
       return root.render(React.createElement(Route));
     },
     focus: (next: boolean) =>
