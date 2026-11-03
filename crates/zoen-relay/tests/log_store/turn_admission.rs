@@ -62,6 +62,11 @@ pub(super) async fn turn_pair_requires_exact_current_encrypted_dm_writers(
                 .unwrap(),
             expected
         );
+        assert_eq!(
+            log.call_pair(&space, &bruno.identity, &ana.identity)
+                .await?,
+            expected
+        );
         assert!(!log
             .call_pair(&space, &ana.identity, &ana.identity)
             .await
@@ -76,6 +81,10 @@ pub(super) async fn turn_pair_requires_exact_current_encrypted_dm_writers(
                 .call_pair(&space, &ana.identity, &bruno.identity)
                 .await
                 .unwrap());
+            assert!(
+                !log.call_pair(&space, &bruno.identity, &ana.identity)
+                    .await?
+            );
             landed(log.append(&add(Role::Member)?, true).await);
             assert!(log
                 .call_pair(&space, &ana.identity, &bruno.identity)
@@ -99,6 +108,10 @@ pub(super) async fn turn_pair_requires_exact_current_encrypted_dm_writers(
                 .call_pair(&space, &ana.identity, &bruno.identity)
                 .await
                 .unwrap());
+            assert!(
+                !log.call_pair(&space, &bruno.identity, &ana.identity)
+                    .await?
+            );
         }
     }
     assert!(!log
