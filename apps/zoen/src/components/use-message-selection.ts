@@ -120,7 +120,13 @@ export function useMessageSelection(
       });
     },
     remove: () => {
-      if (deleting.current || !account || client.mode !== 'account') return;
+      if (
+        deleting.current ||
+        !account ||
+        client.mode !== 'account' ||
+        !messageDeletionTargets(resolve(), account.identity_id, true)
+      )
+        return;
       deleting.current = true;
       setPending(true);
       const controller = new AbortController();

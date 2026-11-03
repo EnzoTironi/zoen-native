@@ -226,6 +226,9 @@ test('retained selection actions cannot reuse a changed selected set after reren
   const current = f.render();
   assert.equal(current.count, 2);
   retained.cancel();
+  retained.remove();
+  assert.equal(f.confirmations.length, 0);
+  assert.equal(f.render().pending, false);
   assert.equal(f.render().count, 2);
   retained.copy();
   retained.forward();
