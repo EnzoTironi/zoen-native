@@ -32,7 +32,7 @@ extension ZoenSession {
     if let reason = ZoenAssistantModel.unavailable(locale: locale) {
       return try ZoenMediaFiles.json(["available": false, "reason": reason])
     }
-    guard assistants.count < 4 else { throw ZoenAssistantFailure.limit }
+    guard assistants.count + assistantDrains.count < 4 else { throw ZoenAssistantFailure.limit }
     let context = try ZoenAssistantModel.context(core: core, spaceId: spaceId)
     let id = UUID().uuidString
     assistants[id] = ZoenAssistantLease(generation: generation, mode: mode, identity: member.0,
