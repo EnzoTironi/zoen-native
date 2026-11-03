@@ -8,7 +8,8 @@ import FoundationModels
 
 extension ZoenSession {
   private func assistantMember(_ spaceId: String, core engine: Client) throws -> (String, String) {
-    guard !erasing, !closing, self.core === engine, spaceId.utf8.count <= 256 else { throw ZoenAssistantFailure.closed }
+    guard !erasing, !closing, !notificationOnly, self.core === engine,
+          spaceId.utf8.count <= 256 else { throw ZoenAssistantFailure.closed }
     let space = try engine.space(spaceId: spaceId)
     guard let member = space.members.first(where: { $0.isMe }) else { throw ZoenAssistantFailure.closed }
     if let account = engine.account() {
