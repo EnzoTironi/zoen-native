@@ -198,7 +198,7 @@ export class ConversationSearch {
   }
   /** Search pages are newest first; older advances, newer moves back. */
   async move(direction: 'older' | 'newer') {
-    if (!this.isCurrent() || this.state.loading) return;
+    if (this.dirty || !this.isCurrent() || this.state.loading) return;
     const next = this.state.index + (direction === 'older' ? 1 : -1);
     if (next < 0) return;
     if (next < this.state.hits.length) {
@@ -214,7 +214,7 @@ export class ConversationSearch {
   }
   private async append(next: number) {
     const cursor = this.state.cursor;
-    if (!this.isCurrent() || this.state.loading || !cursor) return;
+    if (this.dirty || !this.isCurrent() || this.state.loading || !cursor) return;
     const generation = ++this.generation;
     const query = this.state.query.trim();
     this.publish({ loading: true, error: null });
