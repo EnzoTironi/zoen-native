@@ -243,7 +243,7 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
     let (mut world, space) = enrolled("forward_batch_relay_restart").await?;
     let alice = Open::online(&world, "alice")
         .await
-        .map_err(|error| format!("Alice sync: {error}"))?;
+        .map_err(|error| format!("Alice before relay stop: {error}"))?;
     let first = alice
         .0
         .send_message(space.clone(), "First batch source".into())?;
@@ -252,7 +252,7 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
         .send_message(space.clone(), "Second batch source".into())?;
     let bob = Open::online(&world, "bob")
         .await
-        .map_err(|error| format!("Bob sync: {error}"))?;
+        .map_err(|error| format!("Bob before relay stop: {error}"))?;
     received(&bob.0, &space, |rows| {
         rows.iter().any(|row| row.id == first.id) && rows.iter().any(|row| row.id == second.id)
     })
@@ -316,7 +316,7 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
     world.start_relay();
     let bob = Open::online(&world, "bob")
         .await
-        .map_err(|error| format!("Bob sync: {error}"))?;
+        .map_err(|error| format!("Bob after relay restart: {error}"))?;
     let replay: serde_json::Value = serde_json::from_str(&bob.0.client_request(confirm).await?)?;
     assert_eq!(replay["batch_id"], accepted["batch_id"]);
     assert!(replay["error"].is_null());
@@ -327,7 +327,7 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
     }
     let alice = Open::online(&world, "alice")
         .await
-        .map_err(|error| format!("Alice sync: {error}"))?;
+        .map_err(|error| format!("Alice after relay restart: {error}"))?;
     let rows = received(&alice.0, &space, |rows| {
         ids.iter().all(|id| rows.iter().any(|row| row.id == *id))
     })
