@@ -110,7 +110,8 @@ impl GvisorProvider {
         .await
         .map_err(|e| SandboxError::Backend(e.to_string()))?;
         let mut b = [0u8; 6];
-        getrandom::getrandom(&mut b).expect("os randomness");
+        getrandom::getrandom(&mut b)
+            .map_err(|error| SandboxError::Backend(format!("container ID entropy: {error}")))?;
         let cid = format!("{}-{}", lease.id, hex::encode(b));
         let state = dir.join("state");
         let mut cmd = Command::new(&self.runsc);
@@ -136,7 +137,10 @@ impl GvisorProvider {
             .spawn()
             .map_err(|e| SandboxError::Backend(format!("runsc: {e}")))?;
         if let Some(input) = req.stdin.clone() {
-            let mut si = child.stdin.take().expect("piped");
+            let mut si = child
+                .stdin
+                .take()
+                .ok_or_else(|| SandboxError::Backend("runsc stdin pipe unavailable".into()))?;
             tokio::spawn(async move {
                 let _ = si.write_all(&input).await;
                 let _ = si.shutdown().await;
@@ -209,7 +213,7 @@ impl SandboxProvider for GvisorProvider {
             .get(&spec.template)
             .ok_or_else(|| SandboxError::Backend(format!("no template `{}`", spec.template)))?;
         let lease = Lease {
-            id: new_lease_id(),
+            id: new_lease_id()?,
             owner: owner.into(),
             tool: spec.tool.clone(),
             tier: spec.tier,

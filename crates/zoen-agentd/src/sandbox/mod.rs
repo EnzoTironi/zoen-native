@@ -117,8 +117,9 @@ pub trait SandboxProvider: Send + Sync {
     async fn release(&self, lease: Lease) -> Result<(), SandboxError>;
 }
 
-pub(crate) fn new_lease_id() -> String {
+pub(crate) fn new_lease_id() -> Result<String, SandboxError> {
     let mut b = [0u8; 12];
-    getrandom::getrandom(&mut b).expect("os randomness");
-    format!("lease_{}", hex::encode(b))
+    getrandom::getrandom(&mut b)
+        .map_err(|error| SandboxError::Backend(format!("lease ID entropy: {error}")))?;
+    Ok(format!("lease_{}", hex::encode(b)))
 }

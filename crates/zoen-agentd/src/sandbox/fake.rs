@@ -69,7 +69,7 @@ impl SandboxProvider for FakeProvider {
     async fn acquire(&self, spec: &SandboxSpec, owner: &str) -> Result<Lease, SandboxError> {
         self.acquired.fetch_add(1, Ordering::SeqCst);
         let lease = Lease {
-            id: new_lease_id(),
+            id: new_lease_id()?,
             owner: owner.into(),
             tool: spec.tool.clone(),
             tier: spec.tier,
