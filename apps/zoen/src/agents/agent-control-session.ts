@@ -106,8 +106,8 @@ export class AgentControlSession {
   retire() {
     this.activate(null);
   }
-  async refresh() {
-    if (!this.current() || !this.scope) return;
+  async refresh(observed?: AgentControlState) {
+    if ((observed && observed !== this.state) || !this.current() || !this.scope) return;
     const scope = this.scope;
     const generation = this.generation;
     const read = ++this.readGeneration;

@@ -302,12 +302,14 @@ test('a retired control request cannot refresh or overwrite the next account', a
   session.activate(first);
   await session.refresh();
   const control = session.change(session.ticket()!);
-  assert.equal(session.getSnapshot().pending, 'Pause');
+  const previous = session.getSnapshot();
+  assert.equal(previous.pending, 'Pause');
 
   session.retire();
   session.activate(f.epoch());
   await session.refresh();
   const next = session.getSnapshot();
+  await session.refresh(previous);
   held.resolve(undefined);
   await control;
   assert.equal(reads, 2);
