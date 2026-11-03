@@ -47,7 +47,7 @@ impl DailyBudget {
 
     fn roll(&mut self, now_ms: i64) {
         let day = now_ms.div_euclid(DAY_MS);
-        if day != self.day {
+        if day > self.day {
             self.day = day;
             self.microvm_secs_used = 0;
             self.browser_secs_used = 0;
@@ -78,11 +78,11 @@ impl DailyBudget {
         self.roll(now_ms);
         let rate = match tier {
             Tier::MicroVm => {
-                self.microvm_secs_used += secs;
+                self.microvm_secs_used = self.microvm_secs_used.saturating_add(secs);
                 MICRO_USD_PER_SEC_MICROVM
             }
             Tier::Browser => {
-                self.browser_secs_used += secs;
+                self.browser_secs_used = self.browser_secs_used.saturating_add(secs);
                 MICRO_USD_PER_SEC_BROWSER
             }
             Tier::None | Tier::Wasm => 0.0,
@@ -91,6 +91,30 @@ impl DailyBudget {
             tier,
             secs,
             est_micro_usd: rate * secs as f64,
+        }
+    }
+}
+
+#[cfg(test)]
+mod accounting_edge_tests {
+    use super::*;
+
+    #[test]
+    fn clock_rollback_does_not_restore_allowance() {
+        let mut budget = DailyBudget::new(10, 10, DAY_MS);
+        budget.charge(Tier::MicroVm, 10, DAY_MS);
+        assert_eq!(budget.remaining(Tier::MicroVm, 0), 0);
+        assert_eq!(budget.remaining(Tier::MicroVm, DAY_MS), 0);
+        assert_eq!(budget.remaining(Tier::MicroVm, DAY_MS * 2), 10);
+    }
+
+    #[test]
+    fn usage_overflow_cannot_restore_allowance() {
+        for tier in [Tier::MicroVm, Tier::Browser] {
+            let mut budget = DailyBudget::new(u64::MAX, u64::MAX, 0);
+            budget.charge(tier, u64::MAX, 0);
+            budget.charge(tier, 1, 0);
+            assert_eq!(budget.remaining(tier, 0), 0);
         }
     }
 }
