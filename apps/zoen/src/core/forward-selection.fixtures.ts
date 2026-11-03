@@ -38,6 +38,7 @@ export function fixture() {
   const sent: string[] = [];
   let statusHook: (() => Promise<ForwardBatchReview | null>) | null = null;
   let confirmHook: ((value: ForwardBatchReview) => Promise<ForwardBatchReview>) | null = null;
+  let abandonAcknowledgement: (() => void) | null = null;
   let finishHook: ((value: ForwardBatchReview) => Promise<ForwardBatchReview>) | null = null;
   let configureHook: ((value: ForwardBatchReview) => Promise<ForwardBatchReview>) | null = null;
   const accept = (ids = ['a', 'b', 'c']) => {
@@ -143,6 +144,7 @@ export function fixture() {
             .filter((item) => item.accepted_message_id === null)
             .map((item) => item.message.id),
         };
+        abandonAcknowledgement?.();
         return record;
       },
     },
@@ -187,6 +189,9 @@ export function fixture() {
     },
     confirm: (hook: typeof confirmHook) => {
       confirmHook = hook;
+    },
+    onAbandonAcknowledgement: (hook: () => void) => {
+      abandonAcknowledgement = hook;
     },
     finish: (hook: typeof finishHook) => {
       finishHook = hook;

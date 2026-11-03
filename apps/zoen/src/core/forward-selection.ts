@@ -128,6 +128,12 @@ export class ForwardSelectionSession {
         ids.length !== this.scope!.messageIds.length ||
         new Set(ids).size !== ids.length ||
         this.scope!.messageIds.some((id) => !ids.includes(id)) ||
+        (value.completed &&
+          value.messages.some(
+            (item) =>
+              item.accepted_message_id === null &&
+              !value.skipped_message_ids.includes(item.message.id),
+          )) ||
         new Set(value.skipped_message_ids).size !== value.skipped_message_ids.length ||
         value.skipped_message_ids.some(
           (id) =>
@@ -274,7 +280,10 @@ export class ForwardSelectionSession {
         this.expire();
         const retained = await this.port.status(this.source());
         if (!this.current(attempt)) return;
-        if (retained?.batch_id === review.batchId) this.project(retained);
+        if (retained?.batch_id === review.batchId && retained.target_space === review.targetId) {
+          this.project(retained);
+          if (retained.messages.every((item) => item.accepted_message_id !== null)) return;
+        }
         throw reason;
       }
     });
@@ -297,7 +306,7 @@ export class ForwardSelectionSession {
       try {
         const value = await this.port.finish(this.source(), review.batchId);
         if (!this.current(attempt)) return;
-        if (value.batch_id !== review.batchId || !value.completed)
+        if (value.batch_id !== review.batchId || value.target_space !== review.targetId || !value.completed)
           throw new ForwardMessageChanged();
         this.project(value);
         this.notifiedBatch = value.batch_id;
@@ -306,7 +315,14 @@ export class ForwardSelectionSession {
         if (!this.current(attempt)) return;
         const retained = await this.port.status(this.source());
         if (!this.current(attempt)) return;
-        if (retained?.batch_id === review.batchId) this.project(retained);
+        if (retained?.batch_id === review.batchId && retained.target_space === review.targetId) {
+          this.project(retained);
+          if (retained.completed) {
+            this.notifiedBatch = retained.batch_id;
+            this.callbacks.sent(retained.target_space);
+            return;
+          }
+        }
         throw reason;
       }
     });
@@ -325,7 +341,7 @@ export class ForwardSelectionSession {
       try {
         const value = await this.port.abandon(this.source(), review.batchId, review.revision);
         if (!this.current(attempt)) return;
-        if (value.batch_id !== review.batchId || !value.completed)
+        if (value.batch_id !== review.batchId || value.target_space !== review.targetId || !value.completed)
           throw new ForwardMessageChanged();
         this.project(value);
         // Keep the terminal accepted/skipped summary visible. Abandon is not Send.
@@ -333,7 +349,10 @@ export class ForwardSelectionSession {
         if (!this.current(attempt)) return;
         const retained = await this.port.status(this.source());
         if (!this.current(attempt)) return;
-        if (retained?.batch_id === review.batchId) this.project(retained);
+        if (retained?.batch_id === review.batchId && retained.target_space === review.targetId) {
+          this.project(retained);
+          if (retained.completed) return;
+        }
         throw reason;
       }
     });
