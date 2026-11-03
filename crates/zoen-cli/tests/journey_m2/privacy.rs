@@ -272,6 +272,18 @@ async fn a_removed_member_reads_nothing_after_removal() {
     );
     let status = w.zoen("bruno", &["sync", "--timeout", "1000"]);
     assert!(status.contains("pending=0"), "{status}");
+    let sender_db = w.dir.join("bruno/zoen.sqlite");
+    let reopened = store::Store::open(sender_db.to_str().expect("fixture database path"))
+        .expect("reopen sender database");
+    let retained: Vec<_> = reopened
+        .outbox()
+        .expect("read durable outbox")
+        .into_iter()
+        .filter(|row| matches!(&row.event.body, EventBody::MessagePosted { text, .. } if text == queued))
+        .collect();
+    assert_eq!(retained.len(), 1, "retain the original signed message");
+    assert!(retained[0].failed, "reopen must preserve terminal failure");
+    drop(reopened);
     // Bruno's device forgot the group's secrets.
     assert!(w.try_zoen("bruno", &["keys", "Cofre"]).is_err());
     let (ae, ad) = keys(&w.zoen("ana", &["keys", "Cofre"]));
