@@ -74,7 +74,25 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     sqlx::query("INSERT INTO push_tokens(identity, device, platform, token, purpose) VALUES ('upgrade', 'device', 'apns', 'upgrade-token', 'notification')")
         .execute(pool)
         .await?;
+    sqlx::raw_sql(
+        "INSERT INTO identities (id, kind, profile) VALUES ('upgrade-owner', 'Person', '{}'::jsonb);
+         INSERT INTO devices (identity, device, cert, revoked_at) VALUES
+           ('upgrade-owner', 'revoked-device', 'fixture', now()),
+           ('upgrade-owner', 'active-device', 'fixture', NULL);
+         INSERT INTO push_tokens (identity, device, platform, token, purpose) VALUES
+           ('upgrade-owner', 'revoked-device', 'apns', 'aabb', 'notification'),
+           ('upgrade-owner', 'revoked-device', 'apns-voip', 'ccdd', 'voip'),
+           ('upgrade-owner', 'active-device', 'apns', 'eeff', 'notification');",
+    )
+    .execute(pool)
+    .await?;
     zoen_relay::MIGRATIONS.run(pool).await?;
+    let upgrade_tokens: Vec<String> = sqlx::query_scalar(
+        "SELECT token FROM push_tokens WHERE identity = 'upgrade-owner' ORDER BY token",
+    )
+    .fetch_all(pool)
+    .await?;
+    assert_eq!(upgrade_tokens, ["eeff"]);
     let id: i64 = sqlx::query_scalar(
         "DELETE FROM push_tokens WHERE token = 'upgrade-token' RETURNING registration_id",
     )
