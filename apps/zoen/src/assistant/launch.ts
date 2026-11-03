@@ -13,7 +13,12 @@ export function launchConversationAssistant(spaceId: string, query: string, stor
   const ticket = randomUUID();
   while (launches.size >= 4) launches.delete(launches.keys().next().value!);
   launches.set(ticket, { spaceId, query: query.trim(), scope });
-  router.push({ pathname: '/ask/[space]', params: { space: spaceId, ticket } });
+  try {
+    router.push({ pathname: '/ask/[space]', params: { space: spaceId, ticket } });
+  } catch (error) {
+    launches.delete(ticket);
+    throw error;
+  }
 }
 export function readAssistantLaunch(
   ticket: string | undefined,

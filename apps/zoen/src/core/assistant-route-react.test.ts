@@ -187,3 +187,17 @@ test('same-owner account reopen retires the old route and cannot reuse its launc
     await f.cleanup();
   }
 });
+
+test('a failed navigation retires its ticket before the route can recover the query', async () => {
+  const f = await assistantRouteFixture();
+  try {
+    f.failNavigation();
+    assert.throws(() => f.launch(), /navigation failed/);
+    await f.mount();
+    assert.deepEqual(f.opened, []);
+    assert.deepEqual(f.asked, []);
+    assert.equal(f.composer(), undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
