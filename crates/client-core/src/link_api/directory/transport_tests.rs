@@ -227,3 +227,35 @@ async fn completed_old_directory_and_unlink_reply_cannot_apply_after_same_owner_
     );
     assert!(client.lock().revoked_devices().contains(&peer));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn push_registration_accepts_the_authenticated_owner(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let relay = relay(Signer::from_secret(&[74; 32]).id()).await;
+    let client = Client::open(":memory:".into(), "en".into())?;
+    client
+        .lock()
+        .create_account("Push owner", "push_owner", &relay.url)?;
+    client.lock().set_registered(true)?;
+    let fixture = Fixture {
+        client,
+        _relay: relay,
+    };
+    online(&fixture.client).await;
+    let (owner, _) = fixture.client.device_directory_owner()?;
+    let result = fixture
+        .client
+        .client_request(
+            serde_json::json!({
+                "op": "register_push",
+                "expected_identity_id": owner.identity,
+                "expected_device_id": owner.device,
+                "platform": "apns",
+                "token": "aabb"
+            })
+            .to_string(),
+        )
+        .await?;
+    assert_eq!(result, "null");
+    Ok(())
+}
