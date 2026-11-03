@@ -288,7 +288,9 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
                 connection.changed().await?;
             }
             worker.0.abort();
-            assert!((&mut worker.0).await.is_err());
+            assert!((&mut worker.0)
+                .await
+                .is_err_and(|error| error.is_cancelled()));
             {
                 let mut current = lock(&engine);
                 *current = Engine::open(":memory:")?;
