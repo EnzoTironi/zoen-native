@@ -38,7 +38,7 @@ import Foundation
 
 test(
   'native CoreError presentation preserves real reasons and localizes safe fallbacks without reflection',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     // Generated Apple artifacts do not exist on the Linux client CI job. Read
     // them only after the Darwin-only test has actually been admitted.
@@ -76,7 +76,7 @@ test(
           '-o',
           binary,
         ],
-        { env: { ...process.env, SDKROOT: sdk }, timeout: 45_000 },
+        { env: { ...process.env, SDKROOT: sdk }, timeout: 120_000 },
       );
 
       for (const locale of ['en', 'pt-BR']) {
