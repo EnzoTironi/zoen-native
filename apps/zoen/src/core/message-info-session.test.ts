@@ -129,3 +129,18 @@ test('reopening Info loads immediately even while the prior read is unresolved',
   await tick();
   assert.equal(f.seen.at(-1)!.value?.edited_at_ms, '4000');
 });
+
+test('retry replaces a temporary Info error with the canonical metadata', async () => {
+  const f = fixture();
+  f.session.focus();
+  f.requests[0]!.reject(new Error('temporarily offline'));
+  await tick();
+  assert.deepEqual(f.seen.at(-1), { value: null, loading: false, error: true });
+
+  f.session.refresh();
+  assert.deepEqual(f.seen.at(-1), { value: null, loading: true, error: false });
+  const canonical = value();
+  f.requests[1]!.resolve(canonical);
+  await tick();
+  assert.deepEqual(f.seen.at(-1), { value: canonical, loading: false, error: false });
+});
