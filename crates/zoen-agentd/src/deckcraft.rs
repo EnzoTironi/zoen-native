@@ -170,7 +170,8 @@ impl DeckcraftWorker {
             return Err("DeckCraft command metadata exceeds 64 KiB".into());
         }
         let mut input = Vec::with_capacity(4 + metadata.len() + document.len());
-        input.extend_from_slice(&(metadata.len() as u32).to_le_bytes());
+        let metadata_len = u32::try_from(metadata.len()).map_err(|_| "Invalid metadata length")?;
+        input.extend_from_slice(&metadata_len.to_le_bytes());
         input.extend_from_slice(&metadata);
         input.extend_from_slice(document);
         let output = worker
