@@ -25,6 +25,9 @@ impl Store {
         Ok(())
     }
     /// First observation wins for an exact interval; duplicates/replay cannot invent a newer time.
+    ///
+    /// # Errors
+    /// Returns a database error if migration, insertion, or pruning fails.
     pub fn record_read_time(
         &self,
         space: &str,
@@ -47,6 +50,10 @@ impl Store {
         Ok(changed)
     }
     /// Bounded, ordered evidence for replay or exact message projection.
+    ///
+    /// # Errors
+    /// Returns an error if the database query fails, the schema is invalid,
+    /// or a stored row cannot be decoded.
     pub fn read_times(&self, space: &str, identity: &str, cutoff: i64) -> Result<Vec<ReadTimeRow>> {
         let kind: Option<String> = self
             .conn
