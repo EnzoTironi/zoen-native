@@ -278,3 +278,20 @@ test('Done cannot navigate using a recovered record for a different destination'
   assert.ok(f.state().error);
   assert.deepEqual(f.sent, []);
 });
+
+test('a lost Send response cannot turn an incomplete receipt list into success', async () => {
+  const f = fixture();
+  const review = await f.ready();
+  f.confirm(async () => {
+    const accepted = f.accept();
+    f.setRecord({ ...accepted, messages: accepted.messages.slice(0, 1) });
+    throw new Error('lost acknowledgement');
+  });
+
+  await f.session.confirm(review);
+  assert.equal(f.selected()?.ready, false);
+  assert.ok(f.selected()?.messages.every((item) => item.acceptedMessageId === null));
+  assert.ok(f.state().error);
+  assert.deepEqual(f.sent, []);
+  assert.equal(ops(f, 'confirm').length, 1);
+});
