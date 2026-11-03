@@ -32,6 +32,7 @@ struct Guest {
     resume_calls: usize,
     largest_stdin: usize,
     file_commands: usize,
+    exec_calls: usize,
     corrupt_download: bool,
     truncate_download: bool,
     truncate_upload: bool,
@@ -90,6 +91,7 @@ impl Guest {
                 (200, json!({"state": "started"}))
             };
         }
+        self.exec_calls += 1;
         let argv: Vec<&str> = body["command"]
             .as_array()
             .unwrap()

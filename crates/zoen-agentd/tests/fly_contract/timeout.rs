@@ -14,5 +14,9 @@ async fn subsecond_timeout_never_dispatches_a_command() -> Result<(), SandboxErr
         assert!(output.timed_out);
         assert_eq!(output.exit_code, None);
     }
+    assert!(matches!(
+        api.guest.lock().map(|guest| guest.exec_calls),
+        Ok(0)
+    ));
     fly.release(lease).await
 }
