@@ -128,6 +128,12 @@ export class ForwardSelectionSession {
         ids.length !== this.scope!.messageIds.length ||
         new Set(ids).size !== ids.length ||
         this.scope!.messageIds.some((id) => !ids.includes(id)) ||
+        (value.completed &&
+          value.messages.some(
+            (item) =>
+              item.accepted_message_id === null &&
+              !value.skipped_message_ids.includes(item.message.id),
+          )) ||
         new Set(value.skipped_message_ids).size !== value.skipped_message_ids.length ||
         value.skipped_message_ids.some(
           (id) =>

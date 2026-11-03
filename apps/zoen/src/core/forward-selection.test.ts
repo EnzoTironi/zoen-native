@@ -295,3 +295,14 @@ test('a lost Send response cannot turn an incomplete receipt list into success',
   assert.deepEqual(f.sent, []);
   assert.equal(ops(f, 'confirm').length, 1);
 });
+
+test('a terminal batch must account for every message as accepted or skipped', async () => {
+  const f = fixture();
+  await f.ready();
+  f.setRecord({ ...f.record(), completed: true, ready: false });
+  f.session.blur();
+  await f.session.focus();
+  assert.equal(f.selected(), null);
+  assert.ok(f.state().error);
+  assert.deepEqual(f.sent, []);
+});
