@@ -8,7 +8,7 @@ export type MessageInfoPort = {
 export class MessageInfoSession {
   private focused = false;
   private version = 0;
-  private pending = false;
+  private pending: number | null = null;
   private again = false;
   private readonly scope: MessageInfoScope;
   private readonly port: MessageInfoPort;
@@ -32,6 +32,7 @@ export class MessageInfoSession {
   blur() {
     this.focused = false;
     ++this.version;
+    this.pending = null;
     this.again = false;
     this.publish(null, false, false);
   }
@@ -45,7 +46,7 @@ export class MessageInfoSession {
       this.publish(null, false, false);
       return;
     }
-    if (this.pending) {
+    if (this.pending !== null) {
       this.again = true;
       return;
     }
@@ -53,9 +54,9 @@ export class MessageInfoSession {
   }
   private async load() {
     if (!this.current()) return;
-    this.pending = true;
-    this.again = false;
     const version = this.version;
+    this.pending = version;
+    this.again = false;
     this.publish(null, true, false);
     try {
       const value = await this.port.read(this.scope);
@@ -73,8 +74,10 @@ export class MessageInfoSession {
     } catch {
       if (this.current() && version === this.version) this.publish(null, false, true);
     } finally {
-      this.pending = false;
-      if (this.current() && this.again) void this.load();
+      if (this.pending === version) {
+        this.pending = null;
+        if (this.current() && this.again) void this.load();
+      }
     }
   }
 }
