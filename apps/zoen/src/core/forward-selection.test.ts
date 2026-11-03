@@ -262,3 +262,18 @@ test('discarding the remaining batch recovers a lost acknowledgement without sen
   assert.equal(ops(f, 'abandon').length, 1);
   assert.equal(ops(f, 'confirm').length, 1);
 });
+
+test('Done cannot navigate using a recovered record for a different destination', async () => {
+  const f = fixture();
+  await f.session.confirm(await f.ready());
+  const review = f.selected()!;
+  f.finish(async (record) => {
+    f.setRecord({ ...record, completed: true, target_space: 'other' });
+    throw new Error('lost acknowledgement');
+  });
+
+  await f.session.finish(review);
+  assert.equal(f.selected(), review);
+  assert.ok(f.state().error);
+  assert.deepEqual(f.sent, []);
+});
