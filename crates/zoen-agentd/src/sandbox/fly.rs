@@ -502,6 +502,19 @@ impl SandboxProvider for FlyMachinesProvider {
             .ok_or(SandboxError::NoLease)
     }
 
+    async fn release_suspended(&self, snap: &SnapshotRef) -> Result<(), SandboxError> {
+        let lease = self
+            .machines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&snap.lease)
+            .map(|(_, lease)| lease.clone());
+        match lease {
+            Some(lease) => self.release(lease).await,
+            None => Ok(()),
+        }
+    }
+
     async fn release(&self, lease: Lease) -> Result<(), SandboxError> {
         let machine = self
             .machines

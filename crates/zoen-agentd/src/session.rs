@@ -211,6 +211,14 @@ impl ToolSession {
             }
         }
         if let State::FinishingSuspended { snap } = &*st {
+            match self.provider.release_suspended(snap).await {
+                Ok(()) => {
+                    *st = State::Done;
+                    return Ok(());
+                }
+                Err(SandboxError::Unsupported(_)) => {}
+                Err(error) => return Err(error.into()),
+            }
             let lease = self.provider.resume(snap).await?;
             *st = State::Finishing { lease, since: None };
         }

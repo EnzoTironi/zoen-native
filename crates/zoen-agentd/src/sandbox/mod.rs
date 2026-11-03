@@ -107,6 +107,9 @@ pub trait SandboxProvider: Send + Sync {
     async fn resume(&self, _snap: &SnapshotRef) -> Result<Lease, SandboxError> {
         Err(SandboxError::Unsupported("resume"))
     }
+    async fn release_suspended(&self, _snap: &SnapshotRef) -> Result<(), SandboxError> {
+        Err(SandboxError::Unsupported("release suspended sandbox"))
+    }
     async fn fork(&self, _lease: &Lease) -> Result<Lease, SandboxError> {
         Err(SandboxError::Unsupported("fork"))
     }

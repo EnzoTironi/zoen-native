@@ -398,12 +398,10 @@ async fn finishing_retries_cleanup_without_new_exec_or_duplicate_usage() {
 }
 
 #[tokio::test]
-async fn suspended_cleanup_can_retry_resume_then_retry_delete() {
+async fn suspended_cleanup_retries_delete_without_resuming() {
     let api = MockFly::new();
     {
         let mut guest = api.guest.lock().unwrap();
-        guest.resume_failures = 1;
-        guest.state_response = Some((200, json!({"state": "suspended"})));
         guest.delete_failures = 1;
     }
     let session = session(api.provider());
@@ -419,13 +417,11 @@ async fn suspended_cleanup_can_retry_resume_then_retry_delete() {
         session.exec(ExecRequest::sh("true"), NOW).await,
         Err(SessionError::Finished)
     ));
-    assert!(session.finish(NOW).await.is_err());
-    assert_eq!(session.state().await, "finishing");
     session.finish(NOW).await.unwrap();
     assert_eq!(session.state().await, "done");
     assert_eq!(session.usage().len(), 1);
     let guest = api.guest.lock().unwrap();
-    assert_eq!((guest.resume_calls, guest.delete_calls), (2, 2));
+    assert_eq!((guest.resume_calls, guest.delete_calls), (0, 2));
 }
 
 #[tokio::test]
