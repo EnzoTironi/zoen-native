@@ -18,7 +18,7 @@
 > está **TBD**; o custo por ativo trazido será recalculado quando o plano for precificado. A
 > proteção contra abuso continua na definição de "ativo". O teto pode voltar depois, com dados.
 >
-> As seções 0, 3 e 4 seguem essas decisões.
+> O resumo, a seção 3 e a [proposta](convites-proposta.md) seguem essas decisões.
 
 ## 0. Resumo
 
