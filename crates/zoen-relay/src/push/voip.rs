@@ -7,6 +7,20 @@ impl Pusher {
     /// Requires a previously admitted wake. This transport cannot prove that an
     /// encrypted log event is a call or authorize media/acceptance on its own.
     pub async fn call_wake(&self, target: &Target, wake: &protocol::push::CallWake) -> Outcome {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok())
+            .unwrap_or_default();
+        self.call_wake_at(target, wake, now_ms).await
+    }
+
+    async fn call_wake_at(
+        &self,
+        target: &Target,
+        wake: &protocol::push::CallWake,
+        now_ms: i64,
+    ) -> Outcome {
         if !matches!(target.platform.as_str(), APNS_VOIP | APNS_VOIP_SANDBOX)
             || !valid_registration(&target.platform, &target.token)
             || target.token.is_empty()
@@ -16,14 +30,13 @@ impl Pusher {
         let Some(apns) = &self.apns else {
             return Outcome::Disabled;
         };
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .ok()
-            .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok())
-            .unwrap_or_default();
         let Ok(body) = wake.encode(now_ms) else {
             return Outcome::Failed("expired or invalid VoIP wake".into());
         };
+        let expiration = wake.expires_at_ms() / 1000;
+        if expiration <= now_ms / 1000 {
+            return Outcome::Failed("VoIP wake too close to expiry".into());
+        }
         let topic = format!("{}.voip", apns.cfg.topic);
         if protocol::push::validate_topic(&topic).is_err() {
             return Outcome::Failed("invalid VoIP topic".into());
@@ -43,7 +56,7 @@ impl Pusher {
                         ("apns-topic", topic),
                         ("apns-push-type", "voip".into()),
                         ("apns-priority", "10".into()),
-                        ("apns-expiration", (wake.expires_at_ms() / 1000).to_string()),
+                        ("apns-expiration", expiration.to_string()),
                         ("content-type", "application/json".into()),
                     ],
                     body,
