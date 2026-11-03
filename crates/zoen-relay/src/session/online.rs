@@ -157,7 +157,8 @@ impl Session {
         let audience = audience.to_vec();
         tokio::spawn(async move {
             let _permit = permit;
-            crate::push::wake_registered_devices(&st.pool, &st.push, &me, &audience).await;
+            crate::push::wake_registered_devices(&st.pool, &st.push, &st.metrics, &me, &audience)
+                .await;
         });
     }
 }

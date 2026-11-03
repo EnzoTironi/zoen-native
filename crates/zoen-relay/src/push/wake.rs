@@ -87,10 +87,18 @@ async fn dispatch(
 pub(crate) async fn wake_registered_devices(
     pool: &sqlx::PgPool,
     pusher: &Pusher,
+    metrics: &crate::metrics::Metrics,
     author: &str,
     audience: &[String],
 ) {
     let count = dispatch(pool, pusher, author, audience).await;
+    use std::sync::atomic::Ordering::Relaxed;
+    metrics.push_sent.fetch_add(count.sent as u64, Relaxed);
+    metrics.push_failed.fetch_add(count.failed as u64, Relaxed);
+    metrics.push_gone.fetch_add(count.gone as u64, Relaxed);
+    if count.lookup_failed {
+        crate::metrics::Metrics::inc(&metrics.push_lookup_failed);
+    }
     // A live WS is not a delivery receipt. This deliberately attempts every
     // authorized recipient device, including accounts with an online sibling.
     // Existing whole-job admission remains outside this function. No new retry.
