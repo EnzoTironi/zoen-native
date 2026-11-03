@@ -109,13 +109,17 @@ pub async fn claim_citizen(
 }
 
 /// The runtime session (`agent`, `device`) must be the live claim.
-async fn runtime(pool: &PgPool, agent: &str, device: &str) -> Result<(), AgentCitizenError> {
+async fn lock_runtime(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    agent: &str,
+    device: &str,
+) -> Result<(), AgentCitizenError> {
     let row: Option<(bool,)> = sqlx::query_as(
-        "SELECT revoked_at IS NULL FROM agent_citizens WHERE agent = $1 AND device = $2",
+        "SELECT revoked_at IS NULL FROM agent_citizens WHERE agent = $1 AND device = $2 FOR UPDATE",
     )
     .bind(agent)
     .bind(device)
-    .fetch_optional(pool)
+    .fetch_optional(&mut **tx)
     .await?;
     match row {
         Some((true,)) => Ok(()),
@@ -244,7 +248,8 @@ pub async fn advance_cursor(
     space: &str,
     seq: u64,
 ) -> Result<(), AgentCitizenError> {
-    runtime(pool, agent, device).await?;
+    let mut tx = pool.begin().await?;
+    lock_runtime(&mut tx, agent, device).await?;
     let seq = i64::try_from(seq).map_err(|_| AgentCitizenError::Version)?;
     sqlx::query(
         r#"
@@ -263,8 +268,9 @@ pub async fn advance_cursor(
     .bind(agent)
     .bind(space)
     .bind(seq)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 

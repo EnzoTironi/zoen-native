@@ -508,3 +508,41 @@ async fn activity_write_failure_rolls_back_cursor_advance() -> Result<(), Box<dy
     d.finish().await;
     Ok(())
 }
+
+#[tokio::test]
+async fn cursor_advance_respects_concurrent_revocation() -> Result<(), Box<dyn std::error::Error>> {
+    let d = Database::new().await?;
+    let (owner, owner_dev) = d.person("cursor_revoke_owner").await?;
+    let (bot, bot_dev) = d.agent("cursor_revoke_bot", &owner, &owner_dev).await?;
+    let device = dev(&bot_dev);
+    agents::advance_cursor(&d.pool, &bot.id, device, "sp_revoked", 5).await?;
+
+    let mut revocation = d.pool.begin().await?;
+    sqlx::query("UPDATE agent_citizens SET revoked_at = now() WHERE agent = $1")
+        .bind(&bot.id)
+        .execute(&mut *revocation)
+        .await?;
+    {
+        let advance = agents::advance_cursor(&d.pool, &bot.id, device, "sp_revoked", 9);
+        tokio::pin!(advance);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut advance)
+                .await
+                .is_err()
+        );
+        revocation.commit().await?;
+        assert!(matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), advance).await?,
+            Err(AgentCitizenError::Revoked)
+        ));
+    }
+    let seq: i64 = sqlx::query_scalar(
+        "SELECT last_seq FROM agent_space_cursors WHERE agent = $1 AND space = 'sp_revoked'",
+    )
+    .bind(&bot.id)
+    .fetch_one(&d.pool)
+    .await?;
+    assert_eq!(seq, 5);
+    d.finish().await;
+    Ok(())
+}
