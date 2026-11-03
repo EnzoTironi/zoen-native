@@ -1,6 +1,6 @@
-//! Provider transport only. No session RPC or generic event route invokes this.
-//! Receiver consent/block policy and authenticated call-purpose admission must
-//! be implemented before exposing a wake operation or advertising cold calls.
+//! Provider transport for wakes admitted by the authenticated session RPC.
+//! The caller checks receiver consent and resolves call-purpose registrations
+//! before dispatch. The receiver independently verifies the invitation.
 use super::*;
 
 impl Pusher {
