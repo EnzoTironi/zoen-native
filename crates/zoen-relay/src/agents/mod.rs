@@ -157,8 +157,12 @@ pub async fn state(
         return Err(AgentCitizenError::Device);
     }
     let definition = definition.ok_or(AgentCitizenError::ReadProfile)?;
+    let row_limit = i64::try_from(reads::CURSOR_ROWS)
+        .map_err(|_| AgentCitizenError::ReadProfile)?
+        .checked_add(1)
+        .ok_or(AgentCitizenError::ReadProfile)?;
     let rows:Vec<(Option<String>,i64)>=sqlx::query_as("SELECT CASE WHEN octet_length(space)<=128 THEN space ELSE NULL END,last_seq FROM agent_space_cursors WHERE agent=$1 AND space=ANY($2) ORDER BY space COLLATE \"C\" LIMIT $3")
-        .bind(agent).bind(member_of).bind((reads::CURSOR_ROWS+1)as i64).fetch_all(&mut *tx).await?;
+        .bind(agent).bind(member_of).bind(row_limit).fetch_all(&mut *tx).await?;
     if rows.len() > reads::CURSOR_ROWS {
         return Err(AgentCitizenError::ReadProfile);
     }
