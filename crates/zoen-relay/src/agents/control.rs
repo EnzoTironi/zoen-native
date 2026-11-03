@@ -4,8 +4,8 @@ use protocol::agent_control::Record;
 use sqlx::PgPool;
 
 type Row = (String, String, bool, bool, i64, String, String, String);
-fn record(row: &Row) -> Record {
-    Record {
+fn record(row: &Row) -> Result<Record, AgentCitizenError> {
+    Ok(Record {
         status: if row.3 {
             "revoked"
         } else if row.2 {
@@ -14,11 +14,11 @@ fn record(row: &Row) -> Record {
             "active"
         }
         .into(),
-        revision: row.4 as u64,
+        revision: u64::try_from(row.4).map_err(|_| AgentCitizenError::Version)?,
         operation: row.5.clone(),
         action: row.6.clone(),
         device: row.7.clone(),
-    }
+    })
 }
 const SELECT: &str = "SELECT owner, device, paused_at IS NOT NULL, revoked_at IS NOT NULL,
  control_revision, control_operation, control_action, control_device FROM agent_citizens WHERE agent=$1";
@@ -36,7 +36,7 @@ pub async fn control_status(
     if row.0 != owner {
         return Err(AgentCitizenError::Owner);
     }
-    Ok(record(&row))
+    record(&row)
 }
 
 pub async fn control_reviewed(
@@ -48,10 +48,11 @@ pub async fn control_reviewed(
     operation: &str,
     revision: u64,
 ) -> Result<Record, AgentCitizenError> {
+    let sql_revision = i64::try_from(revision).map_err(|_| AgentCitizenError::Version)?;
     if operation.len() != 64
         || !operation.bytes().all(|b| b.is_ascii_hexdigit())
         || revision == 0
-        || revision >= i64::MAX as u64
+        || sql_revision == i64::MAX
     {
         return Err(AgentCitizenError::Version);
     }
@@ -64,7 +65,7 @@ pub async fn control_reviewed(
     if row.0 != owner {
         return Err(AgentCitizenError::Owner);
     }
-    let current = record(&row);
+    let current = record(&row)?;
     if current.operation == operation
         && (current.revision == revision
             || current.action != action.id()
@@ -89,8 +90,9 @@ pub async fn control_reviewed(
         .bind(agent)
         .fetch_one(&mut *tx)
         .await?;
+    let receipt = record(&next)?;
     tx.commit().await?;
-    Ok(record(&next))
+    Ok(receipt)
 }
 
 /// SQL lifecycle is the permission boundary even if an old FDB link still exists.
@@ -102,4 +104,24 @@ pub async fn invite_live(pool: &PgPool, agent: &str) -> Result<bool, AgentCitize
             .fetch_optional(pool)
             .await?;
     Ok(matches!(live, Some(true)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{record, AgentCitizenError, Row};
+
+    #[test]
+    fn lifecycle_record_rejects_negative_revision() {
+        let row: Row = (
+            String::new(),
+            String::new(),
+            false,
+            false,
+            -1,
+            String::new(),
+            String::new(),
+            String::new(),
+        );
+        assert!(matches!(record(&row), Err(AgentCitizenError::Version)));
+    }
 }
