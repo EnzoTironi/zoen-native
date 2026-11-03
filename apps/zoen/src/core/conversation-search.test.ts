@@ -203,3 +203,23 @@ test('a successful pagination retry clears a temporary search failure', async ()
   assert.equal(result.index, 1);
   assert.deepEqual(result.hits, [hit('first'), hit('second')]);
 });
+
+test('canonical refresh keeps the selected result while it remains on the first page', async () => {
+  let hits = [hit('a'), hit('b')];
+  const search = new ConversationSearch({
+    current: () => true,
+    search: async () => ({ hits, next_cursor: null }),
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+  await search.move('older');
+
+  hits = [hit('new'), hit('a'), hit('b')];
+  await search.refreshCanonical();
+  assert.equal(search.getSnapshot().index, 2);
+
+  hits = [hit('new'), hit('a')];
+  await search.refreshCanonical();
+  assert.equal(search.getSnapshot().index, 0);
+});

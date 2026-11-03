@@ -145,14 +145,17 @@ export class ConversationSearch {
         unchanged = this.firstPage !== null && key === this.firstPage;
       this.firstPage = key;
       this.dirty = false;
+      if (unchanged) {
+        this.publish({ loading: false, completed: true });
+        return;
+      }
+      const hits = uniqueHits(page.hits);
+      const selected = this.state.hits[this.state.index];
+      const index = selected ? hits.findIndex((hit) => hitKey(hit) === hitKey(selected)) : -1;
       this.publish({
-        ...(unchanged
-          ? {}
-          : {
-              hits: uniqueHits(page.hits),
-              cursor: page.next_cursor,
-              index: page.hits.length ? 0 : -1,
-            }),
+        hits,
+        cursor: page.next_cursor,
+        index: index >= 0 ? index : hits.length ? 0 : -1,
         loading: false,
         completed: true,
       });
@@ -219,10 +222,14 @@ export class ConversationSearch {
     return generation === this.generation && this.state.active && this.source.current();
   }
 }
+function hitKey(hit: UniversalHit): string {
+  return JSON.stringify([hit.kind, hit.space_id, hit.ref_id]);
+}
+
 function uniqueHits(hits: readonly UniversalHit[]): UniversalHit[] {
   const seen = new Set<string>();
   return hits.filter((hit) => {
-    const key = JSON.stringify([hit.kind, hit.space_id, hit.ref_id]);
+    const key = hitKey(hit);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
