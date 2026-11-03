@@ -136,6 +136,7 @@ export function listenNotificationEvents(
     const hint = decodeNotificationWake(Platform.OS, trigger);
     if (hint) wake(hint);
   });
+  let handledIdentifier: string | undefined;
   const respond = (response: Notifications.NotificationResponse | null) => {
     if (
       !active ||
@@ -144,7 +145,10 @@ export function listenNotificationEvents(
       isPushTrigger(response.notification.request.trigger)
     )
       return;
-    tap(response.notification.request.content.data);
+    const { identifier, content } = response.notification.request;
+    if (identifier === handledIdentifier) return;
+    handledIdentifier = identifier;
+    tap(content.data);
     void Notifications.clearLastNotificationResponseAsync();
   };
   const responses = Notifications.addNotificationResponseReceivedListener(respond);
