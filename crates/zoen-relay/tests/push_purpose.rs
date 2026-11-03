@@ -168,7 +168,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
         .await?
         .is_empty());
+    assert!(!db::get_voip_consent(pool, &identity.id, &sender, "direct").await?);
     db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true).await?;
+    assert!(db::get_voip_consent(pool, &identity.id, &sender, "direct").await?);
+    assert!(!db::get_voip_consent(pool, &identity.id, &sender, "other").await?);
+    assert!(!db::get_voip_consent(pool, &sender, &identity.id, "direct").await?);
     assert!(db::voip_push_targets(pool, &identity.id, &sender, "other")
         .await?
         .is_empty());
@@ -182,6 +186,7 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         ["abcd"]
     );
     db::set_voip_consent(pool, &identity.id, sibling, &sender, "direct", false).await?;
+    assert!(!db::get_voip_consent(pool, &identity.id, &sender, "direct").await?);
     assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
         .await?
         .is_empty());
