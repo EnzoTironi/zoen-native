@@ -28,6 +28,7 @@ export function useMessageSelection(
   const { choose } = useDialogs();
   const confirmation = useRef<AbortController | null>(null);
   const deleting = useRef(false);
+  const recheckConfirmation = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState(false);
   const scope = conversationScope(client, store.sessionEpoch, spaceId);
   const binding = scope && JSON.stringify([scope, threadRootId]);
@@ -42,6 +43,7 @@ export function useMessageSelection(
     )
       confirmation.current?.abort();
     latest.current = { scope, binding, entries, disabled, selection };
+    recheckConfirmation.current?.();
   }, [scope, binding, entries, disabled, selection]);
   useFocusEffect(
     useCallback(() => {
@@ -144,7 +146,14 @@ export function useMessageSelection(
         resolve,
         canDeleteEveryone: canWrite,
         signal: controller.signal,
-        subscribe: (listener) => store.subscribe(listener),
+        subscribe: (listener) => {
+          recheckConfirmation.current = listener;
+          const unsubscribe = store.subscribe(listener);
+          return () => {
+            recheckConfirmation.current = null;
+            unsubscribe();
+          };
+        },
         confirm: (count, everyone, signal) =>
           chooseMessageDeletion(choose, count, everyone, signal),
         send: (value) => store.request({ op: 'delete_messages', ...value }),
