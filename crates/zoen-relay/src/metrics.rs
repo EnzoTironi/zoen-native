@@ -156,3 +156,27 @@ impl Metrics {
         s
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_outcomes_render_as_unlabelled_counters() {
+        let metrics = Metrics::default();
+        for (name, counter) in [
+            ("sent", &metrics.push_sent),
+            ("failed", &metrics.push_failed),
+            ("gone", &metrics.push_gone),
+            ("lookup_failed", &metrics.push_lookup_failed),
+        ] {
+            Metrics::inc(counter);
+            let metric = format!("zoen_relay_push_{name}_total");
+            let rendered = metrics.render(0);
+            assert!(rendered
+                .lines()
+                .any(|line| line == format!("# TYPE {metric} counter")));
+            assert!(rendered.lines().any(|line| line == format!("{metric} 1")));
+        }
+    }
+}
