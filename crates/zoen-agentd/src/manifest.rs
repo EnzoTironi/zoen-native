@@ -198,6 +198,12 @@ mod tests {
     fn a_tampered_manifest_does_not_verify() {
         let k = key(7);
         let mut s = code_tool().sign(&k).unwrap();
+        let mut legacy_bytes = b"zoen-tool-manifest/1\n".to_vec();
+        legacy_bytes.extend(serde_json::to_vec(&s.manifest).unwrap());
+        assert_eq!(
+            s.signature,
+            hex::encode(k.sign(&legacy_bytes).to_bytes())
+        );
         assert!(s.verify(&[k.verifying_key()]).is_ok());
         assert_eq!(
             s.verify(&[key(8).verifying_key()]),
