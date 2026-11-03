@@ -28,6 +28,10 @@ Node.js, npm, Rust/Cargo, and the platform's native toolchain are required.
 For iOS, use full Xcode and CocoaPods; for Android, use a JDK and Android SDK/NDK.
 Point `DEVELOPER_DIR` at Xcode if `xcode-select` selects Command Line Tools.
 
+Run `npm run test:core` for the core and authentication directories. This
+includes shared integration tests located in core. Run `npm test` to also
+include the document and App suites.
+
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim \
   aarch64-linux-android x86_64-linux-android wasm32-unknown-unknown
