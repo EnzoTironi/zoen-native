@@ -54,7 +54,7 @@ fn target(p: &str) -> Target {
     Target {
         registration_id: 0,
         platform: p.into(),
-        token: "abc".into(),
+        token: "aabb".into(),
     }
 }
 
@@ -138,7 +138,7 @@ async fn apns_wake_is_content_free_background() {
     assert_eq!(p.wake(&target(APNS_SANDBOX)).await, Outcome::Sent);
     let calls = m.calls.lock().unwrap();
     let (url, headers, body) = &calls[0];
-    assert_eq!(url, "https://api.sandbox.push.apple.com/3/device/abc");
+    assert_eq!(url, "https://api.sandbox.push.apple.com/3/device/aabb");
     let h = |k: &str| headers.iter().find(|(n, _)| n == k).unwrap().1.clone();
     assert_eq!(h("apns-push-type"), "background");
     assert_eq!(h("apns-topic"), "xyz.tironi.zoen");
@@ -202,4 +202,15 @@ fn platforms() {
     assert!(!valid_registration(APNS, "a1:B_-"));
     assert!(valid_registration(FCM, "a1:B_-"));
     assert!(!valid_token("abc/../x") && !valid_token("a?b"));
+}
+
+#[tokio::test]
+async fn malformed_legacy_apns_token_never_reaches_provider() -> anyhow::Result<()> {
+    let http = Arc::new(Mock::default());
+    let pusher = Pusher::new(http.clone(), Some(apns_cfg()), None)?;
+    let mut target = target(APNS);
+    target.token = "abc".into();
+    assert_eq!(pusher.wake(&target).await, Outcome::Gone);
+    assert!(http.calls.lock().unwrap().is_empty());
+    Ok(())
 }
