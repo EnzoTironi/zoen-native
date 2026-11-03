@@ -106,14 +106,14 @@ impl Engine {
             let content = record.content.as_ref().ok_or_else(invalid)?;
             let reply = content.reply();
             let normal = scope.normal();
-            let context = reply.context(&normal);
+            let reply_context = reply.context(&normal);
             let thread = scope.thread_root_id.is_some();
             let entries = match content {
                 Content::Poll {
                     question, options, ..
                 } => {
                     let args = super::polls::arguments(question, options)?;
-                    let reference = engine.resolve_draft_reply(context, reply.to)?;
+                    let reference = engine.resolve_draft_reply(reply_context, reply.to)?;
                     let (_, message) = engine.install_app_with_message(
                         &scope.space_id,
                         "poll",
@@ -140,7 +140,7 @@ impl Engine {
                                 caption: &item.caption,
                                 media: media.clone(),
                                 fixed_item: None,
-                                draft_reply: Some(context),
+                                draft_reply: Some(reply_context),
                             },
                         )?);
                     }
@@ -157,7 +157,7 @@ impl Engine {
                         ms: render.duration_ms.round() as u64,
                         levels: types::VoiceMeta::encode(&render.levels),
                         transcript: render.transcript.trim().into(),
-                        reply: engine.resolve_draft_reply(context, reply.to)?,
+                        reply: engine.resolve_draft_reply(reply_context, reply.to)?,
                         forwarded: false,
                         forwarded_author: None,
                     },
