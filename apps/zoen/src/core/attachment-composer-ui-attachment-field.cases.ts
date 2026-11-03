@@ -89,7 +89,16 @@ test('attachment reply UI displays the frozen batch target rather than a later n
 test('search takes over the message field while attachment drafts stay outside its action path', () => {
   const f = fixture();
   const search = {
-    state: { active: true, completed: true, loading: false, hits: [{}], index: 0, cursor: null },
+    state: {
+      active: true,
+      query: 'Search text',
+      completed: true,
+      loading: false,
+      hits: [{}],
+      index: 0,
+      cursor: null,
+      error: null,
+    },
     status: '1/1',
     onClose: () => {},
     onMove: () => {},
