@@ -434,13 +434,24 @@ impl Client {
                 platform,
                 token,
             } => {
-                crate::agent_enrollment::owner_context(
-                    &self.lock(),
-                    &expected_identity_id,
-                    &expected_device_id,
-                )
-                .map_err(|_| invalid("The push registration session changed."))?;
-                encode(&self.register_push(platform, token).await?)
+                let changed = || invalid("The push registration session changed.");
+                self.lock()
+                    .native_surface_owner(&expected_identity_id, &expected_device_id)
+                    .map_err(|_| changed())?;
+                let (owner, channel) = self.device_directory_owner()?;
+                self.with_device_directory_completion(&owner, &channel, |engine| {
+                    engine.native_surface_owner(&expected_identity_id, &expected_device_id)
+                })
+                .map_err(|_| changed())?;
+                let reply = channel
+                    .clone()
+                    .send(protocol::Op::RegisterPush { platform, token })
+                    .await
+                    .map_err(invalid)?;
+                self.with_device_directory_completion(&owner, &channel, |_| match reply {
+                    protocol::Reply::Done => encode(&()),
+                    _ => Err(invalid("Unexpected push registration response.")),
+                })
             }
             _ => Err(invalid("Command routed to the wrong application handler")),
         }
