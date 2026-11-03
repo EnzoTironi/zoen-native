@@ -10,7 +10,6 @@ ROOT="$PWD"
 VERSION="${FDB_VERSION:-7.3.71}"
 TOOLS="$ROOT/.tools/fdb"
 DEV="$ROOT/.dev/fdb"
-PORT="${FDB_PORT:-4500}"
 # Ratekeeper stops admitting transactions when free disk drops under 5% of the volume: 23 GB on
 # a 460 GB laptop, so a dev box with 10 GB free hangs every write. Dev only: 1% (and FDB's own
 # 100 MB floor still applies). Production keeps the defaults (infra/k8s, infra/fly).
@@ -55,9 +54,24 @@ env_exports() {
 up() {
   install
   mkdir -p "$DEV/data" "$DEV/logs"
-  [[ -f "$CLUSTER" ]] || echo "zoen:dev@127.0.0.1:$PORT" > "$CLUSTER"
+  local port="${FDB_PORT:-4500}"
+  if [[ -f "$CLUSTER" ]]; then
+    local address
+    address="$(<"$CLUSTER")"
+    if [[ ! "$address" =~ @127\.0\.0\.1:([0-9]+)$ ]]; then
+      echo "Expected a local FoundationDB address in $CLUSTER" >&2
+      exit 1
+    fi
+    port="${BASH_REMATCH[1]}"
+    if [[ -n "${FDB_PORT:-}" && "$FDB_PORT" != "$port" ]]; then
+      echo "FDB_PORT=$FDB_PORT conflicts with the existing cluster on port $port" >&2
+      exit 1
+    fi
+  else
+    echo "zoen:dev@127.0.0.1:$port" > "$CLUSTER"
+  fi
   if ! pgrep -f "fdbserver.*$DEV/data" >/dev/null; then
-    nohup "$TOOLS/bin/fdbserver" -p "127.0.0.1:$PORT" -C "$CLUSTER" -d "$DEV/data" -L "$DEV/logs" \
+    nohup "$TOOLS/bin/fdbserver" -p "127.0.0.1:$port" -C "$CLUSTER" -d "$DEV/data" -L "$DEV/logs" \
       --knob_min_available_space_ratio="$MIN_FREE_RATIO" \
       --knob_min_available_space_ratio_safety_buffer=0 \
       > "$DEV/fdbserver.out" 2>&1 &
