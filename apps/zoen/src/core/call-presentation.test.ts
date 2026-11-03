@@ -155,3 +155,27 @@ test('retired session rejects late native events even for the same account', asy
     stop();
   }
 });
+
+test('native events still update the bar after the initial read fails', async () => {
+  let emit!: (json: string) => void;
+  const values: (CallPresentation | null)[] = [];
+  const stop = watchCallPresentation({
+    owner: () => owner,
+    listen: (changed) => {
+      emit = changed;
+      return () => {};
+    },
+    current: async () => {
+      throw new Error('initial state unavailable');
+    },
+    changed: (value) => values.push(value),
+  });
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    emit(encode(current));
+    emit('null');
+    assert.deepEqual(values, [current, null]);
+  } finally {
+    stop();
+  }
+});

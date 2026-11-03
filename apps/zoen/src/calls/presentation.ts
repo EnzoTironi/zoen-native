@@ -59,22 +59,21 @@ export function watchCallPresentation(port: {
 }): () => void {
   const owner = port.owner();
   let live = true;
-  let revision = 0;
+  let receivedEvent = false;
   const apply = (json: string) => {
     if (!live) return;
     const current = port.owner();
     if (current.identity !== owner.identity || current.device !== owner.device) return;
     port.changed(readCallPresentation(json, owner));
   };
-  const atQuery = revision;
   const remove = port.listen((json) => {
-    revision += 1;
+    receivedEvent = true;
     apply(json);
   });
   void port
     .current()
     .then((json) => {
-      if (revision === atQuery) apply(json);
+      if (!receivedEvent) apply(json);
     })
     .catch(() => {});
   return () => {
