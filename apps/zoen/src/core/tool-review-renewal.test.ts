@@ -407,3 +407,18 @@ test('an acknowledgement with an unchanged projection keeps renewal locked', asy
   assert.equal(f.session.getSnapshot().unknown, false);
   assert.equal(f.writes.length, 1);
 });
+
+test('renewal rechecks the content hash before sending a request', async () => {
+  const f = fixture();
+  await f.session.refresh();
+  const ticket = f.session.ticket();
+  assert.ok(ticket);
+  const updated = request();
+  updated.tool_approval!.content_hash = 'cd'.repeat(32);
+  f.rows([updated]);
+
+  assert.equal(await f.session.renew(ticket), false);
+  assert.deepEqual(f.writes, []);
+  assert.equal(f.session.ticket()?.hash, updated.tool_approval!.content_hash);
+  assert.equal(f.session.getSnapshot().busy, false);
+});
