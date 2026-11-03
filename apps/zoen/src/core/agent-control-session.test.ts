@@ -316,3 +316,24 @@ test('a retired control request cannot refresh or overwrite the next account', a
   assert.equal(session.getSnapshot(), next);
   assert.equal(next.pending, null);
 });
+
+test('two taps on the same agent refresh button start only one read', async () => {
+  const f = fixture();
+  let reads = 0;
+  const session = new AgentControlSession(
+    {
+      ...f.port,
+      read: (agent, scope) => {
+        reads++;
+        return f.port.read(agent, scope);
+      },
+    },
+    'agent',
+  );
+  session.activate(first);
+  await session.refresh();
+  const displayed = session.getSnapshot();
+  await Promise.all([session.refresh(displayed), session.refresh(displayed)]);
+  assert.equal(reads, 2);
+  assert.equal(session.getSnapshot().phase, 'ready');
+});
