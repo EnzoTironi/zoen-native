@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 test(
   'actual native Site preview allows one initial document and retires navigation access',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-site-preview-'));
     try {
@@ -39,7 +39,7 @@ test(
           '-o',
           binary,
         ],
-        { env: { ...process.env, SDKROOT: sdk }, timeout: 40_000 },
+        { env: { ...process.env, SDKROOT: sdk }, timeout: 120_000 },
       );
       assert.match(
         execFileSync(binary, [], { encoding: 'utf8', timeout: 10_000 }),

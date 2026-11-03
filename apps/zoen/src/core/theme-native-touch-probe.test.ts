@@ -26,7 +26,7 @@ function addedSwift(name: string) {
 
 test(
   'actual patched Swift capture state refuses stale, foreign, retired and duplicate callbacks',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-theme-touch-'));
     try {
@@ -58,7 +58,7 @@ test(
           '-o',
           binary,
         ],
-        { timeout: 40_000 },
+        { timeout: 120_000 },
       );
       const result = execFileSync(binary, [], { encoding: 'utf8', timeout: 10_000 });
       assert.match(

@@ -154,7 +154,15 @@ test('same-draft typing survives reply metadata, measured height and callback re
 test('leaving search retires its submit action while keeping the mounted normal draft', () => {
   const f = fixture();
   const search = {
-    state: { active: true, completed: false, loading: false, hits: [], index: -1, cursor: null },
+    state: {
+      active: true,
+      query: '',
+      completed: false,
+      loading: false,
+      hits: [],
+      index: -1,
+      cursor: null,
+    },
     status: '',
     onClose() {},
     onMove() {},

@@ -1,3 +1,4 @@
+import * as conversationSearch from './conversation-search.ts';
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -227,7 +228,7 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
       useSafeAreaInsets: () => ({ bottom: 34, top: 62, left: 0, right: 0 }),
     },
     './keyboard-motion': { useKeyboardMotion: () => ({ progress: { value: 0 } }) },
-    '../core/conversation-search': { conversationQueryFits: () => true },
+    '../core/conversation-search': conversationSearch,
     '../media/MediaComposer': { MediaComposer: 'MediaComposer' },
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './composer-reply-context': { ComposerReplyContext: 'MessageContext' },

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 test(
   'actual Swift Page target decoder keeps whole-document input distinct from legacy append and block',
-  { skip: process.platform !== 'darwin', timeout: 60000 },
+  { skip: process.platform !== 'darwin', timeout: 180000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-page-target-'));
     const root = new URL('../../modules/zoen-core/', import.meta.url);
@@ -31,7 +31,7 @@ test(
           '-o',
           binary,
         ],
-        { encoding: 'utf8', timeout: 40000 },
+        { encoding: 'utf8', timeout: 120000 },
       );
       assert.match(
         execFileSync(binary, [], { encoding: 'utf8', timeout: 10000 }),

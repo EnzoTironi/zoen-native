@@ -3,6 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+import type * as NotificationSystem from '../notifications/system';
 
 const source = readFileSync(new URL('../notifications/system.ts', import.meta.url), 'utf8');
 const { code } = transformSync(source, { loader: 'ts', format: 'cjs' });
@@ -23,15 +24,22 @@ for (const initialFirst of [false, true]) {
         return { remove() {} };
       },
       getLastNotificationResponseAsync: async () => response,
-      clearLastNotificationResponseAsync: async () => { cleared += 1; },
+      clearLastNotificationResponseAsync: async () => {
+        cleared += 1;
+      },
     };
-    const module = { exports: {} as typeof import('../notifications/system') };
+    const module = { exports: {} as typeof NotificationSystem };
     vm.runInNewContext(code, {
       module,
-      require: (name: string) => name === 'expo-notifications' ? notifications : {},
+      require: (name: string) => (name === 'expo-notifications' ? notifications : {}),
     });
     let taps = 0;
-    const stop = module.exports.listenNotificationEvents(() => {}, () => { taps += 1; });
+    const stop = module.exports.listenNotificationEvents(
+      () => {},
+      () => {
+        taps += 1;
+      },
+    );
     assert.ok(receive);
     if (initialFirst) await Promise.resolve();
     receive(response);

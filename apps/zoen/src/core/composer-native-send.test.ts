@@ -136,7 +136,7 @@ test('the empty search send action asks the assistant without sending a chat mes
       sends++;
     },
     search: {
-      state: { query: 'Missing search question', hits: [], completed: true },
+      state: { active: true, query: 'Missing search question', hits: [], completed: true },
       onClose() {},
       onMove() {},
       onAsk: () => {
@@ -149,7 +149,13 @@ test('the empty search send action asks the assistant without sending a chat mes
   for (const state of [{ completed: false }, { loading: true }, { cursor: 'next' }]) {
     const blocked = f.render(undefined, {
       search: {
-        state: { query: 'Missing search question', hits: [], completed: true, ...state },
+        state: {
+          active: true,
+          query: 'Missing search question',
+          hits: [],
+          completed: true,
+          ...state,
+        },
         onClose() {},
         onMove() {},
         onAsk() {},
