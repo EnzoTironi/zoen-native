@@ -271,3 +271,29 @@ for (const refresh of ['canonical', 'foreground'] as const)
       );
       assert.equal(f.writes().length, 1, 'terminal reconciliation only reads');
     });
+
+test('a fresh read confirms an accepted unmute after the first reconciliation failed', async () => {
+  const f = mutedFixture();
+  await f.load();
+  f.select();
+  f.write(async (id) => {
+    const chat = f.snapshot().conversations.find((row) => row.id === id)!;
+    chat.muted = false;
+    chat.muted_until_ms = null;
+    f.read(async () => {
+      throw new Error('temporarily unavailable');
+    });
+    throw new Error('lost response after local commit');
+  });
+
+  await f.unmute();
+  assert.equal(f.session.getSnapshot().readFailed, true);
+  assert.equal(f.session.getSnapshot().actionFailed, true);
+  f.read(async () => f.snapshot());
+  await f.load();
+  const state = f.session.getSnapshot();
+  assert.equal(state.readFailed, false);
+  assert.equal(state.actionFailed, false);
+  assert.deepEqual(state.chats.map((chat) => chat.id), ['chat-1']);
+  assert.equal(f.writes().length, 1);
+});
