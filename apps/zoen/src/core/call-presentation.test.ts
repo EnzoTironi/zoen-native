@@ -35,7 +35,8 @@ test('return presentation requires exact account/device and a valid transient ca
     assert.equal(readCallPresentation(json, owner), null);
   assert.equal(readCallPresentation(encode(current), { identity: undefined, device: 'a1' }), null);
   assert.equal(callElapsed(null, 4000), null);
-  assert.equal(callElapsed(1000, Number.NaN), null);  assert.equal(callElapsed(1000, Infinity), null);
+  assert.equal(callElapsed(1000, Number.NaN), null);
+  assert.equal(callElapsed(1000, Infinity), null);
   assert.equal(callElapsed(1000, 65_000), '1:04');
   assert.equal(callElapsed(1000, 0), '0:00');
 });
@@ -80,7 +81,7 @@ test('disposed query and an account changed during the read cannot publish old c
   currentOwner = { identity: 'bob', device: 'b1' };
   resolve(encode(current));
   await Promise.resolve();
-  assert.deepEqual(values, []);
+  assert.equal(values.length, 0);
   stop();
   let late!: (json: string) => void;
   const dispose = watchCallPresentation({
@@ -92,7 +93,7 @@ test('disposed query and an account changed during the read cannot publish old c
   dispose();
   late(encode(current));
   await Promise.resolve();
-  assert.deepEqual(values, []);
+  assert.equal(values.length, 0);
 });
 
 test('a call ended during subscription cannot be revived by the initial read', async () => {

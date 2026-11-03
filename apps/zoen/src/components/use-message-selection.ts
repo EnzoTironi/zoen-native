@@ -36,11 +36,7 @@ export function useMessageSelection(
   const focused = useRef(false);
   const latest = useRef({ scope, binding, entries, disabled, selection });
   useLayoutEffect(() => {
-    if (
-      latest.current.selection !== selection ||
-      latest.current.binding !== binding ||
-      disabled
-    )
+    if (latest.current.selection !== selection || latest.current.binding !== binding || disabled)
       confirmation.current?.abort();
     latest.current = { scope, binding, entries, disabled, selection };
     recheckConfirmation.current?.();

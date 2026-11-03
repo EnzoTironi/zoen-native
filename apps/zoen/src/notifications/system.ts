@@ -159,9 +159,11 @@ export function listenNotificationEvents(
       }
     }
     tap(content.data);
-    void Notifications.clearLastNotificationResponseAsync().finally(() => {
-      if (initial && initialIdentifier === identifier) initialIdentifier = undefined;
-    }).catch(() => {});
+    void Notifications.clearLastNotificationResponseAsync()
+      .finally(() => {
+        if (initial && initialIdentifier === identifier) initialIdentifier = undefined;
+      })
+      .catch(() => {});
   };
   const responses = Notifications.addNotificationResponseReceivedListener(respond);
   void Notifications.getLastNotificationResponseAsync()
