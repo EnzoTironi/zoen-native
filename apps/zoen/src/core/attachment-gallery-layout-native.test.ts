@@ -67,8 +67,6 @@ test(
           '-warnings-as-errors',
           '-j',
           '1',
-          '-module-cache-path',
-          join(directory, 'modules'),
           source,
           main,
           '-o',
