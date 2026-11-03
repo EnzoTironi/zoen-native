@@ -477,8 +477,7 @@ export function useChatController() {
     if (search.getSnapshot().active || sendRef.current?.scope === scope) return;
     const attempt = normalDraft.capture();
     if (!attempt) return;
-    const text = attempt.text;
-    if (!text.trim() && !(attempt.editingId && editing?.isCaption)) return;
+    if (!attempt.text.trim() && !(attempt.editingId && editing?.isCaption)) return;
     const token = { scope };
     sendRef.current = token;
     store.setTyping(id, false);
@@ -487,7 +486,7 @@ export function useChatController() {
       if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
     } catch (reason) {
-      if (normalDraft.isCurrent(attempt))
+      if (sendRef.current === token && normalDraft.isCurrent(attempt))
         void inform(
           t(attempt.editingId ? 'chat.editCouldNotBeSaved' : 'chat.theReplyCouldNotBeSent'),
           reason instanceof Error ? reason.message : t('chat.tryAgain'),
