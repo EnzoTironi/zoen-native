@@ -347,9 +347,9 @@ export function useChatController() {
     }, [id, store, initialEnd, searchReveal]),
   );
   const reveal = useCallback(
-    async (messageId: string, keepActivityVisible = true) => {
+    async (messageId: string, keepActivityVisible = true, current?: () => boolean) => {
       cancelInitialEnd();
-      const index = await store.revealMessage(id, messageId);
+      const index = await store.revealMessage(id, messageId, current);
       if (index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
       if (keepActivityVisible) setRevealedActivity({ scope: `${id}:${owner}`, id: messageId });
       return messageId;
@@ -388,7 +388,7 @@ export function useChatController() {
         if (!entries.some((entry) => entry.id === selectedHit.ref_id))
           throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
         thread = { root: message.in_thread, entries };
-      } else await reveal(selectedHit.ref_id, false);
+      } else await reveal(selectedHit.ref_id, false, current);
       if (current()) {
         setSearchRead({ search, hit: selectedHit, thread, error: null });
         if (process.env.EXPO_OS === 'ios') searchReveal.request(selectedHit.ref_id, captured);

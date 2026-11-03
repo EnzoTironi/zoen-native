@@ -373,8 +373,8 @@ export class ClientStore {
     return this.timeline.load(space, older);
   }
 
-  revealMessage(space: string, message: string): Promise<number> {
-    return this.timeline.reveal(space, message);
+  revealMessage(space: string, message: string, current?: () => boolean): Promise<number> {
+    return this.timeline.reveal(space, message, current);
   }
 
   selectSpace(space: string | null) {
