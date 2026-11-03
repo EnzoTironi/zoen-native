@@ -80,7 +80,7 @@ test('disposed query and an account changed during the read cannot publish old c
   currentOwner = { identity: 'bob', device: 'b1' };
   resolve(encode(current));
   await Promise.resolve();
-  assert.deepEqual(values, []);
+  assert.equal(values.length, 0);
   stop();
   let late!: (json: string) => void;
   const dispose = watchCallPresentation({
@@ -92,7 +92,7 @@ test('disposed query and an account changed during the read cannot publish old c
   dispose();
   late(encode(current));
   await Promise.resolve();
-  assert.deepEqual(values, []);
+  assert.equal(values.length, 0);
 });
 
 test('a call ended during subscription cannot be revived by the initial read', async () => {
