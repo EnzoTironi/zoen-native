@@ -41,6 +41,9 @@ impl Pusher {
         if protocol::push::validate_topic(&topic).is_err() {
             return Outcome::Failed("invalid VoIP topic".into());
         }
+        let Ok(_permit) = self.voip_slots.try_acquire() else {
+            return Outcome::Failed("VoIP transport overloaded".into());
+        };
         let result = async {
             let host = if target.platform == APNS_VOIP_SANDBOX {
                 "api.sandbox.push.apple.com"

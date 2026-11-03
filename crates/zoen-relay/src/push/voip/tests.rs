@@ -157,3 +157,24 @@ async fn wake_requires_an_apns_deadline_in_a_future_second() -> anyhow::Result<(
         .any(|(key, value)| key == "apns-expiration" && value == "2"));
     Ok(())
 }
+
+#[tokio::test]
+async fn saturated_voip_wakes_leave_message_wake_capacity_available() -> anyhow::Result<()> {
+    let http = Arc::new(Mock::default());
+    let pusher = Pusher::new(http.clone(), Some(apns_cfg()), None)?;
+    let permits = pusher
+        .voip_slots
+        .try_acquire_many(u32::try_from(pusher.voip_slots.available_permits())?)?;
+    assert!(matches!(
+        pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
+        Outcome::Failed(_)
+    ));
+    assert!(http.calls.lock().unwrap().is_empty());
+    assert!(pusher.try_wake_task().is_some());
+    drop(permits);
+    assert_eq!(
+        pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
+        Outcome::Sent
+    );
+    Ok(())
+}
