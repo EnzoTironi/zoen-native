@@ -15,6 +15,27 @@ async fn lifecycle_cas_fences_duplicates_delayed_and_legacy_controls() -> TestRe
     let device = owner_dev.device.as_deref().ok_or("device")?;
     let a = "a".repeat(64);
     let b = "b".repeat(64);
+    for revision in [0, u64::MAX >> 1, u64::MAX] {
+        assert!(matches!(
+            agents::control_reviewed(
+                &d.pool,
+                &owner.id,
+                device,
+                &bot.id,
+                AgentAction::Pause,
+                &a,
+                revision
+            )
+            .await,
+            Err(AgentCitizenError::Version)
+        ));
+    }
+    assert_eq!(
+        agents::control_status(&d.pool, &owner.id, &bot.id)
+            .await?
+            .revision,
+        1
+    );
     let pause = agents::control_reviewed(
         &d.pool,
         &owner.id,
