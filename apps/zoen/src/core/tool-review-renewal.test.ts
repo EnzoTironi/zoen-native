@@ -391,3 +391,19 @@ test('approval details cannot render across retirement or a new account session'
   f.scope(next);
   assert.equal(f.session.visible(previous, reviewScopeKey(next)), emptyReview);
 });
+
+test('an acknowledgement with an unchanged projection keeps renewal locked', async () => {
+  const f = fixture();
+  f.effect(async () => ({}));
+  await f.session.refresh();
+  assert.equal(await f.session.renew(f.session.ticket()), true);
+  assert.equal(f.session.getSnapshot().unknown, true);
+  assert.equal(f.session.ticket(), null);
+  assert.equal(f.writes.length, 1);
+  const updated = request();
+  updated.tool_approval!.review!.state = 'Requested';
+  f.rows([updated]);
+  await f.session.refresh();
+  assert.equal(f.session.getSnapshot().unknown, false);
+  assert.equal(f.writes.length, 1);
+});
