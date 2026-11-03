@@ -28,6 +28,7 @@ export function useMessageSelection(
   const { choose } = useDialogs();
   const confirmation = useRef<AbortController | null>(null);
   const deleting = useRef(false);
+  const recheckConfirmation = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState(false);
   const scope = conversationScope(client, store.sessionEpoch, spaceId);
   const binding = scope && JSON.stringify([scope, threadRootId]);
@@ -35,7 +36,14 @@ export function useMessageSelection(
   const focused = useRef(false);
   const latest = useRef({ scope, binding, entries, disabled, selection });
   useLayoutEffect(() => {
+    if (
+      latest.current.selection !== selection ||
+      latest.current.binding !== binding ||
+      disabled
+    )
+      confirmation.current?.abort();
     latest.current = { scope, binding, entries, disabled, selection };
+    recheckConfirmation.current?.();
   }, [scope, binding, entries, disabled, selection]);
   useFocusEffect(
     useCallback(() => {
@@ -100,7 +108,9 @@ export function useMessageSelection(
       Boolean(messageDeletionTargets(messages, account?.identity_id, true)),
     pending,
     toggle,
-    cancel: () => setSelection(null),
+    cancel: () => {
+      if (current()) setSelection((value) => (value === selection ? null : value));
+    },
     copy: () => {
       const value = selectedMessageText(resolve());
       if (value) void Clipboard.setStringAsync(value).catch(() => {});
@@ -118,7 +128,13 @@ export function useMessageSelection(
       });
     },
     remove: () => {
-      if (deleting.current || !account || client.mode !== 'account') return;
+      if (
+        deleting.current ||
+        !account ||
+        client.mode !== 'account' ||
+        !messageDeletionTargets(resolve(), account.identity_id, true)
+      )
+        return;
       deleting.current = true;
       setPending(true);
       const controller = new AbortController();
@@ -130,7 +146,14 @@ export function useMessageSelection(
         resolve,
         canDeleteEveryone: canWrite,
         signal: controller.signal,
-        subscribe: (listener) => store.subscribe(listener),
+        subscribe: (listener) => {
+          recheckConfirmation.current = listener;
+          const unsubscribe = store.subscribe(listener);
+          return () => {
+            recheckConfirmation.current = null;
+            unsubscribe();
+          };
+        },
         confirm: (count, everyone, signal) =>
           chooseMessageDeletion(choose, count, everyone, signal),
         send: (value) => store.request({ op: 'delete_messages', ...value }),

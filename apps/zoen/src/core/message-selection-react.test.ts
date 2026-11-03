@@ -152,6 +152,11 @@ function fixture() {
         },
       };
     },
+    editFirst: () => {
+      entries = entries.map((entry, index) =>
+        index === 0 ? { ...entry, text_revision: 'edited' } : entry,
+      );
+    },
     remove: () => {
       entries = [];
     },
@@ -218,13 +223,18 @@ test('real hook retires removed selections and search mode without reviving on l
   assert.equal(g.render().count, 0);
 });
 
-test('retained copy and forward callbacks cannot reuse a changed selected set after rerender', () => {
+test('retained selection actions cannot reuse a changed selected set after rerender', () => {
   const f = fixture();
   f.render().toggle(f.entries[0]!);
   const retained = f.render();
   retained.toggle(f.entries[1]!);
   const current = f.render();
   assert.equal(current.count, 2);
+  retained.cancel();
+  retained.remove();
+  assert.equal(f.confirmations.length, 0);
+  assert.equal(f.render().pending, false);
+  assert.equal(f.render().count, 2);
   retained.copy();
   retained.forward();
   assert.deepEqual(f.copied, []);
@@ -334,9 +344,11 @@ for (const change of [
     if (change === 'access') f.revoke();
     if (change === 'reader') f.readOnly();
     if (change === 'selection') selected.toggle(f.entries[1]!);
-    if (change === 'revision') f.entries[0]!.text_revision = 'edited';
+    if (change === 'revision') f.editFirst();
     if (change === 'cancel') selected.cancel();
     f.render();
+    if (change === 'selection' || change === 'cancel' || change === 'revision')
+      assert.equal(f.confirmations[0]!.signal?.aborted, true);
     f.notify();
     f.answer(true);
     await settleDeletion();
