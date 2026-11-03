@@ -304,3 +304,28 @@ test('a fresh read confirms an accepted unmute after the first reconciliation fa
   assert.deepEqual(state.chats.map((chat) => chat.id), ['chat-1']);
   assert.equal(f.writes().length, 1);
 });
+
+test('a lost unmute response in the background is reconciled on foreground', async () => {
+  const f = mutedFixture();
+  await f.load();
+  f.select();
+  const started = deferred<void>();
+  const response = deferred<void>();
+  f.write(async () => {
+    started.resolve();
+    await response.promise;
+    throw new Error('unknown acceptance');
+  });
+  const action = f.unmute();
+  await started.promise;
+  f.session.suspend();
+  response.resolve();
+  await action;
+  assert.equal(f.session.ticket(), null);
+
+  f.session.activate(scope);
+  await f.load();
+  assert.equal(f.session.getSnapshot().phase, 'ready');
+  assert.equal(f.session.getSnapshot().actionFailed, true);
+  assert.equal(f.writes().length, 1);
+});
