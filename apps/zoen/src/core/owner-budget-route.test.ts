@@ -46,7 +46,9 @@ test('request budget only routes to a policy for a visible conversation', () => 
   assert.equal(render().type, 'AccountBudgetScreen');
   snapshot.conversations = [{ ...chat, kind: 'Direct' }];
   assert.equal((render().props.children as ReturnType<typeof jsx>[])[1]?.type, 'OwnerPolicyScreen');
-  store.isSessionRetiring = true;  assert.equal(render().type, 'EmptyState');  store.isSessionRetiring = false;
+  store.isSessionRetiring = true;
+  assert.equal(render().type, 'EmptyState');
+  store.isSessionRetiring = false;
   snapshot.conversations = [{ ...chat, members: [] }];
   assert.equal(render().type, 'EmptyState');
 });
