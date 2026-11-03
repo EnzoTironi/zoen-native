@@ -241,14 +241,18 @@ async fn private_forward_options_only_publish_on_confirmation_and_preserve_peer_
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_restart() -> TestResult {
     let (mut world, space) = enrolled("forward_batch_relay_restart").await?;
-    let alice = Open::online(&world, "alice").await?;
+    let alice = Open::online(&world, "alice")
+        .await
+        .map_err(|error| format!("Alice sync: {error}"))?;
     let first = alice
         .0
         .send_message(space.clone(), "First batch source".into())?;
     let second = alice
         .0
         .send_message(space.clone(), "Second batch source".into())?;
-    let bob = Open::online(&world, "bob").await?;
+    let bob = Open::online(&world, "bob")
+        .await
+        .map_err(|error| format!("Bob sync: {error}"))?;
     received(&bob.0, &space, |rows| {
         rows.iter().any(|row| row.id == first.id) && rows.iter().any(|row| row.id == second.id)
     })
@@ -288,8 +292,31 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
     assert_ne!(ids[0], ids[1]);
     drop(bob);
 
+    let upstream = world.start_node();
+    let proxy =
+        final_event_proxy::FinalEventProxy::on_port(world.port, upstream, world.dir.clone()).await;
+    proxy.arm_client_id(&space, &owner.identity_id, ids[0]);
+    let bob = Open::offline(&world, "bob")?;
+    bob.0.start_sync(None)?;
+    proxy
+        .until(
+            Duration::from_secs(20),
+            "forward receipt was not intercepted",
+            |records| {
+                records.iter().any(|record| {
+                    matches!(&record.kind,
+            final_event_proxy::Kind::Event { id, dropped: true, .. } if id == ids[0])
+                })
+            },
+        )
+        .await;
+    drop(bob);
+    proxy.save();
+    drop(proxy);
     world.start_relay();
-    let bob = Open::online(&world, "bob").await?;
+    let bob = Open::online(&world, "bob")
+        .await
+        .map_err(|error| format!("Bob sync: {error}"))?;
     let replay: serde_json::Value = serde_json::from_str(&bob.0.client_request(confirm).await?)?;
     assert_eq!(replay["batch_id"], accepted["batch_id"]);
     assert!(replay["error"].is_null());
@@ -298,7 +325,9 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
     for (message, id) in replayed.iter().zip(&ids) {
         assert_eq!(message["accepted_message_id"].as_str(), Some(*id));
     }
-    let alice = Open::online(&world, "alice").await?;
+    let alice = Open::online(&world, "alice")
+        .await
+        .map_err(|error| format!("Alice sync: {error}"))?;
     let rows = received(&alice.0, &space, |rows| {
         ids.iter().all(|id| rows.iter().any(|row| row.id == *id))
     })

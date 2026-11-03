@@ -1,6 +1,10 @@
 //! Two independent MLS clients use the production relay and their original vaults.
 //! Private removal must never become shared deletion or a fabricated read receipt.
 mod common;
+#[path = "common/final_event_proxy.rs"]
+mod final_event_proxy;
+#[path = "common/final_event_loss.rs"]
+mod final_event_loss;
 #[path = "journey_message_deletion/edit_recovery.rs"]
 mod edit_recovery;
 #[path = "../src/file_vault.rs"]
