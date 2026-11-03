@@ -172,6 +172,40 @@ impl CallWake {
         Ok(value)
     }
 
+    /// Decode an opaque transport hint without granting call authority.
+    ///
+    /// # Errors
+    ///
+    /// Rejects oversized, malformed, unsupported or expired payloads.
+    pub fn decode(payload: &[u8], now_ms: i64) -> Result<Self, PushInputError> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Hint {
+            v: u8,
+            call_wake: String,
+            expires_at_ms: String,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct Envelope {
+            zoen: Hint,
+        }
+
+        if payload.len() > 512 {
+            return Err(PushInputError::CallWake);
+        }
+        let Envelope { zoen } =
+            serde_json::from_slice(payload).map_err(|_| PushInputError::CallWake)?;
+        let expiry = zoen
+            .expires_at_ms
+            .parse::<i64>()
+            .map_err(|_| PushInputError::CallWake)?;
+        if zoen.v != 1 || expiry.to_string() != zoen.expires_at_ms {
+            return Err(PushInputError::CallWake);
+        }
+        Self::new(zoen.call_wake, expiry, now_ms)
+    }
+
     #[must_use]
     pub fn expires_at_ms(&self) -> i64 {
         self.expires_at_ms
@@ -228,6 +262,27 @@ mod tests {
         ] {
             assert!(CallWake::new(nonce, expiry, now).is_err());
         }
+    }
+
+    #[test]
+    fn call_wake_decoder_checks_wire_shape_and_delivery_time() -> Result<(), PushInputError> {
+        let wake = CallWake::new("ab".repeat(16), 61_000, 1_000)?;
+        let payload = wake.encode(1_000)?;
+        assert_eq!(
+            CallWake::decode(payload.as_bytes(), 60_999)?.expires_at_ms(),
+            61_000
+        );
+        assert!(CallWake::decode(payload.as_bytes(), 61_000).is_err());
+        for invalid in [
+            payload.replace(r#""v":1"#, r#""v":2"#),
+            payload.replace("61000", "+61000"),
+            payload.replace(r#""v":1"#, r#""v":1,"v":1"#),
+            payload.replace(r#""v":1"#, r#""v":1,"caller":"private""#),
+            format!("{payload:>513}"),
+        ] {
+            assert!(CallWake::decode(invalid.as_bytes(), 1_000).is_err());
+        }
+        Ok(())
     }
 
     #[test]
