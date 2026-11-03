@@ -156,3 +156,137 @@ test('UTF-8 limit handles emoji/accents without truncating the canonical query',
   await search.search();
   assert.equal(calls, 0);
 });
+
+test('returning to search retries an interrupted first page and discards its late result', async () => {
+  const interrupted = deferred<MessageSearchPage>();
+  const resumed = deferred<MessageSearchPage>();
+  let calls = 0;
+  const search = new ConversationSearch({
+    current: () => true,
+    search: () => (++calls === 1 ? interrupted.promise : resumed.promise),
+  });
+  search.open();
+  search.setQuery('term');
+  const pending = search.search();
+  search.suspend();
+  search.open();
+  assert.equal(calls, 2);
+  resumed.resolve({ hits: [hit('fresh')], next_cursor: null });
+  interrupted.resolve({ hits: [hit('stale')], next_cursor: null });
+  await pending;
+  assert.deepEqual(search.getSnapshot().hits, [hit('fresh')]);
+  assert.equal(search.getSnapshot().loading, false);
+});
+
+test('a successful pagination retry clears a temporary search failure', async () => {
+  let failNextPage = true;
+  const search = new ConversationSearch({
+    current: () => true,
+    search: async (_, cursor) => {
+      if (!cursor) return { hits: [hit('first')], next_cursor: 'older' };
+      if (failNextPage) throw new Error('temporarily unavailable');
+      return { hits: [hit('second')], next_cursor: null };
+    },
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+  await search.move('older');
+  assert.equal(search.getSnapshot().completed, false);
+  assert.equal(search.getSnapshot().index, 0);
+
+  failNextPage = false;
+  await search.move('older');
+  const result = search.getSnapshot();
+  assert.equal(result.completed, true);
+  assert.equal(result.error, null);
+  assert.equal(result.index, 1);
+  assert.deepEqual(result.hits, [hit('first'), hit('second')]);
+});
+
+test('canonical refresh keeps the selected result while it remains on the first page', async () => {
+  let hits = [hit('a'), hit('b')];
+  const search = new ConversationSearch({
+    current: () => true,
+    search: async () => ({ hits, next_cursor: null }),
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+  await search.move('older');
+
+  hits = [hit('new'), hit('a'), hit('b')];
+  await search.refreshCanonical();
+  assert.equal(search.getSnapshot().index, 2);
+
+  hits = [hit('new'), hit('a')];
+  await search.refreshCanonical();
+  assert.equal(search.getSnapshot().index, 0);
+});
+
+test('conversation updates do not submit a draft search query', async () => {
+  const queries: string[] = [];
+  const search = new ConversationSearch({
+    current: () => true,
+    search: async (query) => {
+      queries.push(query);
+      return { hits: [], next_cursor: null };
+    },
+  });
+  search.open();
+  search.setQuery('submitted');
+  await search.search();
+  search.setQuery('draft');
+  await search.refreshCanonical();
+  assert.deepEqual(queries, ['submitted']);
+  assert.equal(search.getSnapshot().completed, false);
+});
+
+test('assistant action only accepts the empty result snapshot presented to the user', async () => {
+  let authorized = true;
+  const search = new ConversationSearch({
+    current: () => authorized,
+    search: async () => ({ hits: [], next_cursor: null }),
+  });
+  search.open();
+  search.setQuery('first');
+  await search.search();
+  const first = search.getSnapshot();
+  assert.equal(search.assistantQuery(first), 'first');
+
+  search.setQuery('second');
+  await search.search();
+  const second = search.getSnapshot();
+  assert.equal(search.assistantQuery(first), null);
+  assert.equal(search.assistantQuery(second), 'second');
+  authorized = false;
+  assert.equal(search.assistantQuery(second), null);
+});
+
+test('a conversation update while suspended requalifies results before offering AI again', async () => {
+  const refreshed = deferred<MessageSearchPage>();
+  let calls = 0;
+  const search = new ConversationSearch({
+    current: () => true,
+    search: () =>
+      ++calls === 1 ? Promise.resolve({ hits: [], next_cursor: null }) : refreshed.promise,
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+  const empty = search.getSnapshot();
+  assert.equal(search.assistantQuery(empty), 'term');
+
+  search.suspend();
+  await search.refreshCanonical();
+  assert.equal(calls, 1);
+  search.open();
+  assert.equal(calls, 2);
+  assert.equal(search.assistantQuery(search.getSnapshot()), null);
+
+  refreshed.resolve({ hits: [hit('new')], next_cursor: null });
+  await refreshed.promise;
+  assert.deepEqual(search.getSnapshot().hits, [hit('new')]);
+  assert.equal(search.assistantQuery(empty), null);
+  assert.equal(search.assistantQuery(search.getSnapshot()), null);
+});
