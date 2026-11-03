@@ -69,6 +69,6 @@ async fn oversized_exit_code_is_a_backend_error() -> Result<(), SandboxError> {
     let fly = api.provider();
     let lease = fly.acquire(&spec(), "ana").await?;
     let result = fly.exec(&lease, ExecRequest::sh("invalid-exit-code-fixture")).await;
-    assert!(matches!(result, Err(SandboxError::Backend(message)) if message.contains("out-of-range exit code")));
+    assert!(matches!(result, Err(SandboxError::Backend(message)) if message.contains("invalid exit code")));
     fly.release(lease).await
 }
