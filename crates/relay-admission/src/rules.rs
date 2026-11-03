@@ -80,24 +80,7 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     }
     let body = env.body();
     let author = env.author();
-    if types::saved_messages::reserved(env.space()) {
-        if !types::saved_messages::owned_by(env.space(), author) {
-            return Err(Reject::no("saved messages belongs to another identity"));
-        }
-        if matches!(&body, Some(EventBody::SpaceCreated { .. }))
-            && !body
-                .as_ref()
-                .is_some_and(|body| types::saved_messages::genesis(env.space(), author, body))
-        {
-            return Err(Reject::no("invalid saved messages genesis"));
-        }
-        if matches!(
-            &body,
-            Some(EventBody::MemberAdded { .. } | EventBody::MemberRemoved { .. })
-        ) {
-            return Err(Reject::no("saved messages has only its owner"));
-        }
-    }
+    check_saved_messages(env.space(), author, body.as_ref())?;
     let effect = match (&f.head, body.clone()) {
         (None, Some(EventBody::SpaceCreated { kind, privacy, .. })) => {
             if kind == SpaceKind::Personal {
@@ -186,6 +169,26 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     let effect = check_handshake(env, f).map(|e| e.unwrap_or(effect))?;
     check_causal_link(env, f, &effect)?;
     Ok(effect)
+}
+
+fn check_saved_messages(space: &str, author: &str, body: Option<&EventBody>) -> Result<(), Reject> {
+    if types::saved_messages::reserved(space) {
+        if !types::saved_messages::owned_by(space, author) {
+            return Err(Reject::no("saved messages belongs to another identity"));
+        }
+        if matches!(body, Some(EventBody::SpaceCreated { .. }))
+            && !body.is_some_and(|body| types::saved_messages::genesis(space, author, body))
+        {
+            return Err(Reject::no("invalid saved messages genesis"));
+        }
+        if matches!(
+            body,
+            Some(EventBody::MemberAdded { .. } | EventBody::MemberRemoved { .. })
+        ) {
+            return Err(Reject::no("saved messages has only its owner"));
+        }
+    }
+    Ok(())
 }
 
 fn admit_member_add(

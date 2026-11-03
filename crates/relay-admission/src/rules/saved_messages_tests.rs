@@ -66,7 +66,7 @@ fn saved_messages_namespace_cannot_be_squatted_downgraded_renamed_or_shared() {
             privacy: Privacy::Closed,
         },
         EventBody::MemberAdded {
-            identity: other.identity.clone(),
+            identity: other.identity,
             role: Role::Reader,
         },
         EventBody::MemberRemoved {
