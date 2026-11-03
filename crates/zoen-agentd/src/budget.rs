@@ -101,11 +101,13 @@ mod accounting_edge_tests {
 
     #[test]
     fn clock_rollback_does_not_restore_allowance() {
-        let mut budget = DailyBudget::new(10, 10, DAY_MS);
-        budget.charge(Tier::MicroVm, 10, DAY_MS);
-        assert_eq!(budget.remaining(Tier::MicroVm, 0), 0);
-        assert_eq!(budget.remaining(Tier::MicroVm, DAY_MS), 0);
-        assert_eq!(budget.remaining(Tier::MicroVm, DAY_MS * 2), 10);
+        for tier in [Tier::MicroVm, Tier::Browser] {
+            let mut budget = DailyBudget::new(10, 10, DAY_MS);
+            budget.charge(tier, 10, DAY_MS);
+            assert_eq!(budget.remaining(tier, 0), 0);
+            assert_eq!(budget.remaining(tier, DAY_MS), 0);
+            assert_eq!(budget.remaining(tier, DAY_MS * 2), 10);
+        }
     }
 
     #[test]
