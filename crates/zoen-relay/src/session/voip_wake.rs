@@ -34,16 +34,18 @@ impl Session {
                 .await
                 .map_err(|_| "voip_wake_unavailable")?;
             let wake = committed_wake(&event, now).ok_or("voip_wake_refused")?;
-            let targets = db::voip_push_targets(&self.st.pool, peer, &self.identity, space)
-                .await
-                .map_err(|_| "voip_wake_unavailable")?;
-            if targets.is_empty() || !self.still_authorized().await {
+            if !self.still_authorized().await {
                 return Ok(Reply::Done);
             }
             if db::claim_voip_wake(&self.st.pool, space, sequence, wake.expires_at_ms())
                 .await
                 .map_err(|_| "voip_wake_unavailable")?
             {
+                // Read current consent and registration after the reservation.
+                // No recipient snapshot is held while competing for the reservation.
+                let targets = db::voip_push_targets(&self.st.pool, peer, &self.identity, space)
+                    .await
+                    .map_err(|_| "voip_wake_unavailable")?;
                 for target in targets {
                     if self.st.push.call_wake(&target, &wake).await == crate::push::Outcome::Gone {
                         if db::drop_push_token(&self.st.pool, &target).await.is_err() {
