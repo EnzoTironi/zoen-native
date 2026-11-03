@@ -89,8 +89,9 @@ pub async fn control_reviewed(
         .bind(agent)
         .fetch_one(&mut *tx)
         .await?;
+    let receipt = record(&next)?;
     tx.commit().await?;
-    record(&next)
+    Ok(receipt)
 }
 
 /// SQL lifecycle is the permission boundary even if an old FDB link still exists.
