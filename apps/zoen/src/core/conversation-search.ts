@@ -70,7 +70,7 @@ export class ConversationSearch {
   }
   getSnapshot = () => this.state;
   assistantQuery(observed: ConversationSearchState): string | null {
-    if (observed !== this.state || !this.isCurrent()) return null;
+    if (observed !== this.state || this.dirty || !this.isCurrent()) return null;
     return emptySearchQuery(observed);
   }
   subscribe = (listener: () => void) => {

@@ -290,3 +290,24 @@ test('a conversation update while suspended requalifies results before offering 
   assert.equal(search.assistantQuery(empty), null);
   assert.equal(search.assistantQuery(search.getSnapshot()), null);
 });
+
+test('an empty result cannot launch AI after access returns before canonical refresh', async () => {
+  let current = true;
+  const search = new ConversationSearch({
+    current: () => current,
+    search: async () => ({ hits: [], next_cursor: null }),
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+  const observed = search.getSnapshot();
+  assert.equal(search.assistantQuery(observed), 'term');
+
+  current = false;
+  await search.refreshCanonical();
+  current = true;
+  assert.equal(search.assistantQuery(observed), null);
+
+  await search.refreshCanonical();
+  assert.equal(search.assistantQuery(search.getSnapshot()), 'term');
+});
