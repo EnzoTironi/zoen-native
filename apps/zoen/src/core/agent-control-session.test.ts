@@ -337,3 +337,21 @@ test('two taps on the same agent refresh button start only one read', async () =
   assert.equal(reads, 2);
   assert.equal(session.getSnapshot().phase, 'ready');
 });
+
+test('automatic refresh cannot hide an admitted action before its reconciliation', async () => {
+  const f = fixture();
+  const held = deferred<void>();
+  const session = new AgentControlSession({ ...f.port, control: () => held.promise }, 'agent');
+  session.activate(first);
+  await session.refresh();
+  const action = session.change(session.ticket()!);
+
+  await session.refresh();
+  assert.equal(session.getSnapshot().pending, 'Pause');
+  assert.equal(session.getSnapshot().busy, true);
+
+  held.resolve(undefined);
+  await action;
+  assert.equal(session.getSnapshot().pending, null);
+  assert.equal(session.getSnapshot().busy, false);
+});

@@ -107,7 +107,11 @@ export class AgentControlSession {
     this.activate(null);
   }
   async refresh(observed?: AgentControlState) {
-    if ((observed && observed !== this.state) || !this.current() || !this.scope) return;
+    if (this.state.busy || (observed && observed !== this.state)) return;
+    await this.readStatus();
+  }
+  private async readStatus() {
+    if (!this.current() || !this.scope) return;
     const scope = this.scope;
     const generation = this.generation;
     const read = ++this.readGeneration;
@@ -188,7 +192,7 @@ export class AgentControlSession {
       /* The same durable intent remains unresolved; reads never resend it. */
     }
     if (!this.current(ticket.generation)) return;
-    await this.refresh();
+    await this.readStatus();
     if (this.current(ticket.generation)) this.publish({ busy: false });
   }
   /** An admitted result belongs to its original owner/activation even after canonical refresh. */
@@ -229,7 +233,7 @@ export class AgentControlSession {
       // Delivery is unknown. Reconciliation is a status read, never an automatic retry.
     }
     if (!this.current(ticket.generation)) return;
-    await this.refresh();
+    await this.readStatus();
     if (this.current(ticket.generation)) this.publish({ busy: false });
   }
 }
