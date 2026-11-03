@@ -50,7 +50,9 @@ pub struct ToolSession {
 
 /// Running time rounded up to the second; any running period costs at least one.
 fn secs_ceil(d: Duration) -> u64 {
-    (d.as_millis().div_ceil(1000) as u64).max(1)
+    d.as_secs()
+        .saturating_add(u64::from(d.subsec_nanos() != 0))
+        .max(1)
 }
 
 impl ToolSession {
@@ -200,5 +202,18 @@ impl ToolSession {
         }
         *st = State::Done;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod billing_rounding_tests {
+    use super::{secs_ceil, Duration};
+
+    #[test]
+    fn rounds_fractional_seconds_without_overflow() {
+        assert_eq!(secs_ceil(Duration::ZERO), 1);
+        assert_eq!(secs_ceil(Duration::from_secs(1)), 1);
+        assert_eq!(secs_ceil(Duration::new(1, 1)), 2);
+        assert_eq!(secs_ceil(Duration::MAX), u64::MAX);
     }
 }
