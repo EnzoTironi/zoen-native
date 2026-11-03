@@ -214,3 +214,27 @@ async fn malformed_legacy_apns_token_never_reaches_provider() -> anyhow::Result<
     assert!(http.calls.lock().unwrap().is_empty());
     Ok(())
 }
+
+#[tokio::test]
+async fn transport_errors_do_not_expose_the_apns_request_url() -> anyhow::Result<()> {
+    struct BrokenTransport;
+
+    #[async_trait::async_trait]
+    impl Http for BrokenTransport {
+        async fn post(
+            &self,
+            url: &str,
+            _: &[(&str, String)],
+            _: String,
+        ) -> anyhow::Result<(u16, String)> {
+            anyhow::bail!("connection failed for {url}");
+        }
+    }
+
+    let pusher = Pusher::new(Arc::new(BrokenTransport), Some(apns_cfg()), None)?;
+    assert_eq!(
+        pusher.wake(&target(APNS)).await,
+        Outcome::Failed("push provider unavailable".into())
+    );
+    Ok(())
+}
