@@ -416,7 +416,10 @@ impl Session {
                     &token,
                 )
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|_| {
+                    tracing::warn!("push registration transaction failed");
+                    "push registration could not be completed".to_string()
+                })?;
                 Ok(Reply::Done)
             }
         }
