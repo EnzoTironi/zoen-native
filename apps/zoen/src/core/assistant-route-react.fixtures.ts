@@ -254,6 +254,7 @@ export async function assistantRouteFixture() {
       ticket = routes.at(-1)!.params.ticket;
     },
     failNavigation: () => { failNavigation = true; },
+    useTicket: (next: string) => { ticket = next; },
     mount: () => root.render(React.createElement(Route)),
     focus: (next: boolean) =>
       root.act(() => {

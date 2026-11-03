@@ -201,3 +201,20 @@ test('a failed navigation retires its ticket before the route can recover the qu
     await f.cleanup();
   }
 });
+
+test('a failed launch at capacity preserves the oldest valid handoff', async () => {
+  const f = await assistantRouteFixture();
+  try {
+    f.launch('Oldest question');
+    for (const question of ['Second question', 'Third question', 'Fourth question']) {
+      f.launch(question);
+    }
+    f.failNavigation();
+    assert.throws(() => f.launch('Failed question'), /navigation failed/);
+    f.useTicket('ticket-1');
+    await f.mount();
+    assert.deepEqual(f.asked, ['lease-1:Oldest question']);
+  } finally {
+    await f.cleanup();
+  }
+});
