@@ -181,7 +181,15 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     assert!(db::revoke_device(&mut tx, &identity.id, device)
         .await
         .unwrap());
+    let registration = db::set_push_token(pool, &identity.id, device, push::APNS, "3344");
+    tokio::pin!(registration);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut registration)
+            .await
+            .is_err()
+    );
     tx.commit().await.unwrap();
+    assert!(registration.await.is_err());
     assert!(db::push_targets(pool, &audience).await.unwrap().is_empty());
     assert!(db::voip_push_targets(pool, &audience)
         .await
