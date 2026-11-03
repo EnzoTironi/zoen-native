@@ -9,6 +9,7 @@ impl FinalEventProxy {
         self.arm_target(space, author, EventTarget::PlainText(text.into()))
     }
 
+    #[allow(dead_code, reason = "used by the forwarding restart journey")]
     pub fn arm_client_id(&self, space: &str, author: &str, id: &str) -> usize {
         self.arm_target(space, author, EventTarget::ClientId(id.into()))
     }

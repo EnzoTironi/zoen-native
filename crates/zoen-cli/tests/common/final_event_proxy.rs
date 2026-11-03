@@ -69,6 +69,7 @@ pub struct Record {
 
 pub(super) enum EventTarget {
     PlainText(String),
+    #[allow(dead_code, reason = "used by the forwarding restart journey")]
     ClientId(String),
 }
 
