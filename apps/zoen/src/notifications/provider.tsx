@@ -39,33 +39,37 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const dialogs = useDialogs();
   const deviceId = mode === 'account' ? (snapshot?.account?.device_id ?? null) : null;
   const jobs = useMemo(() => (deviceId ? new NotificationJobs() : null), [deviceId]);
-  const coordinator = useMemo(
-    () =>
-      new PushCoordinator(
-        {
-          current: () =>
-            Boolean(
-              deviceId &&
-              store.getSnapshot().mode === 'account' &&
-              store.getSnapshot().snapshot?.account?.device_id === deviceId,
-            ),
-          permission: notificationPermission,
-          token: nativePushToken,
-          async register(configuration, token) {
-            if (store.getSnapshot().snapshot?.account?.device_id !== deviceId)
-              throw new Error(t('notifications.accountChanged'));
-            await store.driver.request({
-              op: 'register_push',
-              platform: pushPlatform(configuration),
-              token,
-            });
-            return { kind: 'acknowledged' };
-          },
+  const identityId = mode === 'account' ? (snapshot?.account?.identity_id ?? null) : null;
+  const coordinator = useMemo(() => {
+    const current = () => {
+      const state = store.getSnapshot();
+      const account = state.snapshot?.account;
+      return (
+        state.mode === 'account' &&
+        identityId !== null &&
+        deviceId !== null &&
+        account?.identity_id === identityId &&
+        account.device_id === deviceId
+      );
+    };
+    return new PushCoordinator(
+      {
+        current,
+        permission: notificationPermission,
+        token: nativePushToken,
+        async register(configuration, token) {
+          if (!current()) throw new Error(t('notifications.accountChanged'));
+          await store.driver.request({
+            op: 'register_push',
+            platform: pushPlatform(configuration),
+            token,
+          });
+          return { kind: 'acknowledged' };
         },
-        nativePushConfiguration(),
-      ),
-    [store, deviceId],
-  );
+      },
+      nativePushConfiguration(),
+    );
+  }, [store, identityId, deviceId]);
 
   useEffect(
     () =>
