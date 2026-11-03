@@ -11,6 +11,9 @@
 //! write and who receives. Everything else is the clients' business.
 
 mod agent_page;
+/// Embedded PostgreSQL migrations for services sharing the relay schema.
+pub static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
 pub mod agents;
 pub mod analytics;
 pub mod auth;
@@ -122,7 +125,7 @@ pub async fn connect(cfg: &Config) -> anyhow::Result<PgPool> {
         .max_connections(cfg.max_db_connections)
         .connect(&cfg.database_url)
         .await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    MIGRATIONS.run(&pool).await?;
     Ok(pool)
 }
 

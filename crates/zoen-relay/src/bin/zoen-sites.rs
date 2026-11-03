@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(20)
         .connect(&required("DATABASE_URL")?)
         .await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    zoen_relay::MIGRATIONS.run(&pool).await?;
     let dir = PathBuf::from(required("ZOEN_SITES_BLOB_DIR")?);
     let (store, _) = zoen_relay::blobs::store_from_env(&dir)?;
     let service = Service::new(pool, store, settings)
