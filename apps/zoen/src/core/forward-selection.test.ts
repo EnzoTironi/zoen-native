@@ -245,17 +245,20 @@ test('Done recovers a lost acknowledgement from the same completed batch', async
 
 test('discarding the remaining batch recovers a lost acknowledgement without sending', async () => {
   const f = fixture();
-  await f.ready();
+  const review = await f.ready();
+  f.confirm(async () => f.accept(['a']));
+  await f.session.confirm(review);
   f.onAbandonAcknowledgement(() => {
     throw new Error('lost acknowledgement');
   });
 
   await f.session.abandon(f.selected()!);
   assert.equal(f.selected()!.completed, true);
-  assert.deepEqual(f.selected()!.skippedIds, ['a', 'b', 'c']);
+  assert.deepEqual(f.selected()!.skippedIds, ['b', 'c']);
+  assert.equal(f.selected()!.messages[0]!.acceptedMessageId, 'accepted-a');
   assert.equal(f.state().error, null);
   assert.deepEqual(f.sent, []);
   await f.session.abandon(f.selected()!);
   assert.equal(ops(f, 'abandon').length, 1);
-  assert.equal(ops(f, 'confirm').length, 0);
+  assert.equal(ops(f, 'confirm').length, 1);
 });
