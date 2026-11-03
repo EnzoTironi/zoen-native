@@ -136,21 +136,29 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
     }
     engine.net.poke = Some(Box::new(|| {}));
     let engine = Arc::new(Mutex::new(engine));
-    let (cmd, commands) = mpsc::unbounded_channel();
-    let (status, mut connection) = watch::channel(NetStatus {
-        state: ConnState::Connecting,
-        synced: false,
-        error: None,
-        registered: true,
-        authenticated_relay: None,
-    });
-    let ctx = Ctx {
-        engine: EngineLease::new(engine.clone()),
-        listener: None,
-        status,
-        lang: crate::i18n::Lang::En,
-        maintenance_work: None,
+    let start_worker = || {
+        let (cmd, commands) = mpsc::unbounded_channel();
+        let (status, connection) = watch::channel(NetStatus {
+            state: ConnState::Connecting,
+            synced: false,
+            error: None,
+            registered: true,
+            authenticated_relay: None,
+        });
+        let ctx = Ctx {
+            engine: EngineLease::new(engine.clone()),
+            listener: None,
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: None,
+        };
+        (
+            cmd,
+            connection,
+            AbortOnDrop(tokio::spawn(run(ctx, commands))),
+        )
     };
+    let (mut cmd, mut connection, mut worker) = start_worker();
     let relay = async {
         let mut socket = catch_up_socket(&listener).await;
         reply(&mut socket, ServerFrame::SyncDone).await;
@@ -279,6 +287,8 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
             while connection.borrow().state != ConnState::Offline {
                 connection.changed().await?;
             }
+            worker.0.abort();
+            assert!((&mut worker.0).await.is_err());
             {
                 let mut current = lock(&engine);
                 *current = Engine::open(":memory:")?;
@@ -288,6 +298,7 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
                 reopened.net.poke = Some(Box::new(|| {}));
                 *current = reopened;
             }
+            (cmd, connection, worker) = start_worker();
             tokio::time::advance(Duration::from_secs(2)).await;
             socket = catch_up_socket(&listener).await;
             reply(&mut socket, ServerFrame::Event { ev: confirmed }).await;
@@ -324,11 +335,7 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
         }
         Ok::<_, Box<dyn std::error::Error>>(())
     };
-    let relay = async {
-        let result = relay.await;
-        let _ = cmd.send(Cmd::Stop);
-        result
-    };
-    let (_, result) = tokio::join!(run(ctx, commands), relay);
+    let result = relay.await;
+    drop(worker);
     result
 }
