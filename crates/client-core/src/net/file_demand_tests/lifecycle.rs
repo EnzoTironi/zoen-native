@@ -132,6 +132,8 @@ async fn historical_file_demand_rechecks_membership_before_accepting_inflight_by
     server
         .stop()
         .expect("fixture HTTP worker must finish cleanly");
+    let digest = hex::encode(Sha256::digest(&f.old));
+    assert!(f.reader.lock().store.media(&digest)?.is_none());
     Ok(())
 }
 
