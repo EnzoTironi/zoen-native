@@ -67,6 +67,7 @@ test('unknown acceptance reads durable batch status without resend or auto-finis
   await f.session.confirm(review);
   assert.equal(ops(f, 'confirm').length, 1);
   assert.equal(ops(f, 'status').length, 2);
+  assert.equal(f.state().error, null);
   assert.equal(
     f.selected()!.messages.every((item) => item.acceptedMessageId !== null),
     true,

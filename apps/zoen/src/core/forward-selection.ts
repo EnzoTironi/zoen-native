@@ -274,7 +274,10 @@ export class ForwardSelectionSession {
         this.expire();
         const retained = await this.port.status(this.source());
         if (!this.current(attempt)) return;
-        if (retained?.batch_id === review.batchId) this.project(retained);
+        if (retained?.batch_id === review.batchId && retained.target_space === review.targetId) {
+          this.project(retained);
+          if (retained.messages.every((item) => item.accepted_message_id !== null)) return;
+        }
         throw reason;
       }
     });
