@@ -202,6 +202,7 @@ test('accessibility Archive and Undo use the canonical operation without opening
     assert.equal(f.has(row), true);
     const undo = f.calls.find((call) => call.op === 'chat_layout' && call.input.kind === 'undo');
     assert.equal(undo?.input.original_operation_id, change.input.operation_id);
+    assert.deepEqual(f.routes, []);
     assert.deepEqual(f.errors, []);
   } finally {
     await f.close();
