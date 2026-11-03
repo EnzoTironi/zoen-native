@@ -267,3 +267,26 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
     assert_eq!(host.done(), vec![completed, step("separate-cached-step")]);
     Ok(())
 }
+
+#[test]
+fn competing_resume_cannot_reserve_while_a_journal_write_is_active(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let directory = Directory::new()?;
+    let path = directory.journal();
+    let hash = "ab".repeat(32);
+    JournalState::update(&path, |_| {
+        let contender = std::thread::scope(|scope| {
+            scope
+                .spawn(|| JournalState::begin_resume(&path, "request", &hash, None))
+                .join()
+        });
+        assert!(matches!(contender, Ok(Err(_))));
+        Ok(false)
+    })?;
+    assert!(JournalState::begin_resume(&path, "request", &hash, None)?);
+    assert_eq!(
+        JournalState::load(&path)?.continuations["request"].attempts,
+        1
+    );
+    Ok(())
+}
