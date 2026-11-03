@@ -174,6 +174,12 @@ test('ambiguous write and failed read stay explicit; retry only reads', async ()
   assert.equal(f.session.getSnapshot().actionFailed, true);
   await f.load();
   assert.equal(f.session.getSnapshot().actionFailed, true);
+  const chat = f.snapshot().conversations.find((entry) => entry.id === 'chat-0')!;
+  chat.muted = false;
+  chat.muted_until_ms = null;
+  await f.load();
+  assert.equal(f.session.getSnapshot().actionFailed, false);
+  assert.equal(f.writes().length, 1);
 });
 test('loading, empty, malformed and foreign reads stay separate; late reads are suppressed', async () => {
   const f = mutedFixture();
