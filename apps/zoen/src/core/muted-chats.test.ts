@@ -162,6 +162,10 @@ test('ambiguous write and failed read stay explicit; retry only reads', async ()
   assert.equal(f.session.getSnapshot().phase, 'failed');
   assert.equal(f.session.getSnapshot().actionFailed, true);
   assert.equal(f.session.getSnapshot().readFailed, true);
+  await f.load();
+  assert.equal(f.session.getSnapshot().readFailed, true);
+  assert.equal(f.session.getSnapshot().actionFailed, true);
+  assert.equal(f.writes().length, 1);
   f.read(async () => f.snapshot());
   await f.load();
   assert.equal(f.writes().length, 1);
