@@ -126,19 +126,20 @@ impl ToolManifest {
         Ok(())
     }
 
-    fn signing_bytes(&self) -> Vec<u8> {
+    fn signing_bytes(&self) -> Result<Vec<u8>, ManifestError> {
         let mut b = b"zoen-tool-manifest/1\n".to_vec();
-        b.extend(serde_json::to_vec(self).expect("manifest serializes"));
-        b
+        serde_json::to_writer(&mut b, self)
+            .map_err(|error| ManifestError::Invalid(error.to_string()))?;
+        Ok(b)
     }
 
-    pub fn sign(self, publisher: &SigningKey) -> SignedManifest {
-        let sig = publisher.sign(&self.signing_bytes());
-        SignedManifest {
+    pub fn sign(self, publisher: &SigningKey) -> Result<SignedManifest, ManifestError> {
+        let sig = publisher.sign(&self.signing_bytes()?);
+        Ok(SignedManifest {
             publisher: hex::encode(publisher.verifying_key().to_bytes()),
             signature: hex::encode(sig.to_bytes()),
             manifest: self,
-        }
+        })
     }
 }
 
@@ -161,7 +162,7 @@ impl SignedManifest {
             .ok()
             .and_then(|b| b.try_into().ok())
             .ok_or(ManifestError::BadSignature)?;
-        key.verify(&self.manifest.signing_bytes(), &Signature::from_bytes(&sig))
+        key.verify(&self.manifest.signing_bytes()?, &Signature::from_bytes(&sig))
             .map_err(|_| ManifestError::BadSignature)?;
         self.manifest.validate()?;
         Ok(&self.manifest)
@@ -196,7 +197,7 @@ mod tests {
     #[test]
     fn a_tampered_manifest_does_not_verify() {
         let k = key(7);
-        let mut s = code_tool().sign(&k);
+        let mut s = code_tool().sign(&k).unwrap();
         assert!(s.verify(&[k.verifying_key()]).is_ok());
         assert_eq!(
             s.verify(&[key(8).verifying_key()]),

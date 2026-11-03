@@ -80,7 +80,7 @@ async fn phase(
         secrets: vec![],
         component_sha256: Some(sha(&component)),
     }
-    .sign(&publisher);
+    .sign(&publisher).map_err(|error| error.to_string())?;
     let cache = CompilationCache::private_directory(directory).map_err(|e| e.to_string())?;
     let started = Instant::now();
     let worker = DeckcraftWorker::load_for_cached(

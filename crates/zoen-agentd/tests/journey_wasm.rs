@@ -62,7 +62,7 @@ fn tier() -> WasmTier {
 #[tokio::test]
 async fn anas_agent_counts_words_in_process_with_no_sandbox_and_no_card() {
     let bytes = tool_bytes("word_count");
-    let signed = manifest("word_count", "Contar palavras das notas", &bytes).sign(&publisher());
+    let signed = manifest("word_count", "Contar palavras das notas", &bytes).sign(&publisher()).unwrap();
 
     // The router sends a WASM tool straight to T0: no approval, no sandbox to start.
     let router = Router::new(vec![publisher().verifying_key()]);
@@ -110,7 +110,7 @@ async fn a_runaway_tool_a_memory_hog_and_a_snoop_are_all_stopped() {
     let wasm = tier();
     let load = |name: &str| {
         let bytes = tool_bytes(name);
-        wasm.load(&manifest(name, name, &bytes).sign(&publisher()), &bytes)
+        wasm.load(&manifest(name, name, &bytes).sign(&publisher()).unwrap(), &bytes)
             .unwrap()
     };
 
@@ -180,7 +180,7 @@ async fn a_runaway_tool_a_memory_hog_and_a_snoop_are_all_stopped() {
 async fn a_tool_sleeping_in_a_wasi_host_call_still_has_a_wall_deadline() {
     let wasm = tier();
     let bytes = tool_bytes("sleep");
-    let signed = manifest("sleep", "sleep", &bytes).sign(&publisher());
+    let signed = manifest("sleep", "sleep", &bytes).sign(&publisher()).unwrap();
     let tool = wasm.load(&signed, &bytes).unwrap();
     let out = tokio::time::timeout(
         Duration::from_secs(2),
@@ -207,14 +207,14 @@ async fn nobody_can_swap_a_tools_code_under_its_signed_manifest() {
     let wasm = tier();
     let good = tool_bytes("word_count");
     let evil = tool_bytes("snoop");
-    let signed = manifest("word_count", "Contar palavras", &good).sign(&publisher());
+    let signed = manifest("word_count", "Contar palavras", &good).sign(&publisher()).unwrap();
     assert!(matches!(
         wasm.load(&signed, &evil),
         Err(WasmError::WrongComponent)
     ));
     // Someone else's signature over the swap isn't trusted.
     let mallory = SigningKey::from_bytes(&[7; 32]);
-    let forged = manifest("word_count", "Contar palavras", &evil).sign(&mallory);
+    let forged = manifest("word_count", "Contar palavras", &evil).sign(&mallory).unwrap();
     assert!(matches!(
         wasm.load(&forged, &evil),
         Err(WasmError::Manifest(_))
@@ -228,7 +228,7 @@ async fn nobody_can_swap_a_tools_code_under_its_signed_manifest() {
         max_secs: 60,
     };
     assert!(matches!(
-        wasm.load(&vm.sign(&publisher()), &good),
+        wasm.load(&vm.sign(&publisher()).unwrap(), &good),
         Err(WasmError::NotWasm)
     ));
 }

@@ -46,7 +46,7 @@ fn manifest(component: &[u8]) -> ToolManifest {
 }
 async fn qualify(component: &[u8], source: &[u8], expected: &[u8], output: &Path) -> R<Value> {
     let key = SigningKey::from_bytes(&[42; 32]);
-    let signed = manifest(component).sign(&key);
+    let signed = manifest(component).sign(&key).map_err(|error| error.to_string())?;
     let worker =
         DeckcraftWorker::load_for("photocraft", vec![key.verifying_key()], &signed, component)?;
     require(
@@ -75,7 +75,7 @@ async fn qualify(component: &[u8], source: &[u8], expected: &[u8], output: &Path
         DeckcraftWorker::load_for(
             "photocraft",
             vec![key.verifying_key()],
-            &foreign.sign(&key),
+            &foreign.sign(&key).map_err(|error| error.to_string())?,
             component,
         )
         .is_err(),
