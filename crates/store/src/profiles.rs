@@ -71,7 +71,7 @@ impl Store {
              ON CONFLICT(identity) DO UPDATE SET key = excluded.key, key_version = excluded.key_version
              WHERE excluded.key_version > profile_keys.key_version
                 OR (excluded.key_version = profile_keys.key_version AND excluded.key <> profile_keys.key)",
-            params![identity, key, key_version as i64],
+            params![identity, key, key_version],
         )?;
         Ok(n > 0)
     }
@@ -79,7 +79,7 @@ impl Store {
     pub fn set_profile_fields(&self, identity: &str, version: u64, fields: &[u8]) -> Result<()> {
         self.conn.execute(
             "UPDATE profile_keys SET seen_version = ?2, fields = ?3 WHERE identity = ?1",
-            params![identity, version as i64, fields],
+            params![identity, version, fields],
         )?;
         Ok(())
     }
@@ -146,6 +146,29 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<ProfileKeyRow> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn out_of_range_profile_versions_leave_the_stored_profile_intact() -> crate::Result<()> {
+        let store = Store::in_memory()?;
+        let max_version = i64::MAX.unsigned_abs();
+        assert!(store.put_profile_key("peer", "original", max_version)?);
+        store.set_profile_fields("peer", max_version, b"original fields")?;
+        let original = store.profile_key("peer")?;
+        assert_eq!(
+            original.as_ref().map(|row| row.seen_version),
+            Some(max_version)
+        );
+
+        let overflow = max_version + 1;
+        assert!(store
+            .put_profile_key("peer", "replacement", overflow)
+            .is_err());
+        assert!(store
+            .set_profile_fields("peer", overflow, b"replacement fields")
+            .is_err());
+        assert_eq!(store.profile_key("peer")?, original);
+        Ok(())
+    }
+
     use crate::Store;
 
     #[test]
