@@ -201,6 +201,7 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     db::set_push_token(pool, &identity.id, device, push::APNS, "2233")
         .await
         .unwrap();
+    db::set_push_token(pool, &identity.id, sibling, push::APNS, "4455").await?;
     let mut tx = pool.begin().await.unwrap();
     assert!(db::revoke_device(&mut tx, &identity.id, device)
         .await
@@ -214,12 +215,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     );
     tx.commit().await.unwrap();
     assert!(registration.await.is_err());
-    assert!(db::push_targets(pool, &audience).await.unwrap().is_empty());
+    assert_eq!(tokens(db::push_targets(pool, &audience).await?), ["4455"]);
     assert!(db::voip_push_targets(pool, &audience)
         .await
         .unwrap()
         .is_empty());
-    db::set_push_token(pool, &identity.id, sibling, push::APNS, "4455").await?;
     assert!(
         db::set_push_token(pool, &identity.id, device, push::APNS, "4455")
             .await
