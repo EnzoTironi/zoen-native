@@ -16,7 +16,11 @@ impl Pusher {
         let Some(apns) = &self.apns else {
             return Outcome::Disabled;
         };
-        let now_ms = now().saturating_mul(1000).min(i64::MAX as u64) as i64;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok())
+            .unwrap_or_default();
         let Ok(body) = wake.encode(now_ms) else {
             return Outcome::Failed("expired or invalid VoIP wake".into());
         };
