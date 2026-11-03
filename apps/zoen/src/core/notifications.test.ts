@@ -282,3 +282,32 @@ test('a cancelled retry cannot run or replace the current token timer', async ()
   coordinator.dispose();
   assert.equal(retries[1]?.cancelled, true);
 });
+
+test('a refused rotation cannot reuse an acknowledgement superseded by another write', async () => {
+  const { ports, writes } = fixture();
+  let acknowledge: (value: { kind: 'acknowledged' }) => void = () => {};
+  ports.register = async (_, token) => {
+    writes.push(token);
+    if (token === 'bb'.repeat(32)) {
+      return new Promise((resolve) => {
+        acknowledge = resolve;
+      });
+    }
+    return { kind: token === 'cc'.repeat(32) ? 'refused' : 'acknowledged' };
+  };
+  const coordinator = new PushCoordinator(ports, configuration);
+  await coordinator.foreground();
+  const firstRotation = coordinator.receivedToken('bb'.repeat(32));
+  const secondRotation = coordinator.receivedToken('cc'.repeat(32));
+  acknowledge({ kind: 'acknowledged' });
+  await Promise.all([firstRotation, secondRotation]);
+  assert.equal(coordinator.getSnapshot().registration, 'refused');
+
+  await coordinator.foreground();
+  assert.deepEqual(
+    writes,
+    ['aa', 'bb', 'cc', 'aa'].map((byte) => byte.repeat(32)),
+  );
+  assert.equal(coordinator.getSnapshot().registration, 'acknowledged');
+  coordinator.dispose();
+});

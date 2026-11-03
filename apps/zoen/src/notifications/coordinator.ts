@@ -133,6 +133,8 @@ export class PushCoordinator {
         const desired = this.desired;
         this.publish({ registration: 'registering', failure: null });
         try {
+          // A write may change the relay token even if its reply is lost or superseded.
+          this.acknowledged = undefined;
           const result = await this.ports.register(configuration, desired.token);
           if (!this.active(stamp)) return;
           if (desired.revision !== this.desired?.revision) continue;
