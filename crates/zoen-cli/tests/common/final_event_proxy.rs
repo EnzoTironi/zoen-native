@@ -193,6 +193,12 @@ impl FinalEventProxy {
         }
     }
 
+    #[allow(dead_code, reason = "used by the forwarding restart journey")]
+    pub async fn shutdown(mut self) {
+        self.task.abort();
+        let _ = (&mut self.task).await;
+    }
+
     pub fn snapshot(&self) -> Vec<Record> {
         self.state.lock().unwrap().records.clone()
     }

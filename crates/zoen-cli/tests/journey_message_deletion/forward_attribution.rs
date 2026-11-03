@@ -311,8 +311,7 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
         )
         .await;
     drop(bob);
-    proxy.save();
-    drop(proxy);
+    proxy.shutdown().await;
     world.start_relay();
     let bob = Open::online(&world, "bob")
         .await
