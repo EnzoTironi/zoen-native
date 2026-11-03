@@ -186,6 +186,29 @@ impl FlyMachinesProvider {
         .map(|_| ())
     }
 
+    async fn transition(
+        &self,
+        machine: &str,
+        action: &str,
+        target: &str,
+    ) -> Result<(), SandboxError> {
+        let result = match self
+            .call(
+                reqwest::Method::POST,
+                &format!("/machines/{machine}/{action}"),
+                None,
+            )
+            .await
+        {
+            Ok(_) => self.wait(machine, target).await,
+            Err(error) => Err(error),
+        };
+        if result.is_err() && self.state_of(machine).await.as_deref().ok() == Some(target) {
+            return Ok(());
+        }
+        result
+    }
+
     /// The Machine's state; a confirmed 404 means destroyed. Other API failures remain errors.
     pub async fn state_of(&self, machine: &str) -> Result<String, SandboxError> {
         let (status, text) = self
@@ -225,7 +248,13 @@ impl FlyMachinesProvider {
         timeout: Duration,
     ) -> Result<ExecOutput, SandboxError> {
         let started = Instant::now();
-        let secs = timeout.as_secs().clamp(1, 3600);
+        let secs = timeout.as_secs().min(3600);
+        if secs == 0 {
+            return Ok(ExecOutput {
+                timed_out: true,
+                ..ExecOutput::default()
+            });
+        }
         let mut body = serde_json::json!({ "command": argv, "timeout": secs });
         if let Some(s) = stdin {
             body["stdin"] = serde_json::Value::String(s);
@@ -455,13 +484,7 @@ impl SandboxProvider for FlyMachinesProvider {
 
     async fn suspend(&self, lease: &Lease) -> Result<SnapshotRef, SandboxError> {
         let machine = self.machine(&lease.id)?;
-        self.call(
-            reqwest::Method::POST,
-            &format!("/machines/{machine}/suspend"),
-            None,
-        )
-        .await?;
-        self.wait(&machine, "suspended").await?;
+        self.transition(&machine, "suspend", "suspended").await?;
         Ok(SnapshotRef {
             id: machine,
             lease: lease.id.clone(),
@@ -470,19 +493,26 @@ impl SandboxProvider for FlyMachinesProvider {
 
     async fn resume(&self, snap: &SnapshotRef) -> Result<Lease, SandboxError> {
         let machine = self.machine(&snap.lease)?;
-        self.call(
-            reqwest::Method::POST,
-            &format!("/machines/{machine}/start"),
-            None,
-        )
-        .await?;
-        self.wait(&machine, "started").await?;
+        self.transition(&machine, "start", "started").await?;
         self.machines
             .lock()
             .unwrap()
             .get(&snap.lease)
             .map(|(_, l)| l.clone())
             .ok_or(SandboxError::NoLease)
+    }
+
+    async fn release_suspended(&self, snap: &SnapshotRef) -> Result<(), SandboxError> {
+        let lease = self
+            .machines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&snap.lease)
+            .map(|(_, lease)| lease.clone());
+        match lease {
+            Some(lease) => self.release(lease).await,
+            None => Ok(()),
+        }
     }
 
     async fn release(&self, lease: Lease) -> Result<(), SandboxError> {

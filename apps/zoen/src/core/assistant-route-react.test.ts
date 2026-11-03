@@ -6,6 +6,9 @@ for (const interruption of ['blur', 'background'] as const) {
     const f = await assistantRouteFixture();
     try {
       f.launch();
+      assert.deepEqual(structuredClone(f.routes), [
+        { pathname: '/ask/[space]', params: { space: f.space, ticket: 'ticket-1' } },
+      ]);
       await f.mount();
       assert.deepEqual(f.opened, [f.space]);
       assert.deepEqual(f.asked, ['lease-1:Missing search question']);
@@ -180,6 +183,37 @@ test('same-owner account reopen retires the old route and cannot reuse its launc
     await f.focus(true);
     assert.equal(f.opened.length, 1);
     assert.equal(f.asked.length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('a failed navigation retires its ticket before the route can recover the query', async () => {
+  const f = await assistantRouteFixture();
+  try {
+    f.failNavigation();
+    assert.throws(() => f.launch(), /navigation failed/);
+    await f.mount();
+    assert.deepEqual(f.opened, []);
+    assert.deepEqual(f.asked, []);
+    assert.equal(f.composer(), undefined);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('a failed launch at capacity preserves the oldest valid handoff', async () => {
+  const f = await assistantRouteFixture();
+  try {
+    f.launch('Oldest question');
+    for (const question of ['Second question', 'Third question', 'Fourth question']) {
+      f.launch(question);
+    }
+    f.failNavigation();
+    assert.throws(() => f.launch('Failed question'), /navigation failed/);
+    f.useTicket('ticket-1');
+    await f.mount();
+    assert.deepEqual(f.asked, ['lease-1:Oldest question']);
   } finally {
     await f.cleanup();
   }

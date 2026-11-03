@@ -214,6 +214,13 @@ pub(super) fn edits_deletes_and_reactions_fold_over_the_original(
         "deleted is final"
     );
 
+    assert!(matches!(
+        e.react(s.id.clone(), mine.id.clone(), Some("👍".into())),
+        Err(CoreError::Forbidden { reason })
+            if matches!(reason.as_str(), "mensagem apagada" | "message was deleted")
+    ));
+    assert!(find(&mine.id).reactions.is_empty());
+
     let other = spaces.iter().find(|x| x.id != s.id).expect("another chat");
     let f = e
         .forward_message(s.id.clone(), theirs.id.clone(), other.id.clone())

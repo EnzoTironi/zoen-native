@@ -70,6 +70,7 @@ pub fn valid_token(t: &str) -> bool {
 /// One device token to wake.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Target {
+    pub registration_id: i64,
     pub platform: String,
     pub token: String,
 }
@@ -363,7 +364,7 @@ impl Pusher {
         } else {
             "api.push.apple.com"
         };
-        let (status, body) = self
+        let (status, _) = self
             .http
             .post(
                 &format!("https://{host}/3/device/{}", t.token),
@@ -379,8 +380,8 @@ impl Pusher {
             .await?;
         Ok(match status {
             200 => Outcome::Sent,
+            // BadDeviceToken can also indicate an APNs environment mismatch.
             410 => Outcome::Gone,
-            400 if body.contains("BadDeviceToken") => Outcome::Gone,
             s => Outcome::Failed(format!("apns {s}")),
         })
     }
@@ -453,10 +454,7 @@ impl Pusher {
             .await?;
         Ok(match status {
             200 => Outcome::Sent,
-            404 => Outcome::Gone,
-            // Only UNREGISTERED means a dead token; INVALID_ARGUMENT can be our own bad
-            // payload, and treating it as Gone would wipe every Android token.
-            400 | 403 if body.contains("UNREGISTERED") => Outcome::Gone,
+            404 if fcm_unregistered(&body) => Outcome::Gone,
             s => Outcome::Failed(format!("fcm {s}")),
         })
     }
@@ -464,6 +462,22 @@ impl Pusher {
 
 #[cfg(test)]
 mod tests;
+
+fn fcm_unregistered(body: &str) -> bool {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .is_some_and(|response| {
+            response
+                .pointer("/error/details")
+                .and_then(Value::as_array)
+                .is_some_and(|details| {
+                    details.iter().any(|detail| {
+                        detail["@type"] == "type.googleapis.com/google.firebase.fcm.v1.FcmError"
+                            && detail["errorCode"] == "UNREGISTERED"
+                    })
+                })
+        })
+}
 
 #[cfg(test)]
 mod fcm_tests;

@@ -1,7 +1,9 @@
 use super::deployment::Binding;
 use super::lock::ScopedLock;
 use super::state::State;
-use super::{AnchorError, Checkpoint, Deployment, Prepared, Recovery, RuntimeDeployment};
+use super::{
+    AnchorError, Checkpoint, Deployment, Prepared, Recovery, RuntimeDeployment, SubjectUpdate,
+};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -135,10 +137,10 @@ impl AnchorReader {
         let mut bytes = Vec::new();
         File::open(path)
             .map_err(unavailable)?
-            .take(16_385)
+            .take(131_073)
             .read_to_end(&mut bytes)
             .map_err(unavailable)?;
-        if bytes.len() > 16_384 {
+        if bytes.len() > 131_072 {
             return Err(AnchorError::Invalid);
         }
         let state: State = serde_json::from_slice(&bytes).map_err(|_| AnchorError::Invalid)?;
@@ -328,12 +330,26 @@ impl AnchorWriter {
         fdb: &Checkpoint,
         retirement: bool,
     ) -> Result<Prepared, AnchorError> {
+        self.prepare_subjects(effect, sql, fdb, retirement, &[], None)
+    }
+
+    /// Hash commitments advance in the same durable checkpoint as their
+    /// original SQL/FDB transactions. This creates no native/financial permit.
+    pub fn prepare_subjects(
+        &mut self,
+        effect: &str,
+        sql: &Checkpoint,
+        fdb: &Checkpoint,
+        retirement: bool,
+        updates: &[SubjectUpdate],
+        intent: Option<&str>,
+    ) -> Result<Prepared, AnchorError> {
         let mut state = self.reader.state()?;
         if state.prepared.is_some() || state.recovery(sql, fdb) != Some(Recovery::Clean) {
             return Err(AnchorError::Unreconciled);
         }
         let prepared = state
-            .prepare(effect, retirement)
+            .prepare_subjects(effect, retirement, updates, intent)
             .ok_or(AnchorError::Invalid)?;
         if retirement {
             let lock =
@@ -357,6 +373,17 @@ impl AnchorWriter {
     ) -> Result<Recovery, AnchorError> {
         let mut state = self.reader.state()?;
         let result = state.recovery(sql, fdb).ok_or(AnchorError::Unreconciled)?;
+        // An old matching pair cannot prove that a subject update never
+        // happened. Keep its exact intent; only original forward recovery may
+        // resolve it. In particular, absence cannot reset native/private state.
+        if result == Recovery::BothBefore
+            && state
+                .prepared
+                .as_ref()
+                .is_some_and(|p| !p.subject_updates.is_empty())
+        {
+            return Ok(result);
+        }
         if state
             .prepared
             .as_ref()
@@ -376,6 +403,8 @@ impl AnchorWriter {
             }
             if result == Recovery::BothAfter {
                 self.reader.retain_checkpoint(&prepared)?;
+                state.subjects = super::subjects::apply(&state.subjects, &prepared.subject_updates)
+                    .ok_or(AnchorError::Invalid)?;
                 state.committed = prepared.next.clone();
                 state.committed_effect = Some(prepared);
             }
@@ -416,6 +445,9 @@ fn write(directory: &Path, state: &State) -> Result<(), AnchorError> {
         return Err(AnchorError::Invalid);
     }
     let bytes = serde_json::to_vec(state).map_err(|_| AnchorError::Invalid)?;
+    if bytes.len() > 131_072 {
+        return Err(AnchorError::Invalid);
+    }
     let mut selected = None;
     for _ in 0..128 {
         let path = directory.join(format!(

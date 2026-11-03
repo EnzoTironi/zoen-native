@@ -179,6 +179,22 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
         "running time is charged, rounded up to the second"
     );
 
+    provider.stall_next_resume();
+    assert!(tokio::time::timeout(
+        Duration::from_millis(20),
+        session.exec(ExecRequest::sh("print(2)"), NOW),
+    )
+    .await
+    .is_err());
+    assert_eq!(session.state().await, "suspended");
+
+    provider.fail_next_resume();
+    assert!(session
+        .exec(ExecRequest::sh("print(2)"), NOW)
+        .await
+        .is_err());
+    assert_eq!(session.state().await, "suspended");
+
     session
         .exec(ExecRequest::sh("print(2)"), NOW)
         .await
@@ -189,6 +205,19 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
         "resumed, not started again"
     );
 
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(session.tick(NOW).await?);
+    provider.stall_next_resume();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), session.finish(NOW))
+            .await
+            .is_err()
+    );
+    assert_eq!(session.state().await, "finishing");
+    assert!(matches!(
+        session.exec(ExecRequest::sh("true"), NOW).await,
+        Err(SessionError::Finished)
+    ));
     session.finish(NOW).await.unwrap();
     assert_eq!(session.state().await, "done");
     assert_eq!(provider.released.load(Ordering::SeqCst), 1);
@@ -222,6 +251,18 @@ async fn the_daily_budget_stops_heavy_tiers_and_resets_the_next_day() {
             tier: Tier::MicroVm
         })
     ));
+
+    // A clock rollback cannot resume the suspended sandbox on exhausted quota.
+    assert!(matches!(
+        session
+            .exec(ExecRequest::sh("rollback"), NOW - 86_400_000)
+            .await,
+        Err(SessionError::Budget(BudgetError::Exhausted {
+            tier: Tier::MicroVm
+        }))
+    ));
+    assert_eq!(session.state().await, "suspended");
+    assert_eq!(provider.live(), 0);
 
     // Tomorrow it works again.
     session

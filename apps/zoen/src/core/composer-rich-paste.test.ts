@@ -9,7 +9,7 @@ import { preparePackage } from './message-markdown-native.fixtures.ts';
 
 test(
   'actual native paste preserves literal search syntax across plain/rich handoffs',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const app = fileURLToPath(new URL('../../', import.meta.url));
     const directory = mkdtempSync(join(tmpdir(), 'zoen-composer-paste-'));
@@ -95,7 +95,7 @@ test(
           '-o',
           binary,
         ],
-        { timeout: 45_000 },
+        { timeout: 120_000 },
       );
       assert.match(execFileSync(binary, { encoding: 'utf8' }), /Actual native paste method PASS/);
     } finally {

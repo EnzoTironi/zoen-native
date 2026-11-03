@@ -237,3 +237,113 @@ async fn private_forward_options_only_publish_on_confirmation_and_preserve_peer_
         .all(|id| rows.iter().any(|row| &row.id == id)));
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_restart() -> TestResult {
+    let (mut world, space) = enrolled("forward_batch_relay_restart").await?;
+    let alice = Open::online(&world, "alice")
+        .await
+        .map_err(|error| format!("Alice before relay stop: {error}"))?;
+    let first = alice
+        .0
+        .send_message(space.clone(), "First batch source".into())?;
+    let second = alice
+        .0
+        .send_message(space.clone(), "Second batch source".into())?;
+    let bob = Open::online(&world, "bob")
+        .await
+        .map_err(|error| format!("Bob before relay stop: {error}"))?;
+    received(&bob.0, &space, |rows| {
+        rows.iter().any(|row| row.id == first.id) && rows.iter().any(|row| row.id == second.id)
+    })
+    .await?;
+    let owner = bob.0.account().ok_or("Bob")?;
+    drop(bob);
+    drop(alice);
+    world.stop_relay();
+
+    let bob = Open::offline(&world, "bob")?;
+    let source = serde_json::json!({
+        "expected_identity_id": owner.identity_id,
+        "expected_device_id": owner.device_id,
+        "source_space": space,
+        "message_ids": [first.id, second.id],
+    });
+    let review: serde_json::Value = serde_json::from_str(&bob.0.client_request(
+        serde_json::json!({
+            "op": "forward_batch_review", "scope": { "source": source, "target_space": space },
+        }).to_string(),
+    ).await?)?;
+    let confirm = serde_json::json!({
+        "op": "confirm_forward_batch", "source": source,
+        "batch_id": review["batch_id"], "review_revision": review["review_revision"],
+    })
+    .to_string();
+    let accepted: serde_json::Value =
+        serde_json::from_str(&bob.0.client_request(confirm.clone()).await?)?;
+    assert!(accepted["error"].is_null(), "{accepted}");
+    let ids: Vec<_> = accepted["messages"]
+        .as_array()
+        .ok_or("accepted messages")?
+        .iter()
+        .map(|message| message["accepted_message_id"].as_str().ok_or("accepted id"))
+        .collect::<Result<_, _>>()?;
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+    drop(bob);
+
+    let upstream = world.start_node();
+    let proxy =
+        final_event_proxy::FinalEventProxy::on_port(world.port, upstream, world.dir.clone()).await;
+    proxy.arm_client_id(&space, &owner.identity_id, ids[0]);
+    let bob = Open::offline(&world, "bob")?;
+    bob.0.start_sync(None)?;
+    proxy
+        .until(
+            Duration::from_secs(20),
+            "forward receipt was not intercepted",
+            |records| {
+                records.iter().any(|record| {
+                    matches!(&record.kind,
+            final_event_proxy::Kind::Event { id, dropped: true, .. } if id == ids[0])
+                })
+            },
+        )
+        .await;
+    drop(bob);
+    proxy.shutdown().await;
+    world.start_relay();
+    let bob = Open::online(&world, "bob")
+        .await
+        .map_err(|error| format!("Bob after relay restart: {error}"))?;
+    let replay: serde_json::Value = serde_json::from_str(&bob.0.client_request(confirm).await?)?;
+    assert_eq!(replay["batch_id"], accepted["batch_id"]);
+    assert!(replay["error"].is_null());
+    let replayed = replay["messages"].as_array().ok_or("replayed messages")?;
+    assert_eq!(replayed.len(), ids.len());
+    for (message, id) in replayed.iter().zip(&ids) {
+        assert_eq!(message["accepted_message_id"].as_str(), Some(*id));
+    }
+    let alice = Open::online(&world, "alice")
+        .await
+        .map_err(|error| format!("Alice after relay restart: {error}"))?;
+    let rows = received(&alice.0, &space, |rows| {
+        ids.iter().all(|id| rows.iter().any(|row| row.id == *id))
+    })
+    .await?;
+    for (id, body) in ids
+        .iter()
+        .zip(["First batch source", "Second batch source"])
+    {
+        let delivered = find(&rows, id)?;
+        assert!(delivered.forwarded);
+        assert_eq!(text(&delivered), body);
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.forwarded && text(row) == body)
+                .count(),
+            1
+        );
+    }
+    Ok(())
+}

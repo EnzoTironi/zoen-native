@@ -18,6 +18,8 @@ pub enum SessionError {
     Sandbox(#[from] SandboxError),
     #[error("the task is over; this sandbox is gone")]
     Finished,
+    #[error("sandbox budget is unavailable")]
+    BudgetUnavailable,
 }
 
 enum State {
@@ -29,6 +31,9 @@ enum State {
         last_used: Instant,
     },
     Suspended {
+        snap: SnapshotRef,
+    },
+    FinishingSuspended {
         snap: SnapshotRef,
     },
     Finishing {
@@ -50,7 +55,9 @@ pub struct ToolSession {
 
 /// Running time rounded up to the second; any running period costs at least one.
 fn secs_ceil(d: Duration) -> u64 {
-    (d.as_millis().div_ceil(1000) as u64).max(1)
+    d.as_secs()
+        .saturating_add(u64::from(d.subsec_nanos() != 0))
+        .max(1)
 }
 
 impl ToolSession {
@@ -78,22 +85,28 @@ impl ToolSession {
             State::Cold => "cold",
             State::Running { .. } => "running",
             State::Suspended { .. } => "suspended",
-            State::Finishing { .. } => "finishing",
+            State::FinishingSuspended { .. } | State::Finishing { .. } => "finishing",
             State::Done => "done",
         }
     }
 
     pub fn usage(&self) -> Vec<Usage> {
-        self.usage.lock().unwrap().clone()
+        self.usage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     fn charge(&self, since: Instant, now_ms: i64) {
-        let u =
-            self.budget
-                .lock()
-                .unwrap()
-                .charge(self.spec.tier, secs_ceil(since.elapsed()), now_ms);
-        self.usage.lock().unwrap().push(u);
+        let u = self
+            .budget
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .charge(self.spec.tier, secs_ceil(since.elapsed()), now_ms);
+        self.usage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(u);
     }
 
     pub async fn exec(
@@ -104,10 +117,16 @@ impl ToolSession {
         let mut st = self.state.lock().await;
         let running_uncharged = match &*st {
             State::Running { since, .. } => secs_ceil(since.elapsed()),
-            State::Finishing { .. } | State::Done => return Err(SessionError::Finished),
+            State::FinishingSuspended { .. } | State::Finishing { .. } | State::Done => {
+                return Err(SessionError::Finished)
+            }
             _ => 0,
         };
-        let left = self.budget.lock().unwrap().admit(self.spec.tier, now_ms)?;
+        let left = self
+            .budget
+            .lock()
+            .map_err(|_| SessionError::BudgetUnavailable)?
+            .admit(self.spec.tier, now_ms)?;
         let left = left.saturating_sub(running_uncharged);
         if left == 0 {
             return Err(BudgetError::Exhausted {
@@ -115,20 +134,21 @@ impl ToolSession {
             }
             .into());
         }
-        let lease = match std::mem::replace(&mut *st, State::Cold) {
+        if req.timeout.is_zero() {
+            return Ok(ExecOutput {
+                timed_out: true,
+                ..ExecOutput::default()
+            });
+        }
+        let lease = match &*st {
             State::Cold => self.provider.acquire(&self.spec, &self.owner).await?,
-            State::Suspended { snap } => self.provider.resume(&snap).await?,
-            State::Running { lease, since, .. } => {
-                *st = State::Running {
-                    lease: lease.clone(),
-                    since,
-                    last_used: Instant::now(),
-                };
-                lease
+            State::Suspended { snap } => self.provider.resume(snap).await?,
+            State::Running { lease, .. } => lease.clone(),
+            State::FinishingSuspended { .. } | State::Finishing { .. } | State::Done => {
+                unreachable!()
             }
-            State::Finishing { .. } | State::Done => unreachable!(),
         };
-        if let State::Cold = &*st {
+        if matches!(&*st, State::Cold | State::Suspended { .. }) {
             let now = Instant::now();
             *st = State::Running {
                 lease: lease.clone(),
@@ -159,7 +179,6 @@ impl ToolSession {
             return Ok(false);
         }
         let (lease, since) = (lease.clone(), *since);
-        self.charge(since, now_ms);
         match self.provider.suspend(&lease).await {
             Ok(snap) => *st = State::Suspended { snap },
             Err(SandboxError::Unsupported(_)) => {
@@ -168,6 +187,7 @@ impl ToolSession {
             }
             Err(e) => return Err(e.into()),
         }
+        self.charge(since, now_ms);
         Ok(true)
     }
 
@@ -182,14 +202,25 @@ impl ToolSession {
                 };
             }
             State::Suspended { snap } => {
-                let lease = self.provider.resume(snap).await?;
-                *st = State::Finishing { lease, since: None };
+                *st = State::FinishingSuspended { snap: snap.clone() };
             }
-            State::Finishing { .. } => {}
+            State::FinishingSuspended { .. } | State::Finishing { .. } => {}
             State::Cold | State::Done => {
                 *st = State::Done;
                 return Ok(());
             }
+        }
+        if let State::FinishingSuspended { snap } = &*st {
+            match self.provider.release_suspended(snap).await {
+                Ok(()) => {
+                    *st = State::Done;
+                    return Ok(());
+                }
+                Err(SandboxError::Unsupported(_)) => {}
+                Err(error) => return Err(error.into()),
+            }
+            let lease = self.provider.resume(snap).await?;
+            *st = State::Finishing { lease, since: None };
         }
         let State::Finishing { lease, since } = &*st else {
             unreachable!()
@@ -200,5 +231,18 @@ impl ToolSession {
         }
         *st = State::Done;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod billing_rounding_tests {
+    use super::{secs_ceil, Duration};
+
+    #[test]
+    fn rounds_fractional_seconds_without_overflow() {
+        assert_eq!(secs_ceil(Duration::ZERO), 1);
+        assert_eq!(secs_ceil(Duration::from_secs(1)), 1);
+        assert_eq!(secs_ceil(Duration::new(1, 1)), 2);
+        assert_eq!(secs_ceil(Duration::MAX), u64::MAX);
     }
 }

@@ -4,6 +4,7 @@ mod admission;
 #[cfg(test)]
 use admission::FixtureStep;
 use admission::{Binding, Capture, Session, VerifiedStep};
+mod continuity;
 mod custody;
 mod execution;
 mod finance;
@@ -196,6 +197,7 @@ pub struct RuntimeAuthority {
     continuity: Arc<AtomicBool>,
     managed_images: Option<Arc<tokio::sync::Mutex<managed_images::ManagedImages>>>,
     image_output: Option<native::ManagedImageOutput>,
+    runtime_continuity: Option<Arc<tokio::sync::Mutex<continuity::ManagedRuntime>>>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
     #[cfg(test)]
@@ -242,6 +244,7 @@ impl RuntimeAuthority {
             continuity: Arc::new(AtomicBool::new(false)),
             managed_images: None,
             image_output: None,
+            runtime_continuity: None,
             #[cfg(test)]
             fault: std::sync::atomic::AtomicU8::new(0),
             #[cfg(test)]
@@ -257,6 +260,9 @@ impl RuntimeAuthority {
     /// active budget. Current directory/signature/expiry checks still apply;
     /// financial admission independently selects the latest policy.
     pub async fn install_policy(&self, signed: SignedOwnerPolicy) -> Result<String, RuntimeError> {
+        if self.runtime_continuity.is_some() {
+            return self.install_continuous_policy(signed, None).await;
+        }
         self.finance.install_policy(signed).await
     }
     pub async fn balance(

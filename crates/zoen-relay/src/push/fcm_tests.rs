@@ -32,8 +32,10 @@ impl Http for Mock {
         self.0.lock().unwrap().push((url.into(), body));
         Ok(if url.contains("oauth2") {
             (200, r#"{"access_token":"ya29","expires_in":3600}"#.into())
-        } else if url.contains("messages:send") && self.0.lock().unwrap().len() > 3 {
+        } else if self.0.lock().unwrap().len() == 4 {
             (404, r#"{"error":{"status":"NOT_FOUND"}}"#.into())
+        } else if self.0.lock().unwrap().len() == 5 {
+            (404, r#"{"error":{"details":[{"@type":"type.googleapis.com/google.firebase.fcm.v1.FcmError","errorCode":"UNREGISTERED"}]}}"#.into())
         } else {
             (200, "{}".into())
         })
@@ -52,6 +54,7 @@ async fn fcm_exchanges_once_and_sends_data_only() {
     };
     let p = Pusher::new(m.clone(), None, Some(cfg)).unwrap();
     let t = Target {
+        registration_id: 0,
         platform: FCM.into(),
         token: "tok".into(),
     };
@@ -67,5 +70,6 @@ async fn fcm_exchanges_once_and_sends_data_only() {
         assert_eq!(send["message"]["data"]["wake"], "1");
         assert!(send["message"].get("notification").is_none());
     }
+    assert!(matches!(p.wake(&t).await, Outcome::Failed(_)));
     assert_eq!(p.wake(&t).await, Outcome::Gone);
 }

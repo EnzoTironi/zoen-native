@@ -27,9 +27,12 @@ struct Guest {
     delete_calls: usize,
     already_gone: bool,
     resume_failures: usize,
+    wait_failures: usize,
+    suspend_failures: usize,
     resume_calls: usize,
     largest_stdin: usize,
     file_commands: usize,
+    exec_calls: usize,
     corrupt_download: bool,
     truncate_download: bool,
     truncate_upload: bool,
@@ -54,6 +57,10 @@ impl Guest {
                 (200, json!({}))
             };
         }
+        if path.ends_with("/suspend") && self.suspend_failures > 0 {
+            self.suspend_failures -= 1;
+            return (503, json!({"error": "injected suspend failure"}));
+        }
         if path.ends_with("/start") {
             self.resume_calls += 1;
             if self.resume_failures > 0 {
@@ -63,6 +70,10 @@ impl Guest {
         }
         if method == "POST" && path.ends_with("/machines") {
             return (200, json!({"id": "machine-test"}));
+        }
+        if path.contains("/wait?") && self.wait_failures > 0 {
+            self.wait_failures -= 1;
+            return (503, json!({"error": "injected wait failure"}));
         }
         if path.contains("/wait?") || path.ends_with("/suspend") || path.ends_with("/start") {
             return (200, json!({"ok": true}));
@@ -80,6 +91,7 @@ impl Guest {
                 (200, json!({"state": "started"}))
             };
         }
+        self.exec_calls += 1;
         let argv: Vec<&str> = body["command"]
             .as_array()
             .unwrap()
@@ -386,11 +398,10 @@ async fn finishing_retries_cleanup_without_new_exec_or_duplicate_usage() {
 }
 
 #[tokio::test]
-async fn suspended_cleanup_can_retry_resume_then_retry_delete() {
+async fn suspended_cleanup_retries_delete_without_resuming() {
     let api = MockFly::new();
     {
         let mut guest = api.guest.lock().unwrap();
-        guest.resume_failures = 1;
         guest.delete_failures = 1;
     }
     let session = session(api.provider());
@@ -401,14 +412,16 @@ async fn suspended_cleanup_can_retry_resume_then_retry_delete() {
     assert!(session.tick(NOW).await.unwrap());
     assert_eq!(session.state().await, "suspended");
     assert!(session.finish(NOW).await.is_err());
-    assert_eq!(session.state().await, "suspended");
-    assert!(session.finish(NOW).await.is_err());
     assert_eq!(session.state().await, "finishing");
+    assert!(matches!(
+        session.exec(ExecRequest::sh("true"), NOW).await,
+        Err(SessionError::Finished)
+    ));
     session.finish(NOW).await.unwrap();
     assert_eq!(session.state().await, "done");
     assert_eq!(session.usage().len(), 1);
     let guest = api.guest.lock().unwrap();
-    assert_eq!((guest.resume_calls, guest.delete_calls), (2, 2));
+    assert_eq!((guest.resume_calls, guest.delete_calls), (0, 2));
 }
 
 #[tokio::test]
@@ -534,3 +547,9 @@ async fn the_actual_guest_scripts_round_trip_binary_data_and_quoted_paths() {
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     fly.release(lease).await.unwrap();
 }
+
+#[path = "fly_contract/fly_lifecycle_recovery.rs"]
+mod lifecycle_recovery;
+
+#[path = "fly_contract/timeout.rs"]
+mod timeout;

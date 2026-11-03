@@ -526,6 +526,4 @@ pub async fn revoke_device(
 }
 
 mod push;
-pub use push::{
-    drop_push_token, drop_voip_push_token, push_targets, set_push_token, voip_push_targets,
-};
+pub use push::{drop_push_token, push_targets, set_push_token, voip_push_targets};
