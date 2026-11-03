@@ -104,7 +104,7 @@ async fn the_relay_prunes_what_every_member_holds() {
 /// few past epochs; sealing at write time would have lost it past 4).
 #[tokio::test]
 async fn a_message_queued_offline_survives_many_commits() {
-    let w = World::new("m2queue").await;
+    let mut w = World::new("m2queue").await;
     let people = [
         ("ana", "Ana"),
         ("bruno", "Bruno"),
@@ -135,6 +135,10 @@ async fn a_message_queued_offline_survives_many_commits() {
     let (now, _) = keys(&w.zoen("ana", &["keys", "Fila"]));
     assert!(now >= start + 5, "epoch {start} -> {now}");
 
+    // Restart the relay after the commits so recovery uses the durable chain.
+    w.stop_relay();
+    w.start_relay();
+
     // He comes back: catches up through every commit, then seals and sends.
     w.sync_until("bruno", |s| s.contains("pending=0"));
     let (be, _) = keys(&w.zoen("bruno", &["keys", "Fila"]));
@@ -142,7 +146,7 @@ async fn a_message_queued_offline_survives_many_commits() {
     for (h, _) in people.iter().filter(|(h, _)| *h != "bruno") {
         w.sync_until(h, |s| s.contains("pending=0"));
         let read = w.zoen(h, &["read", "Fila"]);
-        assert!(read.contains(queued), "{h}:\n{read}");
+        assert_eq!(read.matches(queued).count(), 1, "{h}:\n{read}");
     }
     // And the relay only ever saw it sealed.
     let stored = w.events_in(&space).await;

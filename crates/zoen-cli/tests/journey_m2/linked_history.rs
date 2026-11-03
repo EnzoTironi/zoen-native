@@ -84,14 +84,14 @@ async fn a_linked_device_gets_the_history_and_loses_access_when_unlinked() {
     let check_b = wait_line(&rx, "check:");
     assert!(code.starts_with("zoen-link:1:"), "{code}");
     let linked = w.zoen("ana", &["link", &code]);
-    let devices_in = |who: &str| -> String {
+    let devices_in = |w: &World, who: &str| -> String {
         w.zoen(who, &["keys", "Casa"])
             .split('\t')
             .find_map(|f| f.trim().strip_prefix("devices=").map(str::to_string))
             .unwrap()
     };
     assert_eq!(
-        devices_in("ana"),
+        devices_in(&w, "ana"),
         "3",
         "Ana's phone and notebook, and Bruno"
     );
@@ -111,6 +111,9 @@ async fn a_linked_device_gets_the_history_and_loses_access_when_unlinked() {
         .collect::<Vec<_>>();
     assert!(chunks.len() > 1, "the history went up in several chunks");
 
+    // Resume from the persisted transfer after a relay restart.
+    w.stop_relay();
+    w.start_relay();
     // ── it resumes, and only the recent window arrives at first ──
     let h = w.zoen("ana-notebook", &["history"]);
     assert!(h.contains("(1 resumed)"), "{h}");
@@ -122,7 +125,7 @@ async fn a_linked_device_gets_the_history_and_loses_access_when_unlinked() {
     );
     let read = w.zoen("ana-notebook", &["read", "Casa"]);
     for m in &before[6..] {
-        assert!(read.contains(m.as_str()), "recent {m:?} missing:\n{read}");
+        assert_eq!(read.matches(m.as_str()).count(), 1, "recent {m:?}:\n{read}");
     }
     assert!(!read.contains(&before[0]), "{read}");
 
@@ -206,8 +209,8 @@ async fn a_linked_device_gets_the_history_and_loses_access_when_unlinked() {
     let read = w.zoen("ana-notebook", &["read", "Casa"]);
     assert!(!read.contains(secret), "{read}");
     // Its leaf left the group: Ana's commit took it out, and Bruno agrees.
-    assert_eq!(devices_in("ana"), "2");
-    assert_eq!(devices_in("bruno"), "2");
+    assert_eq!(devices_in(&w, "ana"), "2");
+    assert_eq!(devices_in(&w, "bruno"), "2");
     let (epoch, digest) = keys(&w.zoen("ana", &["keys", "Casa"]));
     assert_eq!(keys(&w.zoen("bruno", &["keys", "Casa"])), (epoch, digest));
     let v = w.zoen("ana", &["verify"]);

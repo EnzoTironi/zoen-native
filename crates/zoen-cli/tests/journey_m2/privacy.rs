@@ -235,7 +235,7 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back(
 /// group, and nobody seals a message before the commit that takes them out.
 #[tokio::test]
 async fn a_removed_member_reads_nothing_after_removal() {
-    let w = World::new("m2rm").await;
+    let mut w = World::new("m2rm").await;
     for (h, n) in [("ana", "Ana"), ("bruno", "Bruno"), ("carla", "Carla")] {
         w.init(h, n);
     }
@@ -247,6 +247,10 @@ async fn a_removed_member_reads_nothing_after_removal() {
         assert!(w.zoen(who, &["read", "Cofre"]).contains(before), "{who}");
     }
 
+    let queued = "offline antes da remoção";
+    let result = w.zoen("bruno", &["send", "Cofre", queued, "--offline"]);
+    assert!(result.starts_with("queued"), "{result}");
+
     w.zoen("ana", &["remove", "Cofre", "@bruno"]);
     let after = "sem o Bruno: tucano-depois";
     w.zoen("ana", &["send", "Cofre", after]);
@@ -255,9 +259,45 @@ async fn a_removed_member_reads_nothing_after_removal() {
 
     let carla = w.zoen("carla", &["read", "Cofre"]);
     assert!(carla.contains(after) && carla.contains(reply), "{carla}");
+    // A cold relay must recover the same removal cut before Bruno reconnects.
+    w.stop_relay();
+    w.start_relay();
     let bruno = w.zoen("bruno", &["read", "Cofre"]);
     assert!(bruno.contains(before), "{bruno}");
     assert!(!bruno.contains("tucano"), "{bruno}");
+    let carla_after_reconnect = w.zoen("carla", &["read", "Cofre"]);
+    assert!(
+        !carla_after_reconnect.contains(queued),
+        "{carla_after_reconnect}"
+    );
+    let status = w.zoen("bruno", &["sync", "--timeout", "1000"]);
+    assert!(status.contains("pending=0"), "{status}");
+    let sender_db = w.dir.join("bruno/zoen.sqlite");
+    let reopened = store::Store::open(sender_db.to_str().expect("fixture database path"))
+        .expect("reopen sender database");
+    let retained: Vec<_> = reopened
+        .outbox()
+        .expect("read durable outbox")
+        .into_iter()
+        .filter(|row| matches!(&row.event.body, EventBody::MessagePosted { text, .. } if text == queued))
+        .collect();
+    assert_eq!(retained.len(), 1, "retain the original signed message");
+    assert!(retained[0].failed, "reopen must preserve terminal failure");
+    let message_id = retained[0].event.client_id.clone();
+    drop(reopened);
+    let secret = std::fs::read(w.dir.join("bruno/vault/zoen.device.v1")).expect("fixture key");
+    let mut client = client_core::Engine::open(sender_db.to_str().expect("fixture path"))
+        .expect("reopen sender engine");
+    assert!(client.unlock(Some(secret)).expect("unlock sender engine"));
+    let timeline = client
+        .timeline(space)
+        .expect("retained conversation timeline");
+    let failed = timeline
+        .iter()
+        .find(|entry| entry.id == message_id)
+        .expect("failed message remains visible");
+    assert_eq!(failed.delivery, client_core::Delivery::Failed);
+    drop(client);
     // Bruno's device forgot the group's secrets.
     assert!(w.try_zoen("bruno", &["keys", "Cofre"]).is_err());
     let (ae, ad) = keys(&w.zoen("ana", &["keys", "Cofre"]));

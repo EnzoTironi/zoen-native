@@ -56,17 +56,18 @@ impl World {
         let admin = std::env::var("ZOEN_TEST_PG")
             .expect("set ZOEN_TEST_PG=postgres://user@host:port/postgres");
         let db = database_ident(name, &rand_hex(4));
+        let mut db_url = reqwest::Url::parse(&admin).expect("parse PostgreSQL admin URL");
+        db_url.set_path(&format!("/{db}"));
         let mut c = PgConnection::connect(&admin).await.expect("connect admin");
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {db}")))
             .execute(&mut c)
             .await
             .expect("create db");
-        let base = admin.rsplit_once('/').unwrap().0;
         let dir = std::env::temp_dir().join(format!("zoen-journey-{db}"));
         std::fs::create_dir_all(&dir).unwrap();
         let mut w = World {
             dir,
-            db_url: format!("{base}/{db}"),
+            db_url: db_url.into(),
             cell: db,
             port: reservation.port,
             nats,
