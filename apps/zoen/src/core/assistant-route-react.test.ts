@@ -88,6 +88,24 @@ test('pending answer is discarded on blur; unanswered question remains editable 
     await f.cleanup();
   }
 });
+test('a locale change drains the previous answer without replaying the question', async () => {
+  const f = await assistantRouteFixture();
+  const answer = deferred<{ text: string }>();
+  try {
+    f.launch();
+    f.holdAsk(answer.promise);
+    await f.mount();
+    await f.changeLocale('pt-BR');
+    assert.deepEqual(f.closed, ['lease-1']);
+    await f.root.act(() => answer.resolve({ text: 'Retired answer' }));
+    assert.equal(f.text().includes('Retired answer'), false);
+    assert.deepEqual(f.asked, ['lease-1:Missing search question']);
+    assert.equal(f.composer()?.value, 'Missing search question');
+  } finally {
+    answer.resolve({ text: 'cleanup' });
+    await f.cleanup();
+  }
+});
 test('late open is closed and drained before next focus may open', async () => {
   const f = await assistantRouteFixture(),
     opening = deferred<any>(),

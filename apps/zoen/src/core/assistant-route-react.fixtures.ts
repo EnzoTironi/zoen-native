@@ -256,6 +256,10 @@ export async function assistantRouteFixture() {
     failNavigation: () => { failNavigation = true; },
     useTicket: (next: string) => { ticket = next; },
     mount: () => root.render(React.createElement(Route)),
+    changeLocale: (locale: string) => {
+      ports['../../i18n/index.ts'].locale = locale;
+      return root.render(React.createElement(Route));
+    },
     focus: (next: boolean) =>
       root.act(() => {
         focused = next;
