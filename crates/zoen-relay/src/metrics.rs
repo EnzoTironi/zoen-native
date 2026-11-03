@@ -8,6 +8,7 @@ pub struct Metrics {
     pub push_failed: AtomicU64,
     pub push_gone: AtomicU64,
     pub push_lookup_failed: AtomicU64,
+    pub push_overloaded: AtomicU64,
     pub connections: AtomicU64,
     pub events_sequenced: AtomicU64,
     pub events_duplicate: AtomicU64,
@@ -153,6 +154,12 @@ impl Metrics {
             "counter",
             self.push_lookup_failed.load(Relaxed),
         );
+        put(
+            "zoen_relay_push_overloaded_total",
+            "Device wake jobs dropped at the concurrency limit",
+            "counter",
+            self.push_overloaded.load(Relaxed),
+        );
         s
     }
 }
@@ -169,6 +176,7 @@ mod tests {
             ("failed", &metrics.push_failed),
             ("gone", &metrics.push_gone),
             ("lookup_failed", &metrics.push_lookup_failed),
+            ("overloaded", &metrics.push_overloaded),
         ] {
             Metrics::inc(counter);
             let metric = format!("zoen_relay_push_{name}_total");

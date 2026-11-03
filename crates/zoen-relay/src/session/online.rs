@@ -150,6 +150,7 @@ impl Session {
             return;
         }
         let Some(permit) = self.st.push.try_wake_task() else {
+            crate::metrics::Metrics::inc(&self.st.metrics.push_overloaded);
             return;
         };
         let st = self.st.clone();
