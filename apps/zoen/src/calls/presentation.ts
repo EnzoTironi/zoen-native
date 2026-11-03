@@ -62,11 +62,11 @@ export function watchCallPresentation(port: {
   const apply = (json: string) => {
     if (live) port.changed(readCallPresentation(json, port.owner()));
   };
+  const atQuery = revision;
   const remove = port.listen((json) => {
     revision += 1;
     apply(json);
   });
-  const atQuery = revision;
   void port
     .current()
     .then((json) => {

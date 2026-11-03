@@ -94,3 +94,22 @@ test('disposed query and an account changed during the read cannot publish old c
   await Promise.resolve();
   assert.deepEqual(values, [null]);
 });
+
+test('a call ended during subscription cannot be revived by the initial read', async () => {
+  const values: (CallPresentation | null)[] = [];
+  const stop = watchCallPresentation({
+    owner: () => owner,
+    listen: (changed) => {
+      changed('null');
+      return () => {};
+    },
+    current: async () => encode(current),
+    changed: (value) => values.push(value),
+  });
+  try {
+    await Promise.resolve();
+    assert.deepEqual(values, [null]);
+  } finally {
+    stop();
+  }
+});
