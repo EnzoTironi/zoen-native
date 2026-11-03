@@ -31,10 +31,10 @@ async fn legacy_migration_and_purpose_refresh_clear_transfer_and_revocation(
     .execute(&mut connection)
     .await
     .unwrap();
-    if let Err(error) = result {
-        std::panic::resume_unwind(error);
+    match result {
+        Ok(outcome) => outcome,
+        Err(panic) => std::panic::resume_unwind(panic),
     }
-    Ok(())
 }
 
 async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::Error>> {
