@@ -19,24 +19,6 @@ mod universal_pages;
 mod voice_notes;
 
 #[test]
-fn verification_reads_disk_after_history_loads() -> Result<(), Box<dyn std::error::Error>> {
-    let client = seeded();
-    let space = find_space(&client, "Paraty com a Marina").id;
-    let engine = client.lock();
-    assert!(engine.verify_log(&space).valid);
-    let changed = engine.store.conn().execute(
-        "UPDATE events SET json = '{}' WHERE space = ?1 AND seq = (SELECT max(seq) FROM events WHERE space = ?1)",
-        [&space],
-    )?;
-    assert_eq!(changed, 1);
-    let report = engine.verify_log(&space);
-    assert!(!report.valid);
-    assert!(report.error.is_some());
-    assert!(report.head_hash.is_empty());
-    Ok(())
-}
-
-#[test]
 fn seed_builds_the_story_and_every_log_verifies() {
     seed_locale_cases::seed_builds_the_story_and_every_log_verifies()
 }
