@@ -268,8 +268,8 @@ test('a conversation update while suspended requalifies results before offering 
   let calls = 0;
   const search = new ConversationSearch({
     current: () => true,
-    search: async () =>
-      ++calls === 1 ? { hits: [], next_cursor: null } : refreshed.promise,
+    search: () =>
+      ++calls === 1 ? Promise.resolve({ hits: [], next_cursor: null }) : refreshed.promise,
   });
   search.open();
   search.setQuery('term');
@@ -286,7 +286,6 @@ test('a conversation update while suspended requalifies results before offering 
 
   refreshed.resolve({ hits: [hit('new')], next_cursor: null });
   await refreshed.promise;
-  await Promise.resolve();
   assert.deepEqual(search.getSnapshot().hits, [hit('new')]);
   assert.equal(search.assistantQuery(empty), null);
   assert.equal(search.assistantQuery(search.getSnapshot()), null);
