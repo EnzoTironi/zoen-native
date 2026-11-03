@@ -184,13 +184,17 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     let selected = db::voip_push_targets(pool, &identity.id, &sender, "direct").await?;
     let registration = selected[0].registration_id;
     assert_eq!(tokens(selected), ["abcd"]);
-    assert!(db::voip_registration_current(pool, &identity.id, &sender, "direct", registration).await?);
+    assert!(
+        db::voip_registration_current(pool, &identity.id, &sender, "direct", registration).await?
+    );
     db::set_voip_consent(pool, &identity.id, sibling, &sender, "direct", false).await?;
     assert!(!db::get_voip_consent(pool, &identity.id, &sender, "direct").await?);
     assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
         .await?
         .is_empty());
-    assert!(!db::voip_registration_current(pool, &identity.id, &sender, "direct", registration).await?);
+    assert!(
+        !db::voip_registration_current(pool, &identity.id, &sender, "direct", registration).await?
+    );
     db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true).await?;
     db::set_push_token(pool, &identity.id, device, push::APNS_VOIP, "").await?;
     db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "").await?;
@@ -312,13 +316,12 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     );
     tx.commit().await.unwrap();
     assert!(registration.await.is_err());
-    let retained: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM push_tokens WHERE identity = $1 AND device = $2",
-    )
-    .bind(&identity.id)
-    .bind(device)
-    .fetch_one(pool)
-    .await?;
+    let retained: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM push_tokens WHERE identity = $1 AND device = $2")
+            .bind(&identity.id)
+            .bind(device)
+            .fetch_one(pool)
+            .await?;
     assert_eq!(retained, 0);
     assert!(
         db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true)

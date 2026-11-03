@@ -99,9 +99,11 @@ pub async fn voip_registration_current(
     space: &str,
     registration: i64,
 ) -> Result<bool, sqlx::Error> {
-    Ok(!voip_registrations(pool, recipient, sender, space, Some(registration))
-        .await?
-        .is_empty())
+    Ok(
+        !voip_registrations(pool, recipient, sender, space, Some(registration))
+            .await?
+            .is_empty(),
+    )
 }
 
 async fn voip_registrations(
