@@ -8,7 +8,7 @@ for (const [label, initialDraft] of [
 ] as const) {
   test(`Send captures ${label} before JS delivery and keeps the keyboard open`, () => {
     const f = fixture();
-    let draft = initialDraft;
+    let draft: string = initialDraft;
     const formattedCorrection = 'Send **the** 🪷';
     const sent: string[] = [];
     let blurred = false;
