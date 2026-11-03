@@ -53,7 +53,13 @@ test('cold session restores durable unknown and cannot dispatch contradictory re
   const ticket = session.ticket()!;
   await Promise.all([session.change(ticket), session.change(ticket)]);
   assert.deepEqual(f.calls, ['Pause:1']);
+  const retirement: ReturnType<AgentControlSession['getSnapshot']>[] = [];
+  const stop = session.subscribe(() => retirement.push(session.getSnapshot()));
   session.retire();
+  stop();
+  assert.deepEqual(retirement.map(({ scopeKey, pending, phase }) => ({ scopeKey, pending, phase })), [
+    { scopeKey: null, pending: null, phase: 'inactive' },
+  ]);
   const cold = new AgentControlSession(f.port, 'agent');
   cold.activate(first);
   await cold.refresh();

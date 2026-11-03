@@ -86,13 +86,13 @@ export class AgentControlSession {
   }
   activate(scope: AccountScope | null) {
     const pending =
-      accountScopeKey(scope) === accountScopeKey(this.scope) ? this.state.pending : null;
+      scope && accountScopeKey(scope) === accountScopeKey(this.scope) ? this.state.pending : null;
     ++this.generation;
     ++this.readGeneration;
     this.operationId = null;
     this.scope = scope ? Object.freeze({ ...scope }) : null;
     this.active = scope !== null;
-    this.state = { ...emptyAgentControl, scopeKey: accountScopeKey(scope), pending };
+    this.state = { ...emptyAgentControl, scopeKey: scope ? accountScopeKey(scope) : null, pending };
     this.publish({});
   }
   /** Preserve an unresolved action through background/focus changes on this route. */
@@ -103,9 +103,7 @@ export class AgentControlSession {
     this.publish({ phase: 'inactive', status: null, busy: false });
   }
   retire() {
-    this.scope = null;
-    this.suspend();
-    this.publish({ pending: null });
+    this.activate(null);
   }
   async refresh() {
     if (!this.current() || !this.scope) return;
