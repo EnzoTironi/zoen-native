@@ -283,7 +283,21 @@ async fn a_removed_member_reads_nothing_after_removal() {
         .collect();
     assert_eq!(retained.len(), 1, "retain the original signed message");
     assert!(retained[0].failed, "reopen must preserve terminal failure");
+    let message_id = retained[0].event.client_id.clone();
     drop(reopened);
+    let secret = std::fs::read(w.dir.join("bruno/vault/zoen.device.v1")).expect("fixture key");
+    let mut client = client_core::Engine::open(sender_db.to_str().expect("fixture path"))
+        .expect("reopen sender engine");
+    assert!(client.unlock(Some(secret)).expect("unlock sender engine"));
+    let timeline = client
+        .timeline(space)
+        .expect("retained conversation timeline");
+    let failed = timeline
+        .iter()
+        .find(|entry| entry.id == message_id)
+        .expect("failed message remains visible");
+    assert_eq!(failed.delivery, client_core::Delivery::Failed);
+    drop(client);
     // Bruno's device forgot the group's secrets.
     assert!(w.try_zoen("bruno", &["keys", "Cofre"]).is_err());
     let (ae, ad) = keys(&w.zoen("ana", &["keys", "Cofre"]));
