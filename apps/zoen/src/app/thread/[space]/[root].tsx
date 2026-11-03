@@ -60,7 +60,7 @@ export default function Thread() {
   const { allItems: items } = useHome();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<ConversationTimelineRow>>(null);
-  const sending = useRef(false);
+  const sending = useRef<{ scope: string } | null>(null);
   useFocusEffect(useCallback(() => () => store.setTyping(space, false), [space, store]));
   const {
     data: entries,
@@ -84,8 +84,9 @@ export default function Thread() {
   const normalDraft = useMessageDraft(space, root);
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
-  const [busy, setBusy] = useState(false);
   const sendScope = JSON.stringify([owner, space, root]);
+  const [pendingSend, setPendingSend] = useState<{ scope: string } | null>(null);
+  const busy = pendingSend?.scope === sendScope;
   const [sendFailure, setFailure] = useState<{ scope: string; message: string } | null>(null);
   const failure = sendFailure?.scope === sendScope ? sendFailure.message : null;
   const actions = useMessageActions({
@@ -109,10 +110,11 @@ export default function Thread() {
     const attempt = normalDraft.capture();
     if (!attempt) return;
     const text = attempt.text;
-    if ((!text.trim() && !editing?.isCaption) || sending.current) return;
-    sending.current = true;
+    if ((!text.trim() && !editing?.isCaption) || sending.current?.scope === sendScope) return;
+    const operation = { scope: sendScope };
+    sending.current = operation;
     store.setTyping(space, false);
-    setBusy(true);
+    setPendingSend(operation);
     setFailure(null);
     try {
       if (attempt.editingId) await normalDraft.sendEdit(attempt);
@@ -124,8 +126,10 @@ export default function Thread() {
           message: reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'),
         });
     } finally {
-      sending.current = false;
-      setBusy(false);
+      if (sending.current === operation) {
+        sending.current = null;
+        setPendingSend(null);
+      }
     }
   }
   return (

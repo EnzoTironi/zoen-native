@@ -32,7 +32,14 @@ function find(value: unknown, type: string): Element | undefined {
   const element = value as Element;
   return element.type === type ? element : find(element.props?.children, type);
 }
-function fixture(active = true, jump?: string, individual = false) {
+function fixture(
+  active = true,
+  jump?: string,
+  individual = false,
+  send: () => Promise<void> = async () => {
+    throw new Error('original send failure');
+  },
+) {
   const host = hookHost();
   let sessionEpoch = 1;
   const calls: string[] = [];
@@ -140,9 +147,7 @@ function fixture(active = true, jump?: string, individual = false) {
             updateDraft() {},
             capture: () => ({ text: 'draft' }),
             isCurrent: () => true,
-            send: async () => {
-              throw new Error('original send failure');
-            },
+            send,
           }),
         };
       if (name.endsWith('/primitives'))
@@ -333,4 +338,27 @@ test('thread send failure is hidden after reopening the same account', async () 
   f.reopen();
   const reopened = find(f.render(), 'Viewport')!;
   assert.doesNotMatch(JSON.stringify(reopened.props.composer), /chat.theReplyCouldNotBeSent/);
+});
+
+test('finishing an old send keeps the reopened session’s send pending', async () => {
+  const pending: (() => void)[] = [];
+  const f = fixture(
+    false,
+    undefined,
+    false,
+    () => new Promise<void>((resolve) => pending.push(resolve)),
+  );
+  const composer = () => find(find(f.render(), 'Viewport')!.props.composer, 'Composer')!.props;
+  (composer().onSend as () => void)();
+  assert.equal(composer().sending, true);
+  f.reopen();
+  assert.equal(composer().sending, false);
+  (composer().onSend as () => void)();
+  assert.equal(pending.length, 2);
+  pending[0]!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(composer().sending, true);
+  pending[1]!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(composer().sending, false);
 });
