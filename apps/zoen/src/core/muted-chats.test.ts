@@ -301,7 +301,10 @@ test('a fresh read confirms an accepted unmute after the first reconciliation fa
   const state = f.session.getSnapshot();
   assert.equal(state.readFailed, false);
   assert.equal(state.actionFailed, false);
-  assert.deepEqual(state.chats.map((chat) => chat.id), ['chat-1']);
+  assert.deepEqual(
+    state.chats.map((chat) => chat.id),
+    ['chat-1'],
+  );
   assert.equal(f.writes().length, 1);
 });
 
