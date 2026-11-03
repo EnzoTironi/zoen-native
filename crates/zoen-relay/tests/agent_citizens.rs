@@ -471,3 +471,32 @@ async fn cursor_reads_return_the_full_limit_and_reject_excess_membership(
     d.finish().await;
     Ok(())
 }
+
+#[tokio::test]
+async fn activity_write_failure_rolls_back_cursor_advance() -> Result<(), Box<dyn std::error::Error>>
+{
+    let d = Database::new().await?;
+    let (owner, owner_dev) = d.person("cursor_rollback_owner").await?;
+    let (bot, bot_dev) = d.agent("cursor_rollback_bot", &owner, &owner_dev).await?;
+    let device = dev(&bot_dev);
+    let spaces = ["sp_rollback".into()];
+    agents::advance_cursor(&d.pool, &bot.id, device, "sp_rollback", 5).await?;
+
+    sqlx::raw_sql(
+        "CREATE FUNCTION reject_activity_update() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN RAISE EXCEPTION 'injected activity write failure'; END; $$;
+         CREATE TRIGGER reject_activity_update BEFORE UPDATE OF last_wake_at
+         ON agent_citizens FOR EACH ROW EXECUTE FUNCTION reject_activity_update()",
+    )
+    .execute(&d.pool)
+    .await?;
+    assert!(
+        agents::advance_cursor(&d.pool, &bot.id, device, "sp_rollback", 9)
+            .await
+            .is_err()
+    );
+    let state = agents::state(&d.pool, &bot.id, device, &spaces).await?;
+    assert_eq!(state.cursors, vec![("sp_rollback".into(), 5)]);
+    d.finish().await;
+    Ok(())
+}
