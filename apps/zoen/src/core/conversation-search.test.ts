@@ -262,3 +262,32 @@ test('assistant action only accepts the empty result snapshot presented to the u
   authorized = false;
   assert.equal(search.assistantQuery(second), null);
 });
+
+test('a conversation update while suspended requalifies results before offering AI again', async () => {
+  const refreshed = deferred<MessageSearchPage>();
+  let calls = 0;
+  const search = new ConversationSearch({
+    current: () => true,
+    search: async () =>
+      ++calls === 1 ? { hits: [], next_cursor: null } : refreshed.promise,
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+  const empty = search.getSnapshot();
+  assert.equal(search.assistantQuery(empty), 'term');
+
+  search.suspend();
+  await search.refreshCanonical();
+  assert.equal(calls, 1);
+  search.open();
+  assert.equal(calls, 2);
+  assert.equal(search.assistantQuery(search.getSnapshot()), null);
+
+  refreshed.resolve({ hits: [hit('new')], next_cursor: null });
+  await refreshed.promise;
+  await Promise.resolve();
+  assert.deepEqual(search.getSnapshot().hits, [hit('new')]);
+  assert.equal(search.assistantQuery(empty), null);
+  assert.equal(search.assistantQuery(search.getSnapshot()), null);
+});
