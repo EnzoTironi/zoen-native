@@ -133,7 +133,9 @@ export class ToolReviewSession {
     this.activate(null);
   }
   visible(observed: ReviewState, scopeKey: string): ReviewState {
-    return scopeKey === reviewScopeKey(this.scope) && this.current() ? observed : emptyReview;
+    return observed === this.state && scopeKey === reviewScopeKey(this.scope) && this.current()
+      ? observed
+      : emptyReview;
   }
   private current(revision = this.revision): boolean {
     return Boolean(

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   createReviewPort,
+  emptyReview,
+  reviewScopeKey,
   reviewAvailable,
   reviewMetadataValid,
   ToolReviewSession,
@@ -366,4 +368,22 @@ test('failure before dispatch remains a failed read, not an unknown action or an
   await f.session.refresh();
   assert.ok(f.session.ticket());
   assert.equal(f.writes.length, 0);
+});
+
+test('approval details cannot render across retirement or a new account session', async () => {
+  const f = fixture();
+  await f.session.refresh();
+  const previous = f.session.getSnapshot();
+  const owner = f.port.scope()!;
+  const key = reviewScopeKey(owner);
+  assert.ok(previous.request);
+  assert.equal(f.session.visible(previous, key), previous);
+
+  f.session.retire();
+  f.session.activate(owner);
+  assert.equal(f.session.visible(previous, key), emptyReview);
+
+  const next = { ...owner, epoch: owner.epoch + 1 };
+  f.scope(next);
+  assert.equal(f.session.visible(previous, reviewScopeKey(next)), emptyReview);
 });
