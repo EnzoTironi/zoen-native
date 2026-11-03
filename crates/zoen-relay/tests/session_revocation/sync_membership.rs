@@ -209,3 +209,88 @@ fn message(i: usize) -> EventBody {
         forwarded_author: None,
     }
 }
+
+#[tokio::test]
+async fn mailbox_byte_refusal_disconnects_and_sync_recovers_exact_tail(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let test = TestRelay::new().await?;
+    let reader = Author::device(&Signer::generate()?, Signer::generate()?);
+    let owner = Author::root(Signer::generate()?);
+    let mut rows = Vec::new();
+    History::push(
+        &mut rows,
+        &owner,
+        EventBody::SpaceCreated {
+            title: "Mailbox recovery".into(),
+            kind: types::SpaceKind::Group,
+            privacy: types::Privacy::Closed,
+        },
+    )?;
+    History::push(&mut rows, &owner, message(1))?;
+    let missed = rows[1].encode();
+    *test.log.sync_history.lock().unwrap() = Some(Arc::new(History {
+        reader: reader.identity.clone(),
+        rows: std::sync::Mutex::new((rows, None)),
+        paused: AtomicBool::new(false),
+        entered: Notify::new(),
+        release: Semaphore::new(0),
+    }));
+    *test.log.sync_spaces.lock().unwrap() = Some(vec![SPACE.into()]);
+    test.log
+        .sync_members
+        .lock()
+        .unwrap()
+        .insert((SPACE.into(), reader.identity.clone()));
+
+    let mut socket = connect(&test.ws_url, &reader).await;
+    request(
+        &mut socket,
+        1,
+        Op::Register {
+            profile: profile(&reader, "qa_mailbox_replay"),
+        },
+    )
+    .await
+    .unwrap();
+    // Inject at fanout so byte refusal is deterministic and independent of TCP buffers.
+    assert_eq!(
+        test.state.fanout.send(
+            std::slice::from_ref(&reader.identity),
+            &ServerFrame::DeviceMessage {
+                from: owner.identity.clone(),
+                to: reader.identity.clone(),
+                sealed: vec![0; 32 * 1024 * 1024],
+            },
+            None,
+        ),
+        0
+    );
+    assert!(
+        recv(&mut socket).await.is_none(),
+        "refusal must close the socket"
+    );
+
+    let mut recovered = connect(&test.ws_url, &reader).await;
+    send(
+        &mut recovered,
+        ClientFrame::Sync {
+            cursors: vec![protocol::Cursor {
+                space: SPACE.into(),
+                next_seq: 1,
+            }],
+            all: false,
+        },
+    )
+    .await;
+    let Some(ServerFrame::Event { ev }) = recv(&mut recovered).await else {
+        panic!("Sync must replay the missed event");
+    };
+    assert_eq!(ev.encode(), missed);
+    assert!(matches!(
+        recv(&mut recovered).await,
+        Some(ServerFrame::SyncDone)
+    ));
+    recovered.close(None).await.unwrap();
+    test.close().await;
+    Ok(())
+}
