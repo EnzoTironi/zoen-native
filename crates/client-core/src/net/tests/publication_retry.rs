@@ -279,14 +279,15 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
             while connection.borrow().state != ConnState::Offline {
                 connection.changed().await?;
             }
-            let mut current = lock(&engine);
-            *current = Engine::open(":memory:")?;
-            let mut reopened = Engine::open(database)?;
-            assert!(reopened.unlock(Some(device.to_vec()))?);
-            assert!(reopened.outbox_envelopes().contains(&original[0]));
-            reopened.net.poke = Some(Box::new(|| {}));
-            *current = reopened;
-            drop(current);
+            {
+                let mut current = lock(&engine);
+                *current = Engine::open(":memory:")?;
+                let mut reopened = Engine::open(database)?;
+                assert!(reopened.unlock(Some(device.to_vec()))?);
+                assert!(reopened.outbox_envelopes().contains(&original[0]));
+                reopened.net.poke = Some(Box::new(|| {}));
+                *current = reopened;
+            }
             tokio::time::advance(Duration::from_secs(2)).await;
             socket = catch_up_socket(&listener).await;
             reply(&mut socket, ServerFrame::Event { ev: confirmed }).await;
