@@ -247,6 +247,10 @@ async fn a_removed_member_reads_nothing_after_removal() {
         assert!(w.zoen(who, &["read", "Cofre"]).contains(before), "{who}");
     }
 
+    let queued = "offline antes da remoção";
+    let result = w.zoen("bruno", &["send", "Cofre", queued, "--offline"]);
+    assert!(result.starts_with("queued"), "{result}");
+
     w.zoen("ana", &["remove", "Cofre", "@bruno"]);
     let after = "sem o Bruno: tucano-depois";
     w.zoen("ana", &["send", "Cofre", after]);
@@ -261,6 +265,11 @@ async fn a_removed_member_reads_nothing_after_removal() {
     let bruno = w.zoen("bruno", &["read", "Cofre"]);
     assert!(bruno.contains(before), "{bruno}");
     assert!(!bruno.contains("tucano"), "{bruno}");
+    let carla_after_reconnect = w.zoen("carla", &["read", "Cofre"]);
+    assert!(
+        !carla_after_reconnect.contains(queued),
+        "{carla_after_reconnect}"
+    );
     // Bruno's device forgot the group's secrets.
     assert!(w.try_zoen("bruno", &["keys", "Cofre"]).is_err());
     let (ae, ad) = keys(&w.zoen("ana", &["keys", "Cofre"]));
