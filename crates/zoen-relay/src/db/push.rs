@@ -13,6 +13,18 @@ pub async fn set_push_token(
     let purpose = crate::push::purpose(platform)
         .ok_or_else(|| sqlx::Error::Protocol("invalid push registration purpose".into()))?;
     let mut tx = pool.begin().await?;
+    // Serialize authorization with revocation before changing token ownership.
+    let active = sqlx::query_scalar::<_, bool>(
+        "SELECT true FROM devices WHERE identity = $1 AND device = $2
+         AND revoked_at IS NULL FOR UPDATE",
+    )
+    .bind(identity)
+    .bind(device)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if active.is_none() {
+        return Err(sqlx::Error::Protocol("push device is not active".into()));
+    }
     sqlx::query("DELETE FROM push_tokens WHERE purpose = $4 AND ((identity = $1 AND device = $2) OR (token = $3 AND $3 <> ''))")
         .bind(identity)
         .bind(device)

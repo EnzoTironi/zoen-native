@@ -187,6 +187,13 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         .await
         .unwrap()
         .is_empty());
+    db::set_push_token(pool, &identity.id, sibling, push::APNS, "4455").await?;
+    assert!(
+        db::set_push_token(pool, &identity.id, device, push::APNS, "4455")
+            .await
+            .is_err()
+    );
+    assert_eq!(tokens(db::push_targets(pool, &audience).await?), ["4455"]);
     assert!(
         db::set_push_token(pool, &identity.id, sibling, "unknown", "4455")
             .await
