@@ -364,7 +364,7 @@ impl Pusher {
         } else {
             "api.push.apple.com"
         };
-        let (status, body) = self
+        let (status, _) = self
             .http
             .post(
                 &format!("https://{host}/3/device/{}", t.token),
@@ -380,8 +380,8 @@ impl Pusher {
             .await?;
         Ok(match status {
             200 => Outcome::Sent,
+            // BadDeviceToken can also indicate an APNs environment mismatch.
             410 => Outcome::Gone,
-            400 if body.contains("BadDeviceToken") => Outcome::Gone,
             s => Outcome::Failed(format!("apns {s}")),
         })
     }

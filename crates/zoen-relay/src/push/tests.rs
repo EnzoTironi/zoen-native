@@ -163,6 +163,20 @@ async fn apns_dead_token_is_gone() {
     assert_eq!(p.wake(&target(APNS)).await, Outcome::Gone);
 }
 
+#[tokio::test]
+async fn apns_bad_device_token_preserves_registration() {
+    let http = Arc::new(Mock::default());
+    http.replies
+        .lock()
+        .unwrap()
+        .push((400, r#"{"reason":"BadDeviceToken"}"#.into()));
+    let pusher = Pusher::new(http, Some(apns_cfg()), None).unwrap();
+    assert_eq!(
+        pusher.wake(&target(APNS)).await,
+        Outcome::Failed("apns 400".into())
+    );
+}
+
 #[test]
 fn bad_key_is_an_error() {
     let mut c = apns_cfg();
