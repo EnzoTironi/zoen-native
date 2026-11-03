@@ -241,7 +241,7 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
         .find(|s| s.members.len() > 2)
         .unwrap();
     let message = e.send_message(s.id.clone(), "react here".into()).unwrap();
-    let (ana, bia) = {
+    let (owner, ana, bia) = {
         let mut engine = e.lock();
         let owner = engine.me.clone().unwrap();
         let template = engine.identities[&owner].clone();
@@ -263,7 +263,7 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
                 .unwrap();
             ids.push(id);
         }
-        (ids.remove(0), ids.remove(0))
+        (owner, ids.remove(0), ids.remove(0))
     };
     let react_as = |who: &str, emoji: Option<&str>| {
         e.lock().me = Some(who.into());
@@ -310,6 +310,18 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
     assert_eq!(remaining[0].emoji, "👍");
     assert!(!remaining[0].mine);
     assert_eq!(remaining[0].people[0].id, bia);
+    e.lock().append(
+        &s.id,
+        &owner,
+        types::EventBody::MemberAdded {
+            identity: ana.clone(),
+            role: types::Role::Reader,
+        },
+    )?;
+    assert!(matches!(
+        e.react(s.id.clone(), message.id.clone(), None),
+        Err(CoreError::Forbidden { .. })
+    ));
     drop(e);
     let e = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
     e.lock().me = Some(ana);
