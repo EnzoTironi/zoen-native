@@ -103,6 +103,10 @@ pub(super) async fn bounded_rows(
     Err(RuntimeError::Unavailable)
 }
 
+fn matches_manifest(root: &Root, manifest: &[u8]) -> bool {
+    (40..MANIFEST_BYTES).contains(&manifest.len()) && hash(manifest) == root.manifest_digest
+}
+
 impl Execution {
     fn native_key(&self, principal: &Principal, part: &str) -> Vec<u8> {
         self.root.pack(&(
@@ -241,9 +245,7 @@ impl Execution {
             .get(&generation.pack(&("manifest",)), false)
             .await?
             .ok_or(RuntimeError::InvalidBinding)?;
-        if !(40..MANIFEST_BYTES).contains(&manifest.len())
-            || hash(&manifest) != root.manifest_digest
-        {
+        if !matches_manifest(&root, &manifest) {
             return Err(RuntimeError::InvalidBinding);
         }
         let mut chunks = Vec::new();
@@ -329,8 +331,7 @@ impl Execution {
                     .unwrap_or(0)
                     .checked_add(1)
                     .ok_or(RuntimeError::InvalidBinding)?
-            || !(40..MANIFEST_BYTES).contains(&candidate.manifest.len())
-            || hash(&candidate.manifest) != candidate.root.manifest_digest
+            || !matches_manifest(&candidate.root, &candidate.manifest)
             || candidate.chunks.len() != candidate.root.context.chunks as usize
             || candidate.chunks.len() > MAX_CHUNKS
             || candidate.chunks.iter().enumerate().any(|(index, chunk)| {
