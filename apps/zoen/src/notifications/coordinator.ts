@@ -163,6 +163,7 @@ export class PushCoordinator {
             registration: 'waiting',
             failure: t('notifications.registrationHasNotBeenConfirmedByTheServer'),
           });
+          if (!this.active(stamp)) return;
           if (desired !== this.desired) continue;
           this.scheduleRetry(stamp);
           return;

@@ -341,3 +341,16 @@ test('rotation observed during refusal is processed by the active registration l
   assert.equal(coordinator.getSnapshot().registration, 'acknowledged');
   coordinator.dispose();
 });
+
+test('losing session ownership during a registration failure leaves no scheduled retry', async () => {
+  const { ports, retries, replace } = fixture();
+  ports.register = async () => {
+    throw new Error('offline');
+  };
+  const coordinator = new PushCoordinator(ports, configuration);
+  coordinator.subscribe(() => {
+    if (coordinator.getSnapshot().registration === 'waiting') replace();
+  });
+  await coordinator.foreground();
+  assert.deepEqual(retries, []);
+});
