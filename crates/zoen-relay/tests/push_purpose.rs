@@ -152,6 +152,10 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     );
 
     // Moving a token to a sibling removes only the old purpose registration.
+    // Older relays could persist APNs tokens without canonicalizing case.
+    sqlx::query("UPDATE push_tokens SET token = 'EEFF' WHERE purpose = 'voip' AND token = 'eeff'")
+        .execute(pool)
+        .await?;
     let previous_voip = db::voip_push_targets(pool, &audience).await?.remove(0);
     db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "EEFF")
         .await
