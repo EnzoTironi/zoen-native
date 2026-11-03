@@ -239,6 +239,18 @@ async fn the_daily_budget_stops_heavy_tiers_and_resets_the_next_day() {
         })
     ));
 
+    // A clock rollback cannot resume the suspended sandbox on exhausted quota.
+    assert!(matches!(
+        session
+            .exec(ExecRequest::sh("rollback"), NOW - 86_400_000)
+            .await,
+        Err(SessionError::Budget(BudgetError::Exhausted {
+            tier: Tier::MicroVm
+        }))
+    ));
+    assert_eq!(session.state().await, "suspended");
+    assert_eq!(provider.live(), 0);
+
     // Tomorrow it works again.
     session
         .exec(ExecRequest::sh("c"), NOW + 86_400_000)
