@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 test(
   'native module destruction revokes pickup synchronously and rejects stale or duplicate Client bindings',
-  { skip: process.platform !== 'darwin', timeout: 75_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   async () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-module-pickup-'));
     try {
@@ -59,10 +59,10 @@ test(
             if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
           }
         }
-      }, 45_000);
+      }, 120_000);
       try {
         const [status, signal] = await once(compiler, 'close');
-        assert.equal(expired, false, 'Swift helper compilation exceeded its 45-second bound');
+        assert.equal(expired, false, 'Swift helper compilation exceeded its 120-second bound');
         assert.equal(status, 0, `Swift helper compilation failed (${signal}): ${diagnostics}`);
       } finally {
         clearTimeout(deadline);

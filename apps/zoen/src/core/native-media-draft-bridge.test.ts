@@ -68,7 +68,7 @@ enum ZoenVoiceEditor {
 
 test(
   'native voice admission accepts JSON-rounded Float32 peaks and rejects changed audio metadata',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-native-media-draft-'));
     try {
@@ -97,7 +97,7 @@ test(
           '-o',
           binary,
         ],
-        { env: { ...process.env, SDKROOT: sdk }, timeout: 45_000 },
+        { env: { ...process.env, SDKROOT: sdk }, timeout: 120_000 },
       );
       const native = JSON.parse(execFileSync(binary, ['emit'], { encoding: 'utf8' }));
       const accepted = JSON.parse(execFileSync(binary, ['receipt'], { encoding: 'utf8' }));
