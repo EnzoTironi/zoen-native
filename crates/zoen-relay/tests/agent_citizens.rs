@@ -436,3 +436,38 @@ async fn competing_exact_next_definitions_do_not_overwrite_and_owner_reads_exact
 
 #[path = "agent_citizens/control_cases.rs"]
 mod control_cases;
+
+#[tokio::test]
+async fn cursor_reads_return_the_full_limit_and_reject_excess_membership(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use protocol::complete_reads::CURSOR_ROWS;
+
+    let d = Database::new().await?;
+    let (owner, owner_dev) = d.person("cursor_limit_owner").await?;
+    let (bot, bot_dev) = d.agent("cursor_limit_bot", &owner, &owner_dev).await?;
+    let mut spaces: Vec<_> = (0..CURSOR_ROWS).map(|n| format!("sp_{n:05}")).collect();
+    sqlx::query(
+        "INSERT INTO agent_space_cursors (agent, space, last_seq)
+         SELECT $1, space, 1 FROM unnest($2::text[]) AS spaces(space)",
+    )
+    .bind(&bot.id)
+    .bind(&spaces)
+    .execute(&d.pool)
+    .await?;
+
+    let state = agents::state(&d.pool, &bot.id, dev(&bot_dev), &spaces).await?;
+    assert_eq!(state.cursors.len(), CURSOR_ROWS);
+    assert!(state
+        .cursors
+        .iter()
+        .zip(&spaces)
+        .all(|((key, seq), space)| key == space && *seq == 1));
+
+    spaces.push("sp_over_limit".into());
+    assert!(matches!(
+        agents::state(&d.pool, &bot.id, dev(&bot_dev), &spaces).await,
+        Err(AgentCitizenError::ReadProfile)
+    ));
+    d.finish().await;
+    Ok(())
+}
