@@ -287,17 +287,6 @@ impl Engine {
                 ),
             });
         }
-        let reaction = marks
-            .reactions
-            .iter()
-            .find_map(|(who, emoji)| (who == &me).then_some(emoji));
-        if match &note {
-            types::Annotation::React { emoji } => reaction == Some(emoji),
-            types::Annotation::Unreact => reaction.is_none(),
-            _ => false,
-        } {
-            return Ok(());
-        }
         self.append(
             space,
             &me,
