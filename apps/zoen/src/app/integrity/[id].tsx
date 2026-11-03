@@ -16,7 +16,18 @@ export default function Integrity() {
   const { colors } = useTheme();
   const report = useIntegrityReport(id);
   const audit = useCoreQuery({ op: 'log_events_page', space_id: id, before: null, limit: 50 });
-  const scope = `${snapshot?.account?.identity_id ?? ''}:${id}`;
+  const account = snapshot?.account;
+  const epoch = store.sessionEpoch;
+  const scope = JSON.stringify([account?.identity_id, account?.device_id, epoch, id]);
+  const currentSession = () => {
+    const current = store.getSnapshot().snapshot?.account;
+    return (
+      !store.isSessionRetiring &&
+      store.sessionEpoch === epoch &&
+      current?.identity_id === account?.identity_id &&
+      current?.device_id === account?.device_id
+    );
+  };
   const base = `${scope}:${JSON.stringify(audit.data)}`;
   const [more, setMore] = useState<{
     base: string;
@@ -24,7 +35,8 @@ export default function Integrity() {
     before: string | null;
   } | null>(null);
   const [failure, setFailure] = useState<{ scope: string; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busyScope, setBusyScope] = useState<string | null>(null);
+  const busy = busyScope === scope;
   const extra = more?.base === base ? more : null;
   const entries = [...(audit.data?.events ?? []), ...(extra?.events ?? [])];
   const before = extra ? extra.before : audit.data?.before;
@@ -129,29 +141,27 @@ export default function Integrity() {
                 disabled={busy}
                 label={busy ? t('integrity.loading') : t('integrity.earlierEvents')}
                 onPress={() => {
-                  setBusy(true);
+                  if (!currentSession()) return;
+                  setBusyScope(scope);
                   setFailure(null);
                   void store.driver
                     .request({ op: 'log_events_page', space_id: id, before, limit: 50 })
                     .then((page) => {
-                      if (
-                        store.getSnapshot().snapshot?.account?.identity_id !==
-                        snapshot?.account?.identity_id
-                      )
-                        return;
+                      if (!currentSession()) return;
                       setMore({
                         base,
                         events: [...(extra?.events ?? []), ...page.events],
                         before: page.before,
                       });
                     })
-                    .catch((reason: unknown) =>
+                    .catch((reason: unknown) => {
+                      if (!currentSession()) return;
                       setFailure({
                         scope,
                         text: reason instanceof Error ? reason.message : t('integrity.loadFailed'),
-                      }),
-                    )
-                    .finally(() => setBusy(false));
+                      });
+                    })
+                    .finally(() => setBusyScope((pending) => (pending === scope ? null : pending)));
                 }}
               />
             </View>
