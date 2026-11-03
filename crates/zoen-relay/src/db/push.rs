@@ -12,6 +12,15 @@ pub async fn set_push_token(
 ) -> Result<(), sqlx::Error> {
     let purpose = crate::push::purpose(platform)
         .ok_or_else(|| sqlx::Error::Protocol("invalid push registration purpose".into()))?;
+    let apns = platform != crate::push::FCM;
+    let canonical;
+    let token = if apns && !token.is_empty() {
+        canonical = protocol::push::ApnsToken::parse(token)
+            .map_err(|_| sqlx::Error::Protocol("invalid APNs registration".into()))?;
+        canonical.as_hex()
+    } else {
+        token
+    };
     let mut tx = pool.begin().await?;
     // Serialize authorization with revocation before changing token ownership.
     let active = sqlx::query_scalar::<_, bool>(
@@ -25,11 +34,12 @@ pub async fn set_push_token(
     if active.is_none() {
         return Err(sqlx::Error::Protocol("push device is not active".into()));
     }
-    sqlx::query("DELETE FROM push_tokens WHERE purpose = $4 AND ((identity = $1 AND device = $2) OR (token = $3 AND $3 <> ''))")
+    sqlx::query("DELETE FROM push_tokens WHERE purpose = $4 AND ((identity = $1 AND device = $2) OR ($3 <> '' AND (token = $3 OR ($5 AND platform <> 'fcm' AND lower(token) = $3))))")
         .bind(identity)
         .bind(device)
         .bind(token)
         .bind(purpose)
+        .bind(apns)
         .execute(&mut *tx)
         .await?;
     if !token.is_empty() {
