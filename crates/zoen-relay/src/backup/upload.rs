@@ -312,7 +312,7 @@ pub async fn delete(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -
 
 async fn cleanup(st: &Shared, path: &ObjPath) {
     match tokio::time::timeout(st.backup_settings.storage_timeout, st.blobs.delete(path)).await {
-        Ok(Ok(())) | Ok(Err(object_store::Error::NotFound { .. })) => {}
+        Ok(Ok(()) | Err(object_store::Error::NotFound { .. })) => {}
         Ok(Err(e)) => tracing::warn!(error = %e, "backup cleanup failed; object retained for GC"),
         Err(_) => tracing::warn!("backup cleanup timed out; object retained for GC"),
     }
