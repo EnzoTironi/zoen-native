@@ -138,8 +138,8 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<ProfileKeyRow> {
     Ok(ProfileKeyRow {
         identity: r.get(0)?,
         key: r.get(1)?,
-        key_version: r.get::<_, i64>(2)? as u64,
-        seen_version: r.get::<_, i64>(3)? as u64,
+        key_version: r.get(2)?,
+        seen_version: r.get(3)?,
         fields: r.get(4)?,
     })
 }
@@ -170,6 +170,19 @@ mod tests {
     }
 
     use crate::Store;
+
+    #[test]
+    fn negative_stored_versions_are_rejected() -> crate::Result<()> {
+        let store = Store::in_memory()?;
+        store.conn.execute(
+            "INSERT INTO profile_keys (identity, key, key_version, seen_version)
+             VALUES ('invalid-key', 'key', -1, 0), ('invalid-fields', 'key', 1, -1)",
+            [],
+        )?;
+        assert!(store.profile_key("invalid-key").is_err());
+        assert!(store.profile_key("invalid-fields").is_err());
+        Ok(())
+    }
 
     #[test]
     fn newer_keys_win_and_fields_survive() {
