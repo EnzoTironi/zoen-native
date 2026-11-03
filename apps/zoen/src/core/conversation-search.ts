@@ -70,7 +70,7 @@ export class ConversationSearch {
   }
   getSnapshot = () => this.state;
   assistantQuery(observed: ConversationSearchState): string | null {
-    if (observed !== this.state || !this.isCurrent()) return null;
+    if (observed !== this.state || this.dirty || !this.isCurrent()) return null;
     return emptySearchQuery(observed);
   }
   subscribe = (listener: () => void) => {
@@ -157,7 +157,15 @@ export class ConversationSearch {
     if (!this.submitted) return;
     this.dirty = true;
     const generation = ++this.generation;
-    if (!this.isCurrent()) return;
+    if (!this.isCurrent()) {
+      if (this.state.active) {
+        this.firstPage = null;
+        this.publish({ hits: [], cursor: null, index: -1, loading: false, completed: false });
+      } else {
+        this.publish({ completed: false });
+      }
+      return;
+    }
     const query = this.state.query.trim();
     if (!query || !this.fitsQuery(query)) return;
     this.publish({ loading: true, error: null });
@@ -198,7 +206,7 @@ export class ConversationSearch {
   }
   /** Search pages are newest first; older advances, newer moves back. */
   async move(direction: 'older' | 'newer') {
-    if (!this.isCurrent() || this.state.loading) return;
+    if (this.dirty || !this.isCurrent() || this.state.loading) return;
     const next = this.state.index + (direction === 'older' ? 1 : -1);
     if (next < 0) return;
     if (next < this.state.hits.length) {
@@ -214,7 +222,7 @@ export class ConversationSearch {
   }
   private async append(next: number) {
     const cursor = this.state.cursor;
-    if (!this.isCurrent() || this.state.loading || !cursor) return;
+    if (this.dirty || !this.isCurrent() || this.state.loading || !cursor) return;
     const generation = ++this.generation;
     const query = this.state.query.trim();
     this.publish({ loading: true, error: null });

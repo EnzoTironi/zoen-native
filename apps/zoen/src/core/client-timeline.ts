@@ -85,11 +85,12 @@ export class ClientTimeline {
     this.owner.publish({ timelines: { ...this.owner.state().timelines, [space]: page } });
   }
 
-  async reveal(space: string, message: string): Promise<number> {
+  async reveal(space: string, message: string, current = () => true): Promise<number> {
     const generation = this.owner.generation();
+    if (!current()) return -1;
     if (!this.owner.state().timelines[space]) await this.load(space);
     for (;;) {
-      if (generation !== this.owner.generation()) return -1;
+      if (generation !== this.owner.generation() || !current()) return -1;
       const page = this.owner.state().timelines[space];
       const index = page?.entries.findIndex((entry) => entry.id === message) ?? -1;
       if (index >= 0 || !page?.has_more) return index;

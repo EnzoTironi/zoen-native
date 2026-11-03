@@ -290,3 +290,57 @@ test('a conversation update while suspended requalifies results before offering 
   assert.equal(search.assistantQuery(empty), null);
   assert.equal(search.assistantQuery(search.getSnapshot()), null);
 });
+
+test('an empty result cannot launch AI after access returns before canonical refresh', async () => {
+  let current = true;
+  const search = new ConversationSearch({
+    current: () => current,
+    search: async () => ({ hits: [], next_cursor: null }),
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+  const observed = search.getSnapshot();
+  assert.equal(search.assistantQuery(observed), 'term');
+
+  current = false;
+  await search.refreshCanonical();
+  current = true;
+  assert.equal(search.assistantQuery(observed), null);
+  assert.equal(search.getSnapshot().completed, false);
+
+  await search.refreshCanonical();
+  assert.equal(search.assistantQuery(search.getSnapshot()), 'term');
+});
+
+test('restored access does not allow navigation or pagination on invalidated hits', async () => {
+  let current = true;
+  const cursors: (string | null)[] = [];
+  const search = new ConversationSearch({
+    current: () => current,
+    search: async (_query, cursor) => {
+      cursors.push(cursor);
+      return cursor
+        ? { hits: [hit('third')], next_cursor: null }
+        : { hits: [hit('first'), hit('second')], next_cursor: 'next' };
+    },
+  });
+  search.open();
+  search.setQuery('term');
+  await search.search();
+
+  current = false;
+  await search.refreshCanonical();
+  current = true;
+  await search.move('older');
+  await search.loadMore();
+  assert.equal(search.getSnapshot().index, -1);
+  assert.deepEqual(search.getSnapshot().hits, []);
+  assert.deepEqual(cursors, [null]);
+
+  await search.refreshCanonical();
+  await search.move('older');
+  await search.loadMore();
+  assert.equal(search.getSnapshot().index, 1);
+  assert.deepEqual(cursors, [null, null, 'next']);
+});
