@@ -234,7 +234,10 @@ export function useMessageActions({
         spaceId,
         value.in_thread,
         value.id,
-        () => mounted.current && Boolean(current(value) && messageCanRecoverMedia(current(value)!)),
+        () => {
+          const latest = mounted.current ? current(value) : undefined;
+          return latest !== undefined && messageCanRecoverMedia(latest);
+        },
       );
     } catch (reason) {
       if (mounted.current && current(value))

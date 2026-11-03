@@ -88,6 +88,7 @@ function fixture() {
     mountedCleanup: () => void = () => {};
   let row = true,
     visible = true;
+  const accessibleSpaces = new Set(['space']);
   let entry = {
     id: 'm1',
     kind: { Message: { text: 'message', card: null } },
@@ -174,7 +175,7 @@ function fixture() {
     '../notifications/links': messageLinks,
     '../media/share-message': {},
     '../i18n/index.ts': { t: (key: string) => key },
-    '../home/access': { homeSpacesFor: () => new Set(['space']) },
+    '../home/access': { homeSpacesFor: () => accessibleSpaces },
     './dialogs': {
       useDialogs: () => ({
         choose: async () => 'everyone',
@@ -223,6 +224,9 @@ function fixture() {
     revokeRow: () => {
       row = false;
     },
+    removeMembership: () => {
+      accessibleSpaces.delete('space');
+    },
     blur: () => focusCleanup(),
     changeAccount: () => {
       state.snapshot.account.identity_id = 'other';
@@ -251,7 +255,7 @@ test('actual compiled hook uses ONE existing keyboard clock before attaching nat
   assert.equal(f.render().panel.props.nativeSource, f.request);
   assert.equal(f.calls.length, 1);
 });
-for (const boundary of ['revokeRow', 'blur', 'changeAccount'] as const)
+for (const boundary of ['revokeRow', 'blur', 'changeAccount', 'removeMembership'] as const)
   test(`actual keyboard-held context cannot cross ${boundary}`, async () => {
     const f = fixture(),
       hook = f.render();
@@ -276,7 +280,7 @@ test('double tap awaits exact native gesture admission and then toggles the late
     { op: 'react', space_id: 'space', message_id: 'm1', emoji: null },
   ]);
 });
-for (const boundary of ['revokeRow', 'blur', 'changeAccount'] as const)
+for (const boundary of ['revokeRow', 'blur', 'changeAccount', 'removeMembership'] as const)
   test(`native-admission-held quick reaction cannot cross ${boundary}`, async () => {
     const f = fixture(),
       hook = f.render();
