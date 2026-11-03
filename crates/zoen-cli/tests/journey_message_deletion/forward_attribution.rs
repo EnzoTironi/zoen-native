@@ -331,7 +331,13 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
         ids.iter().all(|id| rows.iter().any(|row| row.id == *id))
     })
     .await?;
-    for body in ["First batch source", "Second batch source"] {
+    for (id, body) in ids
+        .iter()
+        .zip(["First batch source", "Second batch source"])
+    {
+        let delivered = find(&rows, id)?;
+        assert!(delivered.forwarded);
+        assert_eq!(text(&delivered), body);
         assert_eq!(
             rows.iter()
                 .filter(|row| row.forwarded && text(row) == body)
