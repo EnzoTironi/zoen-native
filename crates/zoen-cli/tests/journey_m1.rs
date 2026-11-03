@@ -180,6 +180,71 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
 }
 
 #[tokio::test]
+async fn offline_message_recovers_after_lost_confirmation() {
+    let w = World::new("message_ack_loss").await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    w.zoen("ana", &["dm", "@bruno", "first"]);
+    assert_eq!(w.zoen("bruno", &["read", "@ana"]).trim(), "Ana: first");
+    w.zoen("bruno", &["send", "@ana", "one copy", "--offline"]);
+
+    let home = w.dir.join("bruno");
+    let secret: [u8; 32] = std::fs::read(home.join("vault/zoen.device.v1"))
+        .expect("fixture device key")
+        .try_into()
+        .expect("32-byte fixture key");
+    let key = event_log::Signer::from_secret(&secret);
+    let mut engine = client_core::Engine::open(
+        home.join("zoen.sqlite")
+            .to_str()
+            .expect("fixture database path"),
+    )
+    .expect("open sender");
+    assert!(engine.unlock(Some(secret.to_vec())).expect("unlock sender"));
+    let account = engine.account().expect("sender account");
+    let author = event_log::Author {
+        identity: account.identity.clone(),
+        key,
+        device: Some(account.device.clone()),
+        cert: Some(account.cert.clone()),
+    };
+    engine.mls_seal_outbox().expect("seal queued message");
+
+    let mut pending = engine.outbox_envelopes();
+    assert_eq!(pending.len(), 1);
+    let envelope = pending.pop().expect("queued message");
+    assert_eq!(envelope.sealed_kind(), Some(SealedKind::Application));
+    drop(engine);
+
+    // Persist the original envelope without delivering the confirmation to the sender.
+    let mut wire = RawClient::reconnect(&w.relay_url(), author).await;
+    wire.publish_env(envelope)
+        .await
+        .expect("relay persisted message");
+    drop(wire);
+    assert!(w
+        .zoen("bruno", &["status", "--offline"])
+        .contains("pending=1"));
+    assert!(w
+        .zoen("bruno", &["sync", "--timeout", "30000"])
+        .contains("pending=0"));
+    for (who, peer) in [("ana", "@bruno"), ("bruno", "@ana")] {
+        assert_eq!(
+            w.zoen(who, &["read", peer]).trim(),
+            "Ana: first\nBruno: one copy"
+        );
+    }
+    assert_eq!(
+        w.events()
+            .await
+            .iter()
+            .filter(|event| { event.env.sealed_kind() == Some(SealedKind::Application) })
+            .count(),
+        2
+    );
+}
+
+#[tokio::test]
 async fn catch_up_after_being_away() {
     let w = World::new("catchup").await;
     w.init("ana", "Ana");
