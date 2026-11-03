@@ -90,6 +90,7 @@ export class AgentControlSession {
     ++this.generation;
     ++this.readGeneration;
     this.operationId = null;
+    this.revision = null;
     this.scope = scope ? Object.freeze({ ...scope }) : null;
     this.active = scope !== null;
     this.state = { ...emptyAgentControl, scopeKey: scope ? accountScopeKey(scope) : null, pending };

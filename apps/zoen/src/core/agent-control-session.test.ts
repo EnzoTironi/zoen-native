@@ -263,7 +263,11 @@ test('reviewed revoke preserves durable unknown across reopen and retries only t
   assert.deepEqual(f.calls, ['Revoke:1']);
   assert.equal(session.getSnapshot().status, 'Active');
   assert.equal(session.getSnapshot().pending, 'Revoke');
+  const retiredRetry = session.retryTicket()!;
+  assert.ok(retiredRetry);
   session.retire();
+  await session.retry(retiredRetry);
+  assert.deepEqual(f.calls, ['Revoke:1']);
   const cold = new AgentControlSession(f.port, 'agent');
   cold.activate(first);
   await cold.refresh();
