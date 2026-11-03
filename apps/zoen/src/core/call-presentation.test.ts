@@ -130,3 +130,28 @@ test('a watcher cannot publish a call for the account that replaced its owner', 
     stop();
   }
 });
+
+test('retired session rejects late native events even for the same account', async () => {
+  let sessionCurrent = true;
+  let emit!: (json: string) => void;
+  const values: (CallPresentation | null)[] = [];
+  const stop = watchCallPresentation({
+    owner: () => (sessionCurrent ? owner : { identity: undefined, device: undefined }),
+    listen: (changed) => {
+      emit = changed;
+      return () => {};
+    },
+    current: async () => encode(current),
+    changed: (value) => values.push(value),
+  });
+  try {
+    await Promise.resolve();
+    assert.deepEqual(values, [current]);
+    sessionCurrent = false;
+    emit(encode({ ...current, state: 'reconnecting' }));
+    emit('null');
+    assert.deepEqual(values, [current]);
+  } finally {
+    stop();
+  }
+});
