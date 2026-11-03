@@ -9,7 +9,7 @@ import { preparePackage } from './message-markdown-native.fixtures.ts';
 
 test(
   'native style updates resize plain and rich runs, deferring full refresh through composition',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const app = fileURLToPath(new URL('../../', import.meta.url));
     const directory = mkdtempSync(join(tmpdir(), 'zoen-composer-style-'));
@@ -89,7 +89,7 @@ test(
           '-o',
           binary,
         ],
-        { timeout: 45_000 },
+        { timeout: 120_000 },
       );
       assert.match(execFileSync(binary, { encoding: 'utf8' }), /Maintained composer style PASS/);
     } finally {

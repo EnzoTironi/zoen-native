@@ -21,6 +21,17 @@ separate implementation, native observations and pending acceptance. Physical
 iPhone and public-backend release remain open. [Issue170](https://github.com/EnzoTironi/zoen-native/issues/170)
 records current ownership, priorities and publication state.
 
+## Current validation policy
+
+Enzo will perform manual product acceptance after the roadmap implementation.
+During implementation, use automated checks in coherent batches. Keep those
+results separate from physical iPhone acceptance and public release evidence.
+
+Forwarding and deletion passed 23 focused local tests. Four cursor repair
+scenarios passed against local NATS, PostgreSQL and FoundationDB.
+[PR 753](https://github.com/EnzoTironi/zoen-native/pull/753) is open with remote
+checks failing or skipped. Track the GitHub Actions billing blocker in #170.
+
 ## Historical checkpoints
 
 The older checkpoint sections

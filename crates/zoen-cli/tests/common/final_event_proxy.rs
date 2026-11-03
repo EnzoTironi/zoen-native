@@ -67,10 +67,16 @@ pub struct Record {
     pub kind: Kind,
 }
 
+pub(super) enum EventTarget {
+    PlainText(String),
+    #[allow(dead_code, reason = "used by the forwarding restart journey")]
+    ClientId(String),
+}
+
 pub(super) struct Selector {
     pub(super) space: String,
     pub(super) author: String,
-    pub(super) text: String,
+    pub(super) target: EventTarget,
     pub(super) consumed: bool,
 }
 
@@ -110,8 +116,13 @@ pub struct FinalEventProxy {
 
 impl FinalEventProxy {
     pub async fn new(port: u16, evidence: PathBuf) -> Self {
-        Self::start(port, evidence, None).await
+        Self::start(0, port, evidence, None).await
     }
+    #[allow(dead_code, reason = "used by the forwarding restart journey")]
+    pub async fn on_port(listen_port: u16, upstream: u16, evidence: PathBuf) -> Self {
+        Self::start(listen_port, upstream, evidence, None).await
+    }
+
     /// Opt-in only: hold both original proposals, then lose one recipient's ACK/genesis.
     #[allow(
         dead_code,
@@ -119,6 +130,7 @@ impl FinalEventProxy {
     )]
     pub async fn saved(port: u16, evidence: PathBuf, gate: Arc<Barrier>, lose: bool) -> Self {
         Self::start(
+            0,
             port,
             evidence,
             Some(Arc::new(SavedFault {
@@ -149,8 +161,13 @@ impl FinalEventProxy {
             fault.lose_receipt.store(false, Ordering::SeqCst);
         }
     }
-    async fn start(port: u16, evidence: PathBuf, saved: Option<Arc<SavedFault>>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    async fn start(
+        listen_port: u16,
+        port: u16,
+        evidence: PathBuf,
+        saved: Option<Arc<SavedFault>>,
+    ) -> Self {
+        let listener = TcpListener::bind(("127.0.0.1", listen_port)).await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let state = Arc::new(Mutex::new(State {
             saved,
@@ -180,6 +197,12 @@ impl FinalEventProxy {
             evidence,
             task,
         }
+    }
+
+    #[allow(dead_code, reason = "used by the forwarding restart journey")]
+    pub async fn shutdown(mut self) {
+        self.task.abort();
+        let _ = (&mut self.task).await;
     }
 
     pub fn snapshot(&self) -> Vec<Record> {
@@ -338,8 +361,11 @@ async fn forward_ws(
                                 let selected = !selector.consumed
                                     && ev.env.space() == selector.space
                                     && ev.env.author() == selector.author
-                                    && ev.plain_event().is_some_and(|event| matches!(event.body,
-                                        EventBody::MessagePosted { text, .. } if text == selector.text));
+                                    && match &selector.target {
+                                        EventTarget::ClientId(id) => ev.env.client_id() == id,
+                                        EventTarget::PlainText(expected) => ev.plain_event().is_some_and(|event| matches!(event.body,
+                                            EventBody::MessagePosted { text, .. } if &text == expected)),
+                                    };
                                 if selected { selector.consumed = true; dropped = true; }
                             }
                             Some(Kind::Event {
