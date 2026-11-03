@@ -364,7 +364,7 @@ test('compiled owner budget route uses actual image validation before opening th
   const f = await fixture(),
     render = screen(f);
   assert.equal(
-    render.route([request]).some((node) => node.type === 'Field'),
+    render.route([request], [{ id: request.space_id, kind: 'Direct' }]).some((node) => node.type === 'Field'),
     true,
   );
   const tool = request.tool_approval!;
