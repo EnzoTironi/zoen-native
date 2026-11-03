@@ -306,7 +306,11 @@ export class ForwardSelectionSession {
       try {
         const value = await this.port.finish(this.source(), review.batchId);
         if (!this.current(attempt)) return;
-        if (value.batch_id !== review.batchId || value.target_space !== review.targetId || !value.completed)
+        if (
+          value.batch_id !== review.batchId ||
+          value.target_space !== review.targetId ||
+          !value.completed
+        )
           throw new ForwardMessageChanged();
         this.project(value);
         this.notifiedBatch = value.batch_id;
@@ -341,7 +345,11 @@ export class ForwardSelectionSession {
       try {
         const value = await this.port.abandon(this.source(), review.batchId, review.revision);
         if (!this.current(attempt)) return;
-        if (value.batch_id !== review.batchId || value.target_space !== review.targetId || !value.completed)
+        if (
+          value.batch_id !== review.batchId ||
+          value.target_space !== review.targetId ||
+          !value.completed
+        )
           throw new ForwardMessageChanged();
         this.project(value);
         // Keep the terminal accepted/skipped summary visible. Abandon is not Send.

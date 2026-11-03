@@ -113,7 +113,10 @@ test('actual Expo Info ignores typing/other chats and retires canonical, members
     await root.render(React.createElement(Surface, { target: 'next' }));
     assert.equal(reads.length, 2);
     assert.equal(committed.find((entry) => entry.target === 'next')?.value, null);
-    const nextInfo = { ...info, scope: calls.filter((call) => call.op === 'message_info')[1].scope };
+    const nextInfo = {
+      ...info,
+      scope: calls.filter((call) => call.op === 'message_info')[1].scope,
+    };
     await root.act(async () => {
       reads[1]!.resolve(nextInfo);
     });
