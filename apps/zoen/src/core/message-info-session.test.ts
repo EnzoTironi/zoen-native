@@ -79,9 +79,9 @@ test('access loss and same-owner ABA retire held reads; only a new current read 
   f.session.focus();
   f.current(false);
   f.current(true);
+  assert.equal(f.requests.length, 2, 'restored access does not wait for the revoked read');
   f.requests[0]!.resolve(value());
   await tick();
-  assert.equal(f.requests.length, 2);
   assert.equal(
     f.seen.some((state) => state.value !== null),
     false,

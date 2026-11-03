@@ -42,6 +42,7 @@ export class MessageInfoSession {
   refresh() {
     ++this.version;
     if (!this.current()) {
+      this.pending = null;
       this.again = false;
       this.publish(null, false, false);
       return;
