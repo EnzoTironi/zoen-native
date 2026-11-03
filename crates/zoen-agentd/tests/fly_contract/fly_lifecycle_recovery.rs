@@ -42,3 +42,22 @@ async fn failed_suspend_charges_running_time_only_after_successful_retry() {
     session.finish(NOW).await.unwrap();
     assert_eq!(session.usage().len(), 1);
 }
+
+#[tokio::test]
+async fn suspend_recovers_when_response_errors_but_machine_is_suspended() {
+    let api = MockFly::new();
+    let session = session(api.provider());
+    session
+        .exec(ExecRequest::sh("echo running"), NOW)
+        .await
+        .unwrap();
+    {
+        let mut guest = api.guest.lock().unwrap();
+        guest.suspend_failures = 1;
+        guest.state_response = Some((200, json!({"state": "suspended"})));
+    }
+    assert!(session.tick(NOW).await.unwrap());
+    assert_eq!(session.state().await, "suspended");
+    session.finish(NOW).await.unwrap();
+    assert_eq!(session.usage().len(), 1);
+}

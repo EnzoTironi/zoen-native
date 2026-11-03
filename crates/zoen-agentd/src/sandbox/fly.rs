@@ -455,13 +455,21 @@ impl SandboxProvider for FlyMachinesProvider {
 
     async fn suspend(&self, lease: &Lease) -> Result<SnapshotRef, SandboxError> {
         let machine = self.machine(&lease.id)?;
-        self.call(
-            reqwest::Method::POST,
-            &format!("/machines/{machine}/suspend"),
-            None,
-        )
-        .await?;
-        self.wait(&machine, "suspended").await?;
+        let suspend = self
+            .call(
+                reqwest::Method::POST,
+                &format!("/machines/{machine}/suspend"),
+                None,
+            )
+            .await;
+        match suspend {
+            Ok(_) => self.wait(&machine, "suspended").await?,
+            Err(error) => {
+                if !matches!(self.state_of(&machine).await.as_deref(), Ok("suspended")) {
+                    return Err(error);
+                }
+            }
+        }
         Ok(SnapshotRef {
             id: machine,
             lease: lease.id.clone(),
