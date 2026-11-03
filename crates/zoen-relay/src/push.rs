@@ -337,7 +337,7 @@ impl Pusher {
             },
             _ => return Outcome::Disabled,
         };
-        r.unwrap_or_else(|e| Outcome::Failed(e.to_string()))
+        r.unwrap_or_else(|_| Outcome::Failed("push provider unavailable".into()))
     }
 
     fn apns_jwt(a: &Apns) -> anyhow::Result<String> {
