@@ -342,6 +342,8 @@ for (const change of [
     if (change === 'revision') f.entries[0]!.text_revision = 'edited';
     if (change === 'cancel') selected.cancel();
     f.render();
+    if (change === 'selection' || change === 'cancel')
+      assert.equal(f.confirmations[0]!.signal?.aborted, true);
     f.notify();
     f.answer(true);
     await settleDeletion();
