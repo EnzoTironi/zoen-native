@@ -1,27 +1,38 @@
 use super::super::tests::{account, sequence, HostSigner};
 use super::*;
+use crate::client::{
+    Envelope, Identity, InnerEvent, Leaf, LinkedAccount, Opened, ServerFrame, SpaceLog, Update,
+};
 use event_log::{
     profile::{AgreementKey, ProfileFields, ProfileKey},
     Signer as NativeSigner,
 };
 use mls::Device;
 
-fn published(update: &Update) -> Vec<Envelope> {
-    update
+fn published(update: &Update) -> std::result::Result<Vec<Envelope>, Box<dyn std::error::Error>> {
+    Ok(update
         .frames
         .iter()
-        .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+        .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string()))
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter_map(|frame| match frame {
             ClientFrame::Publish { env } => Some(env),
             _ => None,
         })
-        .collect()
+        .collect())
 }
 
-fn claim(update: &Update) -> (String, Vec<String>) {
-    update
+fn claim(
+    update: &Update,
+) -> std::result::Result<(String, Vec<String>), Box<dyn std::error::Error>> {
+    Ok(update
         .frames
         .iter()
-        .find_map(|frame| match ClientFrame::decode(frame).unwrap() {
+        .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string()))
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .find_map(|frame| match frame {
             ClientFrame::Req {
                 id: CLAIM_REQUEST,
                 op:
@@ -32,14 +43,17 @@ fn claim(update: &Update) -> (String, Vec<String>) {
             } => Some((operation, ids)),
             _ => None,
         })
-        .expect("an authenticated member-key claim must be emitted")
+        .ok_or("an authenticated member-key claim must be emitted")?)
 }
 
-fn handshake(update: &Update, kind: SealedKind) -> Envelope {
-    published(update)
+fn handshake(
+    update: &Update,
+    kind: SealedKind,
+) -> std::result::Result<Envelope, Box<dyn std::error::Error>> {
+    Ok(published(update)?
         .into_iter()
         .find(|env| env.sealed_kind() == Some(kind))
-        .expect("the expected ordered handshake must be emitted")
+        .ok_or("the expected ordered handshake must be emitted")?)
 }
 
 struct Fixture {
@@ -55,6 +69,74 @@ struct Fixture {
     staged: Update,
     operation: String,
     now: i64,
+}
+
+struct ClaimStart {
+    space: String,
+    log: SpaceLog,
+    claiming: Update,
+    operation: String,
+}
+
+fn begin_claim(
+    client: &mut Client<HostSigner>,
+    bob: &NativeSigner,
+    now: i64,
+) -> Result<ClaimStart, Box<dyn std::error::Error>> {
+    client.claim_clock(&now.to_string())?;
+    client.receive(&ServerFrame::SyncDone.encode(), now)?;
+    let created = client.membership_request(
+        &json!({
+            "op": "create_group", "title": "Browser → iOS", "member_ids": [bob.id()],
+        })
+        .to_string(),
+        now + 1,
+    )?;
+    let space = created
+        .result
+        .as_str()
+        .ok_or("missing authenticated test as_str value")?
+        .to_owned();
+    let mut log = SpaceLog::new(&space);
+    let outgoing = published(
+        created
+            .update
+            .as_ref()
+            .ok_or("missing authenticated test as_ref value")?,
+    )?;
+    assert_eq!(
+        outgoing.len(),
+        1,
+        "MemberAdded waits for the actual SpaceCreated receipt"
+    );
+    assert!(matches!(
+        outgoing[0].body(),
+        Some(EventBody::SpaceCreated {
+            privacy: Privacy::EndToEnd,
+            ..
+        })
+    ));
+    assert!(outgoing[0].seen().is_none());
+    let member = client.receive(&sequence(&mut log, outgoing[0].clone())?, now + 2)?;
+    let addition = published(&member)?.into_iter().find(|env| matches!(env.body(),
+        Some(EventBody::MemberAdded { identity, role: Role::Member }) if identity == bob.id()
+    )).ok_or("missing authenticated test find value")?;
+    assert_eq!(
+        addition.seen(),
+        log.head(),
+        "the member event observes the ordered creation"
+    );
+    let claiming = client.receive(&sequence(&mut log, addition)?, now + 3)?;
+    let (operation, targets) = claim(&claiming)?;
+    assert_eq!(targets, vec![bob.id()]);
+    assert_eq!(client.saved.membership.claims[&space].operation, operation);
+
+    Ok(ClaimStart {
+        space,
+        log,
+        claiming,
+        operation,
+    })
 }
 
 fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
@@ -77,8 +159,8 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
         }
         .to_bytes(),
     );
-    let mut sqlite = rusqlite::Connection::open_in_memory().unwrap();
-    mls::migrate(&mut sqlite).unwrap();
+    let mut sqlite = rusqlite::Connection::open_in_memory()?;
+    mls::migrate(&mut sqlite)?;
     let package = {
         let native = Device::new(
             &sqlite,
@@ -86,11 +168,13 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
             &bob.id(),
             bob_device.secret(),
             &bob.sign(&event_log::device_cert_message(&bob_device.id())),
-        )
-        .unwrap();
-        native.key_packages(1, false).unwrap().pop().unwrap()
+        )?;
+        native
+            .key_packages(1, false)?
+            .pop()
+            .ok_or("missing authenticated test pop value")?
     };
-    let mut client = Client::new(account.clone(), host.clone(), "").unwrap();
+    let mut client = Client::new(account.clone(), host.clone(), "")?;
     client.saved.profiles.insert(
         bob.id(),
         Identity {
@@ -111,78 +195,34 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
         .agreement
         .insert(bob.id(), bob_agreement.public_hex());
     let now = 1_800_000_000_000;
-    client.claim_clock(&now.to_string()).unwrap();
-    client
-        .receive(&ServerFrame::SyncDone.encode(), now)
-        .unwrap();
-    let created = client
-        .membership_request(
-            &json!({
-                "op": "create_group", "title": "Browser → iOS", "member_ids": [bob.id()],
-            })
-            .to_string(),
-            now + 1,
-        )
-        .unwrap();
-    let space = created.result.as_str().unwrap().to_owned();
-    let mut log = SpaceLog::new(&space);
-    let outgoing = published(created.update.as_ref().unwrap());
-    assert_eq!(
-        outgoing.len(),
-        1,
-        "MemberAdded waits for the actual SpaceCreated receipt"
-    );
-    assert!(matches!(
-        outgoing[0].body(),
-        Some(EventBody::SpaceCreated {
-            privacy: Privacy::EndToEnd,
-            ..
-        })
-    ));
-    assert!(outgoing[0].seen().is_none());
-    let member = client
-        .receive(&sequence(&mut log, outgoing[0].clone())?, now + 2)
-        .unwrap();
-    let addition = published(&member).into_iter().find(|env| matches!(env.body(),
-        Some(EventBody::MemberAdded { identity, role: Role::Member }) if identity == bob.id()
-    )).unwrap();
-    assert_eq!(
-        addition.seen(),
-        log.head(),
-        "the member event observes the ordered creation"
-    );
-    let claiming = client
-        .receive(&sequence(&mut log, addition)?, now + 3)
-        .unwrap();
-    let (operation, targets) = claim(&claiming);
-    assert_eq!(targets, vec![bob.id()]);
-    assert_eq!(client.saved.membership.claims[&space].operation, operation);
+    let ClaimStart {
+        space,
+        log,
+        claiming,
+        operation,
+    } = begin_claim(&mut client, &bob, now)?;
 
     // A lost key-package response retries the same durable claim, not a new
     // consumptive operation. The native package is still held in real SQLite.
-    let mut client = Client::new(account.clone(), host.clone(), &claiming.snapshot).unwrap();
-    client.claim_clock(&now.to_string()).unwrap();
-    client.bootstrap().unwrap();
-    let resumed = client
-        .receive(&ServerFrame::SyncDone.encode(), now + 4)
-        .unwrap();
-    assert_eq!(claim(&resumed), (operation.clone(), vec![bob.id()]));
-    let staged = client
-        .receive(
-            &ServerFrame::Res {
-                id: CLAIM_REQUEST,
-                result: Ok(Reply::KeyPackages(vec![KeyPackageRecord {
-                    identity: bob.id(),
-                    device: bob_device.id(),
-                    data: package,
-                }])),
-            }
-            .encode(),
-            now + 5,
-        )
-        .unwrap();
+    let mut client = Client::new(account.clone(), host.clone(), &claiming.snapshot)?;
+    client.claim_clock(&now.to_string())?;
+    client.bootstrap()?;
+    let resumed = client.receive(&ServerFrame::SyncDone.encode(), now + 4)?;
+    assert_eq!(claim(&resumed)?, (operation.clone(), vec![bob.id()]));
+    let staged = client.receive(
+        &ServerFrame::Res {
+            id: CLAIM_REQUEST,
+            result: Ok(Reply::KeyPackages(vec![KeyPackageRecord {
+                identity: bob.id(),
+                device: bob_device.id(),
+                data: package,
+            }])),
+        }
+        .encode(),
+        now + 5,
+    )?;
     assert!(!client.saved.membership.claims.contains_key(&space));
-    assert!(!published(&staged).iter().any(|env| matches!(
+    assert!(!published(&staged)?.iter().any(|env| matches!(
         env.sealed_kind(),
         Some(SealedKind::Commit | SealedKind::Welcome)
     )));
@@ -202,21 +242,31 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
     })
 }
 
-#[test]
-fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sqlite(
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let mut f = fixture()?;
+fn verified_recovery(
+    f: &Fixture,
+) -> Result<event_log::recovery::RecoveryRef, Box<dyn std::error::Error>> {
     let commit = f
         .client
         .saved
         .outbox
         .values()
-        .find(|pending| pending.envelope().unwrap().sealed_kind() == Some(SealedKind::Commit))
-        .unwrap()
-        .envelope()
-        .unwrap();
-    let recovery = event_log::recovery::RecoveryRef::parse(commit.recovery().unwrap()).unwrap();
-    let blob = f.client.saved.local_chunks.get(&recovery.blob).unwrap();
+        .map(crate::client::PendingEnvelope::envelope)
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|envelope| envelope.sealed_kind() == Some(SealedKind::Commit))
+        .ok_or("authenticated test envelope missing")?;
+    let recovery = event_log::recovery::RecoveryRef::parse(
+        commit
+            .recovery()
+            .ok_or("missing authenticated test recovery value")?,
+    )
+    .ok_or("authenticated test cryptographic evidence missing")?;
+    let blob = f
+        .client
+        .saved
+        .local_chunks
+        .get(&recovery.blob)
+        .ok_or("missing authenticated test get value")?;
     assert_eq!(hex::encode(Sha256::digest(blob)), recovery.blob);
     assert_eq!(
         f.client.pending_document_uploads(),
@@ -230,38 +280,42 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
         &f.bob_agreement,
         blob,
     )
-    .unwrap();
-    let summary =
-        mls::recovery::verify_group_info(&f.space, &group_info, Some(&f.account.device)).unwrap();
+    .ok_or("authenticated test cryptographic evidence missing")?;
+    let summary = mls::recovery::verify_group_info(&f.space, &group_info, Some(&f.account.device))?;
     assert_eq!(
         summary.identities,
         BTreeSet::from([f.account.identity.clone(), f.bob.id()])
     );
 
+    Ok(recovery)
+}
+
+#[test]
+fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sqlite(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = fixture()?;
+    let recovery = verified_recovery(&f)?;
+
     // Neither a page reload nor SyncDone may release the commit before durable
     // upload acknowledgment; the welcome additionally waits for its exact commit.
-    let mut client = Client::new(f.account.clone(), f.host.clone(), &f.staged.snapshot).unwrap();
-    let startup = client.bootstrap().unwrap();
-    assert!(!published(&startup).iter().any(|env| matches!(
+    let mut client = Client::new(f.account.clone(), f.host.clone(), &f.staged.snapshot)?;
+    let startup = client.bootstrap()?;
+    assert!(!published(&startup)?.iter().any(|env| matches!(
         env.sealed_kind(),
         Some(SealedKind::Commit | SealedKind::Welcome)
     )));
-    let synced = client
-        .receive(&ServerFrame::SyncDone.encode(), f.now + 1)
-        .unwrap();
-    assert!(!published(&synced).iter().any(|env| matches!(
+    let synced = client.receive(&ServerFrame::SyncDone.encode(), f.now + 1)?;
+    assert!(!published(&synced)?.iter().any(|env| matches!(
         env.sealed_kind(),
         Some(SealedKind::Commit | SealedKind::Welcome)
     )));
-    let uploaded = client.document_uploaded(&[recovery.blob]).unwrap();
-    let commit = handshake(&uploaded, SealedKind::Commit);
-    assert!(!published(&uploaded)
+    let uploaded = client.document_uploaded(&[recovery.blob])?;
+    let commit = handshake(&uploaded, SealedKind::Commit)?;
+    assert!(!published(&uploaded)?
         .iter()
         .any(|env| env.sealed_kind() == Some(SealedKind::Welcome)));
-    let accepted = client
-        .receive(&sequence(&mut f.log, commit)?, f.now + 2)
-        .unwrap();
-    let welcome = handshake(&accepted, SealedKind::Welcome);
+    let accepted = client.receive(&sequence(&mut f.log, commit)?, f.now + 2)?;
+    let welcome = handshake(&accepted, SealedKind::Welcome)?;
     let roster = BTreeSet::from([f.account.identity.clone(), f.bob.id()]);
     {
         let native = Device::new(
@@ -271,24 +325,24 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
             f.bob_device.secret(),
             &f.bob
                 .sign(&event_log::device_cert_message(&f.bob_device.id())),
-        )
-        .unwrap();
-        assert_eq!(native.group_state(&f.space).unwrap(), GroupState::Missing);
-        assert!(native
-            .join(&f.space, welcome.sealed_data().unwrap().1, &roster)
-            .unwrap());
+        )?;
+        assert_eq!(native.group_state(&f.space)?, GroupState::Missing);
+        assert!(native.join(
+            &f.space,
+            welcome
+                .sealed_data()
+                .ok_or("missing authenticated test sealed_data value")?
+                .1,
+            &roster
+        )?);
         assert_eq!(
-            native.checkpoint(&f.space).unwrap(),
-            client.device().unwrap().checkpoint(&f.space).unwrap()
+            native.checkpoint(&f.space)?,
+            client.device()?.checkpoint(&f.space)?
         );
     }
-    client
-        .receive(&sequence(&mut f.log, welcome)?, f.now + 3)
-        .unwrap();
-    let sent = client
-        .queue_message(&f.space, "Criado na Web, aberto no iOS 🌱", f.now + 4)
-        .unwrap();
-    let application = handshake(&sent, SealedKind::Application);
+    client.receive(&sequence(&mut f.log, welcome)?, f.now + 3)?;
+    let sent = client.queue_message(&f.space, "Criado na Web, aberto no iOS 🌱", f.now + 4)?;
+    let application = handshake(&sent, SealedKind::Application)?;
     // Reopen the native adapter after joining: interoperability includes durable
     // native group state, not just matching in-memory cryptographic objects.
     let native = Device::new(
@@ -298,26 +352,27 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
         f.bob_device.secret(),
         &f.bob
             .sign(&event_log::device_cert_message(&f.bob_device.id())),
-    )
-    .unwrap();
+    )?;
     let sender = Leaf {
         identity: f.account.identity.clone(),
         device: f.account.device.clone(),
         cert: f.account.cert.clone(),
     };
-    let Opened::Application { plaintext, from } = native
-        .open(
-            &f.space,
-            application.sealed_data().unwrap().1,
-            &roster,
-            &sender,
-        )
-        .unwrap()
+    let Opened::Application { plaintext, from } = native.open(
+        &f.space,
+        application
+            .sealed_data()
+            .ok_or("missing authenticated test sealed_data value")?
+            .1,
+        &roster,
+        &sender,
+    )?
     else {
         panic!("the native member must decrypt the browser application");
     };
     assert_eq!(from, sender);
-    let inner = InnerEvent::decode(&plaintext).unwrap();
+    let inner = InnerEvent::decode(&plaintext)
+        .ok_or("authenticated test cryptographic evidence missing")?;
     let event = event_log::event_from_content(
         inner.content,
         inner.sig,
@@ -325,9 +380,8 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
         0,
         String::new(),
         String::new(),
-    )
-    .unwrap();
-    event_log::verify_author(&event).unwrap();
+    )?;
+    event_log::verify_author(&event)?;
     assert!(
         matches!(event.body, EventBody::MessagePosted { text, .. } if text == "Criado na Web, aberto no iOS 🌱")
     );
@@ -338,71 +392,60 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
 fn refused_browser_commit_abandons_pending_epoch_and_never_releases_its_welcome(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut f = fixture()?;
-    assert!(f
-        .client
-        .device()
-        .unwrap()
-        .committed_leaves(&f.space)
-        .unwrap()
-        .is_none());
-    let committed = f.client.device().unwrap().leaves(&f.space).unwrap();
+    assert!(f.client.device()?.committed_leaves(&f.space)?.is_none());
+    let committed = f.client.device()?.leaves(&f.space)?;
     let commit = f
         .client
         .saved
         .outbox
         .values()
-        .find(|pending| pending.envelope().unwrap().sealed_kind() == Some(SealedKind::Commit))
-        .unwrap()
-        .envelope()
-        .unwrap();
+        .map(crate::client::PendingEnvelope::envelope)
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|envelope| envelope.sealed_kind() == Some(SealedKind::Commit))
+        .ok_or("authenticated test envelope missing")?;
     let welcome = f
         .client
         .saved
         .outbox
         .values()
-        .find(|pending| pending.envelope().unwrap().sealed_kind() == Some(SealedKind::Welcome))
-        .unwrap()
-        .envelope()
-        .unwrap();
-    let refused = f
-        .client
-        .receive(
-            &ServerFrame::Rejected {
-                space: f.space.clone(),
-                client_id: commit.client_id().into(),
-                reason: "stale_commit".into(),
-                permanent: true,
-            }
-            .encode(),
-            f.now + 1,
-        )
-        .unwrap();
+        .map(crate::client::PendingEnvelope::envelope)
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|envelope| envelope.sealed_kind() == Some(SealedKind::Welcome))
+        .ok_or("authenticated test envelope missing")?;
+    let refused = f.client.receive(
+        &ServerFrame::Rejected {
+            space: f.space.clone(),
+            client_id: commit.client_id().into(),
+            reason: "stale_commit".into(),
+            permanent: true,
+        }
+        .encode(),
+        f.now + 1,
+    )?;
     assert!(!f.client.saved.outbox.contains_key(commit.client_id()));
     assert!(!f.client.saved.outbox.contains_key(welcome.client_id()));
     assert_eq!(
         f.client
-            .device()
-            .unwrap()
-            .committed_leaves(&f.space)
-            .unwrap()
-            .unwrap(),
+            .device()?
+            .committed_leaves(&f.space)?
+            .ok_or("authenticated committed leaves missing")?,
         committed
     );
-    assert!(!published(&refused).iter().any(|env| matches!(
+    assert!(!published(&refused)?.iter().any(|env| matches!(
         env.sealed_kind(),
         Some(SealedKind::Commit | SealedKind::Welcome)
     )));
-    let mut reloaded = Client::new(f.account, f.host, &refused.snapshot).unwrap();
-    reloaded.claim_clock(&f.now.to_string()).unwrap();
-    let resumed = reloaded
-        .receive(&ServerFrame::SyncDone.encode(), f.now + 501)
-        .unwrap();
+    let mut reloaded = Client::new(f.account, f.host, &refused.snapshot)?;
+    reloaded.claim_clock(&f.now.to_string())?;
+    let resumed = reloaded.receive(&ServerFrame::SyncDone.encode(), f.now + 501)?;
     assert_ne!(
-        claim(&resumed).0,
+        claim(&resumed)?.0,
         f.operation,
         "a refused epoch requires a fresh claim operation"
     );
-    assert!(!published(&resumed)
+    assert!(!published(&resumed)?
         .iter()
         .any(|env| env.sealed_kind() == Some(SealedKind::Welcome)));
     Ok(())

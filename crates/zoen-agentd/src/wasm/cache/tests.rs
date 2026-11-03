@@ -20,7 +20,7 @@ fn manifest(needs: Needs) -> crate::SignedManifest {
         secrets: vec![],
         component_sha256: Some(hex::encode(Sha256::digest(COMPONENT))),
     }
-    .sign(&key())
+    .sign(&key()).unwrap()
 }
 fn private() -> (tempfile::TempDir, CompilationCache) {
     let root = tempfile::tempdir().unwrap();
@@ -80,7 +80,7 @@ fn publisher_signature_needs_and_hash_refuse_before_any_artifact_lookup() {
     let untrusted = signed
         .manifest
         .clone()
-        .sign(&SigningKey::from_bytes(&[19; 32]));
+        .sign(&SigningKey::from_bytes(&[19; 32])).unwrap();
     assert!(matches!(
         tier.load(&untrusted, COMPONENT),
         Err(WasmError::Manifest(_))

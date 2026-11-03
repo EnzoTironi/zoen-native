@@ -1,6 +1,6 @@
 //! Agenda bookings.
 
-use super::*;
+use super::{clean, json, occupies, push_log, s, t, tr, Value, MAX_EVENTS, MAX_RESOLVED_BOOKINGS};
 
 pub(super) fn booking_index(st: &Value, args: &Value) -> Result<usize, String> {
     let id = s(args, "bookingId").ok_or_else(|| t("qual horário?", "which booking?"))?;

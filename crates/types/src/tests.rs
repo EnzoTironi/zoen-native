@@ -224,3 +224,24 @@ fn item_proposal_hash_preserves_legacy_domain_bytes_and_refuses_absent_output() 
     request.proposal = None;
     assert_eq!(request.proposal_hash("sp_fixed"), None);
 }
+
+#[test]
+fn manual_unread_wire_omits_false_and_preserves_true() -> Result<(), serde_json::Error> {
+    let implicit: ChatPrefs = serde_json::from_str(r#"{"pinned":false,"archived":false}"#)?;
+    assert!(!implicit.manual_unread);
+    assert_eq!(
+        serde_json::to_string(&implicit)?,
+        r#"{"pinned":false,"archived":false}"#
+    );
+    let explicit = ChatPrefs {
+        manual_unread: true,
+        ..implicit
+    };
+    let bytes = serde_json::to_string(&explicit)?;
+    assert_eq!(
+        bytes,
+        r#"{"manual_unread":true,"pinned":false,"archived":false}"#
+    );
+    assert_eq!(serde_json::from_str::<ChatPrefs>(&bytes)?, explicit);
+    Ok(())
+}

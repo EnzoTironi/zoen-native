@@ -56,35 +56,51 @@ fn bullet_prefix(kind: &Kind) -> String {
 
 /// The lead to write for an edited list item: the original one if it still describes the
 /// same kind of item (with the checkbox updated), else a fresh one.
-fn item_lead(b: &Block) -> String {
-    let fresh = bullet_prefix(&b.kind);
-    if b.lead.is_empty() {
+fn item_lead(block: &Block) -> String {
+    let fresh = bullet_prefix(&block.kind);
+    if block.lead.is_empty() {
         return fresh;
     }
-    let orig = crate::Block::kind_from_fp(&b.fp);
-    let same_shape = match (&orig, &b.kind) {
-        (Some(Kind::Task { indent: a, .. }), Kind::Task { indent: c, .. }) => a == c,
-        (Some(Kind::Bullet { indent: a }), Kind::Bullet { indent: c }) => a == c,
+    let orig = crate::Block::kind_from_fp(&block.fp);
+    let same_shape = match (&orig, &block.kind) {
+        (
+            Some(Kind::Task {
+                indent: prior_indent,
+                ..
+            }),
+            Kind::Task {
+                indent: current_indent,
+                ..
+            },
+        )
+        | (
+            Some(Kind::Bullet {
+                indent: prior_indent,
+            }),
+            Kind::Bullet {
+                indent: current_indent,
+            },
+        ) => prior_indent == current_indent,
         (
             Some(Kind::Numbered {
-                indent: a,
-                number: n,
+                indent: prior_indent,
+                number: prior_number,
             }),
             Kind::Numbered {
-                indent: c,
-                number: m,
+                indent: current_indent,
+                number: current_number,
             },
-        ) => a == c && n == m,
+        ) => prior_indent == current_indent && prior_number == current_number,
         _ => false,
     };
     if !same_shape {
         return fresh;
     }
-    let mut lead = b.lead.trim_end_matches(['\n', '\r']).to_string();
+    let mut lead = block.lead.trim_end_matches(['\n', '\r']).to_string();
     if !lead.ends_with(' ') && !lead.ends_with('\t') {
         lead.push(' ');
     }
-    if let Kind::Task { checked, .. } = b.kind {
+    if let Kind::Task { checked, .. } = block.kind {
         if let (Some(open), Some(close)) = (lead.find('['), lead.find(']')) {
             if close == open + 2 {
                 lead.replace_range(open + 1..close, if checked { "x" } else { " " });
@@ -106,7 +122,7 @@ fn render(b: &Block) -> String {
             } else {
                 format!("{} ", "#".repeat((*level).clamp(1, 6) as usize))
             };
-            let mut text = inline.clone();
+            let mut text = inline;
             if text.ends_with('#') {
                 text.insert(text.len() - 1, '\\');
             }
@@ -142,39 +158,7 @@ fn render(b: &Block) -> String {
             }
             s
         }
-        Kind::Code { lang } => {
-            let code: String = b
-                .runs
-                .iter()
-                .map(|r| r.text.as_str())
-                .collect::<String>()
-                .replace('\u{2028}', "\n");
-            let longest = longest_run(&code, '`');
-            let (open, close) = if b.lead.trim_start().starts_with("```")
-                || b.lead.trim_start().starts_with("~~~")
-            {
-                let o = b.lead.trim_end_matches(['\n', '\r']).to_string();
-                let t = o.trim_start();
-                let ch = t.chars().next().unwrap_or('`');
-                let n = t.chars().take_while(|c| *c == ch).count();
-                if ch == '`' && longest >= n {
-                    let f = "`".repeat(longest + 1);
-                    (format!("{f}{lang}"), f)
-                } else {
-                    (t.to_string(), ch.to_string().repeat(n))
-                }
-            } else {
-                let f = "`".repeat((longest + 1).max(3));
-                (format!("{f}{lang}"), f)
-            };
-            let mut s = format!("{open}\n{code}");
-            if !code.is_empty() {
-                s.push('\n');
-            }
-            s.push_str(&close);
-            s.push('\n');
-            s
-        }
+        Kind::Code { lang } => render_code(b, lang),
         Kind::Divider => "***\n".into(),
         Kind::Image { url, alt, title } => {
             if title.is_empty() {
@@ -197,6 +181,40 @@ fn render(b: &Block) -> String {
             t
         }
     }
+}
+
+fn render_code(block: &Block, lang: &str) -> String {
+    let code: String = block
+        .runs
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect::<String>()
+        .replace('\u{2028}', "\n");
+    let longest = longest_run(&code, '`');
+    let (open, close) = if block.lead.trim_start().starts_with("```")
+        || block.lead.trim_start().starts_with("~~~")
+    {
+        let original = block.lead.trim_end_matches(['\n', '\r']).to_string();
+        let trimmed = original.trim_start();
+        let ch = trimmed.chars().next().unwrap_or('`');
+        let fence_length = trimmed.chars().take_while(|c| *c == ch).count();
+        if ch == '`' && longest >= fence_length {
+            let fence = "`".repeat(longest + 1);
+            (format!("{fence}{lang}"), fence)
+        } else {
+            (trimmed.to_string(), ch.to_string().repeat(fence_length))
+        }
+    } else {
+        let fence = "`".repeat((longest + 1).max(3));
+        (format!("{fence}{lang}"), fence)
+    };
+    let mut s = format!("{open}\n{code}");
+    if !code.is_empty() {
+        s.push('\n');
+    }
+    s.push_str(&close);
+    s.push('\n');
+    s
 }
 
 fn url_md(url: &str) -> String {
@@ -254,15 +272,12 @@ fn escape(s: &str, line_start: bool) -> String {
             '&' => {
                 // Only when it could read as an entity.
                 let rest: String = chars[i + 1..].iter().take(12).collect();
-                let ent = rest
-                    .find(';')
-                    .map(|p| {
-                        p > 0
-                            && rest[..p]
-                                .chars()
-                                .all(|c| c.is_ascii_alphanumeric() || c == '#')
-                    })
-                    .unwrap_or(false);
+                let ent = rest.find(';').is_some_and(|p| {
+                    p > 0
+                        && rest[..p]
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '#')
+                });
                 if ent {
                     out.push('\\');
                 }
@@ -297,74 +312,11 @@ fn escape(s: &str, line_start: bool) -> String {
     out
 }
 
-/// One character's formatting, used to rebuild clean delimiters.
-#[derive(Clone, PartialEq)]
-struct CharFmt {
-    b: bool,
-    i: bool,
-    s: bool,
-    code: bool,
-    link: Option<String>,
-    hard: bool,
-}
-
 /// The canonical Markdown for a block's runs (the house style).
 pub(crate) fn inline_md(runs: &[Run]) -> String {
-    let mut chars: Vec<(char, CharFmt)> = Vec::new();
-    for r in runs {
-        for c in r.text.chars() {
-            chars.push((
-                c,
-                CharFmt {
-                    b: r.attrs.bold,
-                    i: r.attrs.italic,
-                    s: r.attrs.strike,
-                    code: r.attrs.code,
-                    link: r.attrs.link.clone(),
-                    hard: r.attrs.hard_break,
-                },
-            ));
-        }
-    }
-    // Emphasis can't open or close on whitespace: move it outside.
-    for key in 0..3 {
-        let get = |f: &CharFmt| match key {
-            0 => f.b,
-            1 => f.i,
-            _ => f.s,
-        };
-        let mut i = 0;
-        while i < chars.len() {
-            if !get(&chars[i].1) {
-                i += 1;
-                continue;
-            }
-            let start = i;
-            while i < chars.len() && get(&chars[i].1) {
-                i += 1;
-            }
-            let end = i;
-            let mut a = start;
-            while a < end && chars[a].0.is_whitespace() {
-                a += 1;
-            }
-            let mut z = end;
-            while z > a && chars[z - 1].0.is_whitespace() {
-                z -= 1;
-            }
-            for (k, ch) in chars.iter_mut().enumerate().take(end).skip(start) {
-                if k < a || k >= z || ch.0 == '\u{2028}' {
-                    match key {
-                        0 => ch.1.b = false,
-                        1 => ch.1.i = false,
-                        _ => ch.1.s = false,
-                    }
-                }
-            }
-        }
-    }
+    let chars = formatted_characters(runs);
     // Group into segments of equal formatting.
-    let mut segs: Vec<(String, CharFmt)> = Vec::new();
+    let mut segs: Vec<(String, crate::Attrs)> = Vec::new();
     for (c, f) in chars {
         match segs.last_mut() {
             Some((t, g)) if *g == f && c != '\u{2028}' && !t.ends_with('\u{2028}') => t.push(c),
@@ -384,7 +336,7 @@ pub(crate) fn inline_md(runs: &[Run]) -> String {
         if j == idx {
             // A line break.
             let f = &segs[idx].1;
-            out.push_str(if f.hard { "\\\n" } else { "\n" });
+            out.push_str(if f.hard_break { "\\\n" } else { "\n" });
             at_line_start = true;
             idx += 1;
             continue;
@@ -395,7 +347,7 @@ pub(crate) fn inline_md(runs: &[Run]) -> String {
                 let text: String = segs[idx..j].iter().map(|s| s.0.as_str()).collect();
                 let plain = segs[idx..j]
                     .iter()
-                    .all(|s| !s.1.b && !s.1.i && !s.1.s && !s.1.code);
+                    .all(|s| !s.1.bold && !s.1.italic && !s.1.strike && !s.1.code);
                 if plain
                     && text == *url
                     && (url.starts_with("http://") || url.starts_with("https://"))
@@ -419,12 +371,69 @@ pub(crate) fn inline_md(runs: &[Run]) -> String {
     out
 }
 
-fn fmt_segments(segs: &[(String, CharFmt)], line_start: bool) -> String {
+fn formatted_characters(runs: &[Run]) -> Vec<(char, crate::Attrs)> {
+    let mut chars: Vec<(char, crate::Attrs)> = Vec::new();
+    for r in runs {
+        for c in r.text.chars() {
+            chars.push((
+                c,
+                crate::Attrs {
+                    bold: r.attrs.bold,
+                    italic: r.attrs.italic,
+                    strike: r.attrs.strike,
+                    code: r.attrs.code,
+                    link: r.attrs.link.clone(),
+                    hard_break: r.attrs.hard_break,
+                },
+            ));
+        }
+    }
+    // Emphasis can't open or close on whitespace: move it outside.
+    for key in 0..3 {
+        let get = |f: &crate::Attrs| match key {
+            0 => f.bold,
+            1 => f.italic,
+            _ => f.strike,
+        };
+        let mut i = 0;
+        while i < chars.len() {
+            if !get(&chars[i].1) {
+                i += 1;
+                continue;
+            }
+            let start = i;
+            while i < chars.len() && get(&chars[i].1) {
+                i += 1;
+            }
+            let end = i;
+            let mut a = start;
+            while a < end && chars[a].0.is_whitespace() {
+                a += 1;
+            }
+            let mut z = end;
+            while z > a && chars[z - 1].0.is_whitespace() {
+                z -= 1;
+            }
+            for (k, ch) in chars.iter_mut().enumerate().take(end).skip(start) {
+                if k < a || k >= z || ch.0 == '\u{2028}' {
+                    match key {
+                        0 => ch.1.bold = false,
+                        1 => ch.1.italic = false,
+                        _ => ch.1.strike = false,
+                    }
+                }
+            }
+        }
+    }
+    chars
+}
+
+fn fmt_segments(segs: &[(String, crate::Attrs)], line_start: bool) -> String {
     let mut out = String::new();
     let mut open: Vec<&'static str> = Vec::new();
     let mut first = line_start;
     for (text, f) in segs {
-        let want: Vec<&'static str> = [(f.b, "**"), (f.i, "*"), (f.s, "~~")]
+        let want: Vec<&'static str> = [(f.bold, "**"), (f.italic, "*"), (f.strike, "~~")]
             .iter()
             .filter(|(on, _)| *on)
             .map(|(_, d)| *d)

@@ -61,7 +61,7 @@ fn sql_decimal_boundary_preserves_every_unsigned_bit_and_refuses_corrupt_state()
 fn keyset_cursor_is_bounded_and_never_crosses_its_initial_identity_ceiling() {
     let low = format!("{:064x}", 1);
     let high = format!("{:064x}", 999);
-    assert!(validate_page("", &high, PAGE_ROWS as u32).is_ok());
+    assert!(validate_page("", &high, u32::try_from(PAGE_ROWS).unwrap()).is_ok());
     assert!(validate_page(&low, &high, 1).is_ok());
     assert!(
         validate_page(&high, &high, 1).is_ok(),
@@ -69,7 +69,7 @@ fn keyset_cursor_is_bounded_and_never_crosses_its_initial_identity_ceiling() {
     );
     assert!(validate_page(&high, &low, 1).is_err());
     assert!(validate_page("", &high, 0).is_err());
-    assert!(validate_page("", &high, PAGE_ROWS as u32 + 1).is_err());
+    assert!(validate_page("", &high, u32::try_from(PAGE_ROWS).unwrap() + 1).is_err());
     for invalid in ["bad", "", "fF", "0123"] {
         assert!(validate_page(&low, invalid, 1).is_err());
     }

@@ -64,13 +64,13 @@ pub(crate) fn json_shape(value: &Value) -> bool {
                 if values.len() > 100_000usize.saturating_sub(nodes + pending.len()) {
                     return false;
                 }
-                pending.extend(values.iter().map(|v| (v, depth + 1)))
+                pending.extend(values.iter().map(|v| (v, depth + 1)));
             }
             Value::Object(values) => {
                 if values.len() > 100_000usize.saturating_sub(nodes + pending.len()) {
                     return false;
                 }
-                pending.extend(values.values().map(|v| (v, depth + 1)))
+                pending.extend(values.values().map(|v| (v, depth + 1)));
             }
             _ => {}
         }

@@ -115,7 +115,7 @@ async fn call(
 async fn qualify(component: &[u8], document: &[u8], output: &Path) -> R<Value> {
     let key = SigningKey::from_bytes(&[42; 32]); // Synthetic test publisher, not a deployment key.
     let tier = WasmTier::new(vec![key.verifying_key()], 1, 256 << 20)?;
-    let signed = manifest(component).sign(&key);
+    let signed = manifest(component).sign(&key).map_err(|error| error.to_string())?;
     let mut corrupted = component.to_vec();
     *corrupted.first_mut().ok_or("empty component")? ^= 1;
     require(

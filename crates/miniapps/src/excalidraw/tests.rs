@@ -3,7 +3,7 @@ use super::*;
 fn rectangle() -> Value {
     json!({"id":"shape_1","type":"rectangle","x":1,"y":2,"width":40,"height":30})
 }
-fn scene(elements: Vec<Value>) -> Value {
+fn scene(elements: &[Value]) -> Value {
     json!({"type":"excalidraw","version":2,"elements":elements,"appState":{},"files":{}})
 }
 fn accepted(value: &Value) -> bool {
@@ -12,7 +12,7 @@ fn accepted(value: &Value) -> bool {
 
 #[test]
 fn compact_metadata_ignores_deleted_elements_and_keeps_passive_extensions() {
-    let mut value = scene(vec![rectangle()]);
+    let mut value = scene(&[rectangle()]);
     let mut text = rectangle();
     text["id"] = json!("text_1");
     text["type"] = json!("text");
@@ -25,7 +25,7 @@ fn compact_metadata_ignores_deleted_elements_and_keeps_passive_extensions() {
         .unwrap()
         .extend([text, deleted]);
     value["futurePassive"] = json!({"retained":[1,"unknown value",{"nested":true}]});
-    let input = format!(" {}\n", value);
+    let input = format!(" {value}\n");
     let parsed = Scene::parse(&input).unwrap();
     assert_eq!(parsed.metadata(), r#"{"elementCount":2,"textCount":1}"#);
     assert_eq!(
@@ -36,7 +36,7 @@ fn compact_metadata_ignores_deleted_elements_and_keeps_passive_extensions() {
 
 #[test]
 fn element_shape_and_cross_references_are_checked() {
-    let base = scene(vec![rectangle()]);
+    let base = scene(&[rectangle()]);
     assert!(accepted(&base));
     for (field, invalid) in [
         ("id", json!("invalid id")),
@@ -85,7 +85,7 @@ fn embedded_raster_signatures_match_the_declared_mime_without_remote_fetches() {
         let mut image = rectangle();
         image["type"] = json!("image");
         image["fileId"] = json!("image_1");
-        let mut value = scene(vec![image]);
+        let mut value = scene(&[image]);
         let payload = base64::engine::general_purpose::STANDARD.encode(bytes);
         value["files"] = json!({"image_1":{"id":"image_1","mimeType":mime,"dataURL":format!("data:{mime};base64,{payload}")}});
         assert!(accepted(&value), "{mime}");
@@ -105,7 +105,7 @@ fn embedded_raster_signatures_match_the_declared_mime_without_remote_fetches() {
     let mut orphan = rectangle();
     orphan["type"] = json!("image");
     orphan["fileId"] = json!("missing");
-    assert!(!accepted(&scene(vec![orphan])));
+    assert!(!accepted(&scene(&[orphan])));
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn passive_json_is_bounded_before_any_host_storage_effect() {
         json!("null\0byte"),
         json!({"key\0":true}),
     ] {
-        let mut value = scene(vec![]);
+        let mut value = scene(&[]);
         value["futurePassive"] = bad;
         assert!(!accepted(&value));
     }
@@ -125,22 +125,22 @@ fn passive_json_is_bounded_before_any_host_storage_effect() {
     for _ in 0..65 {
         nested = json!([nested]);
     }
-    let mut value = scene(vec![]);
+    let mut value = scene(&[]);
     value["futurePassive"] = nested;
     assert!(!accepted(&value));
     value["futurePassive"] = json!(vec![0; 500_001]);
     assert!(!accepted(&value));
     value = scene(
-        (0..10_001)
+        &(0..10_001)
             .map(|n| {
                 let mut shape = rectangle();
                 shape["id"] = json!(format!("shape_{n}"));
                 shape
             })
-            .collect(),
+            .collect::<Vec<_>>(),
     );
     assert!(!accepted(&value));
-    value = scene(vec![]);
+    value = scene(&[]);
     value["version"] = json!(3);
     assert!(!accepted(&value));
     value["version"] = json!(2);

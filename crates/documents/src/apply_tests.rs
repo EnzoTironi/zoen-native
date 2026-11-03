@@ -460,3 +460,42 @@ fn incomplete_mixed_import_refuses_even_independent_changes() {
     receiving.import(&delta).unwrap();
     assert_eq!(receiving.snapshot(), completed);
 }
+
+#[test]
+fn independent_formatting_flags_survive_every_combination_and_snapshot() {
+    for bits in 0_u8..32 {
+        let expected = Attrs {
+            bold: bits & 1 != 0,
+            italic: bits & 2 != 0,
+            strike: bits & 4 != 0,
+            code: bits & 8 != 0,
+            hard_break: bits & 16 != 0,
+            link: None,
+        };
+        let text = "a😀\u{2028}";
+        let runs = vec![Run {
+            text: text.into(),
+            attrs: expected.clone(),
+        }];
+        let page = Page::new();
+        page.apply(
+            &["independent-marks".into()],
+            &[BlockEdit {
+                id: "independent-marks".into(),
+                kind: Kind::Paragraph,
+                text: text.into(),
+                spans: spans_of(&runs),
+            }],
+        )
+        .unwrap();
+        let restored = Page::new();
+        restored.import(&page.snapshot()).unwrap();
+        let blocks = restored.blocks();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].plain_text(), text);
+        assert!(
+            blocks[0].runs.iter().all(|run| run.attrs == expected),
+            "formatting combination {bits}"
+        );
+    }
+}

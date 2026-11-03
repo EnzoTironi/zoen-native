@@ -281,8 +281,10 @@ impl FlyMachinesProvider {
             }
             Err(e) => return Err(e),
         };
+        let exit_code = serde::Deserialize::deserialize(&r["exit_code"])
+            .map_err(|_| SandboxError::Backend("Fly returned an invalid exit code".into()))?;
         Ok(ExecOutput {
-            exit_code: r["exit_code"].as_i64().map(|c| c as i32),
+            exit_code,
             stdout: cut(r["stdout"].as_str().unwrap_or("").to_string()),
             stderr: cut(r["stderr"].as_str().unwrap_or("").to_string()),
             timed_out: false,

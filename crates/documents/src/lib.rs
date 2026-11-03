@@ -66,12 +66,14 @@ pub enum Kind {
 }
 
 impl Kind {
+    #[must_use]
     pub fn is_list_item(&self) -> bool {
         matches!(
             self,
             Kind::Bullet { .. } | Kind::Numbered { .. } | Kind::Task { .. }
         )
     }
+    #[must_use]
     pub fn id(&self) -> &'static str {
         match self {
             Kind::Paragraph => "paragraph",
@@ -88,6 +90,10 @@ impl Kind {
     }
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Rich-text marks are independently combinable flags, not mutually exclusive states; all combinations survive CRDT snapshot roundtrips."
+)]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Attrs {
     pub bold: bool,
@@ -105,6 +111,7 @@ pub struct Run {
 }
 
 impl Run {
+    #[must_use]
     pub fn plain(t: &str) -> Run {
         Run {
             text: t.to_string(),
@@ -196,11 +203,14 @@ impl Default for Page {
 }
 
 impl Page {
+    #[must_use]
     pub fn new() -> Page {
         Page { doc: configured() }
     }
 
     /// A page from Markdown: one block per Markdown block.
+    /// # Errors
+    /// Refuses failed block identity generation, malformed block encoding or CRDT writes.
     pub fn from_markdown(md: &str) -> Result<Page, DocError> {
         let p = Page::new();
         let imported = markdown::import(md)?;
@@ -219,6 +229,8 @@ impl Page {
 
     /// Applies complete updates (or a snapshot) made anywhere. Missing dependencies
     /// refuse the entire import, including any changes that could apply on their own.
+    /// # Errors
+    /// Refuses invalid updates, missing dependencies, ambiguous block identities or CRDT import failures before admitting staged changes.
     pub fn import(&self, bytes: &[u8]) -> Result<(), DocError> {
         let staged = self.doc.fork();
         let from = staged.oplog_vv();
@@ -242,19 +254,23 @@ impl Page {
         Ok(())
     }
 
+    #[must_use]
     pub fn snapshot(&self) -> Vec<u8> {
         self.doc.export(ExportMode::snapshot()).unwrap_or_default()
     }
 
+    #[must_use]
     pub fn version(&self) -> VersionVector {
         self.doc.oplog_vv()
     }
 
+    #[must_use]
     pub fn frontiers(&self) -> Frontiers {
         self.doc.oplog_frontiers()
     }
 
     /// Everything since `from` (empty if nothing changed).
+    #[must_use]
     pub fn updates_since(&self, from: &VersionVector) -> Vec<u8> {
         self.doc.commit();
         if &self.doc.oplog_vv() == from {
@@ -269,6 +285,7 @@ impl Page {
         self.doc.get_movable_list("blocks")
     }
 
+    #[must_use]
     pub fn blocks(&self) -> Vec<Block> {
         let list = self.blocks_list();
         (0..list.len())
@@ -281,6 +298,8 @@ impl Page {
 
     /// SHA-256 of ordered block identities and semantic content, independent of CRDT
     /// history and original Markdown spelling.
+    /// # Errors
+    /// Returns an error if any block or the ordered page content cannot be canonically encoded.
     pub fn content_hash(&self) -> Result<String, DocError> {
         let blocks = self
             .blocks()
@@ -298,6 +317,8 @@ impl Page {
 
     /// Editor equality also preserves stored syntax metadata that the public semantic
     /// hash intentionally normalizes (currently Heading.setext). No hash/version change.
+    /// # Errors
+    /// Returns an error if either page cannot produce its semantic content hash.
     pub fn editor_content_eq(&self, other: &Self) -> Result<bool, DocError> {
         Ok(self.content_hash()? == other.content_hash()?
             && self
@@ -307,6 +328,8 @@ impl Page {
                 .eq(other.blocks().iter().map(|b| &b.kind)))
     }
 
+    /// # Errors
+    /// Returns an error if the selected block cannot produce its semantic content hash.
     pub fn block_hash(&self, id: &str) -> Result<Option<String>, DocError> {
         self.blocks()
             .into_iter()
@@ -315,6 +338,7 @@ impl Page {
             .transpose()
     }
 
+    #[must_use]
     pub fn title(&self) -> String {
         let blocks = self.blocks();
         blocks
@@ -330,6 +354,8 @@ impl Page {
             .unwrap_or_default()
     }
 
+    /// # Errors
+    /// Returns an error if a block fingerprint cannot be encoded for source-preserving rendering.
     pub fn to_markdown(&self) -> Result<String, DocError> {
         let lead = match self.doc.get_map("page").get("lead") {
             Some(ValueOrContainer::Value(LoroValue::String(s))) => s.to_string(),
@@ -339,6 +365,8 @@ impl Page {
     }
 
     /// Every block written in house style, ignoring how the source spelled it.
+    /// # Errors
+    /// Returns an error if block rendering cannot encode its content.
     pub fn canonical_markdown(&self) -> Result<String, DocError> {
         markdown::export("", &self.blocks(), true)
     }
@@ -347,12 +375,16 @@ impl Page {
     /// `changed` carries the blocks whose kind or text changed (new ids are created).
     /// Validate and stage first, so a refused edit cannot change the original page.
     /// For a stale editor, call this on `at(observed_frontiers)` and merge its updates.
+    /// # Errors
+    /// Refuses invalid block identities, order, text spans or CRDT writes; staged changes are admitted only after validation.
     pub fn apply(&self, order: &[String], changed: &[BlockEdit]) -> Result<(), DocError> {
         self.apply_checked(order, changed, false)
     }
 
     /// A complete editor projection may explicitly change syntax metadata. Legacy
     /// `apply` keeps its semantic no-op/source-spelling preservation contract.
+    /// # Errors
+    /// Refuses invalid block identities, order, text spans or CRDT writes; staged changes are admitted only after validation.
     pub fn apply_editor(&self, order: &[String], changed: &[BlockEdit]) -> Result<(), DocError> {
         self.apply_checked(order, changed, true)
     }
@@ -431,12 +463,16 @@ impl Page {
 
     /// An independent copy as it was at `version`. Editing it only changes the copy;
     /// its generated updates can then be merged without replacing unseen blocks.
+    /// # Errors
+    /// Refuses unavailable history or a CRDT fork failure.
     pub fn at(&self, version: &Frontiers) -> Result<Page, DocError> {
         let doc = self.doc.fork_at(version).map_err(err)?;
         Ok(Page { doc })
     }
 
     /// Makes the content equal to what it was at `version` (as a new change).
+    /// # Errors
+    /// Refuses unavailable history or a CRDT revert failure.
     pub fn revert_to(&self, version: &Frontiers) -> Result<(), DocError> {
         self.doc.revert_to(version).map_err(err)?;
         self.doc.commit();

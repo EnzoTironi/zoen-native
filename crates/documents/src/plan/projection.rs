@@ -30,9 +30,8 @@ pub(super) fn line(node: &Node) -> Result<PlanLine> {
     if node.kind != BlockKind::Line {
         return Err(error("not a plan line"));
     }
-    let done = match node.map.get("done") {
-        Some(ValueOrContainer::Value(LoroValue::Bool(v))) => v,
-        _ => return Err(error("missing or invalid done")),
+    let Some(ValueOrContainer::Value(LoroValue::Bool(done))) = node.map.get("done") else {
+        return Err(error("missing or invalid done"));
     };
     Ok(PlanLine {
         id: string(&node.map, "line_id")?,

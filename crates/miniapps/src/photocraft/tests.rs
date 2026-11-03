@@ -129,7 +129,7 @@ fn tools_only_propose_closed_native_transforms_against_exact_observed_heads() ->
     );
     for (key, value) in [
         ("version", json!(0)),
-        ("version", json!(4294967295_u32)),
+        ("version", json!(4_294_967_295_u32)),
         ("sha256", json!("A".repeat(64))),
         ("artifactId", json!("../other")),
         ("action", json!("image.load")),

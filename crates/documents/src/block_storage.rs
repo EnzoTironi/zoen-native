@@ -1,5 +1,8 @@
 //! Loro block storage, rich-text marks and public block projections.
-use super::*;
+use super::{
+    err, markdown, Attrs, Block, BlockEdit, Container, DocError, HashMap, Kind, LoroMap, LoroText,
+    LoroValue, Run, Span, ValueOrContainer, MARKS,
+};
 use loro::TextDelta;
 
 pub(super) fn get_str(m: &LoroMap, key: &str) -> String {
@@ -149,64 +152,67 @@ pub(super) fn char_marks(runs: &[Run]) -> HashMap<&'static str, Vec<Option<Strin
     out
 }
 
-pub(super) fn apply_edit(m: &LoroMap, e: &BlockEdit) -> Result<(), DocError> {
-    let kind_json = serde_json::to_string(&e.kind).map_err(err)?;
-    if get_str(m, "kind") != kind_json {
-        m.insert("kind", kind_json).map_err(err)?;
+pub(super) fn apply_edit(map: &LoroMap, edit: &BlockEdit) -> Result<(), DocError> {
+    let kind_json = serde_json::to_string(&edit.kind).map_err(err)?;
+    if get_str(map, "kind") != kind_json {
+        map.insert("kind", kind_json).map_err(err)?;
     }
-    let t = match text_of(m) {
-        Some(t) => t,
-        None => m.insert_container("text", LoroText::new()).map_err(err)?,
+    let text = match text_of(map) {
+        Some(text) => text,
+        None => map.insert_container("text", LoroText::new()).map_err(err)?,
     };
-    if t.to_string() != e.text {
-        t.update(&e.text, Default::default())
+    if text.to_string() != edit.text {
+        text.update(&edit.text, loro::UpdateOptions::default())
             .map_err(|_| DocError("text update timed out".into()))?;
     }
     // Marks: compare per character and fix only the differences.
-    let current = read_block(m);
+    let current = read_block(map);
     let have = char_marks(&current.runs);
-    let n = e.text.chars().count();
+    let char_count = edit.text.chars().count();
     let mut want: HashMap<&'static str, Vec<Option<String>>> = HashMap::new();
-    for (k, _) in MARKS {
-        want.insert(k, vec![None; n]);
+    for (key, _) in MARKS {
+        want.insert(key, vec![None; char_count]);
     }
-    for s in &e.spans {
-        let a = u16_to_char(&e.text, s.start as usize).min(n);
-        let z = u16_to_char(&e.text, s.end as usize).min(n);
-        if let Some(slot) = want.get_mut(s.key.as_str()) {
-            let v = if s.key == "a" {
-                s.value.clone()
+    for span in &edit.spans {
+        let start = u16_to_char(&edit.text, span.start as usize).min(char_count);
+        let end = u16_to_char(&edit.text, span.end as usize).min(char_count);
+        if let Some(slot) = want.get_mut(span.key.as_str()) {
+            let value = if span.key == "a" {
+                span.value.clone()
             } else {
                 "1".into()
             };
-            for x in &mut slot[a..z] {
-                *x = Some(v.clone());
+            for mark in &mut slot[start..end] {
+                *mark = Some(value.clone());
             }
         }
     }
-    for (k, _) in MARKS {
-        let h = &have[k];
-        let w = &want[k];
-        let mut i = 0;
-        while i < n {
-            if h.get(i) == w.get(i) {
-                i += 1;
+    for (key, _) in MARKS {
+        let current_marks = &have[key];
+        let wanted_marks = &want[key];
+        let mut index = 0;
+        while index < char_count {
+            if current_marks.get(index) == wanted_marks.get(index) {
+                index += 1;
                 continue;
             }
-            let start = i;
-            let target = w[i].clone();
-            while i < n && h.get(i) != w.get(i) && w[i] == target {
-                i += 1;
+            let start = index;
+            let target = wanted_marks[index].clone();
+            while index < char_count
+                && current_marks.get(index) != wanted_marks.get(index)
+                && wanted_marks[index] == target
+            {
+                index += 1;
             }
             match &target {
-                None => t.unmark(start..i, k).map_err(err)?,
-                Some(v) => {
-                    let val = if k == "a" {
-                        LoroValue::from(v.as_str())
+                None => text.unmark(start..index, key).map_err(err)?,
+                Some(value) => {
+                    let val = if key == "a" {
+                        LoroValue::from(value.as_str())
                     } else {
                         LoroValue::Bool(true)
                     };
-                    t.mark(start..i, k, val).map_err(err)?
+                    text.mark(start..index, key, val).map_err(err)?;
                 }
             }
         }
@@ -215,11 +221,12 @@ pub(super) fn apply_edit(m: &LoroMap, e: &BlockEdit) -> Result<(), DocError> {
 }
 
 /// UTF-16 spans of a block's runs, for editors.
+#[must_use]
 pub fn spans_of(runs: &[Run]) -> Vec<Span> {
     let mut out = Vec::new();
     let mut pos = 0u32;
     for r in runs {
-        let n: u32 = r.text.chars().map(|c| c.len_utf16() as u32).sum();
+        let n: u32 = r.text.encode_utf16().fold(0_u32, |units, _| units + 1);
         for (k, v) in attr_marks(&r.attrs) {
             out.push(Span {
                 start: pos,
@@ -237,6 +244,7 @@ pub fn spans_of(runs: &[Run]) -> Vec<Span> {
 }
 
 /// Markdown for one block's text in house style (used for "Editar como texto").
+#[must_use]
 pub fn block_markdown(b: &Block) -> String {
     markdown::inline_md(&b.runs)
 }

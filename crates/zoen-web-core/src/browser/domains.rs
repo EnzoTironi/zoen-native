@@ -79,7 +79,7 @@ impl BrowserCore {
         serde_json::to_string(
             &self
                 .client
-                .profile_photo_received(identity, expected, sealed)
+                .profile_photo_received(identity, expected, &sealed)
                 .map_err(error)?,
         )
         .map_err(error)

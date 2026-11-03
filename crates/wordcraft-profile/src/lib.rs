@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![deny(clippy::panic)]
+
 //! One bounded DOCX contract over the pinned upstream model and codec.
 //! No editor, layout, fonts, file service, network or document authority lives here.
 pub mod action;

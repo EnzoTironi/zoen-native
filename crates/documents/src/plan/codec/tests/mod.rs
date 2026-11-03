@@ -15,7 +15,7 @@ pub(super) fn seed() -> CanonicalPlanSeed {
         event_id: "creation".into(),
         document: PlanDoc {
             title: "Trip".into(),
-            summary: "".into(),
+            summary: String::new(),
             budget_cents: None,
             sections: vec![PlanSection {
                 title: "Stay".into(),
@@ -59,7 +59,9 @@ pub(super) fn raw_packet(schema: &JsonSchema) -> Vec<u8> {
 pub(super) fn split(doc: &PlanDocument, update: &PlanUpdate) -> PlanUpdate {
     let mut changes = Vec::new();
     for change in &update.0.changes {
-        for counter in change.id.counter..change.id.counter + change.op_len() as i32 {
+        for counter in
+            change.id.counter..change.id.counter + i32::try_from(change.op_len()).unwrap()
+        {
             changes.extend(doc.page.doc.export_json_in_id_span(IdSpan::new(
                 change.id.peer,
                 counter,

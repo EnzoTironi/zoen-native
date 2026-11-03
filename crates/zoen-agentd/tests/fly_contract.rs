@@ -98,6 +98,9 @@ impl Guest {
             .iter()
             .map(|arg| arg.as_str().unwrap())
             .collect();
+        if let Some(value) = argv.last().and_then(|arg| arg.strip_prefix("exit-code-fixture:")) {
+            return (200, json!({"exit_code": serde_json::from_str::<Value>(value).unwrap_or(Value::Null)}));
+        }
         let stdin = body["stdin"].as_str().unwrap_or("");
         self.largest_stdin = self.largest_stdin.max(stdin.len());
         #[cfg(target_os = "linux")]

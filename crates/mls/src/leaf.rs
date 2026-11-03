@@ -15,6 +15,7 @@ pub struct Leaf {
 
 impl Leaf {
     /// The credential bytes: `zoen-leaf/1:<identity>:<device>:<cert>`, all hex.
+    #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         format!("{TAG}:{}:{}:{}", self.identity, self.device, self.cert).into_bytes()
     }
@@ -22,6 +23,7 @@ impl Leaf {
     /// Parses a credential and checks it. The certificate must verify under the identity,
     /// and the leaf's MLS signature key must be the certified device key. Otherwise anyone
     /// could claim to be anyone's device.
+    #[must_use]
     pub fn verified(credential: &[u8], signature_key: &[u8]) -> Option<Self> {
         let s = std::str::from_utf8(credential).ok()?;
         let mut parts = s.split(':');

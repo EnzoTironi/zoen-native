@@ -115,7 +115,7 @@ mod tests {
             seq: event.seq,
             prev: event.prev.clone(),
             hash: event.hash.clone(),
-            env: env.clone(),
+            env,
         };
         let receipt = Receipt::from_sequenced(&canonical);
         assert_eq!(receipt.sequenced(), Some(canonical));

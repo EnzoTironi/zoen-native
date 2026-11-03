@@ -1,9 +1,13 @@
-use super::*;
+use super::{params, OptionalExtension, Result, Store};
 use crate::StoreError;
 
 impl Store {
     // ── encrypted media ──
 
+    /// Reads the retained ciphertext digest and key for a plaintext digest.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn media_key(&self, plain_sha: &str) -> Result<Option<(String, String)>> {
         Ok(self
             .conn
@@ -16,6 +20,9 @@ impl Store {
     }
 
     /// Remembers the key and queues the encrypted copy for upload, in one go.
+    ///
+    /// # Errors
+    /// Returns SQLite insertion errors; callers requiring atomic key/upload changes must own the surrounding transaction.
     pub fn seal_media(
         &self,
         plain_sha: &str,
@@ -36,6 +43,9 @@ impl Store {
     }
 
     /// A key learned from someone else's event (so re-sharing that photo reuses the copy).
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn learn_media_key(&self, plain_sha: &str, blob_sha: &str, key: &str) -> Result<()> {
         self.conn.execute(
             "INSERT INTO media_keys (plain_sha, blob_sha, key) VALUES (?1, ?2, ?3) ON CONFLICT(plain_sha) DO NOTHING",
@@ -44,6 +54,10 @@ impl Store {
         Ok(())
     }
 
+    /// Reads non-refused ciphertext uploads in enqueue timestamp order.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn pending_uploads(&self, limit: u32) -> Result<Vec<(String, Vec<u8>)>> {
         let mut st = self
             .conn
@@ -52,6 +66,10 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Checks both retained ciphertext and externally custodied upload intents.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn upload_pending(&self, blob: &str) -> Result<bool> {
         Ok(self.conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM blob_uploads WHERE blob_sha = ?1) OR EXISTS(SELECT 1 FROM meta WHERE key = 'native.blob.pending/1/' || ?1)",
@@ -60,14 +78,22 @@ impl Store {
         )?)
     }
 
+    /// Counts pending local and externally custodied ciphertext uploads.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn uploads_pending(&self) -> Result<u64> {
         Ok(self.conn.query_row(
             "SELECT (SELECT count(*) FROM blob_uploads WHERE failed = 0) + (SELECT count(*) FROM meta WHERE key GLOB 'native.blob.pending/1/*' AND substr(key,23) NOT IN (SELECT blob_sha FROM blob_uploads))",
             [],
-            |r| r.get::<_, i64>(0),
-        )? as u64)
+            |r| r.get::<_, u64>(0),
+        )?)
     }
 
+    /// Confirms recovery custody and removes the completed upload intent.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn upload_done(&self, blob_sha: &str) -> Result<()> {
         let tx = self
             .conn
@@ -89,6 +115,9 @@ impl Store {
 
     /// Retain exact ciphertext, but stop automatic retries after a permanent refusal.
     /// Recovery keeps its existing retry/confirmation contract.
+    ///
+    /// # Errors
+    /// Returns SQLite errors while executing the operation or decoding its stored rows.
     pub fn upload_refused(&self, blob_sha: &str) -> Result<bool> {
         let changed = self.conn.execute(
             "UPDATE blob_uploads SET failed = 1 WHERE blob_sha = ?1 AND failed = 0 AND NOT EXISTS
@@ -100,6 +129,9 @@ impl Store {
 
     /// Canonical ciphertext is retained outside the bounded native SQLite
     /// capsule. This reference is pending, never proof of relay upload.
+    ///
+    /// # Errors
+    /// Returns `InvalidImage` for invalid digests, lengths or conflicting retained custody; also returns SQLite/JSON errors.
     pub fn queue_external_media(
         &self,
         plain: &str,
@@ -147,7 +179,7 @@ mod tests {
         s.queue_external_media(&plain, &blob, &key, 105).unwrap();
         assert!(s.upload_pending(&blob).unwrap());
         assert_eq!(s.uploads_pending().unwrap(), 1);
-        assert!(s.pending_uploads(10).unwrap().is_empty());
+        assert_eq!(s.pending_uploads(10).unwrap().len(), 0);
         assert!(s.queue_external_media(&plain, &blob, &key, 106).is_err());
         assert!(s
             .queue_external_media(&plain, &blob, &"e".repeat(64), 105)
@@ -157,7 +189,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             s.media_key(&plain).unwrap(),
-            Some((blob.clone(), key.clone())),
+            Some((blob.clone(), key)),
             "first plaintext cache is not a global FileDoc authority"
         );
         assert_eq!(s.uploads_pending().unwrap(), 2);

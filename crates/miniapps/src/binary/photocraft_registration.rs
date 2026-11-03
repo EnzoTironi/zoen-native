@@ -1,4 +1,4 @@
-//! Explicit build configuration gates the real, pinned PhotoCraft editor package.
+//! Explicit build configuration gates the real, pinned `PhotoCraft` editor package.
 use super::{
     resource::{self, RuntimePins},
     Format,
@@ -19,12 +19,13 @@ pub const MANIFEST: &str = match option_env!("ZOEN_PHOTOCRAFT_RESOURCE_MANIFEST_
 };
 const PINS: RuntimePins = RuntimePins {
     module_file: "photocraft.js",
-    module_bytes: 158764,
+    module_bytes: 158_764,
     module_sha: "b2e2968f4dc9b55be26c9da07ea5c23d5a03612d658ede1058d4c38388455ac8",
     wasm_file: "photocraft_bg.wasm",
-    wasm_bytes: 32678991,
+    wasm_bytes: 32_678_991,
     wasm_sha: "25a4ebfcef19d0527fa8ea340a89b81b6da24908eb781c3d62318e2c216a8592",
 };
+#[must_use]
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     resource::valid_resource(Format::Photocraft, &PINS, html, manifest)
 }
@@ -32,6 +33,8 @@ pub fn available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
     *AVAILABLE.get_or_init(|| valid_resource(HTML, MANIFEST) && Document::parse(EMPTY).is_ok())
 }
+/// # Errors
+/// Refuses invalid, unsupported or oversized initialization arguments before producing canonical state.
 pub fn create(args: &Value) -> Result<(String, Value), String> {
     let title = args
         .get("title")
@@ -57,6 +60,7 @@ pub fn create(args: &Value) -> Result<(String, Value), String> {
         .map_err(|_| "Invalid initial raster metadata")?;
     Ok((title.into(), metadata))
 }
+#[must_use]
 pub fn spec() -> Option<AppSpec> {
     if !available() {
         return None;

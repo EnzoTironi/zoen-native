@@ -114,7 +114,6 @@ fn validate_map(map: &JsonMapOp, peer: u64) -> Result<()> {
     };
     let valid = match (key.as_str(), value) {
         ("id", LoroValue::String(s)) => !s.is_empty() && s.len() <= crate::MAX_BLOCK_ID_BYTES,
-        ("line_id", LoroValue::String(_)) => true,
         ("kind", LoroValue::String(s)) => {
             matches!(
                 s.as_str(),
@@ -139,7 +138,9 @@ fn validate_map(map: &JsonMapOp, peer: u64) -> Result<()> {
         // reserved tape may introduce negatives; validate() then binds every
         // reserved atom to the independently replayed seed before import.
         ("cost_cents" | "budget_cents", LoroValue::I64(n)) => peer == MIGRATION_PEER || *n >= 0,
-        ("budget_cents", LoroValue::Null) | ("done", LoroValue::Bool(_)) => true,
+        ("line_id", LoroValue::String(_))
+        | ("budget_cents", LoroValue::Null)
+        | ("done", LoroValue::Bool(_)) => true,
         _ => false,
     };
     if !valid {
@@ -170,7 +171,7 @@ pub(super) fn atom_contents(op: &JsonOp) -> Result<Vec<Value>> {
                 atoms.push(
                     serde_json::to_value(JsonTextOp::Insert {
                         pos: pos
-                            .checked_add(offset as u32)
+                            .checked_add(u32::try_from(offset).map_err(error)?)
                             .ok_or_else(|| error("text position overflow"))?,
                         text: scalar.to_string(),
                     })
@@ -183,7 +184,7 @@ pub(super) fn atom_contents(op: &JsonOp) -> Result<Vec<Value>> {
                 atoms.push(
                     serde_json::to_value(JsonMovableListOp::Insert {
                         pos: pos
-                            .checked_add(offset as u32)
+                            .checked_add(u32::try_from(offset).map_err(error)?)
                             .ok_or_else(|| error("list position overflow"))?,
                         value: vec![value.clone()],
                     })
@@ -193,12 +194,9 @@ pub(super) fn atom_contents(op: &JsonOp) -> Result<Vec<Value>> {
         }
         JsonOpContent::Text(JsonTextOp::Delete { pos, len, start_id })
         | JsonOpContent::MovableList(JsonMovableListOp::Delete { pos, len, start_id }) => {
-            for offset in 0..len.unsigned_abs() as i32 {
-                let target_offset = if *len > 0 {
-                    offset
-                } else {
-                    len.unsigned_abs() as i32 - 1 - offset
-                };
+            let count = i32::try_from(len.unsigned_abs()).map_err(error)?;
+            for offset in 0..count {
+                let target_offset = if *len > 0 { offset } else { count - 1 - offset };
                 let position = if *len > 0 {
                     *pos
                 } else {

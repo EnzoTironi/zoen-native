@@ -7,20 +7,24 @@ pub const PREFIX_LIMIT: usize = 20;
 pub const LOOKUP_INTERVAL_NS: u64 = 1_000_000_000;
 pub const LOOKUP_BURST: u32 = 60;
 
+#[must_use]
 pub fn normalize_lookup(handle: &str) -> String {
     handle.trim().trim_start_matches('@').to_lowercase()
 }
 
 /// Preserve native prefix behavior: percent and backslash are stripped, while
 /// underscores remain literal rather than acting as SQL LIKE wildcards.
+#[must_use]
 pub fn prefix_pattern(handle: &str) -> String {
     format!("{}%", handle.replace(['\\', '%'], "").replace('_', "\\_"))
 }
 
+#[must_use]
 pub fn profile_ids(ids: Vec<String>) -> Vec<String> {
     ids.into_iter().take(MAX_PROFILE_IDS).collect()
 }
 
+#[must_use]
 pub fn authorized_profile(
     id: &str,
     kind: &str,

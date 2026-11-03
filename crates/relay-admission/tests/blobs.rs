@@ -19,7 +19,7 @@ fn policy(timestamp: &str, signed_ts: i64, now: i64) -> Result<PutAdmission, Fai
     let a = who();
     put_policy(
         SHA,
-        a.device.as_deref().unwrap(),
+        &a.key.id(),
         timestamp,
         &a.key
             .sign(&protocol::blob_put_message(SHA, signed_ts, RELAY)),
@@ -28,8 +28,10 @@ fn policy(timestamp: &str, signed_ts: i64, now: i64) -> Result<PutAdmission, Fai
     )
 }
 fn failure<T>(result: Result<T, Failure>, status: u16, body: &str) {
-    let error = result.err().expect("expected rejection");
-    assert_eq!((error.status, error.body), (status, body));
+    assert!(
+        matches!(result, Err(error) if (error.status, error.body) == (status, body)),
+        "expected refusal {status} {body}"
+    );
 }
 
 #[test]

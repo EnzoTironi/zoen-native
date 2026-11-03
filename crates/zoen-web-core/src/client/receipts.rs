@@ -2,7 +2,7 @@
 //! The optimistic outbox is absent from this fold. The connection-local queue
 //! keeps only unresolved pairs; a confirmed removal discards new arrivals and
 //! queued pairs without deleting previously authorized historical saved marks.
-use super::*;
+use super::{BTreeMap, Client, EventBody, Role, Signer};
 const MAX_DEFERRED: usize = 1024;
 impl<S: Signer> Client<S> {
     fn receipt_removed(&self, space: &str, who: &str, roster: &BTreeMap<String, Role>) -> bool {
@@ -66,7 +66,7 @@ impl<S: Signer> Client<S> {
         for ((space, from), (delivered, read)) in pending {
             if space != scope {
                 roster = self.roster(&space);
-                scope = space.clone();
+                scope.clone_from(&space);
             }
             if roster.contains_key(&self.account.identity) && roster.contains_key(&from) {
                 self.store_receipt(&space, &from, delivered, read);

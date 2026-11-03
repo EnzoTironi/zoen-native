@@ -80,6 +80,8 @@ impl std::fmt::Debug for ModelGateway {
 }
 
 impl ModelGateway {
+    /// # Errors
+    /// Refuses invalid endpoint/model/credential/limit configuration or HTTP client construction failures.
     pub fn new(mut config: GatewayConfig) -> Result<Self, GatewayError> {
         if config.base_url.len() > 2048 {
             return Err(GatewayError::InvalidConfiguration);
@@ -122,7 +124,9 @@ impl ModelGateway {
         {
             return Err(GatewayError::InvalidConfiguration);
         }
-        config.base_url = url.as_str().trim_end_matches('/').to_owned();
+        url.as_str()
+            .trim_end_matches('/')
+            .clone_into(&mut config.base_url);
         let _ = rustls::crypto::ring::default_provider().install_default();
         let client = reqwest::Client::builder()
             .tls_backend_rustls()
@@ -137,6 +141,7 @@ impl ModelGateway {
         Ok(Self { config, client })
     }
 
+    #[must_use]
     pub fn supports(&self, operation: Operation) -> bool {
         operation == Operation::ChatCompletion
             || (operation == Operation::ImageGeneration && self.supports_images())
@@ -145,6 +150,8 @@ impl ModelGateway {
     /// Validates and describes the exact wire request without admitting or
     /// sending it. Retained runtimes can freeze the same dispatch binding that
     /// `complete` will present to their authority.
+    /// # Errors
+    /// Refuses invalid/unsupported or oversized requests and wire encoding failures, without dispatching.
     pub fn preflight(&self, request: &ModelRequest) -> Result<DispatchRequest, GatewayError> {
         self.prepare(request).map(|(_, dispatch)| dispatch)
     }
@@ -199,7 +206,7 @@ impl ModelGateway {
         )?;
         let admission = DispatchRequest {
             context: request.context.clone(),
-            request_digest: digest.clone(),
+            request_digest: digest,
             profile: CHAT_PROFILE,
             descriptor: DispatchDescriptor {
                 operation: request.operation,
@@ -216,6 +223,8 @@ impl ModelGateway {
         Ok((prepared, admission))
     }
 
+    /// # Errors
+    /// Refuses invalid/unsupported requests or non-fresh/failed admission. Provider output failures remain typed in the returned attempt.
     pub async fn complete(
         &self,
         request: ModelRequest,

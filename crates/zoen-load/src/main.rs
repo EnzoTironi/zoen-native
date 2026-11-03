@@ -7,7 +7,7 @@
 //! member receives it, so queueing anywhere shows up. CPU and memory of the processes named
 //! with `--pid` are read from /proc over the measured window.
 //!
-//!   zoen-load --relay http://127.0.0.1:8787 [--relay …] --users 2000 --group 8 \
+//!   zoen-load --relay <http://127.0.0.1:8787> [--relay …] --users 2000 --group 8 \
 //!             --rate 1000 --seconds 30 [--warmup 5] [--connect-concurrency 256] \
 //!             [--pid relay=1234 --pid fdb=5678] [--label name] [--json out.json] [--receipts]
 //!
@@ -21,7 +21,9 @@ mod client;
 mod clock;
 mod config;
 use config::args;
+mod numeric;
 mod procfs;
+use numeric::{exact, integer};
 
 use std::time::Duration;
 
@@ -32,16 +34,16 @@ use hdrhistogram::Histogram;
 use serde_json::{json, Value};
 use tokio::{sync::mpsc, time::Instant};
 
-fn ms(h: &Histogram<u32>, q: f64) -> f64 {
-    (h.value_at_quantile(q) as f64 / 1000.0 * 100.0).round() / 100.0
+fn ms(h: &Histogram<u32>, q: f64) -> anyhow::Result<f64> {
+    Ok((exact(h.value_at_quantile(q))? / 1000.0 * 100.0).round() / 100.0)
 }
 
-fn latency(h: &Histogram<u32>) -> Value {
-    json!({
+fn latency(h: &Histogram<u32>) -> anyhow::Result<Value> {
+    Ok(json!({
         "count": h.len(),
-        "p50_ms": ms(h, 0.5), "p90_ms": ms(h, 0.9), "p99_ms": ms(h, 0.99),
-        "p999_ms": ms(h, 0.999), "max_ms": (h.max() as f64 / 10.0).round() / 100.0,
-    })
+        "p50_ms": ms(h, 0.5)?, "p90_ms": ms(h, 0.9)?, "p99_ms": ms(h, 0.99)?,
+        "p999_ms": ms(h, 0.999)?, "max_ms": (exact(h.max())? / 10.0).round() / 100.0,
+    }))
 }
 
 fn per_process(pids: &[(String, u32)], before: &[f64], after: &[f64], seconds: f64) -> Value {
@@ -60,10 +62,39 @@ fn per_process(pids: &[(String, u32)], before: &[f64], after: &[f64], seconds: f
     Value::Object(out)
 }
 
+struct Connected {
+    conns: Vec<Conn>,
+    connect_secs: f64,
+    handshake: Histogram<u32>,
+    rss_per_conn: Value,
+    cpu_before: Vec<f64>,
+    cpu_after_connect: Vec<f64>,
+}
+struct Running {
+    start: Instant,
+    senders: Vec<(mpsc::Sender<Publish>, usize)>,
+    tasks: Vec<tokio::task::JoinHandle<anyhow::Result<Tally>>>,
+}
+struct Measured {
+    tally: Tally,
+    failed: usize,
+    backlogged: u64,
+    expected_deliveries: u64,
+    cpu_start: Vec<f64>,
+    cpu_end: Vec<f64>,
+    duration_secs: f64,
+}
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let a = args()?;
-
+    let mut connected = connect(&a).await?;
+    let conns = std::mem::take(&mut connected.conns);
+    let formed = form_groups(&a, conns).await?;
+    let running = catch_up(&a, formed).await?;
+    let measured = measure(&a, running).await?;
+    report(a, connected, measured)
+}
+async fn connect(a: &config::Args) -> anyhow::Result<Connected> {
     // ── connect and register everyone ──
     let rss_before: Vec<Option<u64>> = a.pids.iter().map(|(_, p)| procfs::rss_bytes(*p)).collect();
     let cpu_before = procfs::snapshot(&a.pids);
@@ -87,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
         .try_collect()
         .await?;
     let connect_secs = t0.elapsed().as_secs_f64();
-    let cpu_connected = procfs::snapshot(&a.pids);
+    let cpu_after_connect = procfs::snapshot(&a.pids);
     let mut handshake = histogram()?;
     let mut conns = Vec::with_capacity(opened.len());
     for (c, us) in opened {
@@ -100,12 +131,14 @@ async fn main() -> anyhow::Result<()> {
         .zip(&rss_before)
         .map(|((name, pid), before)| {
             let per = match (before, procfs::rss_bytes(*pid)) {
-                (Some(b), Some(n)) => Some(n.saturating_sub(*b) as f64 / a.users as f64 / 1024.0),
+                (Some(b), Some(n)) => {
+                    Some(exact(n.saturating_sub(*b))? / exact(u64::try_from(a.users)?)? / 1024.0)
+                }
                 _ => None,
             };
-            (name.clone(), json!(per.map(|k| (k * 10.0).round() / 10.0)))
+            anyhow::Ok((name.clone(), json!(per.map(|k| (k * 10.0).round() / 10.0))))
         })
-        .collect::<serde_json::Map<_, _>>()
+        .collect::<anyhow::Result<serde_json::Map<_, _>>>()?
         .into();
     eprintln!(
         "connected {} people in {connect_secs:.1} s ({})",
@@ -113,6 +146,19 @@ async fn main() -> anyhow::Result<()> {
         own_rss()
     );
 
+    Ok(Connected {
+        conns,
+        connect_secs,
+        handshake,
+        rss_per_conn,
+        cpu_before,
+        cpu_after_connect,
+    })
+}
+async fn form_groups(
+    a: &config::Args,
+    conns: Vec<Conn>,
+) -> anyhow::Result<Vec<(String, Vec<Conn>)>> {
     // ── groups ──
     // Exact-size groups: keeping `split_off`'s head would keep the whole remaining list's
     // capacity in every group, quadratic in people (3.7 GB at 10,000).
@@ -145,6 +191,9 @@ async fn main() -> anyhow::Result<()> {
         own_rss()
     );
 
+    Ok(formed)
+}
+async fn catch_up(a: &config::Args, formed: Vec<(String, Vec<Conn>)>) -> anyhow::Result<Running> {
     // ── catch up, then run ──
     let start = Instant::now()
         .checked_add(Duration::from_millis(500))
@@ -182,6 +231,19 @@ async fn main() -> anyhow::Result<()> {
         )));
     }
 
+    Ok(Running {
+        start,
+        senders,
+        tasks,
+    })
+}
+async fn measure(a: &config::Args, running: Running) -> anyhow::Result<Measured> {
+    let Running {
+        start,
+        senders,
+        tasks,
+    } = running;
+    let measure_from_us = a.measure_from_us;
     tokio::time::sleep_until(start).await;
     eprintln!("running ({})", own_rss());
     let total_us = a.total_us;
@@ -199,11 +261,11 @@ async fn main() -> anyhow::Result<()> {
             cpu_measure_start = Some((procfs::snapshot(&a.pids), Instant::now()));
         }
         // Message k is due at k/rate, so every k ≤ now·rate is due now.
-        let due_total = ((now_us as f64 / 1e6 * a.rate) as u64)
+        let due_total = integer(exact(now_us)? / 1e6 * a.rate)?
             .checked_add(1)
             .context("load scheduled message count overflow")?;
         while dispatched < due_total {
-            let due_us = (dispatched as f64 / a.rate * 1e6) as u64;
+            let due_us = integer(exact(dispatched)? / a.rate * 1e6)?;
             let (tx, n) = &senders[fastrand::usize(..senders.len())];
             match tx.try_send(Publish { due_us }) {
                 Ok(()) if due_us >= measure_from_us => expected_deliveries += *n as u64 - 1,
@@ -213,7 +275,7 @@ async fn main() -> anyhow::Result<()> {
             dispatched += 1;
         }
         // Wake exactly when the next message is due, or the measured window opens.
-        let mut wake_us = (dispatched as f64 / a.rate * 1e6) as u64;
+        let mut wake_us = integer((exact(dispatched)? / a.rate * 1e6).min(exact(total_us)?))?;
         if cpu_measure_start.is_none() {
             wake_us = wake_us.min(measure_from_us);
         }
@@ -223,7 +285,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::time::sleep_until(wake).await;
     }
     let (cpu_start, measured_at) = cpu_measure_start.context("run shorter than the warm-up")?;
-    let measured_secs = measured_at.elapsed().as_secs_f64();
+    let duration_secs = measured_at.elapsed().as_secs_f64();
     let cpu_end = procfs::snapshot(&a.pids);
     drop(senders);
 
@@ -239,6 +301,34 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(Measured {
+        tally,
+        failed,
+        backlogged,
+        expected_deliveries,
+        cpu_start,
+        cpu_end,
+        duration_secs,
+    })
+}
+fn report(a: config::Args, connected: Connected, measured: Measured) -> anyhow::Result<()> {
+    let Connected {
+        connect_secs,
+        handshake,
+        rss_per_conn,
+        cpu_before,
+        cpu_after_connect,
+        ..
+    } = connected;
+    let Measured {
+        tally,
+        failed,
+        backlogged,
+        expected_deliveries,
+        cpu_start,
+        cpu_end,
+        duration_secs,
+    } = measured;
     let relay_cpu: f64 = a
         .pids
         .iter()
@@ -246,7 +336,13 @@ async fn main() -> anyhow::Result<()> {
         .filter(|(_, (n, _))| n.starts_with("relay"))
         .map(|(i, _)| cpu_end[i] - cpu_start[i])
         .sum();
-    let per_core = |n: u64| (relay_cpu > 0.0).then(|| (n as f64 / relay_cpu).round());
+    let per_core = |n: u64| -> anyhow::Result<Option<f64>> {
+        if relay_cpu > 0.0 {
+            Ok(Some((exact(n)? / relay_cpu).round()))
+        } else {
+            Ok(None)
+        }
+    };
     let report = json!({
         "label": a.label,
         "config": {
@@ -255,29 +351,29 @@ async fn main() -> anyhow::Result<()> {
         },
         "connect": {
             "seconds": (connect_secs * 100.0).round() / 100.0,
-            "handshakes_per_s": (a.users as f64 / connect_secs).round(),
-            "handshake": latency(&handshake),
+            "handshakes_per_s": (exact(u64::try_from(a.users)?)? / connect_secs).round(),
+            "handshake": latency(&handshake)?,
             "rss_kib_per_connection": rss_per_conn,
-            "processes": per_process(&a.pids, &cpu_before, &cpu_connected, connect_secs),
+            "processes": per_process(&a.pids, &cpu_before, &cpu_after_connect, connect_secs),
         },
         "run": {
-            "measured_seconds": (measured_secs * 100.0).round() / 100.0,
+            "measured_seconds": (duration_secs * 100.0).round() / 100.0,
             "sent": tally.sent,
-            "sent_per_s": (tally.sent as f64 / measured_secs).round(),
+            "sent_per_s": (exact(tally.sent)? / duration_secs).round(),
             "accepted": tally.accepted,
-            "accepted_per_s": (tally.accepted as f64 / measured_secs).round(),
+            "accepted_per_s": (exact(tally.accepted)? / duration_secs).round(),
             "rejected": tally.rejected,
             "scheduler_backlogged": backlogged,
             "people_failed": failed,
             "deliveries": tally.delivered,
             "deliveries_expected": expected_deliveries,
-            "deliveries_per_s": (tally.delivered as f64 / measured_secs).round(),
-            "ack": latency(&tally.ack),
-            "delivery": latency(&tally.delivery),
-            "processes": per_process(&a.pids, &cpu_start, &cpu_end, measured_secs),
+            "deliveries_per_s": (exact(tally.delivered)? / duration_secs).round(),
+            "ack": latency(&tally.ack)?,
+            "delivery": latency(&tally.delivery)?,
+            "processes": per_process(&a.pids, &cpu_start, &cpu_end, duration_secs),
             "relay_cpu_seconds": (relay_cpu * 100.0).round() / 100.0,
-            "messages_per_relay_core_second": per_core(tally.accepted),
-            "deliveries_per_relay_core_second": per_core(tally.delivered),
+            "messages_per_relay_core_second": per_core(tally.accepted)?,
+            "deliveries_per_relay_core_second": per_core(tally.delivered)?,
         },
     });
     let text = serde_json::to_string_pretty(&report)?;

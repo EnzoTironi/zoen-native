@@ -31,6 +31,7 @@ pub struct PutAdmission {
     pub key: String,
 }
 
+#[must_use]
 pub fn valid_sha(sha: &str) -> bool {
     sha.len() == 64
         && sha
@@ -39,6 +40,8 @@ pub fn valid_sha(sha: &str) -> bool {
 }
 
 /// GET is an unauthenticated ciphertext capability. No device or Space facts.
+/// # Errors
+/// Refuses a digest that is not exactly 64 lowercase hexadecimal characters.
 pub fn get_key(sha: &str) -> Result<String, Failure> {
     if !valid_sha(sha) {
         return Err(Failure::new(400, "bad hash"));
@@ -47,6 +50,8 @@ pub fn get_key(sha: &str) -> Result<String, Failure> {
 }
 
 /// Only the signed prefix. The host must next check the current active device.
+/// # Errors
+/// Refuses malformed hashes, absent or stale timestamps and invalid device signatures.
 pub fn put_policy(
     sha: &str,
     device: &str,
@@ -60,6 +65,8 @@ pub fn put_policy(
     })
 }
 
+/// # Errors
+/// Refuses invalid runtime binding, hashes, timestamps or device signatures.
 pub fn put_bound_policy(
     sha: &str,
     device: &str,
@@ -102,11 +109,13 @@ fn put_signed(
 }
 
 /// Called only after the current-device SQL gate and before rate charging.
+/// # Errors
+/// Refuses empty bodies or bodies above the ciphertext size limit.
 pub fn body_cost(length: u64) -> Result<u32, Failure> {
     if length == 0 || length > MAX_BLOB_BYTES as u64 {
         return Err(Failure::new(413, "empty or too large"));
     }
-    Ok(length.div_ceil(1024) as u32)
+    u32::try_from(length.div_ceil(1024)).map_err(|_| Failure::internal())
 }
 
 /// Incremental ciphertext SHA-256; no plaintext or decryption keys enter policy.
@@ -119,9 +128,12 @@ impl Default for BlobDigest {
 }
 
 impl BlobDigest {
+    #[must_use]
     pub fn new() -> Self {
         Self(Context::new(&SHA256))
     }
+    /// # Errors
+    /// Refuses chunks above the bounded digest input size.
     pub fn update(&mut self, bytes: &[u8]) -> Result<(), Failure> {
         if bytes.len() > MAX_DIGEST_CHUNK {
             return Err(Failure::internal());
@@ -129,6 +141,8 @@ impl BlobDigest {
         self.0.update(bytes);
         Ok(())
     }
+    /// # Errors
+    /// Refuses a computed ciphertext hash that differs from the expected digest.
     pub fn finish(self, expected_sha: &str) -> Result<String, Failure> {
         let actual = self.finish_hash();
         if actual != expected_sha {
@@ -137,16 +151,25 @@ impl BlobDigest {
         Ok(actual)
     }
     /// Transfer signatures bind the computed hash rather than a hash in the URL.
+    #[must_use]
     pub fn finish_hash(self) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
         self.0
             .finish()
             .as_ref()
             .iter()
-            .map(|byte| format!("{byte:02x}"))
+            .flat_map(|byte| {
+                [
+                    char::from(HEX[usize::from(byte >> 4)]),
+                    char::from(HEX[usize::from(byte & 15)]),
+                ]
+            })
             .collect()
     }
 }
 
+/// # Errors
+/// Refuses a computed ciphertext hash that differs from the supplied digest.
 pub fn verify_body(bytes: &[u8], sha: &str) -> Result<(), Failure> {
     let mut digest = BlobDigest::new();
     for chunk in bytes.chunks(MAX_DIGEST_CHUNK) {

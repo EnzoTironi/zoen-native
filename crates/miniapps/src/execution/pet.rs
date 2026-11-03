@@ -1,6 +1,6 @@
 //! Built-in pet tool actions.
 
-use super::*;
+use super::{clamp, json, pet_mood, push_log, s, t, tr, ts, Applied, Value};
 
 pub(super) fn apply(
     tool: &str,
@@ -77,64 +77,8 @@ pub(super) fn apply(
                 tr!("{name} correu atrás da bola!", "{name} chased the ball!"),
             )
         }
-        "pet_rename" => {
-            let new: String = s(args, "name")
-                .ok_or_else(|| t("qual o nome novo?", "what’s the new name?"))?
-                .chars()
-                .take(18)
-                .collect();
-            let new = {
-                let mut c = new.chars();
-                match c.next() {
-                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                    None => new,
-                }
-            };
-            st["name"] = json!(new);
-            title = Some(new.clone());
-            comment = Some(tr!(
-                "{new}, então. Combina com ele.",
-                "{new} it is. Suits him."
-            ));
-            (
-                tr!("renomeou o {name} para {new}", "renamed {name} to {new}"),
-                tr!("Agora ele se chama {new}.", "His name is {new} now."),
-            )
-        }
-        "pet_dash_score" => {
-            let meters = args["meters"].as_i64().unwrap_or(0).max(0);
-            let carrots = args["carrots"].as_i64().unwrap_or(0).max(0);
-            let group_best = st["dash"]["best"]
-                .as_object()
-                .map(|m| {
-                    m.values()
-                        .filter_map(|v| v["meters"].as_i64())
-                        .max()
-                        .unwrap_or(0)
-                })
-                .unwrap_or(0);
-            let mine = st["dash"]["best"][actor]["meters"].as_i64().unwrap_or(0);
-            if meters > mine {
-                st["dash"]["best"][actor] =
-                    json!({ "meters": meters, "carrots": carrots, "at": now });
-            }
-            st["dash"]["runs"] = json!(st["dash"]["runs"].as_i64().unwrap_or(0) + 1);
-            st["joy"] = json!(clamp(st["joy"].as_f64().unwrap_or(0.0) + 6.0));
-            st["energy"] = json!(clamp(st["energy"].as_f64().unwrap_or(0.0) - 4.0));
-            if meters > group_best && meters > 0 {
-                comment = Some(tr!("Novo recorde do grupo na Corrida do Jumento: {actor}, {meters} m e {carrots} cenouras. Quem bate?", "New group record in Donkey Dash: {actor}, {meters} m and {carrots} carrots. Who can beat it?"));
-            }
-            (
-                tr!(
-                    "correu {meters} m na Corrida do Jumento",
-                    "ran {meters} m in Donkey Dash"
-                ),
-                tr!(
-                    "{meters} m · {carrots} cenouras",
-                    "{meters} m · {carrots} carrots"
-                ),
-            )
-        }
+        "pet_rename" => rename(args, &mut st, &name, &mut title, &mut comment)?,
+        "pet_dash_score" => dash_score(args, &mut st, actor, now, &mut comment),
         "pet_release" => {
             st["released"] = json!(true);
             (
@@ -159,4 +103,74 @@ pub(super) fn apply(
     a.title = title;
     a.comment = comment;
     Ok(a)
+}
+
+fn rename(
+    args: &Value,
+    st: &mut Value,
+    name: &str,
+    title: &mut Option<String>,
+    comment: &mut Option<String>,
+) -> Result<(String, String), String> {
+    Ok({
+        let new: String = s(args, "name")
+            .ok_or_else(|| t("qual o nome novo?", "what’s the new name?"))?
+            .chars()
+            .take(18)
+            .collect();
+        let new = {
+            let mut c = new.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => new,
+            }
+        };
+        st["name"] = json!(new);
+        *title = Some(new.clone());
+        *comment = Some(tr!(
+            "{new}, então. Combina com ele.",
+            "{new} it is. Suits him."
+        ));
+        (
+            tr!("renomeou o {name} para {new}", "renamed {name} to {new}"),
+            tr!("Agora ele se chama {new}.", "His name is {new} now."),
+        )
+    })
+}
+
+fn dash_score(
+    args: &Value,
+    st: &mut Value,
+    actor: &str,
+    now: i64,
+    comment: &mut Option<String>,
+) -> (String, String) {
+    let meters = args["meters"].as_i64().unwrap_or(0).max(0);
+    let carrots = args["carrots"].as_i64().unwrap_or(0).max(0);
+    let group_best = st["dash"]["best"].as_object().map_or(0, |m| {
+        m.values()
+            .filter_map(|v| v["meters"].as_i64())
+            .max()
+            .unwrap_or(0)
+    });
+    let mine = st["dash"]["best"][actor]["meters"].as_i64().unwrap_or(0);
+    if meters > mine {
+        st["dash"]["best"][actor] = json!({ "meters": meters, "carrots": carrots, "at": now });
+    }
+    st["dash"]["runs"] = json!(st["dash"]["runs"].as_i64().unwrap_or(0) + 1);
+    st["joy"] = json!(clamp(st["joy"].as_f64().unwrap_or(0.0) + 6.0));
+    st["energy"] = json!(clamp(st["energy"].as_f64().unwrap_or(0.0) - 4.0));
+    if meters > group_best && meters > 0 {
+        *comment = Some(tr!("Novo recorde do grupo na Corrida do Jumento: {actor}, {meters} m e {carrots} cenouras. Quem bate?", "New group record in Donkey Dash: {actor}, {meters} m and {carrots} carrots. Who can beat it?"));
+    }
+    (
+        tr!(
+            "correu {meters} m na Corrida do Jumento",
+            "ran {meters} m in Donkey Dash"
+        ),
+        tr!(
+            "{meters} m · {carrots} cenouras",
+            "{meters} m · {carrots} carrots"
+        ),
+    )
 }

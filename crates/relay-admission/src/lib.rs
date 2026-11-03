@@ -17,6 +17,7 @@ pub mod transfer;
 pub use rules::{admit, identity_key, Effect, Facts, MAX_MEMBERS};
 
 /// Canonical invite lookup key used by the native relay.
+#[must_use]
 pub fn code_hash(code: &str) -> String {
     event_log::sha256_hex(code.trim().to_uppercase().as_bytes())
 }
@@ -43,6 +44,7 @@ impl Reject {
         }
     }
 
+    #[must_use]
     pub fn unavailable() -> Self {
         Self {
             reason: "log store unavailable".into(),

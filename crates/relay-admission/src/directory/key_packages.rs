@@ -6,6 +6,8 @@ pub const MAX_STOCK: usize = 200;
 pub const MAX_RECEIPTS: i64 = 4096;
 pub const MAX_RECEIPT_BYTES: i64 = 8 * 1024 * 1024;
 
+/// # Errors
+/// Refuses excessive, oversized or invalid packages, invalid expiry and packages not signed for this identity/device.
 pub fn validate_publications(
     identity: &str,
     device: &str,
@@ -42,6 +44,8 @@ pub struct Claim {
     pub expires_ms: i64,
 }
 /// Exact native receipt-mode validation and error order.
+/// # Errors
+/// Refuses malformed operation timestamps, noncanonical identity keys or a target count outside one to fifty after deduplication.
 pub fn claim_input(operation: &str, targets: &[String]) -> Result<Claim, &'static str> {
     let created = protocol::key_package_claim_time_ms(operation)
         .ok_or("invalid key-package claim operation")?;
@@ -64,6 +68,8 @@ pub fn claim_input(operation: &str, targets: &[String]) -> Result<Claim, &'stati
         expires_ms,
     })
 }
+/// # Errors
+/// Refuses future-created or expired key-package claim operations.
 pub fn claim_time(input: &Claim, now: i64) -> Result<(), &'static str> {
     if input.created_ms > now {
         return Err("key-package claim operation is in the future");

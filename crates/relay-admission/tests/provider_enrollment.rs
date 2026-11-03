@@ -4,7 +4,9 @@ use relay_admission::auth::{enrollment::*, Provider};
 use serde_json::json;
 use types::{Identity, IdentityKind};
 
-fn request() -> ProviderBindRequest {
+type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
+fn request() -> TestResult<ProviderBindRequest> {
     let root = Signer::from_secret(&[10; 32]);
     let device = Signer::from_secret(&[11; 32]);
     let mut request = ProviderBindRequest {
@@ -24,23 +26,25 @@ fn request() -> ProviderBindRequest {
         certificate: root.sign(&event_log::device_cert_message(&device.id())),
         signature: String::new(),
     };
-    sign(&mut request);
-    request
+    sign(&mut request)?;
+    Ok(request)
 }
-fn sign(request: &mut ProviderBindRequest) {
-    request.signature = Signer::from_secret(&[11; 32]).sign(
-        &provider_bind_message(
-            &request.proof_token,
-            &request.profile,
-            &request.device,
-            &request.certificate,
-        )
-        .unwrap(),
-    );
+fn sign(request: &mut ProviderBindRequest) -> TestResult {
+    request.signature = Signer::from_secret(&[11; 32]).sign(&provider_bind_message(
+        &request.proof_token,
+        &request.profile,
+        &request.device,
+        &request.certificate,
+    )?);
+    Ok(())
 }
 fn failure<T>(result: Result<T, Failure>, status: u16, code: &str) {
-    let error = result.err().expect("expected provider policy refusal");
-    assert_eq!((error.status, error.code), (status, code));
+    assert!(
+        result
+            .err()
+            .is_some_and(|error| (error.status, error.code) == (status, code)),
+        "expected refusal {status} {code}"
+    );
 }
 fn challenge() -> Challenge {
     Challenge {
@@ -57,18 +61,19 @@ fn challenge() -> Challenge {
 }
 
 #[test]
-fn invalid_handle_precedes_all_other_binding_authorization_errors() {
-    let mut request = request();
+fn invalid_handle_precedes_all_other_binding_authorization_errors() -> TestResult {
+    let mut request = request()?;
     request.profile.handle = "!".into();
     request.proof_token = "bad".into();
     request.signature.clear();
     failure(prepare_bind(&request), 400, "invalid_handle");
+    Ok(())
 }
 
 #[test]
-fn private_fields_and_handle_are_rejected_instead_of_normalized_before_signing() {
+fn private_fields_and_handle_are_rejected_instead_of_normalized_before_signing() -> TestResult {
     for field in ["name", "bio", "owner", "owner_proof", "handle", "kind"] {
-        let mut request = request();
+        let mut request = request()?;
         match field {
             "name" => request.profile.name = "private name".into(),
             "bio" => request.profile.bio = "private bio".into(),
@@ -84,15 +89,16 @@ fn private_fields_and_handle_are_rejected_instead_of_normalized_before_signing()
             "kind" => request.profile.kind = IdentityKind::Agent,
             _ => unreachable!(),
         }
-        sign(&mut request);
+        sign(&mut request)?;
         failure(prepare_bind(&request), 401, "invalid_binding_authorization");
     }
+    Ok(())
 }
 
 #[test]
-fn proof_root_certificate_and_device_signature_are_all_required() {
+fn proof_root_certificate_and_device_signature_are_all_required() -> TestResult {
     for field in ["proof", "root", "device", "certificate", "signature"] {
-        let mut request = request();
+        let mut request = request()?;
         match field {
             "proof" => request.proof_token = request.proof_token.to_uppercase(),
             "root" => request.profile.id = "not-a-key".into(),
@@ -108,11 +114,12 @@ fn proof_root_certificate_and_device_signature_are_all_required() {
         token_hash(&"ab".repeat(32))
     );
     failure(proof_hash(&"AB".repeat(32)), 400, "invalid_authentication");
+    Ok(())
 }
 
-fn proof(request: &ProviderBindRequest) -> Proof {
-    let prepared = prepare_bind(request).unwrap();
-    Proof {
+fn proof(request: &ProviderBindRequest) -> TestResult<Proof> {
+    let prepared = prepare_bind(request)?;
+    Ok(Proof {
         token_hash: prepared.lookup().token_hash.clone(),
         provider: "google".into(),
         issuer: "https://accounts.google.com".into(),
@@ -124,20 +131,21 @@ fn proof(request: &ProviderBindRequest) -> Proof {
         bound_identity: None,
         bound_device: None,
         bound_handle: None,
-    }
+    })
 }
-fn consumed(request: &ProviderBindRequest) -> Proof {
-    let mut proof = proof(request);
+fn consumed(request: &ProviderBindRequest) -> TestResult<Proof> {
+    let mut proof = proof(request)?;
     proof.consumed = true;
-    proof.bound_fingerprint = Some(prepare_bind(request).unwrap().fingerprint().into());
+    proof.bound_fingerprint = Some(prepare_bind(request)?.fingerprint().into());
     proof.bound_identity = Some(request.profile.id.clone());
     proof.bound_device = Some(request.device.clone());
     proof.bound_handle = Some("original_handle".into());
-    proof
+    Ok(proof)
 }
 #[test]
-fn native_signed_payload_fingerprint_is_exact_and_never_contains_the_raw_proof_token() {
-    let request = request();
+fn native_signed_payload_fingerprint_is_exact_and_never_contains_the_raw_proof_token() -> TestResult
+{
+    let request = request()?;
     let prepared = prepare_bind(&request).unwrap();
     let payload = provider_bind_message(
         &request.proof_token,
@@ -159,12 +167,13 @@ fn native_signed_payload_fingerprint_is_exact_and_never_contains_the_raw_proof_t
         prepare_bind(&decoded).unwrap().fingerprint(),
         prepared.fingerprint()
     );
+    Ok(())
 }
 #[test]
-fn native_proof_origin_precedes_retry_or_expiry_and_unknown_proof_remains_refused() {
-    let request = request();
+fn native_proof_origin_precedes_retry_or_expiry_and_unknown_proof_remains_refused() -> TestResult {
+    let request = request()?;
     let prepared = prepare_bind(&request).unwrap();
-    let mut used = consumed(&request);
+    let mut used = consumed(&request)?;
     used.bound_fingerprint = None;
     failure(
         admit_proof(
@@ -181,7 +190,7 @@ fn native_proof_origin_precedes_retry_or_expiry_and_unknown_proof_remains_refuse
         409,
         "proof_already_used",
     );
-    let fresh = proof(&request);
+    let fresh = proof(&request)?;
     failure(
         admit_proof(&prepared, Some(&fresh), None, 10_000),
         401,
@@ -192,11 +201,13 @@ fn native_proof_origin_precedes_retry_or_expiry_and_unknown_proof_remains_refuse
         admit_proof(&prepared, Some(&fresh), None, 1).unwrap(),
         ProofUse::Fresh
     );
+    Ok(())
 }
 #[test]
-fn native_consumed_retry_survives_expiry_but_requires_exact_payload_and_active_device() {
-    let mut request = request();
-    let used = consumed(&request);
+fn native_consumed_retry_survives_expiry_but_requires_exact_payload_and_active_device() -> TestResult
+{
+    let mut request = request()?;
+    let used = consumed(&request)?;
     request.signature = request.signature.to_uppercase();
     let prepared = prepare_bind(&request).unwrap();
     assert_eq!(
@@ -209,7 +220,7 @@ fn native_consumed_retry_survives_expiry_but_requires_exact_payload_and_active_d
     );
     failure(finish_retry(&prepared, &used, false), 403, "device_revoked");
     request.profile.tint_hex = "#123456".into();
-    sign(&mut request);
+    sign(&mut request)?;
     failure(
         admit_proof(&prepare_bind(&request).unwrap(), Some(&used), None, 20_000),
         409,
@@ -221,7 +232,7 @@ fn native_consumed_retry_survives_expiry_but_requires_exact_payload_and_active_d
             "identity" => bad.bound_identity = Some("other".into()),
             "device" => bad.bound_device = Some("other".into()),
             _ => bad.bound_fingerprint = None,
-        };
+        }
         failure(
             admit_proof(&prepared, Some(&bad), None, 20_000),
             409,
@@ -240,6 +251,7 @@ fn native_consumed_retry_survives_expiry_but_requires_exact_payload_and_active_d
         409,
         "proof_already_used",
     );
+    Ok(())
 }
 #[test]
 fn native_identity_provider_and_existing_account_checks_do_not_enroll_or_merge_by_email() {
@@ -341,7 +353,7 @@ fn native_http_origin_configuration_and_challenge_validation_are_exact() {
     );
     let wrong = Audience {
         id: "different".into(),
-        presenter: audience.presenter.clone(),
+        presenter: audience.presenter,
     };
     failure(
         validate_challenge(
@@ -366,7 +378,7 @@ fn native_http_origin_configuration_and_challenge_validation_are_exact() {
     );
 }
 #[test]
-fn native_challenge_and_proof_serde_keep_exact_decimal_times() {
+fn native_challenge_and_proof_serde_keep_exact_decimal_times() -> TestResult {
     let mut challenge = challenge();
     challenge.created_ms = 9_007_199_254_740_993;
     let encoded = serde_json::to_value(&challenge).unwrap();
@@ -377,8 +389,8 @@ fn native_challenge_and_proof_serde_keep_exact_decimal_times() {
             .created_ms,
         challenge.created_ms
     );
-    let request = request();
-    let mut proof = proof(&request);
+    let request = request()?;
+    let mut proof = proof(&request)?;
     proof.expires_ms = i64::MAX;
     assert_eq!(
         serde_json::from_value::<Proof>(serde_json::to_value(proof).unwrap())
@@ -386,4 +398,5 @@ fn native_challenge_and_proof_serde_keep_exact_decimal_times() {
             .expires_ms,
         i64::MAX
     );
+    Ok(())
 }

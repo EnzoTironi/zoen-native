@@ -239,7 +239,7 @@ async fn preflight_matches_actual_dispatch_without_admission_or_http() {
     let request = request();
     let authority = TestAuthority::default();
     let frozen = gateway.preflight(&request).unwrap();
-    assert!(frozen.context == request.context);
+    assert_eq!(frozen.context, request.context);
     assert!(frozen.descriptor.encoded_request_bytes <= frozen.descriptor.max_request_bytes);
     assert_eq!(authority.calls.load(Ordering::SeqCst), 0);
     assert_eq!(fixture.connections.load(Ordering::SeqCst), 0);

@@ -1,5 +1,5 @@
 //! The authenticated Plan tape is reconstructed from the same signed Item versions as
-//! native. A claimed PlanV1 manifest never selects its own ancestry or grants write access.
+//! native. A claimed `PlanV1` manifest never selects its own ancestry or grants write access.
 use super::*;
 use ::documents::plan::{
     CanonicalPlanSeed, LegacyVersion, PlanBlock, PlanBlockContent, PlanDocument, PlanUpdate,
@@ -100,93 +100,93 @@ fn canonical_block(block: &PlanBlock) -> Value {
     json!({"id":block.id,"content":content,"text":block.plain_text(),"spans": ::documents::spans_of(&block.runs)})
 }
 
-fn string_field(digest: &mut Sha256, text: &str) {
-    digest.update((text.len() as u64).to_le_bytes());
-    digest.update(text.as_bytes());
+mod binding;
+use binding::observed_hash;
+
+fn append_legacy(
+    history: &mut Vec<LegacyVersion>,
+    prefixes: &mut Vec<PlanManifestV1>,
+    digest: &mut Sha256,
+    item: &Item,
+    event: &Event,
+    plan: &PlanDoc,
+) -> Result<(), String> {
+    let event_id = source(item, event);
+    if history.is_empty() {
+        field(digest, event_id.as_bytes());
+    }
+    field(digest, &event.content);
+    history.push(LegacyVersion {
+        event_id: event_id.clone(),
+        document: plan.clone(),
+    });
+    prefixes.push(PlanManifestV1 {
+        schema: "plan_v1".into(),
+        space: item.space.clone(),
+        item: item.id.clone(),
+        creation_event: history
+            .first()
+            .ok_or("legacy plan creation missing")?
+            .event_id
+            .clone(),
+        legacy_versions: u32::try_from(history.len()).map_err(|_| "plan history limit exceeded")?,
+        legacy_head: event_id,
+        prefix_sha256: hex::encode(digest.clone().finalize()),
+    });
+    Ok(())
 }
 
-/// Native's exact PlanDoc binding: presentation IDs and relay confirmation stay out.
-fn observed_hash(blocks: &[Value]) -> String {
-    let mut digest = Sha256::new();
-    digest.update(b"zoen-plan-observed-v1\0");
-    digest.update((blocks.len() as u64).to_le_bytes());
-    for block in blocks {
-        let content = &block["content"];
-        if let Some(title) = content.get("Title") {
-            digest.update([1]);
-            match title["budget_cents"].as_str() {
-                Some(cents) => {
-                    digest.update([1]);
-                    digest.update(cents.parse::<i64>().expect("typed cents").to_le_bytes());
-                }
-                None => digest.update([0]),
-            }
-        } else if content == "Summary" {
-            digest.update([2]);
-        } else if content == "Section" {
-            digest.update([3]);
-        } else if let Some(line) = content.get("Line") {
-            digest.update([4]);
-            string_field(&mut digest, line["legacy_id"].as_str().expect("typed id"));
-            digest.update(
-                line["cost_cents"]
-                    .as_str()
-                    .expect("typed cents")
-                    .parse::<i64>()
-                    .expect("typed cents")
-                    .to_le_bytes(),
-            );
-            digest.update([u8::from(line["done"].as_bool().expect("typed boolean"))]);
-        } else if let Some(prose) = content.get("Prose") {
-            digest.update([5]);
-            hash_prose(&mut digest, &prose["kind"]);
-        }
-        string_field(&mut digest, block["text"].as_str().expect("typed text"));
-        let spans = block["spans"].as_array().expect("typed spans");
-        digest.update((spans.len() as u64).to_le_bytes());
-        for span in spans {
-            digest.update((span["start"].as_u64().expect("typed offset") as u32).to_le_bytes());
-            digest.update((span["end"].as_u64().expect("typed offset") as u32).to_le_bytes());
-            string_field(&mut digest, span["key"].as_str().expect("typed key"));
-            string_field(&mut digest, span["value"].as_str().expect("typed value"));
-        }
+fn import_plan(
+    canonical: &mut Option<PlanDocument>,
+    history: &[LegacyVersion],
+    payload: &[u8],
+) -> Result<Option<PlanDoc>, String> {
+    let Ok(update) = PlanUpdate::from_json(payload) else {
+        return Ok(None);
+    };
+    if canonical.is_none() {
+        *canonical = Some(
+            CanonicalPlanSeed::replay(history)
+                .and_then(|seed| seed.open_editor())
+                .map_err(error)?,
+        );
     }
-    hex::encode(digest.finalize())
+    let plan = canonical
+        .as_mut()
+        .ok_or("canonical plan initialization failed")?;
+    if plan.import(&update).is_err() {
+        return Ok(None);
+    }
+    Ok(Some(plan.view().map_err(error)?.to_plan_doc()))
 }
 
-fn hash_prose(digest: &mut Sha256, kind: &Value) {
-    match kind.as_str() {
-        Some("Paragraph") => digest.update([1]),
-        Some("Quote") => digest.update([6]),
-        Some("Divider") => digest.update([8]),
-        Some("Raw") => digest.update([10]),
-        _ => {
-            if let Some(heading) = kind.get("Heading") {
-                digest.update([2]);
-                digest.update((heading["level"].as_u64().unwrap() as u32).to_le_bytes());
-                digest.update([u8::from(heading["setext"].as_bool().unwrap())]);
-            } else if let Some(bullet) = kind.get("Bullet") {
-                digest.update([3]);
-                digest.update((bullet["indent"].as_u64().unwrap() as u32).to_le_bytes());
-            } else if let Some(numbered) = kind.get("Numbered") {
-                digest.update([4]);
-                digest.update((numbered["indent"].as_u64().unwrap() as u32).to_le_bytes());
-                digest.update((numbered["number"].as_u64().unwrap() as u32).to_le_bytes());
-            } else if let Some(task) = kind.get("Task") {
-                digest.update([5]);
-                digest.update((task["indent"].as_u64().unwrap() as u32).to_le_bytes());
-                digest.update([u8::from(task["checked"].as_bool().unwrap())]);
-            } else if let Some(code) = kind.get("Code") {
-                digest.update([7]);
-                string_field(digest, code["lang"].as_str().unwrap());
-            } else if let Some(image) = kind.get("Image") {
-                digest.update([9]);
-                for key in ["url", "alt", "title"] {
-                    string_field(digest, image[key].as_str().unwrap());
-                }
-            }
-        }
-    }
+fn plan_blocks(
+    item: &Item,
+    document: &PlanDoc,
+    canonical: Option<&PlanDocument>,
+    history: &[LegacyVersion],
+    pending: bool,
+    frozen: bool,
+) -> Result<Vec<Value>, String> {
+    Ok(if frozen {
+        canonical
+            .ok_or("canonical plan missing after cutover")?
+            .blocks()
+            .map_err(error)?
+            .iter()
+            .map(canonical_block)
+            .collect()
+    } else if !history.is_empty() && !pending {
+        CanonicalPlanSeed::replay(history)
+            .and_then(|seed| seed.open_editor())
+            .and_then(|plan| plan.blocks())
+            .map_err(error)?
+            .iter()
+            .map(canonical_block)
+            .collect()
+    } else {
+        legacy_blocks(item, document)
+    })
 }
 
 impl<S: Signer> Client<S> {
@@ -194,6 +194,57 @@ impl<S: Signer> Client<S> {
         let read = self.plan_read(item)?;
         Ok(read.ready && read.error.is_none() && !read.frozen && total(&read.document).is_some())
     }
+    fn plan_payload(
+        &self,
+        page: &types::PageContent,
+        downloads: &mut Vec<ChunkRef>,
+    ) -> Option<Vec<u8>> {
+        if let Some(reference) = &page.blob {
+            match self.saved.documents.blobs.get(&reference.sha256) {
+                Some(bytes)
+                    if bytes.len() as u64 == reference.bytes && hash(bytes) == reference.sha256 =>
+                {
+                    Some(bytes.clone())
+                }
+                _ => {
+                    downloads.push(reference.clone());
+                    None
+                }
+            }
+        } else {
+            BASE64.decode(&page.loro).ok()
+        }
+    }
+
+    fn read_plan_page(
+        &self,
+        page: &types::PageContent,
+        prefixes: &[PlanManifestV1],
+        history: &[LegacyVersion],
+        canonical: &mut Option<PlanDocument>,
+        downloads: &mut Vec<ChunkRef>,
+    ) -> Result<Option<PlanDoc>, String> {
+        let Some(PageManifest::PlanV1(manifest)) = &page.manifest else {
+            return Ok(None);
+        };
+        if manifest
+            .legacy_versions
+            .checked_sub(1)
+            .and_then(|index| prefixes.get(index as usize))
+            != Some(manifest)
+        {
+            return Ok(None);
+        }
+        let payload = self.plan_payload(page, downloads);
+        let Some(payload) = payload else {
+            return Ok(None);
+        };
+        if !downloads.is_empty() {
+            return Ok(None);
+        }
+        import_plan(canonical, history, &payload)
+    }
+
     pub(crate) fn plan_read(&self, item: &Item) -> Result<PlanRead, String> {
         if item.kind != ItemKind::Plan {
             return Err("Este arquivo não é um plano.".into());
@@ -225,85 +276,40 @@ impl<S: Signer> Client<S> {
                     }
                     if !explicit_origin {
                         document = Some(plan.clone());
-                        accepted = (index + 1) as u32;
+                        accepted =
+                            u32::try_from(index + 1).map_err(|_| "plan version limit exceeded")?;
                         continue;
                     }
-                    let event_id = source(item, &version.event);
-                    if history.is_empty() {
-                        field(&mut digest, event_id.as_bytes());
-                    }
-                    field(&mut digest, &version.event.content);
-                    history.push(LegacyVersion {
-                        event_id: event_id.clone(),
-                        document: plan.clone(),
-                    });
-                    prefixes.push(PlanManifestV1 {
-                        schema: "plan_v1".into(),
-                        space: item.space.clone(),
-                        item: item.id.clone(),
-                        creation_event: history[0].event_id.clone(),
-                        legacy_versions: history.len() as u32,
-                        legacy_head: event_id,
-                        prefix_sha256: hex::encode(digest.clone().finalize()),
-                    });
+                    append_legacy(
+                        &mut history,
+                        &mut prefixes,
+                        &mut digest,
+                        item,
+                        &version.event,
+                        plan,
+                    )?;
                     canonical = None;
                     document = Some(plan.clone());
-                    accepted = (index + 1) as u32;
+                    accepted =
+                        u32::try_from(index + 1).map_err(|_| "plan version limit exceeded")?;
                 }
                 ItemContent::Page(page)
                     if explicit_origin && !version.pending && !version.is_undo =>
                 {
-                    let Some(PageManifest::PlanV1(manifest)) = &page.manifest else {
+                    let Some(imported) = self.read_plan_page(
+                        page,
+                        &prefixes,
+                        &history,
+                        &mut canonical,
+                        &mut downloads,
+                    )?
+                    else {
                         continue;
                     };
-                    if manifest
-                        .legacy_versions
-                        .checked_sub(1)
-                        .and_then(|index| prefixes.get(index as usize))
-                        != Some(manifest)
-                    {
-                        continue;
-                    }
-                    let payload = if let Some(reference) = &page.blob {
-                        match self.saved.documents.blobs.get(&reference.sha256) {
-                            Some(bytes)
-                                if bytes.len() as u64 == reference.bytes
-                                    && hash(bytes) == reference.sha256 =>
-                            {
-                                Some(bytes.clone())
-                            }
-                            _ => {
-                                downloads.push(reference.clone());
-                                None
-                            }
-                        }
-                    } else {
-                        BASE64.decode(&page.loro).ok()
-                    };
-                    let Some(payload) = payload else {
-                        continue;
-                    };
-                    if !downloads.is_empty() {
-                        continue;
-                    }
-                    let update = match PlanUpdate::from_json(&payload) {
-                        Ok(update) => update,
-                        Err(_) => continue,
-                    };
-                    if canonical.is_none() {
-                        canonical = Some(
-                            CanonicalPlanSeed::replay(&history)
-                                .and_then(|seed| seed.open_editor())
-                                .map_err(error)?,
-                        );
-                    }
-                    let plan = canonical.as_mut().expect("initialized above");
-                    if plan.import(&update).is_err() {
-                        continue;
-                    }
-                    document = Some(plan.view().map_err(error)?.to_plan_doc());
+                    document = Some(imported);
                     frozen = true;
-                    accepted = (index + 1) as u32;
+                    accepted =
+                        u32::try_from(index + 1).map_err(|_| "plan version limit exceeded")?;
                 }
                 ItemContent::Page(_) if version.pending => {
                     failure = Some("Uma atualização do plano ainda está sendo confirmada.".into());
@@ -313,30 +319,18 @@ impl<S: Signer> Client<S> {
         }
         let document =
             document.ok_or("O plano ainda está chegando ou não tem uma origem autenticada.")?;
-        let blocks = if frozen {
-            canonical
-                .as_ref()
-                .expect("canonical cutover")
-                .blocks()
-                .map_err(error)?
-                .iter()
-                .map(canonical_block)
-                .collect()
-        } else if !history.is_empty() && !pending {
-            CanonicalPlanSeed::replay(&history)
-                .and_then(|seed| seed.open_editor())
-                .and_then(|plan| plan.blocks())
-                .map_err(error)?
-                .iter()
-                .map(canonical_block)
-                .collect()
+        let blocks = plan_blocks(
+            item,
+            &document,
+            canonical.as_ref(),
+            &history,
+            pending,
+            frozen,
+        )?;
+        let binding = if frozen {
+            observed_hash(&blocks)?
         } else {
-            legacy_blocks(item, &document)
-        };
-        let binding = if !frozen {
-            observed_hash(&legacy_blocks(item, &document))
-        } else {
-            observed_hash(&blocks)
+            observed_hash(&legacy_blocks(item, &document))?
         };
         Ok(PlanRead {
             document,
@@ -400,7 +394,7 @@ impl<S: Signer> Client<S> {
         }
         self.queue_domain_body(
             &item.space,
-            EventBody::ItemVersioned {
+            &EventBody::ItemVersioned {
                 item: id.into(),
                 content: ItemContent::Plan(document),
                 note: note.into(),
@@ -431,14 +425,17 @@ impl<S: Signer> Client<S> {
             return Err("Versão indisponível.".into());
         }
         if !matches!(
-            item.versions[version as usize - 1].content,
+            item.versions
+                .get(version as usize - 1)
+                .ok_or("plan version unavailable")?
+                .content,
             ItemContent::Plan(_)
         ) {
             return Err("Esta versão exige o editor de página.".into());
         }
         self.queue_domain_body(
             &item.space,
-            EventBody::ItemReverted {
+            &EventBody::ItemReverted {
                 item: id.into(),
                 to_version: version,
                 note: note.into(),

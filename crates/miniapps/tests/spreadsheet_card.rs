@@ -43,7 +43,7 @@ fn sheet_counts_localize_without_exporting_cell_values_or_metrics() {
             let state = json!({"title":"Budget", "sheets":count, "cells":40_000});
             let (label, metrics) = headline("gridcraft", &state, 0);
             assert_eq!(label, expected);
-            assert!(metrics.is_empty());
+            assert_eq!(metrics, [] as [(String, f64); 0]);
             let card = snapshot("gridcraft", &state, "it_workbook", 0).expect("card");
             assert_eq!(card["detail"], expected);
             assert!(card.get("cells").is_none());

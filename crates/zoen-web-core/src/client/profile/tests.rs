@@ -1,5 +1,6 @@
 use super::super::tests::{account, clear, sequence, HostSigner};
 use super::*;
+use crate::client::ServerFrame;
 use event_log::{Author, Signer as NativeSigner};
 
 fn client(
@@ -21,7 +22,7 @@ fn client(
         .to_bytes(),
     );
     Ok((
-        Client::new(account, HostSigner(device), "").unwrap(),
+        Client::new(account, HostSigner(device), "")?,
         identity,
         author,
     ))
@@ -30,36 +31,45 @@ fn client(
 fn synced(
     client: &mut Client<HostSigner>,
 ) -> std::result::Result<Update, Box<dyn std::error::Error>> {
-    let mut first = client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
-    if !client.profile_net.profiles.is_empty() {
-        let sync = client.saved.profile.own_sync.as_ref().unwrap();
-        let records = if sync.published == 0 && sync.pending.is_some() {
-            Vec::new()
-        } else {
-            vec![remote_profile(
-                client,
-                sync.published.max(1),
-                "Antes",
-                false,
-            )?]
-        };
-        client
-            .profile_reply(
-                client.profile_net.profiles_request.unwrap(),
-                &Ok(Reply::SealedProfiles(records)),
-            )
-            .unwrap();
-        let mut next = client.update(Vec::new()).unwrap();
-        first.frames.append(&mut next.frames);
-        next.frames = first.frames;
-        Ok(next)
-    } else {
-        Ok(first)
+    let mut first = client.receive(&ServerFrame::SyncDone.encode(), 10)?;
+    if client.profile_net.profiles.is_empty() {
+        return Ok(first);
     }
+
+    let sync = client
+        .saved
+        .profile
+        .own_sync
+        .as_ref()
+        .ok_or("missing authenticated test as_ref value")?;
+    let records = if sync.published == 0 && sync.pending.is_some() {
+        Vec::new()
+    } else {
+        vec![remote_profile(
+            client,
+            sync.published.max(1),
+            "Antes",
+            false,
+        )?]
+    };
+    client.profile_reply(
+        client
+            .profile_net
+            .profiles_request
+            .ok_or("missing authenticated test profiles_request")?,
+        &Ok(Reply::SealedProfiles(records)),
+    )?;
+    let mut next = client.update(Vec::new())?;
+    first.frames.append(&mut next.frames);
+    next.frames = first.frames;
+    Ok(next)
 }
 
-fn request(client: &mut Client<HostSigner>, command: Value) -> DocumentResponse {
-    client.profile_request(&command.to_string(), 20).unwrap()
+fn request(
+    client: &mut Client<HostSigner>,
+    command: &Value,
+) -> std::result::Result<DocumentResponse, Box<dyn std::error::Error>> {
+    Ok(client.profile_request(&command.to_string(), 20)?)
 }
 
 fn remote_profile(
@@ -73,7 +83,7 @@ fn remote_profile(
     let key = if different_key {
         ProfileKey::generate()?
     } else {
-        client.my_profile_fields().unwrap().0
+        client.my_profile_fields()?.0
     };
     let ciphertext = profile::seal_profile(
         &key,
@@ -87,33 +97,43 @@ fn remote_profile(
     Ok(SealedProfile {
         identity: identity.id(),
         version,
-        signed: profile::sign_upload(&author, version, &ciphertext).unwrap(),
+        signed: profile::sign_upload(&author, version, &ciphertext)
+            .ok_or("authenticated test cryptographic evidence missing")?,
         ciphertext,
     })
 }
 
-fn receive_own(client: &mut Client<HostSigner>, record: SealedProfile) -> Update {
+fn receive_own(
+    client: &mut Client<HostSigner>,
+    record: SealedProfile,
+) -> std::result::Result<Update, Box<dyn std::error::Error>> {
     client.profile_net.profiles = vec![client.account.identity.clone()];
-    client.profile_net.profiles_request = Some(client.next_retained_request_id().unwrap());
-    client
-        .profile_reply(
-            client.profile_net.profiles_request.unwrap(),
-            &Ok(Reply::SealedProfiles(vec![record])),
-        )
-        .unwrap();
-    client.update(Vec::new()).unwrap()
+    client.profile_net.profiles_request = Some(client.next_retained_request_id()?);
+    client.profile_reply(
+        client
+            .profile_net
+            .profiles_request
+            .ok_or("missing authenticated test profiles_request")?,
+        &Ok(Reply::SealedProfiles(vec![record])),
+    )?;
+    Ok(client.update(Vec::new())?)
 }
 
-fn reply_upload(client: &mut Client<HostSigner>, version: u64) {
-    let id = client.next_retained_request_id().unwrap();
+fn reply_upload(
+    client: &mut Client<HostSigner>,
+    version: u64,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let id = client.next_retained_request_id()?;
     client.profile_net.upload_version = Some(version);
     client.profile_net.upload_request = Some(id);
-    client.profile_reply(id, &Ok(Reply::Done)).unwrap();
+    client.profile_reply(id, &Ok(Reply::Done))?;
+
+    Ok(())
 }
 
 fn is_profile_upload(frame: &[u8]) -> bool {
     matches!(
-        ClientFrame::decode(frame),
+        ClientFrame::decode(frame).map_err(|error| error.to_string()),
         Ok(ClientFrame::Req {
             op: Op::PutProfile { .. },
             ..

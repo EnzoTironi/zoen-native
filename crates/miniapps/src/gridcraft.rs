@@ -1,5 +1,5 @@
 //! Bounded opaque XLSX storage profile, not a spreadsheet engine or normalizer.
-//! The pinned GridCraft Session interprets cells, calculates and exports. Preserve
+//! The pinned `GridCraft` Session interprets cells, calculates and exports. Preserve
 //! every accepted byte; unsupported packages fail rather than lose content.
 use serde_json::json;
 use std::{
@@ -29,6 +29,8 @@ pub struct Document {
     pub cells: u32,
 }
 impl Document {
+    /// # Errors
+    /// Refuses malformed, oversized or unsupported document structure instead of losing accepted content.
     pub fn parse(bytes: &[u8]) -> Result<Self, &'static str> {
         if bytes.is_empty() || bytes.len() > MAX_BYTES {
             return Err(INVALID);
@@ -80,10 +82,11 @@ impl Document {
         }
         profile.finish(&parts)?;
         Ok(Self {
-            sheets: profile.sheets as u32,
-            cells: profile.cells as u32,
+            sheets: u32::try_from(profile.sheets).map_err(|_| INVALID)?,
+            cells: u32::try_from(profile.cells).map_err(|_| INVALID)?,
         })
     }
+    #[must_use]
     pub fn metadata(&self, title: &str) -> String {
         json!({"title":title,"sheets":self.sheets,"cells":self.cells,"engineRevision":ENGINE_REVISION}).to_string()
     }
@@ -128,6 +131,8 @@ pub fn cell_reference(value: &str) -> bool {
 }
 
 /// Reject external/network formula inputs before invoking the managed engine.
+/// # Errors
+/// Refuses unsupported formula/function syntax, invalid scalar input or values outside the managed cell profile.
 pub fn validate_cell_input(input: &str) -> Result<(), &'static str> {
     if let Some(formula) = input.strip_prefix('=') {
         xml::validate_formula(formula)

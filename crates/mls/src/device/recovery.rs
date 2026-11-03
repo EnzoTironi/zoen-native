@@ -14,6 +14,8 @@ use std::collections::BTreeSet;
 impl Device<'_> {
     /// Join from the latest authenticated public context without an online member.
     /// The caller must sequence the returned external commit before confirming it.
+    /// # Errors
+    /// Refuses unlisted identities, invalid public context, existing group, or failed external commit staging/storage.
     pub fn recover(
         &self,
         space: &str,
@@ -41,7 +43,7 @@ impl Device<'_> {
             .then(|| self.conn.unchecked_transaction().map_err(mls))
             .transpose()?;
         let out = self.with(|p| {
-            if self.load(p, space).is_ok() {
+            if Self::load(p, space).is_ok() {
                 return Err(MlsError::Mls("this device already has a group".into()));
             }
             let (group, bundle) = MlsGroup::external_commit_builder()
@@ -76,6 +78,8 @@ impl Device<'_> {
     }
 
     /// Only after the log confirms this device's exact external commit.
+    /// # Errors
+    /// Refuses a different pending recovery commit and failed state/reconciliation reads or transaction writes.
     pub fn confirm_recovery(
         &self,
         space: &str,
@@ -102,7 +106,7 @@ impl Device<'_> {
                     "another recovery commit was confirmed".into(),
                 ));
             }
-            let group = self.load(p, space)?;
+            let group = Self::load(p, space)?;
             // Staging verified this roster. A later clear removal cannot leave
             // the only confirmed handshake attached to an unsequenced marker.
             let reconcile = !identities(&group)?.is_subset(roster);
@@ -135,6 +139,7 @@ impl Device<'_> {
             .map_err(|e| MlsError::Storage(e.to_string()))
     }
 
+    #[must_use]
     pub fn needs_reconciliation(&self, space: &str) -> bool {
         self.conn
             .query_row(
@@ -146,6 +151,8 @@ impl Device<'_> {
     }
 
     /// An external commit that lost its epoch must discard its tentative group.
+    /// # Errors
+    /// Returns failures deleting the tentative group and its recovery markers.
     pub fn abandon_recovery(&self, space: &str) -> Result<(), MlsError> {
         let tx = self
             .conn
@@ -153,7 +160,7 @@ impl Device<'_> {
             .then(|| self.conn.unchecked_transaction().map_err(mls))
             .transpose()?;
         self.with(|p| {
-            self.load(p, space)?.delete(p.storage()).map_err(mls)?;
+            Self::load(p, space)?.delete(p.storage()).map_err(mls)?;
             self.conn
                 .execute("DELETE FROM mls_recovery_pending WHERE space = ?1", [space])
                 .map(drop)
@@ -166,6 +173,7 @@ impl Device<'_> {
         Ok(())
     }
 
+    #[must_use]
     pub fn recovery_pending(&self, space: &str) -> bool {
         self.conn
             .query_row(

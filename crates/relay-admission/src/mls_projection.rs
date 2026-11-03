@@ -11,6 +11,7 @@ pub const DEFAULT_PRUNE_CEILING_MS: i64 = 30 * 24 * 3600 * 1000;
 pub const PRUNE_BATCH: usize = 256;
 pub type Holds = BTreeMap<(String, String), (u64, i64)>;
 
+#[must_use]
 pub fn ceiling_ms(seconds: Option<&str>) -> i64 {
     seconds
         .and_then(|value| value.parse::<i64>().ok())
@@ -42,6 +43,8 @@ pub enum Write {
 
 /// Projection inputs precede this event. Membership changes are persisted by
 /// the caller; their MLS retention changes are part of the same transaction.
+/// # Errors
+/// Refuses an exhausted MLS epoch rather than wrapping the next epoch.
 pub fn transition(
     effect: &Effect,
     privacy: Option<Privacy>,
@@ -129,6 +132,7 @@ pub fn apply(mls: &mut Option<(u64, String)>, holds: &mut Holds, writes: &[Write
 /// The native retention rule: every current identity must have a hold record;
 /// holds beyond the device ceiling stop preventing pruning. Future timestamps
 /// remain live, and integer extremes cannot overflow the elapsed-time check.
+#[must_use]
 pub fn prune_floor(
     privacy: Option<Privacy>,
     members: &BTreeMap<String, Role>,
@@ -158,6 +162,8 @@ pub fn prune_floor(
 
 /// Native pruning scans at most 256 rows, then advances to the first unscanned
 /// sequence. Sparse rows are valid; a short complete scan advances to the floor.
+/// # Errors
+/// Refuses invalid scan bounds, inconsistent row counts/last sequence or an exhausted cursor.
 pub fn pruned_cursor(
     from: u64,
     floor: u64,
@@ -181,6 +187,8 @@ pub fn pruned_cursor(
 /// Rewrites only ciphertext whose signed digest authenticates a stub. Plain
 /// entries and legacy ciphertext retain their original bytes, including unknown
 /// protobuf fields, exactly as in the native log.
+/// # Errors
+/// Refuses invalid event encoding or a stub that changes the signed ciphertext digest.
 pub fn pruned_bytes(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
     let event = protocol::Sequenced::decode(bytes).map_err(|error| error.to_string())?;
     let Some(stub) = event.env.pruned() else {

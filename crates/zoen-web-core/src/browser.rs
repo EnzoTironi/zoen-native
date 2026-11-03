@@ -134,7 +134,7 @@ impl BrowserCore {
         serde_json::to_string(&self.client.bootstrap().map_err(error)?).map_err(error)
     }
     pub fn cursor_repair_config(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.client.cursor_repair_config()).map_err(error)
+        serde_json::to_string(&self.client.cursor_repair_config().map_err(error)?).map_err(error)
     }
     pub fn bootstrap_at(&mut self, clock_ms: f64) -> Result<String, JsValue> {
         let _language = localization::enter(self.lang);

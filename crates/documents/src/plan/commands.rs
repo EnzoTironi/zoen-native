@@ -129,30 +129,7 @@ pub(super) fn apply_command(
             text,
             cost_cents,
         } => {
-            if cost_cents < 0 {
-                return Err(error("new cost cannot be negative"));
-            }
-            if find(nodes, &section)?.kind != BlockKind::Section {
-                return Err(error("not a section"));
-            }
-            let start = nodes
-                .iter()
-                .position(|n| n.id == section)
-                .ok_or_else(|| error("section missing"))?;
-            let at = nodes[start + 1..]
-                .iter()
-                .position(|n| n.kind == BlockKind::Section)
-                .map_or(nodes.len(), |i| start + 1 + i);
-            let id = edit::unused_id(page)?;
-            let line = PlanLine {
-                id: format!("ln_{id}"),
-                text: text.clone(),
-                cost_cents,
-                done: false,
-            };
-            let map = list.insert_container(at, LoroMap::new()).map_err(error)?;
-            initialize_block(&map, &id, BlockKind::Line, &text, Some(&line), None)?;
-            return Ok(Some(id));
+            return insert_line(page, nodes, &section, &text, cost_cents).map(Some);
         }
         PlanCommand::AddSection { title } => {
             let id = edit::unused_id(page)?;
@@ -202,4 +179,40 @@ pub(super) fn apply_command(
         }
     }
     Ok(None)
+}
+
+fn insert_line(
+    page: &Page,
+    nodes: &[Node],
+    section: &str,
+    text: &str,
+    cost_cents: i64,
+) -> Result<String> {
+    if cost_cents < 0 {
+        return Err(error("new cost cannot be negative"));
+    }
+    if find(nodes, section)?.kind != BlockKind::Section {
+        return Err(error("not a section"));
+    }
+    let start = nodes
+        .iter()
+        .position(|n| n.id == section)
+        .ok_or_else(|| error("section missing"))?;
+    let at = nodes[start + 1..]
+        .iter()
+        .position(|n| n.kind == BlockKind::Section)
+        .map_or(nodes.len(), |i| start + 1 + i);
+    let id = edit::unused_id(page)?;
+    let line = PlanLine {
+        id: format!("ln_{id}"),
+        text: text.to_string(),
+        cost_cents,
+        done: false,
+    };
+    let map = page
+        .blocks_list()
+        .insert_container(at, LoroMap::new())
+        .map_err(error)?;
+    initialize_block(&map, &id, BlockKind::Line, text, Some(&line), None)?;
+    Ok(id)
 }

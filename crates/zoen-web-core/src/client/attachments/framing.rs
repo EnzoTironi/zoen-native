@@ -1,5 +1,5 @@
 //! Bounded single-file and album framing; no publication or retained state.
-use super::*;
+use super::{BTreeMap, BTreeSet, Deserialize, Digest, Sha256, UnpackedAttachment, MAX_FILE_BYTES};
 use zeroize::Zeroizing;
 
 const MAX_HEADER_BYTES: usize = 256 << 10;

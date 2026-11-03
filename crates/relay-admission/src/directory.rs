@@ -5,18 +5,22 @@ pub mod sealed_profiles;
 use protocol::{auth_message, normalize_handle};
 use types::{Identity, IdentityKind};
 
+#[must_use]
 pub fn certificate_valid(identity: &str, device: &str, cert: &str) -> bool {
     event_log::verify_sig(identity, &event_log::device_cert_message(device), cert)
 }
 
+#[must_use]
 pub fn enrollment_certificate_valid(identity: &str, device: &str, cert: &str) -> bool {
     valid_hex64(device) && certificate_valid(identity, device, cert)
 }
 
+#[must_use]
 pub fn auth_valid(device: &str, nonce: &str, relay: &str, sig: &str) -> bool {
     event_log::verify_sig(device, &auth_message(nonce, relay), sig)
 }
 
+#[must_use]
 pub fn provisional_allowed(
     enrolled: Option<(bool, bool)>,
     identity: &str,
@@ -28,11 +32,14 @@ pub fn provisional_allowed(
         && (enrolled.is_none() || identity == device)
 }
 
+#[must_use]
 pub fn request_authorized(enrolled: Option<(bool, bool)>, unregistered: bool) -> bool {
     enrolled == Some((true, false)) || unregistered
 }
 
 /// Exact native session profile normalization, shared before persistence.
+/// # Errors
+/// Refuses another identity, invalid handles, or agent profiles without a name or owner.
 pub fn prepare_profile(mut profile: Identity, identity: &str) -> Result<Identity, String> {
     if profile.id != identity {
         return Err("profile is for another identity".into());

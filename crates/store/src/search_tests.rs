@@ -67,14 +67,20 @@ fn scoped_keyset_handles_equal_timestamps_and_filters_before_limiting() {
         .unwrap();
     assert_eq!(third.len(), 1);
     assert_eq!(third[0].ref_id, "older");
-    assert!(store
-        .search_messages_page("acao uni", "chat", Some((5, "older")), 1)
-        .unwrap()
-        .is_empty());
-    assert!(store
-        .search_messages_page("\" OR * :", "chat", None, 1)
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        store
+            .search_messages_page("acao uni", "chat", Some((5, "older")), 1)
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        store
+            .search_messages_page("\" OR * :", "chat", None, 1)
+            .unwrap()
+            .len(),
+        0
+    );
 }
 
 #[test]
@@ -98,7 +104,7 @@ fn search_generation_is_committed_and_rebuild_abort_restores_content() {
         store.search("preservado", "message", 1).unwrap()[0].ref_id,
         "kept"
     );
-    assert!(store.search("perdido", "message", 1).unwrap().is_empty());
+    assert_eq!(store.search("perdido", "message", 1).unwrap().len(), 0);
     store.index_begin().unwrap();
     store.index_commit().unwrap();
     assert_eq!(store.search_generation().unwrap(), 2);

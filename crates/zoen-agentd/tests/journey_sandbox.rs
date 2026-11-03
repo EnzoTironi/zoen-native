@@ -60,7 +60,7 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
     let (ana, agent) = ("ana".to_string(), "ana-agent".to_string());
 
     // A tool that declares nothing runs in the agent runtime: no sandbox, no card.
-    let s = summarize().sign(&publisher());
+    let s = summarize().sign(&publisher()).unwrap();
     assert_eq!(
         router.route(&ana, &agent, &s, &[], NOW),
         Route::Run {
@@ -79,7 +79,7 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
     );
 
     // A tampered or unknown-publisher manifest is refused outright.
-    let mut forged = python().sign(&publisher());
+    let mut forged = python().sign(&publisher()).unwrap();
     forged.manifest.needs = Needs::MicroVm {
         vcpu: 8,
         mem_mib: 8192,
@@ -90,14 +90,14 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
         router.route(&ana, &agent, &forged, &[], NOW),
         Route::Refused(_)
     ));
-    let stranger = python().sign(&SigningKey::from_bytes(&[1; 32]));
+    let stranger = python().sign(&SigningKey::from_bytes(&[1; 32])).unwrap();
     assert!(matches!(
         router.route(&ana, &agent, &stranger, &[], NOW),
         Route::Refused(_)
     ));
 
     // The Python tool declares a microVM: without a Grant, Ana gets a card in plain words.
-    let p = python().sign(&publisher());
+    let p = python().sign(&publisher()).unwrap();
     let Route::NeedsApproval(card) = router.route(&ana, &agent, &p, &[], NOW) else {
         panic!("expected a card");
     };

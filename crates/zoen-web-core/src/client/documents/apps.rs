@@ -1,5 +1,9 @@
 //! Canonical drawing adapter. Scene policy is shared Rust; original bytes remain authoritative.
-use super::*;
+use super::{
+    browser_id, error, hash, json, t, BTreeMap, BTreeSet, ChunkRef, Client, Deserialize,
+    DocumentResponse, EventBody, Item, ItemContent, ItemKind, OpenMlsProvider, Role, Serialize,
+    Signer, Value,
+};
 use crate::media::{self, Sealed};
 use miniapps::excalidraw::{Scene, EMPTY, MAX_SCENE_BYTES, MIME, RESOURCE};
 use types::{AppDoc, Capability, Grant, GrantScope, TrustLevel};
@@ -141,7 +145,7 @@ impl<S: Signer> Client<S> {
         let (item, app) = self.drawing_scope(id)?;
         let file = app.document.as_ref().ok_or_else(invalid)?;
         let mut missing = Vec::new();
-        let mut joined = Vec::with_capacity(file.bytes as usize);
+        let mut joined = Vec::with_capacity(usize::try_from(file.bytes).map_err(|_| invalid())?);
         for chunk in &file.chunks {
             let plain = if let Some(bytes) = self.saved.documents.blobs.get(&chunk.sha256) {
                 Some(bytes.clone())
@@ -167,12 +171,13 @@ impl<S: Signer> Client<S> {
         }
         let text = String::from_utf8(joined).map_err(|_| invalid())?;
         Scene::parse(&text).map_err(|_| invalid())?;
-        let version = item.versions.len() as u32;
+        let version =
+            u32::try_from(item.versions.len()).map_err(|_| "document version limit exceeded")?;
         Ok((dto(id, version, version, &file.sha256, &text), Vec::new()))
     }
 
     /// Preparation can advance MLS sender state. Restore it if any body cannot queue;
-    /// queue_domain_batch itself commits no outbox entry until every body is prepared.
+    /// `queue_domain_batch` itself commits no outbox entry until every body is prepared.
     fn drawing_batch(
         &mut self,
         space: &str,
@@ -228,19 +233,24 @@ impl<S: Signer> Client<S> {
         Ok(uploads.into_iter().collect())
     }
 
-    fn cache_drawing(&mut self, sealed: Sealed, text: &str) {
-        let mut offset = 0;
+    fn cache_drawing(&mut self, sealed: Sealed, text: &str) -> Result<(), String> {
+        let mut offset = 0usize;
+        let mut plaintext = Vec::with_capacity(sealed.doc.chunks.len());
         for chunk in &sealed.doc.chunks {
-            let end = offset + chunk.bytes as usize;
-            self.saved
-                .documents
-                .blobs
-                .insert(chunk.sha256.clone(), text.as_bytes()[offset..end].to_vec());
+            let length = usize::try_from(chunk.bytes).map_err(|_| storage())?;
+            let end = offset.checked_add(length).ok_or_else(storage)?;
+            let bytes = text.as_bytes().get(offset..end).ok_or_else(storage)?;
+            plaintext.push((chunk.sha256.clone(), bytes.to_vec()));
             offset = end;
         }
+        if offset != text.len() {
+            return Err(storage());
+        }
+        self.saved.documents.blobs.extend(plaintext);
         for upload in sealed.uploads {
             self.saved.local_chunks.insert(upload.blob, upload.sealed);
         }
+        Ok(())
     }
 
     pub(in crate::client) fn install_browser_drawing(
@@ -258,9 +268,7 @@ impl<S: Signer> Client<S> {
         let profile = self.saved.profiles.get(&self.account.identity);
         let actor = miniapps::Actor {
             id: &self.account.identity,
-            name: profile
-                .map(|profile| profile.name.as_str())
-                .unwrap_or(&self.account.name),
+            name: profile.map_or(&self.account.name, |profile| profile.name.as_str()),
             owner: profile.and_then(|profile| profile.owner.as_deref()),
         };
         let (title, _) = miniapps::create_as("excalidraw", &arguments, &actor, now)?;
@@ -348,3 +356,40 @@ impl<S: Signer> Client<S> {
 }
 
 mod mutations;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod cache_tests {
+    use crate::client::{
+        tests::{account, HostSigner},
+        Client,
+    };
+    use event_log::Signer;
+
+    #[test]
+    fn invalid_chunk_boundaries_cannot_partially_replace_drawing_caches() -> Result<(), String> {
+        let identity = Signer::from_secret(&[11; 32]);
+        let device = Signer::from_secret(&[12; 32]);
+        let mut client = Client::new(account(&identity, &device), HostSigner(device), "")?;
+        client
+            .saved
+            .documents
+            .blobs
+            .insert("retained".into(), b"prior".to_vec());
+        let before = serde_json::to_string(&client.saved).map_err(|error| error.to_string())?;
+        let mut sealed =
+            crate::media::seal_file("drawing.excalidraw", "application/json", b"{}", None)?;
+        let chunk = sealed
+            .doc
+            .chunks
+            .first_mut()
+            .ok_or("sealed drawing chunk missing")?;
+        // The previous cache path indexed directly and panicked for this bound.
+        chunk.bytes = u64::MAX;
+        assert!(client.cache_drawing(sealed, "{}").is_err());
+        assert_eq!(
+            serde_json::to_string(&client.saved).map_err(|error| error.to_string())?,
+            before
+        );
+        Ok(())
+    }
+}

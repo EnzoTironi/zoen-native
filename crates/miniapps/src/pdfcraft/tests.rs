@@ -53,7 +53,7 @@ fn reviewed_intents_preserve_exact_source_text_and_refuse_unscoped_fields() -> R
         *bad.pointer_mut(path).ok_or("missing fixture field")? = value;
         assert!(agent_tools::command("pdfcraft_edit", &bad).is_err());
     }
-    let mut bad = args.clone();
+    let mut bad = args;
     bad["action"]["actorId"] = json!("forged");
     assert!(agent_tools::command("pdfcraft_edit", &bad).is_err());
     assert!(agent_tools::command(

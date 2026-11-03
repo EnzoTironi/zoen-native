@@ -1,4 +1,4 @@
-//! Inspectable Plan operations. This codec is isolated from production PageContent.
+//! Inspectable Plan operations. This codec is isolated from production `PageContent`.
 
 use loro::JsonSchema;
 use serde::{Deserialize, Serialize};

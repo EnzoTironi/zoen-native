@@ -1,11 +1,14 @@
 //! Encrypted profile cache and retry journal. The wire codec and cryptography are
 //! shared with native; the host persists every update before sending its frames.
-use super::*;
+use super::{
+    BTreeMap, BTreeSet, Client, ClientFrame, Deserialize, DocumentResponse, Event, EventBody,
+    Identity, Op, Reply, Serialize, Signer, Update,
+};
 use event_log::profile::{
     self, AgreementKey, DeviceSigned, ProfileFields, ProfileKey, SealedShare,
 };
 use event_log::profile_sync::{Observe, OwnProfileSync};
-use protocol::{AgreementKeyRecord, SealedProfile};
+use protocol::SealedProfile;
 use serde_json::{json, Value};
 
 const AGREEMENT_PUBLISH: u64 = 0x8000_0010;
@@ -128,6 +131,10 @@ impl<S: Signer> Client<S> {
     }
 
     /// Prepare the redacted registration payload without changing the local alias.
+    ///
+    /// # Errors
+    /// Returns an error for an invalid handle, a non-person profile, or failed
+    /// serialization of the redacted registration payload.
     pub fn handle_profile(&self, handle: &str) -> Result<String, String> {
         let handle = protocol::normalize_handle(handle)
             .ok_or("Use de 3 a 24 letras, números, pontos ou _. Comece com uma letra.")?;
@@ -157,6 +164,10 @@ impl<S: Signer> Client<S> {
     }
 
     /// Only a matching Registered response on this authenticated session can rename.
+    ///
+    /// # Errors
+    /// Returns an error for invalid confirmation JSON or handle, a response that
+    /// does not match this account and requested handle, or client update failure.
     pub fn handle_confirmed(&mut self, encoded: &str, expected: &str) -> Result<Update, String> {
         let mut profile: Identity =
             serde_json::from_str(encoded).map_err(|error| error.to_string())?;
@@ -169,7 +180,7 @@ impl<S: Signer> Client<S> {
         {
             return Err("O servidor confirmou outro perfil. Tente novamente.".into());
         }
-        self.account.handle = expected.clone();
+        self.account.handle.clone_from(&expected);
         self.saved.own_handle = Some(expected);
         profile.name.clear();
         profile.bio.clear();
@@ -238,8 +249,8 @@ impl<S: Signer> Client<S> {
                 .get_mut(id)
                 .filter(|person| person.kind == types::IdentityKind::Person)
             {
-                person.name = fields.name.clone();
-                person.bio = fields.bio.clone();
+                person.name.clone_from(&fields.name);
+                person.bio.clone_from(&fields.bio);
             }
             if *id == self.account.identity {
                 self.account.name = fields.name;
@@ -249,7 +260,7 @@ impl<S: Signer> Client<S> {
 
     pub(super) fn write_profile_fields(
         &mut self,
-        fields: ProfileFields,
+        fields: &ProfileFields,
         rotate: bool,
     ) -> Result<(), String> {
         let me = self.account.identity.clone();
@@ -299,6 +310,11 @@ impl<S: Signer> Client<S> {
         })
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for malformed or oversized requests, unavailable profiles,
+    /// invalid name or bio, unauthorized changes, unavailable profile keys, or
+    /// failed signing, encryption or client update.
     pub fn profile_request(&mut self, request: &str, now: i64) -> Result<DocumentResponse, String> {
         self.view_now_ms = now;
         if request.len() > 16 * 1024 {
@@ -322,7 +338,7 @@ impl<S: Signer> Client<S> {
                 if fields.name != name || fields.bio != bio {
                     fields.name = name.into();
                     fields.bio = bio.into();
-                    self.write_profile_fields(fields, false)?;
+                    self.write_profile_fields(&fields, false)?;
                     changed = true;
                 }
                 Value::Null
@@ -335,7 +351,7 @@ impl<S: Signer> Client<S> {
                 }
                 if !self.saved.profile.blocked.contains(&identity_id) {
                     let (_, _, fields) = self.my_profile_fields()?;
-                    self.write_profile_fields(fields, true)?;
+                    self.write_profile_fields(&fields, true)?;
                     self.saved.profile.blocked.insert(identity_id);
                     changed = true;
                 }
@@ -378,9 +394,9 @@ impl<S: Signer> Client<S> {
             (None, None, 0, None)
         };
         Ok(
-            json!({"identity_id":id,"handle":identity.map(|identity|identity.handle.as_str()).unwrap_or(if id==self.account.identity {&self.account.handle} else {""}),
+            json!({"identity_id":id,"handle":identity.map_or(if id==self.account.identity {&self.account.handle} else {""}, |identity|identity.handle.as_str()),
             "name":name,"bio":bio,"photo_sha256":photo.as_ref().map(|photo|photo.sha256.clone()),"photo_mime":photo.as_ref().map(|photo|photo.mime.clone()),"photo_ready":photo.as_ref().is_some_and(|photo| self.profile_photo_cached(photo)),"version":version.to_string(),
-            "tint_hex":identity.map(|identity|identity.tint_hex.as_str()).unwrap_or("#8E8E93"),"is_me":id==self.account.identity,"blocked":self.saved.profile.blocked.contains(id)}),
+            "tint_hex":identity.map_or("#8E8E93", |identity|identity.tint_hex.as_str()),"is_me":id==self.account.identity,"blocked":self.saved.profile.blocked.contains(id)}),
         )
     }
 
@@ -425,7 +441,7 @@ impl<S: Signer> Client<S> {
             Row {
                 key: key.to_hex(),
                 key_version: version,
-                seen_version: previous.map(|row| row.seen_version).unwrap_or(0),
+                seen_version: previous.map_or(0, |row| row.seen_version),
                 fields: previous.and_then(|row| row.fields.clone()),
             },
         );

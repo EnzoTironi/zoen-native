@@ -8,6 +8,7 @@ pub const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 pub const IMAGE_JSON_ENVELOPE_BYTES: u64 = 64 * 1024;
 /// Exact canonical base64 size (including padding) plus the JSON envelope.
 /// Under a 16 MiB transport bound the largest supported PNG is 12,533,760 bytes.
+#[must_use]
 pub fn image_response_budget(png_bytes: u64) -> Option<u64> {
     if !(1..=MAX_IMAGE_BYTES).contains(&png_bytes) {
         return None;
@@ -29,6 +30,7 @@ pub enum ImageSize {
     Portrait,
 }
 impl ImageSize {
+    #[must_use]
     pub fn dimensions(self) -> (u32, u32) {
         match self {
             Self::Square => (1024, 1024),
@@ -52,7 +54,7 @@ pub enum ImageBackground {
 }
 
 /// Exact output obligation for a host-owned image price profile. No token cap is
-/// asserted: /images/generations exposes no max_output_tokens parameter.
+/// asserted: `/images/generations` exposes no `max_output_tokens` parameter.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageDispatch {

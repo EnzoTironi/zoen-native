@@ -1,5 +1,5 @@
 //! A version/hash-bound export of verified shared history, with no live draft.
-use super::*;
+use super::{json, t, Client, ItemContent, Signer, Value};
 
 impl<S: Signer> Client<S> {
     pub(super) fn page_export_version_value(
@@ -19,7 +19,7 @@ impl<S: Signer> Client<S> {
             return Err(reason.clone());
         }
         let mut item = self.document_item(id)?;
-        if item.space != space || item.versions[0].failure.is_some() {
+        if item.space != space || item.versions.first().failure.is_some() {
             return Err(t(
                 "Arquivo indisponível nesta conversa.",
                 "Artifact unavailable in this conversation.",
@@ -28,7 +28,7 @@ impl<S: Signer> Client<S> {
         if version == 0 || version as usize > item.versions.len() {
             return Err(t("Versão indisponível.", "Version unavailable."));
         }
-        item.versions.truncate(version as usize);
+        item.versions.truncate(version as usize)?;
         if item.versions.iter().any(|v| v.failure.is_some()) {
             return Err(t(
                 "Esta versão não pôde ser compartilhada.",

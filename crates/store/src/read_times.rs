@@ -25,6 +25,9 @@ impl Store {
         Ok(())
     }
     /// First observation wins for an exact interval; duplicates/replay cannot invent a newer time.
+    ///
+    /// # Errors
+    /// Returns a database error if migration, insertion, or pruning fails.
     pub fn record_read_time(
         &self,
         space: &str,
@@ -47,6 +50,10 @@ impl Store {
         Ok(changed)
     }
     /// Bounded, ordered evidence for replay or exact message projection.
+    ///
+    /// # Errors
+    /// Returns an error if the database query fails, the schema is invalid,
+    /// or a stored row cannot be decoded.
     pub fn read_times(&self, space: &str, identity: &str, cutoff: i64) -> Result<Vec<ReadTimeRow>> {
         let kind: Option<String> = self
             .conn
@@ -98,41 +105,48 @@ mod tests {
         }
     }
     #[test]
-    fn intervals_keep_peer_clock_and_first_local_observation_across_duplicate_and_old_image() {
-        let store = Store::in_memory().unwrap();
+    fn intervals_keep_peer_clock_and_first_local_observation_across_duplicate_and_old_image(
+    ) -> Result<()> {
+        let store = Store::in_memory()?;
         let original = row(5, u64::MAX, 1234, 9000);
-        assert!(store.record_read_time("s", "peer", &original, 0).unwrap());
-        assert!(!store
-            .record_read_time("s", "peer", &row(5, u64::MAX, 9999, 9999), 0)
-            .unwrap());
-        let reopened = Store::from_memory_image(&store.memory_image().unwrap()).unwrap();
-        assert_eq!(reopened.read_times("s", "peer", 0).unwrap(), vec![original]);
-        assert!(reopened.read_times("s", "other", 0).unwrap().is_empty());
-        assert!(reopened.read_times("s", "peer", 9001).unwrap().is_empty());
+        assert!(store.record_read_time("s", "peer", &original, 0)?);
+        assert!(!store.record_read_time("s", "peer", &row(5, u64::MAX, 9999, 9999), 0)?);
+        let reopened = Store::from_memory_image(&store.memory_image()?)?;
+        assert_eq!(reopened.read_times("s", "peer", 0)?, vec![original]);
+        assert_eq!(reopened.read_times("s", "other", 0)?, []);
+        assert_eq!(reopened.read_times("s", "peer", 9001)?, []);
         reopened
             .conn()
-            .execute_batch("DROP TABLE peer_read_times")
-            .unwrap();
-        let old = Store::from_memory_image(&reopened.memory_image().unwrap()).unwrap();
-        assert!(old.read_times("s", "peer", 0).unwrap().is_empty());
-        old.record_read_time("s", "peer", &row(8, 9, 1000, 1000), 0)
-            .unwrap();
-        assert_eq!(old.read_times("s", "peer", 0).unwrap().len(), 1);
-        old.wipe_sync().unwrap();
-        assert!(old.read_times("s", "peer", 0).unwrap().is_empty());
+            .execute_batch("DROP TABLE peer_read_times")?;
+        let old = Store::from_memory_image(&reopened.memory_image()?)?;
+        assert_eq!(old.read_times("s", "peer", 0)?, []);
+        old.record_read_time("s", "peer", &row(8, 9, 1000, 1000), 0)?;
+        assert_eq!(old.read_times("s", "peer", 0)?.len(), 1);
+        old.wipe_sync()?;
+        assert_eq!(old.read_times("s", "peer", 0)?, []);
+        Ok(())
     }
     #[test]
-    fn timestamp_retention_is_bounded_without_lowering_legacy_watermark() {
-        let store = Store::in_memory().unwrap();
-        store.raise_peer_receipt("s", "peer", 400, 400).unwrap();
+    fn timestamp_retention_is_bounded_without_lowering_legacy_watermark() -> Result<()> {
+        let store = Store::in_memory()?;
+        store.raise_peer_receipt("s", "peer", 400, 400)?;
         for n in 1..=300 {
-            store
-                .record_read_time("s", "peer", &row(n - 1, n, 1000, n as i64), 0)
-                .unwrap();
+            store.record_read_time(
+                "s",
+                "peer",
+                &row(
+                    n - 1,
+                    n,
+                    1000,
+                    i64::try_from(n).map_err(|_| rusqlite::Error::InvalidQuery)?,
+                ),
+                0,
+            )?;
         }
-        let rows = store.read_times("s", "peer", 0).unwrap();
+        let rows = store.read_times("s", "peer", 0)?;
         assert_eq!(rows.len(), 256);
         assert_eq!(rows[0].after_seq, 44);
-        assert_eq!(store.peer_receipts().unwrap()[0].read, 400);
+        assert_eq!(store.peer_receipts()?[0].read, 400);
+        Ok(())
     }
 }

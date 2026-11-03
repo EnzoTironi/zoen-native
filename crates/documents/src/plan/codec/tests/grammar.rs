@@ -98,7 +98,7 @@ fn removed_block_identity_cannot_be_reassigned_through_an_invisible_map() {
     attacker.page.doc.commit();
     let update = attacker.updates_since(&from).unwrap();
     doc.apply(PlanCommand::RemoveLine {
-        block: original.id.clone(),
+        block: original.id,
         expected: ExpectedLine::AnyCurrent,
     })
     .unwrap();

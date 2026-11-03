@@ -1,9 +1,11 @@
 //! Agenda resource and tool schema.
 
-use super::*;
+use super::{empty, json, tool, ts, ActionClass, AppSpec};
+
+use super::ToolSpec;
+use ActionClass::Reversible;
 
 pub(super) fn spec() -> AppSpec {
-    use ActionClass::*;
     AppSpec {
             id: "schedule",
             name: ts("Agenda", "Schedule"),
@@ -15,52 +17,105 @@ pub(super) fn spec() -> AppSpec {
             html: Some(include_str!("../../resources/schedule.html")),
             manifest: Some(include_str!("../../resources/schedule.manifest.json")),
             tools: vec![
-                tool(
-                    "start_schedule",
-                    ts("Abrir agenda", "Open schedule"),
+                start_schedule_tool(),
+                schedule_configure_tool(),
+                schedule_book_tool(),
+                schedule_resolve_tool(),
+                schedule_cancel_tool(),
+                schedule_get_state_tool(),
+            ],
+        }
+}
+
+fn schedule_get_state_tool() -> ToolSpec {
+    tool(
+        "schedule_get_state",
+        ts("Ver estado", "Get state"),
+        ts(
+            "Lê serviços, horários e marcações (sem mudar nada).",
+            "Reads services, hours and bookings (changes nothing).",
+        ),
+        empty(),
+        &["app"],
+        Reversible,
+        true,
+    )
+}
+
+fn schedule_cancel_tool() -> ToolSpec {
+    tool(
+        "schedule_cancel",
+        ts("Cancelar horário", "Cancel booking"),
+        ts(
+            "Pede o cancelamento do seu horário. O agente recebe o evento.",
+            "Requests cancelling your booking. The agent gets the event.",
+        ),
+        json!({
+            "type": "object",
+            "properties": {
+                "bookingId": {"type": "string"}
+            },
+            "required": ["bookingId"]
+        }),
+        &["app"],
+        Reversible,
+        false,
+    )
+}
+
+fn schedule_resolve_tool() -> ToolSpec {
+    tool(
+                    "schedule_resolve",
+                    ts("Resolver pedido", "Resolve request"),
                     ts(
-                        "Abre uma agenda para qualquer negócio. Preencha nome, serviços, preços e horários a partir do que o dono contou.",
-                        "Opens a schedule for any business. Fill in the name, services, prices and hours from what the owner said.",
+                        "Dono, agente ou quem resolve: confirma, remarca ou cancela um pedido; num pedido de cancelamento, cancela ou mantém (keep).",
+                        "Owner, agent or resolver: confirms, moves or cancels a request; on a cancel request, cancels or keeps it.",
                     ),
                     json!({
                         "type": "object",
                         "properties": {
-                            "business": {"type": "string", "maxLength": 48, "description": "Business name in the owner's words"},
-                            "title": {"type": "string", "maxLength": 40},
-                            "accentHex": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
-                            "timezone": {"type": "string", "maxLength": 40, "description": "IANA zone, e.g. America/Sao_Paulo"},
-                            "currency": {"type": "string", "pattern": "^[A-Za-z]{3}$"},
-                            "slotMinutes": {"type": "integer", "minimum": 5, "maximum": 240},
-                            "horizonDays": {"type": "integer", "minimum": 1, "maximum": 365},
-                            "services": {
-                                "type": "array",
-                                "minItems": 1,
-                                "maxItems": 12,
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "id": {"type": "string", "maxLength": 24},
-                                        "name": {"type": "string", "maxLength": 40},
-                                        "priceCents": {"type": "integer", "minimum": 0},
-                                        "minutes": {"type": "integer", "minimum": 5, "maximum": 480}
-                                    },
-                                    "required": ["name", "minutes"]
-                                }
-                            },
-                            "weeklyHours": {
-                                "type": "object",
-                                "description": "Keys \"0\" (Sunday) to \"6\"; each a list of [\"HH:MM\", \"HH:MM\"] windows",
-                                "additionalProperties": false,
-                                "patternProperties": {"^[0-6]$": {"type": "array", "maxItems": 4, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$"}}}}
-                            }
+                            "bookingId": {"type": "string"},
+                            "action": {"type": "string", "enum": ["confirm", "adjust", "cancel", "keep"]},
+                            "startMs": {"type": "integer"},
+                            "endMs": {"type": "integer"},
+                            "note": {"type": "string", "maxLength": 120}
                         },
-                        "required": ["business", "services", "weeklyHours"]
+                        "required": ["bookingId", "action"]
                     }),
-                    &["model"],
+                    &["model", "app"],
                     Reversible,
                     false,
-                ),
-                tool(
+                )
+}
+
+fn schedule_book_tool() -> ToolSpec {
+    tool(
+        "schedule_book",
+        ts("Pedir horário", "Request a slot"),
+        ts(
+            "Pede um horário livre. Vira um evento para o agente confirmar ou ajustar.",
+            "Requests a free slot. Becomes an event for the agent to confirm or adjust.",
+        ),
+        json!({
+            "type": "object",
+            "properties": {
+                "serviceId": {"type": "string"},
+                "startMs": {"type": "integer"},
+                "endMs": {"type": "integer", "description": "Optional; must equal startMs + the service length"},
+                "note": {"type": "string", "maxLength": 120},
+                "forId": {"type": "string", "description": "Staff or agent only: the member this booking is for"},
+                "forName": {"type": "string", "maxLength": 48, "description": "Staff or agent only: the client's name"}
+            },
+            "required": ["serviceId", "startMs"]
+        }),
+        &["app"],
+        Reversible,
+        false,
+    )
+}
+
+fn schedule_configure_tool() -> ToolSpec {
+    tool(
                     "schedule_configure",
                     ts("Ajustar agenda", "Configure schedule"),
                     ts(
@@ -104,82 +159,53 @@ pub(super) fn spec() -> AppSpec {
                     &["model", "app"],
                     Reversible,
                     false,
-                ),
-                tool(
-                    "schedule_book",
-                    ts("Pedir horário", "Request a slot"),
+                )
+}
+
+fn start_schedule_tool() -> ToolSpec {
+    tool(
+                    "start_schedule",
+                    ts("Abrir agenda", "Open schedule"),
                     ts(
-                        "Pede um horário livre. Vira um evento para o agente confirmar ou ajustar.",
-                        "Requests a free slot. Becomes an event for the agent to confirm or adjust.",
+                        "Abre uma agenda para qualquer negócio. Preencha nome, serviços, preços e horários a partir do que o dono contou.",
+                        "Opens a schedule for any business. Fill in the name, services, prices and hours from what the owner said.",
                     ),
                     json!({
                         "type": "object",
                         "properties": {
-                            "serviceId": {"type": "string"},
-                            "startMs": {"type": "integer"},
-                            "endMs": {"type": "integer", "description": "Optional; must equal startMs + the service length"},
-                            "note": {"type": "string", "maxLength": 120},
-                            "forId": {"type": "string", "description": "Staff or agent only: the member this booking is for"},
-                            "forName": {"type": "string", "maxLength": 48, "description": "Staff or agent only: the client's name"}
+                            "business": {"type": "string", "maxLength": 48, "description": "Business name in the owner's words"},
+                            "title": {"type": "string", "maxLength": 40},
+                            "accentHex": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                            "timezone": {"type": "string", "maxLength": 40, "description": "IANA zone, e.g. America/Sao_Paulo"},
+                            "currency": {"type": "string", "pattern": "^[A-Za-z]{3}$"},
+                            "slotMinutes": {"type": "integer", "minimum": 5, "maximum": 240},
+                            "horizonDays": {"type": "integer", "minimum": 1, "maximum": 365},
+                            "services": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 12,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": "string", "maxLength": 24},
+                                        "name": {"type": "string", "maxLength": 40},
+                                        "priceCents": {"type": "integer", "minimum": 0},
+                                        "minutes": {"type": "integer", "minimum": 5, "maximum": 480}
+                                    },
+                                    "required": ["name", "minutes"]
+                                }
+                            },
+                            "weeklyHours": {
+                                "type": "object",
+                                "description": "Keys \"0\" (Sunday) to \"6\"; each a list of [\"HH:MM\", \"HH:MM\"] windows",
+                                "additionalProperties": false,
+                                "patternProperties": {"^[0-6]$": {"type": "array", "maxItems": 4, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$"}}}}
+                            }
                         },
-                        "required": ["serviceId", "startMs"]
+                        "required": ["business", "services", "weeklyHours"]
                     }),
-                    &["app"],
+                    &["model"],
                     Reversible,
                     false,
-                ),
-                tool(
-                    "schedule_resolve",
-                    ts("Resolver pedido", "Resolve request"),
-                    ts(
-                        "Dono, agente ou quem resolve: confirma, remarca ou cancela um pedido; num pedido de cancelamento, cancela ou mantém (keep).",
-                        "Owner, agent or resolver: confirms, moves or cancels a request; on a cancel request, cancels or keeps it.",
-                    ),
-                    json!({
-                        "type": "object",
-                        "properties": {
-                            "bookingId": {"type": "string"},
-                            "action": {"type": "string", "enum": ["confirm", "adjust", "cancel", "keep"]},
-                            "startMs": {"type": "integer"},
-                            "endMs": {"type": "integer"},
-                            "note": {"type": "string", "maxLength": 120}
-                        },
-                        "required": ["bookingId", "action"]
-                    }),
-                    &["model", "app"],
-                    Reversible,
-                    false,
-                ),
-                tool(
-                    "schedule_cancel",
-                    ts("Cancelar horário", "Cancel booking"),
-                    ts(
-                        "Pede o cancelamento do seu horário. O agente recebe o evento.",
-                        "Requests cancelling your booking. The agent gets the event.",
-                    ),
-                    json!({
-                        "type": "object",
-                        "properties": {
-                            "bookingId": {"type": "string"}
-                        },
-                        "required": ["bookingId"]
-                    }),
-                    &["app"],
-                    Reversible,
-                    false,
-                ),
-                tool(
-                    "schedule_get_state",
-                    ts("Ver estado", "Get state"),
-                    ts(
-                        "Lê serviços, horários e marcações (sem mudar nada).",
-                        "Reads services, hours and bookings (changes nothing).",
-                    ),
-                    empty(),
-                    &["app"],
-                    Reversible,
-                    true,
-                ),
-            ],
-        }
+                )
 }

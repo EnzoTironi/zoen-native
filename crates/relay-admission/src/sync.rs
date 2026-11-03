@@ -11,6 +11,7 @@ pub struct SyncRead {
 }
 
 /// Decide one requested cursor using facts for that exact Space and identity.
+#[must_use]
 pub fn cursor_read(cursor: Cursor, member: bool, removed_at: Option<u64>) -> Option<SyncRead> {
     let through = if member {
         None

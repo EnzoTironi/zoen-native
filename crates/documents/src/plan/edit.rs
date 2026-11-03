@@ -9,7 +9,13 @@ use loro::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::*;
+use super::{
+    block_map, block_position, budget, codec, editor_fork, error, initialize_block, integer, line,
+    read_nodes, set_budget, string, text_container, BlockKind, CommandResult, Frontiers, Node,
+    Page, PlanDocument, PlanError, PlanLine, PlanUpdate, PlanVersion, Result, ValueOrContainer,
+    MAX_PLAN_ATOMS, MAX_PLAN_PACKET_BYTES,
+};
+
 use crate::{Attrs, BlockEdit, Kind, Run, Span};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,6 +26,7 @@ pub struct PlanBlock {
 }
 
 impl PlanBlock {
+    #[must_use]
     pub fn plain_text(&self) -> String {
         self.runs.iter().map(|run| run.text.as_str()).collect()
     }
@@ -86,6 +93,8 @@ impl PlanRevision {
     /// A bounded witness, not an authority or a serialized caller-supplied document.
     pub const MAX_ENCODED_BYTES: usize = 64 * 1024;
 
+    /// # Errors
+    /// Refuses revision witnesses exceeding the token bounds or JSON serialization failures.
     pub fn encode(&self) -> Result<Vec<u8>> {
         let token = RevisionToken {
             schema: "zoen.plan.revision.v1".into(),
@@ -106,6 +115,8 @@ impl PlanRevision {
 }
 
 impl PlanDocument {
+    /// # Errors
+    /// Refuses malformed, oversized, noncanonical or unobserved revision witnesses.
     pub fn verify_revision(&self, encoded: &[u8]) -> Result<PlanRevision> {
         if encoded.len() > PlanRevision::MAX_ENCODED_BYTES {
             return Err(PlanError::Limit("plan revision token"));
@@ -142,6 +153,8 @@ impl PlanDocument {
         Ok(revision)
     }
 
+    /// # Errors
+    /// Refuses invalid block identities, roles, financial registers or unsupported rich-text marks.
     pub fn blocks(&self) -> Result<Vec<PlanBlock>> {
         read_nodes(&self.page, self.seed.root())?
             .iter()
@@ -149,6 +162,8 @@ impl PlanDocument {
             .collect()
     }
 
+    /// # Errors
+    /// Refuses invalid blocks or an operation history that cannot be fingerprinted.
     pub fn revision(&self) -> Result<PlanRevision> {
         self.blocks()?;
         Ok(PlanRevision {
@@ -159,6 +174,8 @@ impl PlanDocument {
         })
     }
 
+    /// # Errors
+    /// Refuses a revision from another root, unavailable history or a mismatching operation witness.
     pub fn at(&self, revision: &PlanRevision) -> Result<Self> {
         if revision.root != self.seed.root()
             || !self.page.version().includes_vv(&revision.version.0)
@@ -181,6 +198,8 @@ impl PlanDocument {
 
     /// Edits an independent observed branch, then atomically admits its delta into the
     /// current document. Unseen blocks and untouched independent registers are retained.
+    /// # Errors
+    /// Refuses an invalid observed revision, invalid block edits or a staged delta violating plan invariants.
     pub fn apply_from(
         &mut self,
         revision: &PlanRevision,
@@ -203,7 +222,9 @@ impl PlanDocument {
     }
 
     /// Exact typed block content and canonical supported marks. Financial approval keeps
-    /// its separate text/cents-only hash through ExpectedLine.
+    /// its separate text/cents-only hash through `ExpectedLine`.
+    /// # Errors
+    /// Refuses invalid typed blocks or a failed canonical content encoding.
     pub fn semantic_hash(&self) -> Result<String> {
         let mut hash = Sha256::new().chain_update(b"zoen-plan-semantic-v1\0");
         for block in self.blocks()? {
@@ -288,8 +309,8 @@ pub(super) fn read_runs(text: &LoroText) -> Result<Vec<Run>> {
 
 pub(super) fn validate_mark_value(key: &str, value: &LoroValue) -> Result<()> {
     let valid = match (key, value) {
-        ("b" | "i" | "s" | "c" | "hb", LoroValue::Bool(_) | LoroValue::Null) => true,
-        ("a", LoroValue::Null) => true,
+        ("b" | "i" | "s" | "c" | "hb", LoroValue::Bool(_) | LoroValue::Null)
+        | ("a", LoroValue::Null) => true,
         ("a", LoroValue::String(url)) => url.len() <= crate::MAX_SPAN_VALUE_BYTES,
         _ => false,
     };
@@ -324,190 +345,6 @@ pub(super) fn parse_prose_kind(encoded: &str) -> Result<Kind> {
         return Err(error("invalid or unknown prose kind field"));
     }
     Ok(kind)
-}
-
-fn validate_edit(
-    current: &Page,
-    observed: &PlanDocument,
-    order: &[String],
-    changed: &[PlanBlockEdit],
-) -> Result<()> {
-    let blocks = observed.blocks()?;
-    let existing: HashMap<_, _> = blocks
-        .iter()
-        .map(|block| (block.id.as_str(), block))
-        .collect();
-    let ordered = crate::validate_ids(order).map_err(error)?;
-    if order.len() < 2 || order[0] != blocks[0].id || order[1] != blocks[1].id {
-        return Err(error("plan anchors must remain unique and first"));
-    }
-    let historical = historical_ids(current)?;
-    let mut edited = HashSet::new();
-    let mut bytes = order
-        .iter()
-        .try_fold(0usize, |sum, id| sum.checked_add(id.len()))
-        .ok_or(PlanError::Limit("plan edit bytes"))?;
-    for edit in changed {
-        if !ordered.contains(edit.id.as_str()) || !edited.insert(edit.id.as_str()) {
-            return Err(error("changed block must occur once in the order"));
-        }
-        if edit.text.chars().count() > MAX_PLAN_ATOMS
-            || edit.spans.len() > crate::MAX_SPANS_PER_BLOCK
-        {
-            return Err(PlanError::Limit("plan edit characters or spans"));
-        }
-        let attributes = match &edit.content {
-            PlanBlockContent::Line { legacy_id, .. } => legacy_id.len(),
-            PlanBlockContent::Prose { kind } => {
-                let strings = match kind {
-                    Kind::Code { lang } => lang.len(),
-                    Kind::Image { url, alt, title } => url
-                        .len()
-                        .checked_add(alt.len())
-                        .and_then(|n| n.checked_add(title.len()))
-                        .ok_or(PlanError::Limit("plan prose kind"))?,
-                    _ => 0,
-                };
-                if strings > crate::MAX_SPAN_VALUE_BYTES {
-                    return Err(PlanError::Limit("plan prose kind"));
-                }
-                strings
-            }
-            _ => 0,
-        };
-        if attributes > MAX_PLAN_PACKET_BYTES {
-            return Err(PlanError::Limit("plan edit bytes"));
-        }
-        for span in &edit.spans {
-            bytes = bytes
-                .checked_add(span.key.len())
-                .and_then(|n| n.checked_add(span.value.len()))
-                .and_then(|n| n.checked_add(32))
-                .filter(|n| *n <= MAX_PLAN_PACKET_BYTES)
-                .ok_or(PlanError::Limit("plan edit bytes"))?;
-        }
-        bytes = bytes
-            .checked_add(edit.text.len())
-            .and_then(|n| {
-                codec::bounded_json(&edit.content)
-                    .ok()
-                    .and_then(|content| n.checked_add(content.len()))
-            })
-            .filter(|n| *n <= MAX_PLAN_PACKET_BYTES)
-            .ok_or(PlanError::Limit("plan edit bytes"))?;
-        validate_spans(edit)?;
-        let old = existing.get(edit.id.as_str()).copied();
-        validate_content(&edit.id, &edit.content, old.map(|block| &block.content))?;
-        if old.is_none() && historical.contains_key(&edit.id) {
-            return Err(error("a historical plan block ID cannot be reused"));
-        }
-    }
-    if bytes > MAX_PLAN_PACKET_BYTES || order.len() > MAX_PLAN_ATOMS {
-        return Err(PlanError::Limit("plan edit size"));
-    }
-    if order
-        .iter()
-        .any(|id| !existing.contains_key(id.as_str()) && !edited.contains(id.as_str()))
-    {
-        return Err(error("new plan block requires typed content"));
-    }
-    Ok(())
-}
-
-fn validate_content(
-    id: &str,
-    target: &PlanBlockContent,
-    old: Option<&PlanBlockContent>,
-) -> Result<()> {
-    if old.is_some_and(|old| old.role() != target.role())
-        || (old.is_none()
-            && matches!(
-                target,
-                PlanBlockContent::Title { .. } | PlanBlockContent::Summary
-            ))
-    {
-        return Err(error("plan block roles are immutable"));
-    }
-    match target {
-        PlanBlockContent::Title { budget_cents } => {
-            if budget_cents.is_some_and(|cents| cents < 0) && old != Some(target) {
-                return Err(error("new budget cannot be negative"));
-            }
-        }
-        PlanBlockContent::Line {
-            legacy_id,
-            cost_cents,
-            ..
-        } => {
-            let previous = match old {
-                Some(PlanBlockContent::Line {
-                    legacy_id: prior_id,
-                    cost_cents,
-                    ..
-                }) => {
-                    if prior_id != legacy_id {
-                        return Err(error("legacy line identity is immutable"));
-                    }
-                    Some(*cost_cents)
-                }
-                None => {
-                    if *legacy_id != format!("ln_{id}") {
-                        return Err(error("new line identity must derive from its block ID"));
-                    }
-                    None
-                }
-                _ => return Err(error("plan block roles are immutable")),
-            };
-            if *cost_cents < 0 && previous != Some(*cost_cents) {
-                return Err(error("new cost cannot be negative"));
-            }
-        }
-        PlanBlockContent::Prose { kind } => {
-            parse_prose_kind(&serde_json::to_string(kind).map_err(error)?)?;
-        }
-        PlanBlockContent::Summary | PlanBlockContent::Section => {}
-    }
-    Ok(())
-}
-
-fn validate_spans(edit: &PlanBlockEdit) -> Result<Vec<Span>> {
-    crate::validate_spans(&BlockEdit {
-        id: edit.id.clone(),
-        kind: Kind::Paragraph,
-        text: edit.text.clone(),
-        spans: edit.spans.clone(),
-    })
-    .map_err(error)?;
-    let mut ranges: HashMap<&str, Vec<Span>> = HashMap::new();
-    for span in &edit.spans {
-        if span.key != "a" && !matches!(span.value.as_str(), "" | "1") {
-            return Err(error("boolean plan marks require an empty value or one"));
-        }
-        if span.start < span.end {
-            let mut normalized = span.clone();
-            if normalized.key != "a" {
-                normalized.value.clear();
-            }
-            ranges.entry(&span.key).or_default().push(normalized);
-        }
-    }
-    let mut merged: Vec<Span> = Vec::new();
-    for group in ranges.values_mut() {
-        group.sort_by_key(|span| (span.start, span.end));
-        for span in group.iter() {
-            if let Some(prior) = merged.last_mut().filter(|prior| prior.key == span.key) {
-                if span.start < prior.end && span.value != prior.value {
-                    return Err(error("conflicting overlapping plan marks"));
-                }
-                if span.start <= prior.end && span.value == prior.value {
-                    prior.end = prior.end.max(span.end);
-                    continue;
-                }
-            }
-            merged.push(span.clone());
-        }
-    }
-    Ok(merged)
 }
 
 fn apply_edit(page: &Page, order: &[String], changed: &[PlanBlockEdit]) -> Result<()> {
@@ -597,7 +434,8 @@ fn apply_fields(map: &LoroMap, content: &PlanBlockContent) -> Result<()> {
 
 fn apply_rich_text(text: &LoroText, edit: &PlanBlockEdit) -> Result<()> {
     if text.to_string() != edit.text {
-        text.update(&edit.text, Default::default()).map_err(error)?;
+        text.update(&edit.text, loro::UpdateOptions::default())
+            .map_err(error)?;
     }
     let have = crate::char_marks(&read_runs(text)?);
     let length = edit.text.chars().count();
@@ -653,169 +491,11 @@ fn apply_rich_text(text: &LoroText, edit: &PlanBlockEdit) -> Result<()> {
 
 // Lifetime history is bounded explicitly here. Deleted IDs are never removed from this
 // registry or reused by a new ordinary block. No second persistent store is introduced.
-fn historical_ids(page: &Page) -> Result<HashMap<String, HashSet<ContainerID>>> {
-    let update =
-        PlanUpdate(page.doc.export_json_updates_without_peer_compression(
-            &VersionVector::default(),
-            &page.version(),
-        ));
-    codec::fingerprint(&update)?;
-    let mut result: HashMap<String, HashSet<ContainerID>> = HashMap::new();
-    for change in update.0.changes {
-        for op in change.ops {
-            if let JsonOpContent::Map(JsonMapOp::Insert {
-                key,
-                value: LoroValue::String(id),
-            }) = op.content
-            {
-                if key == "id" {
-                    result
-                        .entry(id.to_string())
-                        .or_default()
-                        .insert(op.container);
-                }
-            }
-        }
-    }
-    Ok(result)
-}
-
-pub(super) fn unused_id(page: &Page) -> Result<String> {
-    let history = historical_ids(page)?;
-    loop {
-        let id = new_block_id()?;
-        if !history.contains_key(&id) {
-            return Ok(id);
-        }
-    }
-}
-
-pub(super) fn validate_operations(page: &Page, update: &PlanUpdate) -> Result<()> {
-    let vv = page.version();
-    let mut ids = historical_ids(page)?;
-    let mut roles = HashMap::new();
-    for change in &update.0.changes {
-        for op in &change.ops {
-            if let JsonOpContent::Map(JsonMapOp::Insert {
-                key,
-                value: LoroValue::String(role),
-            }) = &op.content
-            {
-                if key == "kind" {
-                    roles.insert(op.container.clone(), parse_role(role)?);
-                }
-                if key == "id" && change.id.peer == MIGRATION_PEER {
-                    ids.entry(role.to_string())
-                        .or_default()
-                        .insert(op.container.clone());
-                }
-            }
-        }
-    }
-    for change in &update.0.changes {
-        for op in &change.ops {
-            if op.counter < *vv.get(&change.id.peer).unwrap_or(&0) {
-                continue;
-            }
-            match &op.content {
-                JsonOpContent::Map(JsonMapOp::Insert { key, value }) => {
-                    if matches!(&op.container, ContainerID::Root { name, .. } if name.as_str() == "page")
-                    {
-                        if !matches!(key.as_str(), "schema" | "root") {
-                            return Err(error("unknown plan root attribute"));
-                        }
-                        continue;
-                    }
-                    let role = page
-                        .doc
-                        .try_get_map(op.container.clone())
-                        .and_then(|map| string(&map, "kind").ok())
-                        .map(|role| parse_role(&role))
-                        .transpose()?
-                        .or_else(|| roles.get(&op.container).copied())
-                        .ok_or_else(|| error("plan attributes need a typed block role"))?;
-                    if !role_key(role, key) {
-                        return Err(error("attribute does not belong to its plan block role"));
-                    }
-                    if change.id.peer != MIGRATION_PEER {
-                        if key == "id" {
-                            let LoroValue::String(id) = value else {
-                                return Err(error("invalid block ID"));
-                            };
-                            let owners = ids.entry(id.to_string()).or_default();
-                            if owners.iter().any(|owner| *owner != op.container) {
-                                return Err(error("a historical plan block ID cannot be reused"));
-                            }
-                            owners.insert(op.container.clone());
-                        }
-                        if key == "text" {
-                            let expected = ContainerID::new_normal(
-                                ID::new(change.id.peer, op.counter),
-                                ContainerType::Text,
-                            );
-                            if value != &LoroValue::Container(expected) {
-                                return Err(error("a new block must own its rich text container"));
-                            }
-                        }
-                    }
-                }
-                JsonOpContent::MovableList(JsonMovableListOp::Insert { value, .. }) => {
-                    if change.id.peer != MIGRATION_PEER {
-                        for (offset, value) in value.iter().enumerate() {
-                            let expected = ContainerID::new_normal(
-                                ID::new(change.id.peer, op.counter + offset as i32),
-                                ContainerType::Map,
-                            );
-                            if value != &LoroValue::Container(expected) {
-                                return Err(error("a new list entry must own a new block map"));
-                            }
-                        }
-                    }
-                }
-                JsonOpContent::MovableList(JsonMovableListOp::Set { value, .. })
-                    if change.id.peer != MIGRATION_PEER =>
-                {
-                    let expected = ContainerID::new_normal(
-                        ID::new(change.id.peer, op.counter),
-                        ContainerType::Map,
-                    );
-                    if value != &LoroValue::Container(expected) {
-                        return Err(error("a replacement list entry must own a new block map"));
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn validate_touched_maps(page: &Page, update: &PlanUpdate) -> Result<()> {
-    let mut maps = HashSet::new();
-    for change in &update.0.changes {
-        for op in &change.ops {
-            if op.container.container_type() == ContainerType::Map
-                && matches!(op.container, ContainerID::Normal { .. })
-            {
-                maps.insert(op.container.clone());
-            }
-        }
-    }
-    for address in maps {
-        let map = page
-            .doc
-            .try_get_map(address)
-            .ok_or_else(|| error("missing typed block map"))?;
-        let node = read_node(map)?;
-        if node.kind == BlockKind::Line
-            && node.map.get_last_editor("line_id") != Some(MIGRATION_PEER)
-            && string(&node.map, "line_id")? != format!("ln_{}", node.id)
-        {
-            return Err(error("new line identity must derive from its block ID"));
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests;
+
+mod provenance;
+pub(super) use provenance::{unused_id, validate_operations, validate_touched_maps};
+
+mod validation;
+use validation::{validate_edit, validate_spans};

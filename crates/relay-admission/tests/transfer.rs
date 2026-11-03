@@ -11,8 +11,10 @@ fn author() -> Author {
     )
 }
 fn refused<T>(value: Result<T, Failure>, status: u16, body: &str) {
-    let error = value.err().expect("must refuse");
-    assert_eq!((error.status, error.body), (status, body));
+    assert!(
+        matches!(value, Err(error) if (error.status, error.body) == (status, body)),
+        "expected refusal {status} {body}"
+    );
 }
 
 #[test]
@@ -20,7 +22,12 @@ fn capability_keys_are_bounded_and_deletion_has_an_exact_prefix_boundary() {
     assert_eq!(get_key(ID, 0).unwrap(), format!("transfers/{ID}/0"));
     assert_eq!(get_key(ID, 4095).unwrap(), format!("transfers/{ID}/4095"));
     assert_eq!(delete_prefix(ID).unwrap(), format!("transfers/{ID}/"));
-    for id in [ID.to_uppercase(), "a".repeat(63), "../".into(), "".into()] {
+    for id in [
+        ID.to_uppercase(),
+        "a".repeat(63),
+        "../".into(),
+        String::new(),
+    ] {
         refused(get_key(&id, 0), 400, "bad transfer");
         refused(delete_prefix(&id), 400, "bad transfer");
     }

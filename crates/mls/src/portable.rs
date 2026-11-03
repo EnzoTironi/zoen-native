@@ -1,17 +1,21 @@
-//! OpenMLS groups over a caller-owned provider and signer. Private device keys stay
+//! `OpenMLS` groups over a caller-owned provider and signer. Private device keys stay
 //! in the host. The host must commit the complete provider snapshot before publishing.
 //! A snapshot opens only with the signer that owns its own leaf.
 //! A blank leaf, or a public group with no own index, is not membership.
 //! forget deletes any stored group for the space.
+mod views;
+
 use std::collections::BTreeSet;
 
 use openmls::prelude::{tls_codec::Deserialize as _, tls_codec::Serialize as _, *};
 use openmls_rust_crypto::RustCrypto;
 use openmls_traits::signatures::Signer;
 use openmls_traits::storage::StorageProvider;
-use sha2::{Digest, Sha256};
 
-use crate::group::*;
+use crate::group::{
+    capabilities, check_roster, commit_bytes, create_config, group_id, join_config, storage_error,
+    unlisted, welcome_error, Commit, GroupState, Opened,
+};
 use crate::{leaf_of, mls, validate_key_package, Leaf, MlsError, SUITE};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -44,6 +48,8 @@ where
     P: OpenMlsProvider<CryptoProvider = RustCrypto, RandProvider = RustCrypto>,
     S: Signer,
 {
+    /// # Errors
+    /// Refuses unsupported signing algorithms, invalid certified leaf keys and signatures not produced by that leaf.
     pub fn new(
         provider: &'a P,
         signer: &'a S,
@@ -67,6 +73,7 @@ where
         })
     }
 
+    #[must_use]
     pub fn leaf(&self) -> &Leaf {
         &self.leaf
     }
@@ -162,6 +169,8 @@ where
         Ok(())
     }
 
+    /// # Errors
+    /// Propagates foreign-credential and storage failures while absent/stale snapshots remain missing groups.
     pub fn group_state(&self, space: &str) -> Result<GroupState, MlsError> {
         match self.snapshot(space)? {
             Snapshot::Absent | Snapshot::Stale(_) => Ok(GroupState::Missing),
@@ -178,6 +187,8 @@ where
         }
     }
 
+    /// # Errors
+    /// Refuses more than 64 requested packages, invalid generated credentials and generation/storage/encoding failures.
     pub fn key_packages(&self, count: usize, last_resort: bool) -> Result<Vec<Vec<u8>>, MlsError> {
         if count > 64 {
             return Err(MlsError::Mls("too many browser key packages".into()));
@@ -200,6 +211,8 @@ where
             .collect()
     }
 
+    /// # Errors
+    /// Refuses existing, stale or foreign snapshots and propagates group creation/storage failures.
     pub fn create_group(&self, space: &str) -> Result<(), MlsError> {
         match self.snapshot(space)? {
             Snapshot::Absent => {}
@@ -219,6 +232,8 @@ where
         .map_err(mls)
     }
 
+    /// # Errors
+    /// Refuses foreign snapshots, malformed or wrong-group/suite welcomes, unverified/unlisted leaves and storage failures. No matching package returns false.
     pub fn join(
         &self,
         space: &str,
@@ -270,6 +285,8 @@ where
         Ok(true)
     }
 
+    /// # Errors
+    /// Refuses absent/stale/foreign membership, inactive groups or pending commits and propagates encryption/storage failures.
     pub fn seal(&self, space: &str, plaintext: &[u8]) -> Result<Vec<u8>, MlsError> {
         let mut group = match self.snapshot(space)? {
             Snapshot::Absent => return Err(MlsError::NoGroup),
@@ -287,6 +304,8 @@ where
             .map_err(mls)
     }
 
+    /// # Errors
+    /// Refuses invalid packages/credentials, absent/stale/foreign groups and commit staging/storage/encoding failures.
     pub fn commit(
         &self,
         space: &str,
@@ -340,6 +359,8 @@ where
         commit_bytes(&bundle)
     }
 
+    /// # Errors
+    /// Refuses invalid framing, authentication, admitted-sender/roster mismatch or storage failures. Missing membership and stale epochs remain explicit outcomes.
     pub fn open(
         &self,
         space: &str,
@@ -403,7 +424,7 @@ where
                     .merge_staged_commit(self.provider, *staged)
                     .map_err(|error| match error {
                         MergeCommitError::StorageError(error) => storage_error(error),
-                        error => mls(error),
+                        error @ MergeCommitError::LibraryError(_) => mls(error),
                     })?;
                 let epoch = group.epoch().as_u64();
                 if !group.is_active() {
@@ -443,56 +464,6 @@ where
         Ok(Opened::Commit {
             epoch: group.epoch().as_u64(),
         })
-    }
-
-    pub fn forget(&self, space: &str) -> Result<(), MlsError> {
-        match self.snapshot(space)? {
-            Snapshot::Absent => Ok(()),
-            Snapshot::Stale(group) => self.drop_stored(space, group),
-            Snapshot::Ours(group) | Snapshot::Foreign(group) => {
-                self.drop_stored(space, Some(group))
-            }
-        }
-    }
-    pub fn roster(&self, space: &str) -> Result<BTreeSet<String>, MlsError> {
-        identities(&self.load(space)?)
-    }
-    /// Current verified device encryption keys, for shared membership reconciliation.
-    pub fn leaves(&self, space: &str) -> Result<crate::LeafKeys, MlsError> {
-        crate::group::leaf_keys(&self.load(space)?)
-    }
-    /// An unconfirmed commit must finish or be abandoned before another is planned.
-    pub fn committed_leaves(&self, space: &str) -> Result<Option<crate::LeafKeys>, MlsError> {
-        let group = match self.snapshot(space)? {
-            Snapshot::Absent | Snapshot::Stale(_) => return Ok(None),
-            Snapshot::Foreign(_) => return Err(MlsError::Credential),
-            Snapshot::Ours(group) => group,
-        };
-        if group.pending_commit().is_some() {
-            return Ok(None);
-        }
-        crate::group::leaf_keys(&group).map(Some)
-    }
-    /// Discard only a staged commit that lost the relay epoch race.
-    pub fn abandon(&self, space: &str) -> Result<(), MlsError> {
-        let mut group = self.load(space)?;
-        group
-            .clear_pending_commit(self.provider.storage())
-            .map_err(mls)
-    }
-    pub fn epoch(&self, space: &str) -> Result<u64, MlsError> {
-        Ok(self.load(space)?.epoch().as_u64())
-    }
-    pub fn checkpoint(&self, space: &str) -> Result<(u64, String), MlsError> {
-        let group = self.load(space)?;
-        let epoch = group.epoch().as_u64();
-        let digest = Sha256::new()
-            .chain_update(CHECKPOINT_TAG)
-            .chain_update(group.group_id().as_slice())
-            .chain_update(epoch.to_be_bytes())
-            .chain_update(group.epoch_authenticator().as_slice())
-            .finalize();
-        Ok((epoch, hex::encode(digest)))
     }
 }
 

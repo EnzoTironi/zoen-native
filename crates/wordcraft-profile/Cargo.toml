@@ -12,14 +12,5 @@ zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 quick-xml = "=0.41.0"
 serde = { version = "1", features = ["derive"] }
 
-[lints.rust]
-unsafe_code = "forbid"
-
-[lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-perf = { level = "warn", priority = -1 }
-unwrap_used = "deny"
-expect_used = "deny"
-panic = "deny"
-unimplemented = "deny"
-todo = "deny"
+[lints]
+workspace = true

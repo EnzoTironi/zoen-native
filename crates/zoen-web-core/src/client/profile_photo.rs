@@ -1,5 +1,5 @@
-//! Disposable verified profile image cache; ProfileFields remains the only authority.
-use super::*;
+//! Disposable verified profile image cache; `ProfileFields` remains the only authority.
+use super::{documents, Client, Deserialize, Signer, Update};
 use event_log::profile::{ProfilePhoto, MAX_PHOTO_BYTES};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -43,6 +43,11 @@ impl<S: Signer> Client<S> {
             .ok_or_else(|| "Esta foto não faz mais parte do perfil disponível.".into())
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for oversized or invalid photo data, invalid name or bio,
+    /// a change inconsistent with the supplied bytes, unavailable profile keys,
+    /// or failure to sign, encrypt or update the profile.
     pub fn profile_save(
         &mut self,
         request: &str,
@@ -85,7 +90,7 @@ impl<S: Signer> Client<S> {
         let previous_blob = added_blob
             .as_ref()
             .and_then(|blob| self.saved.local_chunks.get(blob).cloned());
-        self.write_profile_fields(fields, false)?;
+        self.write_profile_fields(&fields, false)?;
         if let Some((photo, sealed)) = sealed {
             self.saved.local_chunks.insert(photo.blob.clone(), sealed);
             self.saved.profile.photo_uploads.insert(photo.blob.clone());
@@ -126,6 +131,10 @@ impl<S: Signer> Client<S> {
     }
 
     /// Small LE JSON header followed by cached pixels, never a JSON number array.
+    ///
+    /// # Errors
+    /// Returns an error if the requested photo is no longer current or valid,
+    /// or if its framing header cannot be serialized.
     pub fn profile_photo_framed(&self, identity: &str, expected: &str) -> Result<Vec<u8>, String> {
         let photo = self.current_photo(identity, expected)?;
         let bytes = self
@@ -136,7 +145,11 @@ impl<S: Signer> Client<S> {
             .filter(|_| self.profile_photo_cached(&photo));
         let header = serde_json::to_vec(&json!({"identity_id":identity,"sha256":photo.sha256,"mime":photo.mime,"blob":photo.blob,"cached":bytes.is_some()})).map_err(|error| error.to_string())?;
         let mut framed = Vec::with_capacity(4 + header.len() + bytes.map_or(0, Vec::len));
-        framed.extend_from_slice(&(header.len() as u32).to_le_bytes());
+        framed.extend_from_slice(
+            &u32::try_from(header.len())
+                .map_err(|_| "profile photo header too large")?
+                .to_le_bytes(),
+        );
         framed.extend_from_slice(&header);
         if let Some(bytes) = bytes {
             framed.extend_from_slice(bytes);
@@ -144,15 +157,19 @@ impl<S: Signer> Client<S> {
         Ok(framed)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error if the photo is no longer current, ciphertext cannot be
+    /// authenticated and opened, or the resulting client update fails.
     pub fn profile_photo_received(
         &mut self,
         identity: &str,
         expected: &str,
-        sealed: Vec<u8>,
+        sealed: &[u8],
     ) -> Result<Update, String> {
         let photo = self.current_photo(identity, expected)?;
         let bytes = photo
-            .open(&sealed)
+            .open(sealed)
             .ok_or("A foto recebida não corresponde ao perfil criptografado.")?;
         self.saved.profile.photos.insert(photo.sha256, bytes);
         self.update(Vec::new())

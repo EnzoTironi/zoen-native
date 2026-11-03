@@ -1,5 +1,8 @@
 //! Browser profile lookup using the existing journal.
-use super::*;
+use super::{
+    profile, BTreeSet, Client, Observe, ProfileKey, Reply, SealedProfile, Signer, AGREEMENT_LOOKUP,
+    AGREEMENT_PUBLISH,
+};
 
 impl<S: Signer> Client<S> {
     pub(in crate::client) fn profile_reply(
@@ -55,12 +58,9 @@ impl<S: Signer> Client<S> {
             AGREEMENT_LOOKUP => {
                 let asked = std::mem::take(&mut self.profile_net.agreement);
                 self.profile_net.agreement_deadline = 0;
-                let records: &[AgreementKeyRecord] = match result {
-                    Ok(Reply::AgreementKeys(records)) => records,
-                    _ => {
-                        self.profile_net.agreement_retry = self.view_now_ms.saturating_add(5000);
-                        return Ok(true);
-                    }
+                let Ok(Reply::AgreementKeys(records)) = result else {
+                    self.profile_net.agreement_retry = self.view_now_ms.saturating_add(5000);
+                    return Ok(true);
                 };
                 let mut found = BTreeSet::new();
                 for record in records
@@ -80,84 +80,83 @@ impl<S: Signer> Client<S> {
                     .extend(asked.into_iter().filter(|id| !found.contains(id)));
             }
             request if self.profile_net.profiles_request == Some(request) => {
-                self.profile_net.profiles_request = None;
-                let asked = std::mem::take(&mut self.profile_net.profiles);
-                self.profile_net.profiles_deadline = 0;
-                let records: &[SealedProfile] = match result {
-                    Ok(Reply::SealedProfiles(records)) => records,
-                    _ => {
-                        self.profile_net.profiles_retry = self.view_now_ms.saturating_add(5000);
-                        return Ok(true);
-                    }
-                };
-                let own_asked = asked.contains(&self.account.identity);
-                let own_present = records
-                    .iter()
-                    .any(|record| record.identity == self.account.identity);
-                let own_sync = self.saved.profile.own_sync.clone();
-                let mut own_verified = false;
-                self.profile_net.fetched.extend(asked.iter().cloned());
-                for id in &asked {
-                    if self.profile_net.refetch.remove(id) {
-                        self.profile_net.fetched.remove(id);
-                    }
-                }
-                for record in records
-                    .iter()
-                    .filter(|record| asked.contains(&record.identity))
-                {
-                    if record.version == 0
-                        || record.ciphertext.len() > profile::MAX_CIPHERTEXT
-                        || !profile::verify_upload(
-                            &record.identity,
-                            record.version,
-                            &record.ciphertext,
-                            &record.signed,
-                        )
-                    {
-                        continue;
-                    }
-                    if record.identity == self.account.identity {
-                        own_verified |= own_sync
-                            .as_ref()
-                            .is_some_and(|sync| record.version >= sync.published);
-                        self.open_own_profile(record)?;
-                        continue;
-                    }
-                    let Some(row) = self.saved.profile.rows.get_mut(&record.identity) else {
-                        continue;
-                    };
-                    if record.version <= row.seen_version || record.version < row.key_version {
-                        continue;
-                    }
-                    let Some(key) = ProfileKey::from_hex(&row.key) else {
-                        continue;
-                    };
-                    if let Some(fields) = profile::open_profile(
-                        &key,
-                        &record.identity,
-                        record.version,
-                        &record.ciphertext,
-                    ) {
-                        row.seen_version = record.version;
-                        row.fields = Some(fields.to_bytes());
-                    }
-                }
-                if own_asked {
-                    let bootstrap_absent = !own_present
-                        && own_sync.as_ref().is_some_and(|sync| {
-                            sync.published == 0 && sync.pending.is_some() && !sync.key_unavailable()
-                        });
-                    if !own_verified && !bootstrap_absent {
-                        self.profile_net.fetched.remove(&self.account.identity);
-                        self.profile_net.profiles_retry = self.view_now_ms.saturating_add(5000);
-                    }
-                }
-                self.overlay_saved_profiles();
+                self.receive_profile_records(result)?;
             }
             _ => return Ok(false),
         }
         Ok(true)
+    }
+
+    fn receive_profile_records(&mut self, result: &Result<Reply, String>) -> Result<(), String> {
+        self.profile_net.profiles_request = None;
+        let asked = std::mem::take(&mut self.profile_net.profiles);
+        self.profile_net.profiles_deadline = 0;
+        let Ok(Reply::SealedProfiles(records)) = result else {
+            self.profile_net.profiles_retry = self.view_now_ms.saturating_add(5000);
+            return Ok(());
+        };
+        let own_asked = asked.contains(&self.account.identity);
+        let own_present = records
+            .iter()
+            .any(|record| record.identity == self.account.identity);
+        let own_sync = self.saved.profile.own_sync.clone();
+        let mut own_verified = false;
+        self.profile_net.fetched.extend(asked.iter().cloned());
+        for id in &asked {
+            if self.profile_net.refetch.remove(id) {
+                self.profile_net.fetched.remove(id);
+            }
+        }
+        for record in records
+            .iter()
+            .filter(|record| asked.contains(&record.identity))
+        {
+            if record.version == 0
+                || record.ciphertext.len() > profile::MAX_CIPHERTEXT
+                || !profile::verify_upload(
+                    &record.identity,
+                    record.version,
+                    &record.ciphertext,
+                    &record.signed,
+                )
+            {
+                continue;
+            }
+            if record.identity == self.account.identity {
+                own_verified |= own_sync
+                    .as_ref()
+                    .is_some_and(|sync| record.version >= sync.published);
+                self.open_own_profile(record)?;
+                continue;
+            }
+            let Some(row) = self.saved.profile.rows.get_mut(&record.identity) else {
+                continue;
+            };
+            if record.version <= row.seen_version || record.version < row.key_version {
+                continue;
+            }
+            let Some(key) = ProfileKey::from_hex(&row.key) else {
+                continue;
+            };
+            if let Some(fields) =
+                profile::open_profile(&key, &record.identity, record.version, &record.ciphertext)
+            {
+                row.seen_version = record.version;
+                row.fields = Some(fields.to_bytes());
+            }
+        }
+        if own_asked {
+            let bootstrap_absent = !own_present
+                && own_sync.as_ref().is_some_and(|sync| {
+                    sync.published == 0 && sync.pending.is_some() && !sync.key_unavailable()
+                });
+            if !own_verified && !bootstrap_absent {
+                self.profile_net.fetched.remove(&self.account.identity);
+                self.profile_net.profiles_retry = self.view_now_ms.saturating_add(5000);
+            }
+        }
+        self.overlay_saved_profiles();
+        Ok(())
     }
 
     fn open_own_profile(&mut self, record: &SealedProfile) -> Result<(), String> {
@@ -213,7 +212,7 @@ impl<S: Signer> Client<S> {
                 .profile
                 .rows
                 .get_mut(&self.account.identity)
-                .expect("checked");
+                .ok_or("profile row missing after sync validation")?;
             row.seen_version = version;
             row.fields = Some(fields.to_bytes());
         }

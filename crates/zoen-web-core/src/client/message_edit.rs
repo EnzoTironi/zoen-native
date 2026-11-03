@@ -1,7 +1,11 @@
 //! Reviewed input runs inside the existing serialized Rust client/queue.
-use super::*;
+use super::{Client, EventBody, Signer, Update};
 use protocol::message_edit::MessageEdit;
 impl<S: Signer> Client<S> {
+    /// Queues an edit against the reviewed message revision.
+    ///
+    /// # Errors
+    /// Returns an error if the scope or revision changed, or the edit cannot be queued.
     pub fn queue_reviewed_edit(&mut self, input: MessageEdit, now: i64) -> Result<Update, String> {
         let changed = || {
             localization::t(

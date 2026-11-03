@@ -1,7 +1,9 @@
 //! Resumable ADR0045 transfer adapter. Only an authenticated signed outer already in
 //! the canonical Space log can receive its opened inner from the linked device.
 
-use super::*;
+use super::{
+    BTreeMap, BTreeSet, Client, Deserialize, Event, EventBody, Serialize, Signer, SpaceLog, Update,
+};
 use device_link::{Bundle, HistoryBox};
 use zeroize::Zeroizing;
 
@@ -111,8 +113,8 @@ impl<S: Signer> Client<S> {
         serde_json::json!({
             "initial_pending": !self.account.link_secret.is_empty() && complete.is_none(),
             "manifest_received": transfer.is_some() || complete.is_some(),
-            "chunks_received": transfer.map(|transfer| transfer.chunks.len() as u32).or_else(|| complete.map(|done| done.chunks)).unwrap_or(0),
-            "chunks_total": transfer.map(|transfer| transfer.manifest.chunks.len() as u32).or_else(|| complete.map(|done| done.chunks)).unwrap_or(0),
+            "chunks_received": transfer.map(|transfer| serde_json::json!(transfer.chunks.len())).or_else(|| complete.map(|done| serde_json::json!(done.chunks))).unwrap_or_else(|| serde_json::json!(0)),
+            "chunks_total": transfer.map(|transfer| serde_json::json!(transfer.manifest.chunks.len())).or_else(|| complete.map(|done| serde_json::json!(done.chunks))).unwrap_or_else(|| serde_json::json!(0)),
             // The host owns the asynchronous network pump, not this synchronous core.
             "receive_active": false
         }).to_string()
@@ -120,13 +122,21 @@ impl<S: Signer> Client<S> {
 
     /// Start/retry one initial handover. The host persists every returned Update
     /// before requesting its work, including the one-time manifest mailbox.
+    ///
+    /// # Errors
+    /// Returns an error if the current history transfer response cannot be produced.
     pub fn history_start(&mut self, now: i64) -> Result<HistoryResponse, String> {
         if let Some(transfer) = self.saved.history.transfer.as_mut() {
-            transfer.resumed = transfer.chunks.len() as u32;
+            transfer.resumed = u32::try_from(transfer.chunks.len())
+                .map_err(|_| "history chunk count exceeds limit")?;
         }
         self.history_response(now)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for invalid manifest size or encoding, invalid device keys,
+    /// failed decryption, invalid manifest fields, conflicting transfers, or response failure.
     pub fn history_manifest(&mut self, sealed: &[u8], now: i64) -> Result<HistoryResponse, String> {
         if sealed.len() < 48 || sealed.len() > MAX_MANIFEST {
             return Err("Invalid linked-device history manifest size.".into());
@@ -145,8 +155,8 @@ impl<S: Signer> Client<S> {
             return Err("Invalid linked-device history manifest.".into());
         }
         if let Some(existing) = &self.saved.history.transfer {
-            if serde_json::to_vec(&existing.manifest).unwrap()
-                != serde_json::to_vec(&manifest).unwrap()
+            if serde_json::to_vec(&existing.manifest).map_err(|error| error.to_string())?
+                != serde_json::to_vec(&manifest).map_err(|error| error.to_string())?
             {
                 return Err("A different history transfer is already being restored.".into());
             }
@@ -164,6 +174,10 @@ impl<S: Signer> Client<S> {
         self.history_response(now)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for missing transfers, invalid chunk index, size or hash,
+    /// excessive retained data, or failure to produce the transfer response.
     pub fn history_chunk(
         &mut self,
         index: u32,
@@ -213,20 +227,27 @@ impl<S: Signer> Client<S> {
             .history
             .transfer
             .as_mut()
-            .unwrap()
+            .ok_or("history transfer missing while retaining chunk")?
             .chunks
             .insert(index, sealed.to_vec());
         self.history_response(now)
     }
 
-    /// Call again after SyncDone. Missing ciphertext is never replaced by invented
+    /// Call again after `SyncDone`. Missing ciphertext is never replaced by invented
     /// standalone events or an unverified second history chain.
+    ///
+    /// # Errors
+    /// Returns an error if restored history cannot be authenticated or imported,
+    /// if transfer bounds are exceeded, or if the transfer response cannot be produced.
     pub fn history_finish(&mut self, now: i64) -> Result<HistoryResponse, String> {
         self.history_response(now)
     }
 
     /// Only after the host durably saved the imported Update and deleted the remote
     /// transfer. A failed DELETE remains resumable through Complete.cleanup.
+    ///
+    /// # Errors
+    /// Returns an error if the history transfer response cannot be produced.
     pub fn history_cleaned(&mut self, now: i64) -> Result<HistoryResponse, String> {
         let complete = self
             .saved
@@ -273,17 +294,11 @@ impl<S: Signer> Client<S> {
                 cleanup,
             }
         } else if let Some(transfer) = &self.saved.history.transfer {
-            if let Some((index, sha)) = transfer
-                .manifest
-                .chunks
-                .iter()
-                .enumerate()
-                .find(|(index, _)| !transfer.chunks.contains_key(&(*index as u32)))
-            {
+            if let Some((index, sha)) = next_chunk(transfer)? {
                 HistoryWork::Download {
                     transfer: transfer.manifest.transfer.clone(),
-                    index: index as u32,
-                    sha256: sha.clone(),
+                    index,
+                    sha256: sha.into(),
                 }
             } else {
                 HistoryWork::WaitingSync
@@ -311,19 +326,18 @@ impl<S: Signer> Client<S> {
             .ok_or("No history transfer is pending.")?;
         let key = Zeroizing::new(hex32(&transfer.manifest.key)?);
         let mut plain = Zeroizing::new(Vec::new());
-        for index in 0..transfer.manifest.chunks.len() {
+        for (position, expected_hash) in transfer.manifest.chunks.iter().enumerate() {
+            let index = u32::try_from(position).map_err(|_| "history chunk index exceeds limit")?;
             let sealed = transfer
                 .chunks
-                .get(&(index as u32))
+                .get(&index)
                 .ok_or("A history chunk is missing.")?;
             // Recheck persisted material too; storage never acts as a crypto oracle.
-            if sealed.len() > MAX_CHUNK
-                || event_log::sha256_hex(sealed) != transfer.manifest.chunks[index]
-            {
+            if sealed.len() > MAX_CHUNK || event_log::sha256_hex(sealed) != *expected_hash {
                 return Err("A retained history chunk does not match.".into());
             }
             let opened = Zeroizing::new(
-                device_link::open_chunk(&key, index as u32, sealed)
+                device_link::open_chunk(&key, index, sealed)
                     .ok_or("A retained history chunk could not be opened.")?,
             );
             if plain
@@ -341,11 +355,17 @@ impl<S: Signer> Client<S> {
             return Err("This history bundle contains too many events.".into());
         }
         let messages = self.import_history_events(bundle.events)?;
-        let transfer = self.saved.history.transfer.take().unwrap();
+        let transfer = self
+            .saved
+            .history
+            .transfer
+            .take()
+            .ok_or("history transfer missing after import")?;
         self.saved.history.complete = Some(Complete {
             transfer: transfer.manifest.transfer,
             messages,
-            chunks: transfer.manifest.chunks.len() as u32,
+            chunks: u32::try_from(transfer.manifest.chunks.len())
+                .map_err(|_| "history chunk count exceeds limit")?,
             resumed: transfer.resumed,
             cleaned: false,
         });
@@ -377,7 +397,12 @@ impl<S: Signer> Client<S> {
             let entries = changed
                 .entry(event.space.clone())
                 .or_insert_with(|| self.logs[&event.space].events().to_vec());
-            entries[event.seq as usize] = opened;
+            *entries
+                .get_mut(
+                    usize::try_from(event.seq)
+                        .map_err(|_| "history event sequence exceeds platform limit")?,
+                )
+                .ok_or("history event sequence unavailable")? = opened;
             messages = messages.checked_add(1).ok_or("Too many history entries.")?;
         }
         let verified = changed
@@ -395,6 +420,16 @@ impl<S: Signer> Client<S> {
         }
         Ok(messages)
     }
+}
+
+fn next_chunk(transfer: &Transfer) -> Result<Option<(u32, &str)>, String> {
+    for (position, hash) in transfer.manifest.chunks.iter().enumerate() {
+        let index = u32::try_from(position).map_err(|_| "history chunk index exceeds limit")?;
+        if !transfer.chunks.contains_key(&index) {
+            return Ok(Some((index, hash)));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]

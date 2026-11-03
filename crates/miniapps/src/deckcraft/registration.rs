@@ -27,6 +27,7 @@ const MODULE_SHA: &str = "5b943f9b5e13bc8dce876193f2ced1b608efc74fc5643ca2b272bd
 const WASM_FILE: &str = "deckcraft-web-92fbceced94572b6_bg.wasm";
 const WASM_BYTES: u64 = 36_382_433;
 const WASM_SHA: &str = "7dc44c1c30356964b737cff936900f949ceadc4082db19555435eeea9b29def1";
+#[must_use]
 pub fn valid_resource(html: &str, manifest: &str) -> bool {
     crate::binary::resource::valid_resource(
         crate::binary::Format::Deckcraft,
@@ -46,6 +47,8 @@ pub fn available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
     *AVAILABLE.get_or_init(|| valid_resource(HTML, MANIFEST) && Document::parse(EMPTY).is_ok())
 }
+/// # Errors
+/// Refuses invalid, unsupported or oversized initialization arguments before producing canonical state.
 pub fn create(args: &Value) -> Result<(String, Value), String> {
     let title = args
         .get("title")
@@ -74,6 +77,7 @@ pub fn create(args: &Value) -> Result<(String, Value), String> {
             .map_err(|_| t("Documento inicial inválido.", "Invalid initial document."))?,
     ))
 }
+#[must_use]
 pub fn spec() -> Option<AppSpec> {
     if !available() {
         return None;
@@ -165,7 +169,7 @@ mod tests {
         let cases = [
             ("/runtimePackage/revision", json!("0".repeat(40))),
             ("/runtimePackage/wasm/sha256", json!("0".repeat(64))),
-            ("/runtimePackage/module/bytes", json!(157852)),
+            ("/runtimePackage/module/bytes", json!(157_852)),
             (
                 "/runtimePackage/module/url",
                 json!(format!(
@@ -205,20 +209,20 @@ mod tests {
         let mut previous_contact = good.clone();
         previous_contact["runtimePackage"]["wasm"] = json!({
             "url":format!("{directory}deckcraft-web-f96d04a08b130930_bg.wasm"),
-            "bytes":36395766,
+            "bytes":36_395_766,
             "sha256":"88677fbf8df8dfe3f4ae3db408eda558b7c02179626750e6fb8b12fec33e767d",
             "mime":"application/wasm"
         });
         assert!(!valid_resource(html, &previous_contact.to_string()));
         let old_module = json!({
             "url":format!("{directory}deckcraft-web-d31e46606624b37e.js"),
-            "bytes":157185,
+            "bytes":157_185,
             "sha256":"ee3453072b20bacdee76f3a51b54a75963d0d2a68e70988b3e7bb6b6152deb73",
             "mime":"text/javascript"
         });
         let old_wasm = json!({
             "url":format!("{directory}deckcraft-web-12a58bf39c518c12_bg.wasm"),
-            "bytes":36294009,
+            "bytes":36_294_009,
             "sha256":"1d93416d46bf0c3aa2802e6f0eaf3e6b1c6c31ae0c105082e9d3ca0de14f7bf3",
             "mime":"application/wasm"
         });
@@ -235,7 +239,7 @@ mod tests {
         // Each descriptor independently pins name, byte count and digest, not only its pair.
         for (pointer, value) in [
             ("/runtimePackage/module/sha256", json!("0".repeat(64))),
-            ("/runtimePackage/wasm/bytes", json!(36387051)),
+            ("/runtimePackage/wasm/bytes", json!(36_387_051)),
             (
                 "/runtimePackage/module/url",
                 json!(format!("{directory}deckcraft-web-d31e46606624b37e.js")),
@@ -252,56 +256,56 @@ mod tests {
         let mut candidate = fixture(HTML);
         candidate["runtimePackage"]["module"] = json!({
             "url":format!("{directory}deckcraft-web-d912af1a03055ffe.js"),
-            "bytes":157851,
+            "bytes":157_851,
             "sha256":"5b943f9b5e13bc8dce876193f2ced1b608efc74fc5643ca2b272bdffd22dedde",
             "mime":"text/javascript"
         });
         candidate["runtimePackage"]["wasm"] = json!({
             "url":format!("{directory}deckcraft-web-92fbceced94572b6_bg.wasm"),
-            "bytes":36382433,
+            "bytes":36_382_433,
             "sha256":"7dc44c1c30356964b737cff936900f949ceadc4082db19555435eeea9b29def1",
             "mime":"application/wasm"
         });
         assert!(valid_resource(HTML, &candidate.to_string()));
         let previous_notes_module = json!({
             "url":format!("{directory}deckcraft-web-4576e715d9c77da4.js"),
-            "bytes":157851,
+            "bytes":157_851,
             "sha256":"7144d8766ed42db97e9f8366515328c7ef353a04d80d66c213ae107619c12ead",
             "mime":"text/javascript"
         });
         let previous_notes_wasm = json!({
             "url":format!("{directory}deckcraft-web-b023d45fa5023a1a_bg.wasm"),
-            "bytes":36382474,
+            "bytes":36_382_474,
             "sha256":"c9ff98889b779e3c11661e290c1c74317fd6aa9eecbe7705c085f7ff74cd4c0e",
             "mime":"application/wasm"
         });
         let previous_touch_module = json!({
             "url":format!("{directory}deckcraft-web-9848d4c343e786ef.js"),
-            "bytes":157851,
+            "bytes":157_851,
             "sha256":"9dd3081704ac39c04a8f78e56ccbf904b032bd5569186ce1df3cd6e0ebd88c77",
             "mime":"text/javascript"
         });
         let previous_touch_wasm = json!({
             "url":format!("{directory}deckcraft-web-55e43aa6139c5bb4_bg.wasm"),
-            "bytes":36385233,
+            "bytes":36_385_233,
             "sha256":"cd911a688e3a6793cc0dbbab14a824646a7732a4391fdf50c976f28ed8e1d2d5",
             "mime":"application/wasm"
         });
         let previous_module = json!({
             "url":format!("{directory}deckcraft-web-1eb288115950a000.js"),
-            "bytes":157851,
+            "bytes":157_851,
             "sha256":"4a3a583c958a150900c58e773c2ed58df6213e733ed3496e9c60c173cd9bebc4",
             "mime":"text/javascript"
         });
         let reproduced_wasm = json!({
             "url":format!("{directory}deckcraft-web-b257808a686003f1_bg.wasm"),
-            "bytes":36387042,
+            "bytes":36_387_042,
             "sha256":"cb0af84197762083dc06f9b3812b6c60fe2bbbfeac534ff44c186081dd37b241",
             "mime":"application/wasm"
         });
         let missing_original_wasm = json!({
             "url":format!("{directory}deckcraft-web-41f0085af1d7648c_bg.wasm"),
-            "bytes":36387050,
+            "bytes":36_387_050,
             "sha256":"2c6ab9025a157f346849dcbb4e7cc956e2afbb6665048727654f60995eee24c6",
             "mime":"application/wasm"
         });
@@ -342,10 +346,10 @@ mod tests {
     }
     #[test]
     fn genuine_frozen_seed_has_one_native_slide_without_embedded_assets() {
+        use std::io::Read;
         assert_eq!(Document::parse(EMPTY).unwrap().slides, 1);
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(EMPTY)).unwrap();
         let mut json = String::new();
-        use std::io::Read;
         zip.by_name("presentation.json")
             .unwrap()
             .read_to_string(&mut json)

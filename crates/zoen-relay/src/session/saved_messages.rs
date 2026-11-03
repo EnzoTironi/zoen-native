@@ -61,10 +61,12 @@ impl Session {
         // device's concurrent candidate can only lose; no second MLS genesis.
         let outcome = self.append_effect(&env, true).await;
         let original = match outcome {
-            Ok(managed::Appended::Sequenced(
-                Sequencing::New { ev, .. } | Sequencing::Duplicate { ev, .. },
-            ))
-            | Ok(managed::Appended::Observed(ev)) => ev,
+            Ok(
+                managed::Appended::Sequenced(
+                    Sequencing::New { ev, .. } | Sequencing::Duplicate { ev, .. },
+                )
+                | managed::Appended::Observed(ev),
+            ) => ev,
             Err(reason) => match self.saved_genesis(&space).await? {
                 Some(event) => event,
                 None => return Err(reason.reason),

@@ -37,7 +37,7 @@ fn portable_catalog_keeps_resource_integrity_and_instance_identity() {
             let (title, state) = create_as(entry.id, &args, &actor, 1_000_000).unwrap();
             assert!(!title.is_empty(), "{}", entry.id);
             assert!(view_for(entry.id, &state, 1_000_000, actor.id).is_object());
-            assert!(!headline(entry.id, &state, 1_000_000).0.is_empty());
+            assert_ne!(headline(entry.id, &state, 1_000_000).0, "");
             let widget = snapshot(entry.id, &state, "it_portable", 1_000_000).unwrap();
             assert_eq!(widget["deepLink"], "zoen://app/it_portable");
             let manifest: Value = serde_json::from_str(
@@ -115,7 +115,7 @@ fn drawing_headline_and_card_use_the_localized_element_count() {
             let state = json!({"title":"Canvas", "elementCount":count, "textCount":0});
             let (label, metrics) = headline("excalidraw", &state, 0);
             assert_eq!(label, expected);
-            assert!(metrics.is_empty());
+            assert_eq!(metrics, [] as [(String, f64); 0]);
             let card = snapshot("excalidraw", &state, "it_canvas", 0).unwrap();
             assert_eq!(card["detail"], expected);
             assert_eq!(card["title"], "Canvas");

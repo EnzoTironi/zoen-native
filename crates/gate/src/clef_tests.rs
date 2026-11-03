@@ -131,7 +131,7 @@ fn clef_contract_invalid_envelopes_answers_and_distributions_are_refused() {
                 v.as_object_mut().unwrap().remove("success");
             }
             "error-with-result" => {
-                v["errors"] = json!([{"code": 10000, "message": "synthetic refusal"}])
+                v["errors"] = json!([{"code": 10000, "message": "synthetic refusal"}]);
             }
             "missing-error-array" => {
                 v.as_object_mut().unwrap().remove("errors");
@@ -157,7 +157,7 @@ fn clef_contract_invalid_envelopes_answers_and_distributions_are_refused() {
             "negative-confidence" => v["result"]["answers"]["topic"]["confidence"] = json!(-1),
             "large-confidence" => v["result"]["answers"]["topic"]["confidence"] = json!(2),
             "extra-probability" => {
-                v["result"]["answers"]["topic"]["probabilities"]["other"] = json!(0)
+                v["result"]["answers"]["topic"]["probabilities"]["other"] = json!(0);
             }
             "missing-probability" => {
                 v["result"]["answers"]["topic"]["probabilities"]
@@ -166,7 +166,7 @@ fn clef_contract_invalid_envelopes_answers_and_distributions_are_refused() {
                     .remove("weather");
             }
             "negative-probability" => {
-                v["result"]["answers"]["topic"]["probabilities"]["weather"] = json!(-0.01)
+                v["result"]["answers"]["topic"]["probabilities"]["weather"] = json!(-0.01);
             }
             "bad-sum" => v["result"]["answers"]["topic"]["probabilities"]["weather"] = json!(0.1),
             "large-score" => v["result"]["answers"]["severity"]["score"] = json!(4),
@@ -255,7 +255,7 @@ fn clef_contract_invalid_request_never_calls_transport() {
                         name: format!("q{i}"),
                         instructions: "🙂".repeat(6000),
                     })
-                    .collect()
+                    .collect();
             }
             _ => unreachable!(),
         }

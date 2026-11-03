@@ -99,7 +99,9 @@ pub(super) fn atoms(schema: &JsonSchema) -> Result<Atoms> {
             // Text is visited once: repeated nth()/char slicing would be quadratic.
             let contents = atom_contents(op)?;
             for (offset, content) in contents.into_iter().enumerate() {
-                let ctr = counter + offset as i32;
+                let ctr = counter
+                    .checked_add(i32::try_from(offset).map_err(error)?)
+                    .ok_or_else(|| error("plan counter overflow"))?;
                 let deps = if ctr == change.id.counter {
                     initial_deps.clone()
                 } else {
@@ -109,7 +111,8 @@ pub(super) fn atoms(schema: &JsonSchema) -> Result<Atoms> {
                     container: op.container.clone(),
                     content,
                     deps,
-                    lamport: change.lamport + (ctr - change.id.counter) as u32,
+                    lamport: change.lamport
+                        + u32::try_from(ctr - change.id.counter).map_err(error)?,
                     reserved_provenance: (change.id.peer == MIGRATION_PEER)
                         .then(|| (change.timestamp, message.clone())),
                 };

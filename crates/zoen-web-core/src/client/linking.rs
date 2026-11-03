@@ -1,6 +1,9 @@
 //! Device handover stays in the canonical encrypted client journal. The worker's
 //! root authority only seals the identity box; it never enters this journal.
-use super::*;
+use super::{
+    browser_id, BTreeMap, BTreeSet, Client, ClientFrame, Deserialize, DocumentResponse, Event,
+    EventBody, Op, Privacy, Reply, Serialize, Signer,
+};
 use crate::Primary;
 use device_link::{DeviceMsg, Peer};
 use serde_json::{json, Value};
@@ -107,12 +110,17 @@ impl<S: Signer> Client<S> {
             .ok_or("Request identifier limit reached.")?;
         let id = LINK_REQUEST_BASE
             .checked_add(sequence)
-            .filter(|id| *id <= u64::from(u32::MAX))
+            .filter(|id| u32::try_from(*id).is_ok())
             .ok_or("Request identifier limit reached.")?;
         self.saved.linking.request_sequence = sequence;
         Ok(id)
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for an invalid link code, incomplete synchronization,
+    /// a conflicting handover, unavailable profile or authority keys, exhausted
+    /// request identifiers, failed recipient sealing, or client update failure.
     pub fn link_prepare(
         &mut self,
         primary: &Primary,
@@ -172,6 +180,10 @@ impl<S: Signer> Client<S> {
         })
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for malformed or oversized requests, unavailable or
+    /// unauthorized device links, failed signing or sealing, or client update failure.
     pub fn link_request(&mut self, request: &str, now: i64) -> Result<DocumentResponse, String> {
         if request.len() > 8192 {
             return Err("Pedido de vínculo inválido.".into());
@@ -214,24 +226,7 @@ impl<S: Signer> Client<S> {
                 transfer,
                 index,
                 sha256,
-            } => {
-                let sending = self
-                    .saved
-                    .linking
-                    .sending
-                    .as_mut()
-                    .filter(|sending| sending.transfer == transfer && !sending.delivered)
-                    .ok_or("Transferência indisponível.")?;
-                let chunk = sending
-                    .chunks
-                    .get(index)
-                    .ok_or("Parte inválida do histórico.")?;
-                if index != sending.uploaded || event_log::sha256_hex(chunk) != sha256 {
-                    return Err("A parte enviada não corresponde ao histórico.".into());
-                }
-                sending.uploaded += 1;
-                self.outgoing_history_work(now)?
-            }
+            } => self.history_uploaded(&transfer, index, &sha256, now)?,
             Command::LinkStatus { device_id } => {
                 let link = self
                     .saved
@@ -242,56 +237,8 @@ impl<S: Signer> Client<S> {
                     .ok_or("Este aparelho não foi vinculado aqui.")?;
                 json!({"delivered":link.delivered,"failure":link.failure})
             }
-            Command::LinkProgress { device_id } => {
-                if !self.saved.linking.peers.contains_key(&device_id) {
-                    return Err("Este aparelho não foi vinculado aqui.".into());
-                }
-                let mut done = 0;
-                let mut total = 0;
-                for space in self.logs.keys().filter(|space| {
-                    self.metadata(space)
-                        .is_some_and(|(_, _, p)| p == Privacy::EndToEnd)
-                }) {
-                    if let Ok(Some(leaves)) = self.device()?.committed_leaves(space) {
-                        total += 1;
-                        if leaves.contains_key(&(self.account.identity.clone(), device_id.clone()))
-                        {
-                            done += 1;
-                        }
-                    }
-                }
-                json!([done, total])
-            }
-            Command::LoadOlder { space_id } => {
-                if !self.roster(&space_id).contains_key(&self.account.identity) {
-                    return Err("Conversa indisponível.".into());
-                }
-                if self.account.link_secret.is_empty()
-                    || self.saved.linking.complete.contains(&space_id)
-                {
-                    json!({"request_id":null,"loaded":0,"more":false})
-                } else {
-                    let before = self
-                        .logs
-                        .get(&space_id)
-                        .and_then(|log| {
-                            log.events()
-                                .iter()
-                                .find(|event| event.sealed_wire.is_some())
-                                .map(|event| event.seq)
-                                .or(Some(log.next_seq()))
-                        })
-                        .unwrap_or(0);
-                    // A retry after process interruption reuses exactly the pending boundary.
-                    let pending = requests::retain_page(
-                        &mut self.saved.linking.pages,
-                        &space_id,
-                        before,
-                        || browser_id("pg", now),
-                    )?;
-                    json!({"request_id":pending.req,"loaded":0,"more":true})
-                }
-            }
+            Command::LinkProgress { device_id } => self.link_progress(&device_id)?,
+            Command::LoadOlder { space_id } => self.load_older(&space_id, now)?,
             Command::OlderStatus {
                 space_id,
                 request_id,
@@ -326,6 +273,78 @@ impl<S: Signer> Client<S> {
             });
         }
         self.link_result(result, now)
+    }
+
+    fn link_progress(&self, device_id: &str) -> Result<Value, String> {
+        if !self.saved.linking.peers.contains_key(device_id) {
+            return Err("Este aparelho não foi vinculado aqui.".into());
+        }
+        let mut done = 0;
+        let mut total = 0;
+        for space in self.logs.keys().filter(|space| {
+            self.metadata(space)
+                .is_some_and(|(_, _, p)| p == Privacy::EndToEnd)
+        }) {
+            if let Ok(Some(leaves)) = self.device()?.committed_leaves(space) {
+                total += 1;
+                if leaves.contains_key(&(self.account.identity.clone(), device_id.to_owned())) {
+                    done += 1;
+                }
+            }
+        }
+        Ok(json!([done, total]))
+    }
+
+    fn load_older(&mut self, space_id: &str, now: i64) -> Result<Value, String> {
+        if !self.roster(space_id).contains_key(&self.account.identity) {
+            return Err("Conversa indisponível.".into());
+        }
+        if self.account.link_secret.is_empty() || self.saved.linking.complete.contains(space_id) {
+            Ok(json!({"request_id":null,"loaded":0,"more":false}))
+        } else {
+            let before = self
+                .logs
+                .get(space_id)
+                .and_then(|log| {
+                    log.events()
+                        .iter()
+                        .find(|event| event.sealed_wire.is_some())
+                        .map(|event| event.seq)
+                        .or(Some(log.next_seq()))
+                })
+                .unwrap_or(0);
+            // A retry after process interruption reuses exactly the pending boundary.
+            let pending =
+                requests::retain_page(&mut self.saved.linking.pages, space_id, before, || {
+                    browser_id("pg", now)
+                })?;
+            Ok(json!({"request_id":pending.req,"loaded":0,"more":true}))
+        }
+    }
+
+    fn history_uploaded(
+        &mut self,
+        transfer: &str,
+        index: usize,
+        sha256: &str,
+        now: i64,
+    ) -> Result<Value, String> {
+        let sending = self
+            .saved
+            .linking
+            .sending
+            .as_mut()
+            .filter(|sending| sending.transfer == transfer && !sending.delivered)
+            .ok_or("Transferência indisponível.")?;
+        let chunk = sending
+            .chunks
+            .get(index)
+            .ok_or("Parte inválida do histórico.")?;
+        if index != sending.uploaded || event_log::sha256_hex(chunk) != sha256 {
+            return Err("A parte enviada não corresponde ao histórico.".into());
+        }
+        sending.uploaded += 1;
+        self.outgoing_history_work(now)
     }
 
     pub(super) fn linking_deadline(&self) -> Option<i64> {
@@ -466,37 +485,51 @@ impl<S: Signer> Client<S> {
                 space,
                 events,
                 more,
-            }) => {
-                let Some(pending) = self
-                    .saved
-                    .linking
-                    .pages
-                    .get(&space)
-                    .filter(|pending| pending.req == req && pending.answer.is_none())
-                else {
-                    return Ok(());
-                };
-                if from != self.account.primary
-                    || events.len() > PAGE_LIMIT
-                    || events
-                        .iter()
-                        .any(|event| event.space != space || event.seq >= pending.before)
-                {
-                    return Ok(());
-                }
-                if events.is_empty() && more {
-                    self.saved.linking.pages.get_mut(&space).unwrap().failure=Some("Esta página do histórico é grande demais para transferir. Abra a conversa no aparelho principal.".into());
-                    return Ok(());
-                }
-                let Ok(loaded) = self.import_history_events(events) else {
-                    return Ok(());
-                };
-                self.saved.linking.pages.get_mut(&space).unwrap().answer = Some((loaded, more));
-                if !more {
-                    self.saved.linking.complete.insert(space);
-                }
-            }
+            }) => self.receive_older_page(from, &req, space, events, more)?,
             _ => {}
+        }
+        Ok(())
+    }
+    fn receive_older_page(
+        &mut self,
+        from: &str,
+        req: &str,
+        space: String,
+        events: Vec<Event>,
+        more: bool,
+    ) -> Result<(), String> {
+        let Some(pending) = self
+            .saved
+            .linking
+            .pages
+            .get(&space)
+            .filter(|pending| pending.req == req && pending.answer.is_none())
+        else {
+            return Ok(());
+        };
+        if from != self.account.primary
+            || events.len() > PAGE_LIMIT
+            || events
+                .iter()
+                .any(|event| event.space != space || event.seq >= pending.before)
+        {
+            return Ok(());
+        }
+        if events.is_empty() && more {
+            self.saved.linking.pages.get_mut(&space).ok_or("history page request missing after validation")?.failure=Some("Esta página do histórico é grande demais para transferir. Abra a conversa no aparelho principal.".into());
+            return Ok(());
+        }
+        let Ok(loaded) = self.import_history_events(events) else {
+            return Ok(());
+        };
+        self.saved
+            .linking
+            .pages
+            .get_mut(&space)
+            .ok_or("history page request missing after validation")?
+            .answer = Some((loaded, more));
+        if !more {
+            self.saved.linking.complete.insert(space);
         }
         Ok(())
     }

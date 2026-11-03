@@ -30,8 +30,8 @@ fn declared_size(bytes: &mut [u8], name: &str, declared: u32) {
         let entry = zip.by_name(name).unwrap();
         assert_eq!(entry.compression(), CompressionMethod::Deflated);
         (
-            entry.header_start() as usize,
-            entry.central_header_start() as usize,
+            usize::try_from(entry.header_start()).unwrap(),
+            usize::try_from(entry.central_header_start()).unwrap(),
         )
     };
     assert_eq!(&bytes[local..local + 4], b"PK\x03\x04");

@@ -67,7 +67,9 @@ fn container(bytes: &[u8]) -> Result<(Value, BTreeSet<String>), &'static str> {
                 .take((MAX_MANIFEST + 1) as u64)
                 .read_to_end(&mut raw)
                 .map_err(|_| INVALID)?;
-            if raw.len() > MAX_MANIFEST || raw.len() != entry.size() as usize {
+            if raw.len() > MAX_MANIFEST
+                || u64::try_from(raw.len()).map_err(|_| INVALID)? != entry.size()
+            {
                 return Err(INVALID);
             }
             manifest = Some(self::manifest::parse(&raw)?);
@@ -173,6 +175,7 @@ impl Document {
             layers: 1,
         })
     }
+    #[must_use]
     pub fn metadata(&self, title: &str) -> String {
         json!({"title":title,"width":self.width,"height":self.height,"layers":self.layers,
             "profile":"raster-canvas-v1","engineRevision":ENGINE_REVISION})

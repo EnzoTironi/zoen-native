@@ -26,6 +26,8 @@ pub struct Admission {
     pub cost_kib: u32,
 }
 
+/// # Errors
+/// Refuses invalid transfer identifiers or chunk indexes outside the transfer limit.
 pub fn get_key(id: &str, chunk: u32) -> Result<String, Failure> {
     if !crate::blobs::valid_sha(id) || chunk >= MAX_CHUNKS {
         return Err(Failure::new(400, "bad transfer"));
@@ -33,6 +35,8 @@ pub fn get_key(id: &str, chunk: u32) -> Result<String, Failure> {
     Ok(format!("transfers/{id}/{chunk}"))
 }
 
+/// # Errors
+/// Refuses invalid transfer identifiers.
 pub fn delete_prefix(id: &str) -> Result<String, Failure> {
     if !crate::blobs::valid_sha(id) {
         return Err(Failure::new(400, "bad transfer"));
@@ -41,11 +45,13 @@ pub fn delete_prefix(id: &str) -> Result<String, Failure> {
     Ok(format!("transfers/{id}/"))
 }
 
+/// # Errors
+/// Refuses empty chunks or chunks above the transport size limit.
 pub fn body_cost(length: u64) -> Result<u32, Failure> {
     if length == 0 || length > MAX_CHUNK as u64 {
         return Err(Failure::new(413, "empty or too large"));
     }
-    Ok(length.div_ceil(1024) as u32)
+    u32::try_from(length.div_ceil(1024)).map_err(|_| Failure::new(413, "empty or too large"))
 }
 
 fn signature(
@@ -69,6 +75,8 @@ fn signature(
 
 /// Native precedence is path, body bound, signature, current device, then quota.
 /// `sha` must be computed from the complete actual ciphertext by the host.
+/// # Errors
+/// Refuses invalid transfer paths, body sizes, timestamps or device signatures, in that order.
 #[allow(clippy::too_many_arguments)]
 pub fn put_policy(
     id: &str,
@@ -92,6 +100,8 @@ pub fn put_policy(
     })
 }
 
+/// # Errors
+/// Refuses invalid transfer identifiers, timestamps or device signatures.
 pub fn delete_policy(
     id: &str,
     device: &str,

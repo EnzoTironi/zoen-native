@@ -30,7 +30,8 @@ mod tests {
     use std::cell::Cell;
 
     #[test]
-    fn preparation_failure_cannot_create_or_replace_a_history_boundary() {
+    fn preparation_failure_cannot_create_or_replace_a_history_boundary(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pages = BTreeMap::new();
         assert!(retain_page(
             &mut pages,
@@ -49,7 +50,7 @@ mod tests {
                 failure: Some("refused".into()),
             },
         );
-        let original = serde_json::to_vec(&pages).unwrap();
+        let original = serde_json::to_vec(&pages)?;
         assert!(retain_page(
             &mut pages,
             "space",
@@ -57,24 +58,28 @@ mod tests {
             || Err("entropy unavailable".into())
         )
         .is_err());
-        assert_eq!(serde_json::to_vec(&pages).unwrap(), original);
+        assert_eq!(serde_json::to_vec(&pages)?, original);
+
+        Ok(())
     }
 
     #[test]
-    fn uncertain_request_survives_cold_restore_without_allocating_another_id() {
+    fn uncertain_request_survives_cold_restore_without_allocating_another_id(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pages = BTreeMap::new();
-        retain_page(&mut pages, "space", 100, || Ok("original".into())).unwrap();
-        let encoded = serde_json::to_vec(&pages).unwrap();
-        let mut restored: BTreeMap<String, PageRequest> = serde_json::from_slice(&encoded).unwrap();
+        retain_page(&mut pages, "space", 100, || Ok("original".into()))?;
+        let encoded = serde_json::to_vec(&pages)?;
+        let mut restored: BTreeMap<String, PageRequest> = serde_json::from_slice(&encoded)?;
         let calls = Cell::new(0);
         let pending = retain_page(&mut restored, "space", 20, || {
             calls.set(calls.get() + 1);
             Err("must not allocate on an uncertain retry".into())
-        })
-        .unwrap();
+        })?;
         assert_eq!(pending.req, "original");
         assert_eq!(pending.before, 100);
         assert_eq!(calls.get(), 0);
-        assert_eq!(serde_json::to_vec(&restored).unwrap(), encoded);
+        assert_eq!(serde_json::to_vec(&restored)?, encoded);
+
+        Ok(())
     }
 }

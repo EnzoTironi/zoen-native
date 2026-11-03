@@ -201,7 +201,7 @@ fn moving_a_line_preserves_its_container_and_a_concurrent_text_edit() {
         },
     );
     let (view, _) = merge_in_both_orders(&seed, &[moved.full_update(), edited.full_update()]);
-    assert!(view.sections[0].lines.is_empty());
+    assert_eq!(view.sections[0].lines, []);
     assert_eq!(view.sections[1].block_id.as_ref(), Some(&new_section));
     assert_eq!(view.sections[1].lines[0].block_id, original_block);
     assert_eq!(view.sections[1].lines[0].line.text, "Modified while moving");

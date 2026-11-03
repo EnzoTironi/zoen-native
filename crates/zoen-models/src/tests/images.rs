@@ -346,8 +346,8 @@ async fn image_cancellation_or_incomplete_response_never_releases_the_attempt() 
     let g = ModelGateway::new(image_config(&f.base)).unwrap();
     let a = TestAuthority::default();
     let mut pending = Box::pin(g.generate_image(input(), &a));
-    tokio::select! {_=pending.as_mut()=>panic!("response must be held"),_=f.received.notified()=>{},
-    _=tokio::time::sleep(Duration::from_secs(2))=>panic!("no request observed")}
+    tokio::select! {_=pending.as_mut()=>panic!("response must be held"),()=f.received.notified()=>{},
+    ()=tokio::time::sleep(Duration::from_secs(2))=>panic!("no request observed")}
     drop(pending);
     assert_eq!(
         g.generate_image(input(), &a).await,
@@ -410,10 +410,11 @@ async fn image_json_envelope_domain_is_enforced_without_losing_usage() {
         let encoded = body["data"][0]["b64_json"].as_str().unwrap().len();
         let base = serde_json::to_vec(&body).unwrap().len() - encoded;
         body["metadata"] =
-            json!("m".repeat(crate::IMAGE_JSON_ENVELOPE_BYTES as usize - base + extra));
+            json!("m"
+                .repeat(usize::try_from(crate::IMAGE_JSON_ENVELOPE_BYTES).unwrap() - base + extra));
         assert_eq!(
             serde_json::to_vec(&body).unwrap().len() - encoded,
-            crate::IMAGE_JSON_ENVELOPE_BYTES as usize + extra
+            usize::try_from(crate::IMAGE_JSON_ENVELOPE_BYTES).unwrap() + extra
         );
         let f = Fixture::json(body).await;
         let gateway = ModelGateway::new(image_config(&f.base)).unwrap();

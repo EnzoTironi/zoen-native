@@ -1,4 +1,4 @@
-use super::*;
+use super::{BTreeSet, Client, ClientFrame, Op, Reply, Signer, DEVICES_REQUEST_BASE};
 use protocol::complete_reads::{self as reads, Assembly, Kind, Request};
 impl<S: Signer> Client<S> {
     /// The browser host passes only the actual authenticated connection's negotiated
@@ -46,7 +46,7 @@ impl<S: Signer> Client<S> {
         &mut self,
         result: &Result<Reply, String>,
         outgoing: &mut Vec<Vec<u8>>,
-    ) -> Result<(), String> {
+    ) {
         if self.membership_net.devices_requested
             && self.membership_net.devices_due <= self.view_now_ms
         {
@@ -65,7 +65,7 @@ impl<S: Signer> Client<S> {
                             .encode(),
                         );
                         self.membership_net.devices_assembly = Some(assembly);
-                        return Ok(());
+                        return;
                     }
                     Ok(None) => assembly.finish().map_err(str::to_owned),
                     Err(e) => Err(e.into()),
@@ -106,7 +106,7 @@ impl<S: Signer> Client<S> {
                 })
             {
                 self.membership_net.devices_due = self.view_now_ms.saturating_add(5000);
-                return Ok(());
+                return;
             }
             self.saved.membership.revoked = devices
                 .into_iter()
@@ -116,6 +116,5 @@ impl<S: Signer> Client<S> {
         }
         // Existing Client::update + host persistBeforeOutgoing owns one complete
         // SavedClient write. A page itself never mutates saved membership.
-        Ok(())
     }
 }

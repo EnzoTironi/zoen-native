@@ -8,6 +8,8 @@ use std::io::{Read, Write};
 impl AnchorReader {
     /// Read-only original commitment for transport binding. It proves neither
     /// that an envelope matches nor that an effect may be consumed or appended.
+    /// # Errors
+    /// Refuses a retired/missing checkpoint, invalid retained history or unavailable generation/state reads.
     pub fn retained_checkpoint(&self, expected: &Checkpoint) -> Result<Prepared, AnchorError> {
         let _generation = self.effect_generation_guard(expected)?;
         self.checkpoint_effect(expected)?

@@ -13,13 +13,16 @@ pub struct Owed {
 }
 
 impl Owed {
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.add.is_empty() && self.add_devices.is_empty() && self.remove.is_empty()
     }
+    #[must_use]
     pub fn adds_nobody(&self) -> bool {
         self.add.is_empty() && self.add_devices.is_empty()
     }
     /// The relay's consumptive claim protocol permits fifty identities per operation.
+    #[must_use]
     pub fn to_claim(&self) -> Vec<String> {
         let mut ids = self.add.clone();
         ids.extend(self.add_devices.iter().map(|(id, _)| id.clone()));
@@ -27,6 +30,7 @@ impl Owed {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Input<'a> {
     pub me: &'a str,
     pub admin: bool,
@@ -38,6 +42,7 @@ pub struct Input<'a> {
     pub revoked: &'a BTreeSet<String>,
 }
 
+#[must_use]
 pub fn plan(input: Input<'_>) -> Option<Owed> {
     let Input {
         me,

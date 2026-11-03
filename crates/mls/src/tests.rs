@@ -6,70 +6,15 @@ use rusqlite::Connection;
 
 const SPACE: &str = "space-e2e";
 
-struct Person {
-    identity: Signer,
-    device: Signer,
-    key: [u8; 32],
-}
-
-impl Person {
-    fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {
-            identity: Signer::generate()?,
-            device: Signer::generate()?,
-            key: Signer::generate()?.secret(),
-        })
-    }
-    fn id(&self) -> String {
-        self.identity.id()
-    }
-    fn open<'c>(&self, conn: &'c Connection) -> Device<'c> {
-        let cert = self.identity.sign(&device_cert_message(&self.device.id()));
-        Device::new(conn, self.key, &self.id(), self.device.secret(), &cert).unwrap()
-    }
-}
-
-fn db() -> Connection {
-    let mut c = Connection::open_in_memory().unwrap();
-    migrate(&mut c).unwrap();
-    c
-}
-
-fn roster(people: &[&Person]) -> BTreeSet<String> {
-    people.iter().map(|p| p.id()).collect()
-}
-
-fn add(by: &Device, joiner: &Device) -> Commit {
-    by.commit(
-        SPACE,
-        &joiner.key_packages(1, false).unwrap(),
-        &BTreeSet::new(),
-    )
-    .unwrap()
-}
-
-/// Enzo creates the group and adds Marina; both have applied the commit.
-fn pair(enzo: &Device, marina: &Device, both: &BTreeSet<String>) -> Vec<u8> {
-    enzo.create_group(SPACE).unwrap();
-    let c = add(enzo, marina);
-    assert_eq!(
-        enzo.open(SPACE, &c.commit, both, enzo.leaf()).unwrap(),
-        Opened::Commit { epoch: 1 }
-    );
-    assert_eq!(
-        marina.open(SPACE, &c.commit, both, enzo.leaf()).unwrap(),
-        Opened::NotMember
-    );
-    assert!(marina.join(SPACE, &c.welcome.unwrap(), both).unwrap());
-    c.group_info
-}
+mod support;
+use support::{add, db, pair, roster, Person};
 
 #[test]
 fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (e, m) = (Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
-    let (enzo, marina) = (e.open(&ce), m.open(&cm));
+    let (ce, cm) = (db()?, db()?);
+    let (enzo, marina) = (e.open(&ce)?, m.open(&cm)?);
     let both = roster(&[&e, &m]);
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Missing);
     assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
@@ -83,7 +28,7 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership(
             .collect::<BTreeSet<_>>(),
         BTreeSet::from([(e.id(), e.device.id())])
     );
-    let added = add(&enzo, &marina);
+    let added = add(&enzo, &marina)?;
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Pending);
     assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
     assert_eq!(
@@ -135,10 +80,10 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership(
 fn provider_read_and_processing_failures_remain_storage_errors_and_allow_retry(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (e, m) = (Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
-    let (enzo, marina) = (e.open(&ce), m.open(&cm));
+    let (ce, cm) = (db()?, db()?);
+    let (enzo, marina) = (e.open(&ce)?, m.open(&cm)?);
     let both = roster(&[&e, &m]);
-    pair(&enzo, &marina, &both);
+    pair(&enzo, &marina, &both)?;
     let before = marina.checkpoint(SPACE).unwrap();
     let bytes = enzo.seal(SPACE, b"retry the same application").unwrap();
     cm.execute_batch("ALTER TABLE openmls_group_data RENAME TO unavailable_group_data")
@@ -186,10 +131,10 @@ fn provider_read_and_processing_failures_remain_storage_errors_and_allow_retry(
 fn external_commit_cannot_add_an_unlisted_identity_or_impersonate_an_admitted_device(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (e, m, outsider) = (Person::new()?, Person::new()?, Person::new()?);
-    let (ce, cm, cx) = (db(), db(), db());
-    let (enzo, marina, intruder) = (e.open(&ce), m.open(&cm), outsider.open(&cx));
+    let (ce, cm, cx) = (db()?, db()?, db()?);
+    let (enzo, marina, intruder) = (e.open(&ce)?, m.open(&cm)?, outsider.open(&cx)?);
     let both = roster(&[&e, &m]);
-    let context = pair(&enzo, &marina, &both);
+    let context = pair(&enzo, &marina, &both)?;
     let before = (
         marina.epoch(SPACE).unwrap(),
         marina.leaves(SPACE).unwrap(),
@@ -219,8 +164,8 @@ fn external_commit_cannot_add_an_unlisted_identity_or_impersonate_an_admitted_de
         device: Signer::generate()?,
         key: Signer::generate()?.secret(),
     };
-    let forged_db = db();
-    let forged = forged_device.open(&forged_db);
+    let forged_db = db()?;
+    let forged = forged_device.open(&forged_db)?;
     let external = forged.recover(SPACE, &context, &both).unwrap();
     assert!(matches!(
         marina.open(SPACE, &external.commit, &both, enzo.leaf()),
@@ -239,8 +184,8 @@ fn external_commit_cannot_add_an_unlisted_identity_or_impersonate_an_admitted_de
         device: Signer::generate()?,
         key: Signer::generate()?.secret(),
     };
-    let c = db();
-    let admitted = fresh.open(&c);
+    let c = db()?;
+    let admitted = fresh.open(&c)?;
     let external = admitted.recover(SPACE, &context, &both).unwrap();
     assert_eq!(
         marina
@@ -261,10 +206,10 @@ fn external_commit_cannot_add_an_unlisted_identity_or_impersonate_an_admitted_de
 #[test]
 fn two_devices_talk_both_ways() -> Result<(), Box<dyn std::error::Error>> {
     let (e, m) = (Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
-    let (enzo, marina) = (e.open(&ce), m.open(&cm));
+    let (ce, cm) = (db()?, db()?);
+    let (enzo, marina) = (e.open(&ce)?, m.open(&cm)?);
     let both = roster(&[&e, &m]);
-    pair(&enzo, &marina, &both);
+    pair(&enzo, &marina, &both)?;
     assert_eq!(marina.epoch(SPACE).unwrap(), 1);
     assert_eq!(marina.roster(SPACE).unwrap(), both);
 
@@ -298,17 +243,17 @@ fn two_devices_talk_both_ways() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn a_commit_adding_someone_the_log_doesnt_list_is_refused() -> Result<(), Box<dyn std::error::Error>>
 {
-    let (e, m, b) = (Person::new()?, Person::new()?, Person::new()?);
-    let (ce, cm, cb) = (db(), db(), db());
-    let (enzo, marina, bruno) = (e.open(&ce), m.open(&cm), b.open(&cb));
-    let both = roster(&[&e, &m]);
-    pair(&enzo, &marina, &both);
+    let (creator, member, outsider) = (Person::new()?, Person::new()?, Person::new()?);
+    let (ce, cm, cb) = (db()?, db()?, db()?);
+    let (enzo, marina, bruno) = (creator.open(&ce)?, member.open(&cm)?, outsider.open(&cb)?);
+    let both = roster(&[&creator, &member]);
+    pair(&enzo, &marina, &both)?;
     // Enzo adds Bruno, but the log still lists two people.
-    let c = add(&enzo, &bruno);
+    let c = add(&enzo, &bruno)?;
     assert!(enzo.pending(SPACE));
     for d in [&marina, &enzo] {
         assert!(
-            matches!(d.open(SPACE, &c.commit, &both, enzo.leaf()), Err(MlsError::Unlisted(x)) if x.contains(&b.id()))
+            matches!(d.open(SPACE, &c.commit, &both, enzo.leaf()), Err(MlsError::Unlisted(x)) if x.contains(&outsider.id()))
         );
         assert_eq!(d.epoch(SPACE).unwrap(), 1);
     }
@@ -319,8 +264,8 @@ fn a_commit_adding_someone_the_log_doesnt_list_is_refused() -> Result<(), Box<dy
         Err(MlsError::Unlisted(_))
     ));
     assert!(!bruno.has_group(SPACE), "and Bruno never joined");
-    let three = roster(&[&e, &m, &b]);
-    let again = add(&enzo, &bruno);
+    let three = roster(&[&creator, &member, &outsider]);
+    let again = add(&enzo, &bruno)?;
     for d in [&enzo, &marina] {
         assert_eq!(
             d.open(SPACE, &again.commit, &three, enzo.leaf()).unwrap(),
@@ -339,18 +284,18 @@ fn a_commit_adding_someone_the_log_doesnt_list_is_refused() -> Result<(), Box<dy
 fn a_listed_person_the_group_lacks_yet_doesnt_block_a_commit(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (e, m, b) = (Person::new()?, Person::new()?, Person::new()?);
-    let (ce, cm, cb) = (db(), db(), db());
-    let (enzo, marina, bruno) = (e.open(&ce), m.open(&cm), b.open(&cb));
+    let (ce, cm, cb) = (db()?, db()?, db()?);
+    let (enzo, marina, bruno) = (e.open(&ce)?, m.open(&cm)?, b.open(&cb)?);
     enzo.create_group(SPACE).unwrap();
     // The log already lists all three; this commit adds only Marina.
     let three = roster(&[&e, &m, &b]);
-    let c = add(&enzo, &marina);
+    let c = add(&enzo, &marina)?;
     assert_eq!(
         enzo.open(SPACE, &c.commit, &three, enzo.leaf()).unwrap(),
         Opened::Commit { epoch: 1 }
     );
     assert!(marina.join(SPACE, &c.welcome.unwrap(), &three).unwrap());
-    let next = add(&enzo, &bruno);
+    let next = add(&enzo, &bruno)?;
     for d in [&enzo, &marina] {
         assert_eq!(
             d.open(SPACE, &next.commit, &three, enzo.leaf()).unwrap(),
@@ -364,10 +309,10 @@ fn a_listed_person_the_group_lacks_yet_doesnt_block_a_commit(
 #[test]
 fn a_removed_member_reads_nothing_after_the_commit() -> Result<(), Box<dyn std::error::Error>> {
     let (e, m) = (Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
-    let (enzo, marina) = (e.open(&ce), m.open(&cm));
+    let (ce, cm) = (db()?, db()?);
+    let (enzo, marina) = (e.open(&ce)?, m.open(&cm)?);
     let both = roster(&[&e, &m]);
-    pair(&enzo, &marina, &both);
+    pair(&enzo, &marina, &both)?;
     let alone = roster(&[&e]);
     let c = enzo.commit(SPACE, &[], &roster(&[&m])).unwrap();
     assert!(c.welcome.is_none());
@@ -390,17 +335,17 @@ fn a_removed_member_reads_nothing_after_the_commit() -> Result<(), Box<dyn std::
 fn a_removed_device_forgets_the_group_and_can_be_added_back(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (e, m) = (Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
-    let (enzo, marina) = (e.open(&ce), m.open(&cm));
+    let (ce, cm) = (db()?, db()?);
+    let (enzo, marina) = (e.open(&ce)?, m.open(&cm)?);
     let both = roster(&[&e, &m]);
-    pair(&enzo, &marina, &both);
+    pair(&enzo, &marina, &both)?;
     let c = enzo.commit(SPACE, &[], &roster(&[&m])).unwrap();
     enzo.open(SPACE, &c.commit, &roster(&[&e]), enzo.leaf())
         .unwrap();
     // Marina's device never sees that commit (the relay stops sending to her): it forgets.
     marina.forget(SPACE).unwrap();
     assert!(!marina.has_group(SPACE));
-    let back = add(&enzo, &marina);
+    let back = add(&enzo, &marina)?;
     enzo.open(SPACE, &back.commit, &both, enzo.leaf()).unwrap();
     assert!(marina.join(SPACE, &back.welcome.unwrap(), &both).unwrap());
     let hi = enzo.seal(SPACE, b"de volta").unwrap();
@@ -419,12 +364,12 @@ fn the_first_commit_wins_and_the_other_is_stale() -> Result<(), Box<dyn std::err
         Person::new()?,
         Person::new()?,
     );
-    let (ce, cm, cb, cj) = (db(), db(), db(), db());
-    let (enzo, marina, bruno, julia) = (e.open(&ce), m.open(&cm), b.open(&cb), j.open(&cj));
+    let (ce, cm, cb, cj) = (db()?, db()?, db()?, db()?);
+    let (enzo, marina, bruno, julia) = (e.open(&ce)?, m.open(&cm)?, b.open(&cb)?, j.open(&cj)?);
     let both = roster(&[&e, &m]);
-    pair(&enzo, &marina, &both);
-    let first = add(&marina, &bruno);
-    let second = add(&enzo, &julia);
+    pair(&enzo, &marina, &both)?;
+    let first = add(&marina, &bruno)?;
+    let second = add(&enzo, &julia)?;
     // Both were made at epoch 1: the relay sees that in the clear and keeps the first.
     assert_eq!(commit_epoch(&first.commit), Some(1));
     assert_eq!(commit_epoch(&second.commit), Some(1));
@@ -451,7 +396,7 @@ fn the_first_commit_wins_and_the_other_is_stale() -> Result<(), Box<dyn std::err
     // The loser drops its commit and adds Julia again on top of the winner.
     enzo.abandon(SPACE).unwrap();
     assert!(!enzo.pending(SPACE));
-    let again = add(&enzo, &julia);
+    let again = add(&enzo, &julia)?;
     assert_eq!(commit_epoch(&again.commit), Some(2));
     let four = roster(&[&e, &m, &b, &j]);
     for d in [&enzo, &marina, &bruno] {
@@ -472,8 +417,8 @@ fn the_first_commit_wins_and_the_other_is_stale() -> Result<(), Box<dyn std::err
 #[test]
 fn a_forged_device_cannot_be_added() -> Result<(), Box<dyn std::error::Error>> {
     let (e, m, mallory) = (Person::new()?, Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
-    let enzo = e.open(&ce);
+    let (ce, cm) = (db()?, db()?);
+    let enzo = e.open(&ce)?;
     enzo.create_group(SPACE).unwrap();
     // Mallory's device claims Marina's identity with a cert Mallory made.
     let forged = mallory
@@ -483,7 +428,7 @@ fn a_forged_device_cannot_be_added() -> Result<(), Box<dyn std::error::Error>> {
         Device::new(&cm, m.key, &m.id(), mallory.device.secret(), &forged),
         Err(MlsError::Credential)
     ));
-    let honest = m.open(&cm).key_packages(1, true).unwrap();
+    let honest = m.open(&cm)?.key_packages(1, true).unwrap();
     for kp in &honest {
         assert_eq!(key_package_leaf(kp).unwrap().identity, m.id());
     }
@@ -494,9 +439,9 @@ fn a_forged_device_cannot_be_added() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn nothing_is_stored_in_the_clear() -> Result<(), Box<dyn std::error::Error>> {
     let (e, m) = (Person::new()?, Person::new()?);
-    let (ce, cm) = (db(), db());
+    let (ce, cm) = (db()?, db()?);
     let both = roster(&[&e, &m]);
-    pair(&e.open(&ce), &m.open(&cm), &both);
+    pair(&e.open(&ce)?, &m.open(&cm)?, &both)?;
     let mut tables = ce
         .prepare("SELECT name FROM sqlite_master WHERE type='table'")
         .unwrap();

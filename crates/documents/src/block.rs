@@ -10,6 +10,8 @@ struct Fp {
 }
 
 impl Block {
+    /// # Errors
+    /// Refuses unavailable entropy when assigning the block identity.
     pub fn new(kind: Kind, runs: Vec<Run>) -> Result<Block, DocError> {
         Self::new_with(kind, runs, getrandom::getrandom)
     }
@@ -32,6 +34,8 @@ impl Block {
 
     /// The kind plus a hash of the canonical inline Markdown: equal fingerprints mean the
     /// block reads the same.
+    /// # Errors
+    /// Returns an error if the source fingerprint cannot be serialized.
     pub fn fingerprint(&self) -> Result<String, DocError> {
         let md = markdown::inline_md(&self.runs);
         serde_json::to_string(&Fp {
@@ -45,12 +49,15 @@ impl Block {
         serde_json::from_str::<Fp>(fp).ok().map(|f| f.k)
     }
 
+    #[must_use]
     pub fn plain_text(&self) -> String {
         self.runs.iter().map(|r| r.text.as_str()).collect()
     }
 
     /// SHA-256 of the visible kind, exact text and normalized marks. Source spelling,
     /// run segmentation and the block's identity are not content.
+    /// # Errors
+    /// Returns an error if canonical block content cannot be serialized.
     pub fn content_hash(&self) -> Result<String, DocError> {
         #[derive(Serialize)]
         struct Content {

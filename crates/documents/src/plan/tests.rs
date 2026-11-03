@@ -250,7 +250,7 @@ fn deleting_the_last_section_retains_an_unseen_insert_in_a_visible_recovery_grou
             block: section_block(&delete),
         })
         .unwrap();
-    assert!(delete.view().unwrap().sections.is_empty());
+    assert_eq!(delete.view().unwrap().sections, []);
     let CommandResult::Created(inserted) = insert
         .apply(PlanCommand::InsertLine {
             section: section_block(&insert),

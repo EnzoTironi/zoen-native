@@ -76,8 +76,8 @@ async fn cancellation_after_send_never_reconstructs_admission() {
     let mut call = Box::pin(gateway.complete(request(), &authority));
     tokio::select! {
         _ = call.as_mut() => panic!("provider should still be pending"),
-        _ = fixture.received.notified() => {},
-        _ = tokio::time::sleep(Duration::from_secs(2)) => panic!("provider request was not observed"),
+        () = fixture.received.notified() => {},
+        () = tokio::time::sleep(Duration::from_secs(2)) => panic!("provider request was not observed"),
     }
     drop(call);
     assert_eq!(

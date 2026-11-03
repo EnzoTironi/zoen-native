@@ -62,3 +62,16 @@ async fn poisoned_budget_refuses_new_work_but_allows_cleanup() -> Result<(), Ses
     assert_eq!(session.usage().len(), 1);
     Ok(())
 }
+
+#[tokio::test]
+async fn invalid_exit_code_is_a_backend_error() -> Result<(), SandboxError> {
+    let api = MockFly::new();
+    let fly = api.provider();
+    let lease = fly.acquire(&spec(), "ana").await?;
+    for value in ["2147483648", "1.5", r#""0""#] {
+        let request = ExecRequest::sh(&format!("exit-code-fixture:{value}"));
+        let result = fly.exec(&lease, request).await;
+        assert!(matches!(result, Err(SandboxError::Backend(message)) if message.contains("invalid exit code")));
+    }
+    fly.release(lease).await
+}

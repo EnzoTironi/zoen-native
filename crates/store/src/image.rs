@@ -29,6 +29,9 @@ fn page_size(bytes: &[u8]) -> Result<usize> {
 impl Store {
     /// Complete, committed in-memory database, including every provider table.
     /// These plaintext bytes confer no provenance; the custody owner must seal them.
+    ///
+    /// # Errors
+    /// Returns `InvalidImage` for uncommitted, non-memory or oversized images, or SQLite serialization errors.
     pub fn memory_image(&self) -> Result<Vec<u8>> {
         if !self.conn.is_autocommit() {
             return Err(StoreError::InvalidImage);
@@ -58,6 +61,9 @@ impl Store {
 
     /// Deserialize without running migrations. The native facade must verify
     /// its exact supported schema and event/provider versions before reuse.
+    ///
+    /// # Errors
+    /// Returns `InvalidImage` for invalid headers, page geometry or size; otherwise returns SQLite import errors.
     pub fn from_memory_image(bytes: &[u8]) -> Result<Self> {
         let size = page_size(bytes)?;
         let mut conn = Connection::open_in_memory()?;
@@ -107,7 +113,7 @@ mod tests {
             .conn()
             .execute(
                 "INSERT INTO media VALUES ('large','fixture',zeroblob(?1),0)",
-                [MAX_MEMORY_IMAGE_BYTES as i64]
+                [i64::try_from(MAX_MEMORY_IMAGE_BYTES).unwrap()]
             )
             .is_err());
         assert!(!imported.has_media("large").unwrap());

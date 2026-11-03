@@ -22,6 +22,8 @@ impl BoundaryError {
     }
 }
 
+/// # Errors
+/// Refuses empty, noncanonical, nondecimal or overflowing unsigned values.
 pub fn parse_u64(value: &str) -> Result<u64, BoundaryError> {
     if value.is_empty()
         || value.len() > 20

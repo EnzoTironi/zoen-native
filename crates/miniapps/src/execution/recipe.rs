@@ -1,6 +1,6 @@
 //! Built-in recipe tool actions.
 
-use super::*;
+use super::{json, push_log, s, t, tr, ts, Applied, Value};
 
 pub(super) fn recipe_servings(
     args: &Value,
@@ -61,7 +61,15 @@ pub(super) fn recipe_cook(
     now: i64,
 ) -> Result<Applied, String> {
     let step = args["step"].as_i64().unwrap_or(0).max(0);
-    let total = st["steps"].as_array().map(|a| a.len() as i64).unwrap_or(0);
+    let total = st["steps"]
+        .as_array()
+        .map_or(Ok(0), |steps| i64::try_from(steps.len()))
+        .map_err(|_| {
+            t(
+                "passos fora do intervalo",
+                "steps outside the supported range",
+            )
+        })?;
     st["cooking"] = json!({ "who": actor, "step": step, "at": now });
     let what = if step >= total {
         t("terminou de cozinhar", "finished cooking")

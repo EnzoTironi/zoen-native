@@ -1,4 +1,4 @@
-//! Native DeckCraft container validation for durable opaque storage, not an editor.
+//! Native `DeckCraft` container validation for durable opaque storage, not an editor.
 //! The pinned upstream Session owns model interpretation/commands/export. Never normalize
 //! or repair uploaded bytes here: all versions retain exactly what their hash identifies.
 use serde_json::{json, Value};
@@ -20,6 +20,8 @@ pub struct Document {
     pub slides: u32,
 }
 impl Document {
+    /// # Errors
+    /// Refuses malformed, oversized or unsupported document structure instead of losing accepted content.
     pub fn parse(bytes: &[u8]) -> Result<Self, &'static str> {
         if bytes.is_empty() || bytes.len() > MAX_BYTES {
             return Err("Invalid DeckCraft byte length");
@@ -116,9 +118,10 @@ impl Document {
             return Err("Unsupported DeckCraft document");
         }
         Ok(Self {
-            slides: slides.len() as u32,
+            slides: u32::try_from(slides.len()).map_err(|_| "Too many DeckCraft slides")?,
         })
     }
+    #[must_use]
     pub fn metadata(&self, title: &str) -> String {
         json!({"title":title,"slides":self.slides,"engineRevision":ENGINE_REVISION}).to_string()
     }

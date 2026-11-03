@@ -152,7 +152,7 @@ fn load(component: &[u8], probe: &[u8]) -> Result<Loaded> {
     let key = SigningKey::from_bytes(&[42; 32]); // Synthetic fixture publisher, never a deployment key.
     let tier = WasmTier::new(vec![key.verifying_key()], 1, 256 * 1024 * 1024)
         .map_err(|_| "tier unavailable")?;
-    let signed = manifest("wordcraft-qualification", component).sign(&key);
+    let signed = manifest("wordcraft-qualification", component).sign(&key).map_err(|error| error.to_string())?;
     let mut swapped = component.to_vec();
     *swapped.first_mut().ok_or("empty component")? ^= 1;
     require(
@@ -162,7 +162,7 @@ fn load(component: &[u8], probe: &[u8]) -> Result<Loaded> {
     require(
         tier.load(
             &manifest("wordcraft-qualification", component)
-                .sign(&SigningKey::from_bytes(&[43; 32])),
+                .sign(&SigningKey::from_bytes(&[43; 32])).map_err(|error| error.to_string())?,
             component,
         )
         .is_err(),
@@ -174,7 +174,7 @@ fn load(component: &[u8], probe: &[u8]) -> Result<Loaded> {
         .map_err(|_| "actual worker cannot load")?;
     let worker_compile_ms = started.elapsed().as_millis();
     let clock_tool = tier
-        .load(&manifest("wordcraft-clock-probe", probe).sign(&key), probe)
+        .load(&manifest("wordcraft-clock-probe", probe).sign(&key).map_err(|error| error.to_string())?, probe)
         .map_err(|_| "actual clock probe cannot load")?;
     Ok(Loaded {
         tier,

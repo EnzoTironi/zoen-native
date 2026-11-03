@@ -21,6 +21,7 @@ impl Failure {
     const fn new(status: u16, code: &'static str) -> Self {
         Self { status, code }
     }
+    #[must_use]
     pub const fn unavailable() -> Self {
         Self::new(503, "authentication_unavailable")
     }
@@ -40,6 +41,7 @@ pub enum Client {
     Web,
 }
 impl Client {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Self::Ios => "ios",
@@ -93,10 +95,14 @@ pub fn valid_audience_value(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_whitespace)
 }
 
+/// # Errors
+/// Refuses missing trusted audience configuration.
 pub fn require_audience(audience: Option<&Audience>) -> Result<&Audience, Failure> {
     audience.ok_or(Failure::new(503, "provider_not_configured"))
 }
 
+/// # Errors
+/// Refuses providers disabled in trusted host configuration.
 pub fn require_provider_configured(configured: bool) -> Result<(), Failure> {
     if !configured {
         return Err(Failure::new(503, "provider_not_configured"));
@@ -106,6 +112,8 @@ pub fn require_provider_configured(configured: bool) -> Result<(), Failure> {
 
 /// Exact comparison against already validated, trusted configuration. URL parsing
 /// and environment access remain host I/O; no caller-supplied allowlist is trusted.
+/// # Errors
+/// Refuses untrusted origins and web clients without an origin.
 pub fn origin<'a>(
     supplied: Option<&str>,
     client: Option<Client>,
@@ -121,6 +129,7 @@ pub fn origin<'a>(
     }
 }
 
+#[must_use]
 pub fn token(value: &str) -> bool {
     value.len() == 64
         && value
@@ -128,10 +137,13 @@ pub fn token(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+#[must_use]
 pub fn token_hash(value: &str) -> String {
     event_log::sha256_hex(value.as_bytes())
 }
 
+/// # Errors
+/// Refuses tokens that are not exactly 64 lowercase hexadecimal characters.
 pub fn proof_hash(value: &str) -> Result<String, Failure> {
     if !token(value) {
         return Err(Failure::new(400, "invalid_authentication"));
@@ -139,6 +151,8 @@ pub fn proof_hash(value: &str) -> Result<String, Failure> {
     Ok(token_hash(value))
 }
 
+/// # Errors
+/// Refuses malformed challenge/state tokens and authorization codes above 4096 bytes.
 pub fn validate_verify_request(request: &VerifyRequest) -> Result<(), Failure> {
     if !token(&request.challenge_id)
         || !token(&request.state)
@@ -152,6 +166,8 @@ pub fn validate_verify_request(request: &VerifyRequest) -> Result<(), Failure> {
     Ok(())
 }
 
+/// # Errors
+/// Refuses mismatched origin/state/audience/presenter or an expired challenge.
 pub fn validate_challenge(
     challenge: &Challenge,
     state: &str,
@@ -186,14 +202,18 @@ pub struct PreparedBinding {
     fingerprint: String,
 }
 impl PreparedBinding {
+    #[must_use]
     pub fn lookup(&self) -> &BindLookup {
         &self.lookup
     }
+    #[must_use]
     pub fn fingerprint(&self) -> &str {
         &self.fingerprint
     }
 }
 
+/// # Errors
+/// Refuses invalid person profiles, noncanonical handles, malformed keys or invalid identity/device signatures; returns unavailable on encoding failure.
 pub fn prepare_bind(request: &ProviderBindRequest) -> Result<PreparedBinding, Failure> {
     let profile = &request.profile;
     let handle =
@@ -260,6 +280,8 @@ pub enum ProofUse {
 }
 
 /// The native SQL transaction calls these staged helpers under its row/advisory locks.
+/// # Errors
+/// Refuses absent/expired proofs, mismatched authoritative lookup, origin or already-used binding. Exact consumed retries remain admissible.
 pub fn admit_proof(
     prepared: &PreparedBinding,
     proof: Option<&Proof>,
@@ -288,6 +310,8 @@ pub fn admit_proof(
     Ok(ProofUse::Fresh)
 }
 
+/// # Errors
+/// Refuses revoked devices and consumed proofs missing the bound handle.
 pub fn finish_retry(
     prepared: &PreparedBinding,
     proof: &Proof,
@@ -306,6 +330,8 @@ pub fn finish_retry(
     })
 }
 
+/// # Errors
+/// Refuses a provider subject already bound to another identity.
 pub fn check_provider_binding(existing: Option<&str>, identity: &str) -> Result<(), Failure> {
     if existing.is_some_and(|value| value != identity) {
         return Err(Failure::new(409, "provider_already_bound"));
@@ -313,6 +339,8 @@ pub fn check_provider_binding(existing: Option<&str>, identity: &str) -> Result<
     Ok(())
 }
 
+/// # Errors
+/// Refuses an identity already bound to another subject for this provider.
 pub fn check_identity_provider(existing: Option<&str>, subject: &str) -> Result<(), Failure> {
     if existing.is_some_and(|value| value != subject) {
         return Err(Failure::new(409, "identity_provider_already_bound"));
@@ -320,6 +348,8 @@ pub fn check_identity_provider(existing: Option<&str>, subject: &str) -> Result<
     Ok(())
 }
 
+/// # Errors
+/// Refuses existing identities whose registered kind is not Person.
 pub fn check_registered_kind(kind: &str) -> Result<(), Failure> {
     if kind != "Person" {
         return Err(Failure::new(409, "identity_kind_refused"));
@@ -327,6 +357,8 @@ pub fn check_registered_kind(kind: &str) -> Result<(), Failure> {
     Ok(())
 }
 
+/// # Errors
+/// Refuses an existing identity without the currently active device link.
 pub fn existing_identity_handle(stored_handle: &str, active: bool) -> Result<String, Failure> {
     if !active {
         return Err(Failure::new(403, "link_device_first"));
@@ -334,6 +366,7 @@ pub fn existing_identity_handle(stored_handle: &str, active: bool) -> Result<Str
     Ok(stored_handle.to_string())
 }
 
+#[must_use]
 pub fn registration_failure(reason: &str) -> Failure {
     if reason == "handle_taken" {
         Failure::new(409, "handle_taken")
@@ -344,8 +377,11 @@ pub fn registration_failure(reason: &str) -> Failure {
 
 mod decimal_i64 {
     use serde::{Deserialize, Deserializer, Serializer};
-    pub fn serialize<S: Serializer>(value: &i64, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&value.to_string())
+    pub fn serialize<S: Serializer>(
+        value: &impl std::fmt::Display,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(value)
     }
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
         String::deserialize(deserializer)?

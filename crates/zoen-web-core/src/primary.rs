@@ -25,6 +25,10 @@ pub struct Primary {
 }
 
 impl Primary {
+    ///
+    /// # Errors
+    /// Returns an error for an invalid browser device key or failed generation of
+    /// the identity, agreement, profile or linking keys.
     pub fn new(device: &str, relay: &str, name: &str) -> Result<Self, String> {
         event_log::parse_device_key(device).ok_or("Invalid browser device.")?;
         let mut seed = Zeroizing::new([0; 32]);
@@ -73,6 +77,10 @@ impl Primary {
         Ok(Self { seed, account })
     }
 
+    ///
+    /// # Errors
+    /// Returns an error for an invalid seed or an account whose identity, device,
+    /// primary authority, certificate or saved profile keys do not match.
     pub fn restore(seed: &[u8], account: LinkedAccount, device: &str) -> Result<Self, String> {
         let seed =
             Zeroizing::new(<[u8; 32]>::try_from(seed).map_err(|_| "Invalid browser authority.")?);
@@ -152,11 +160,13 @@ impl Primary {
         })
     }
 
+    #[must_use]
     pub fn account(&self) -> &LinkedAccount {
         &self.account
     }
     /// Worker-internal encryption input. The host boundary must return only the
     /// encrypted authority envelope, then immediately clear this temporary copy.
+    #[must_use]
     pub fn authority_bytes(&self) -> Vec<u8> {
         self.seed.to_vec()
     }
@@ -177,6 +187,10 @@ impl Primary {
             owner_proof: None,
         })
     }
+    ///
+    /// # Errors
+    /// Returns an error for an invalid provider proof or failure to encode the
+    /// account binding message.
     pub fn binding_message(&self, proof: &str) -> Result<Vec<u8>, String> {
         provider_bind_message(
             proof,
@@ -186,6 +200,10 @@ impl Primary {
         )
         .map_err(|_| "Could not prepare provider binding.".into())
     }
+    ///
+    /// # Errors
+    /// Returns an error for an invalid provider proof or a signature that does not
+    /// authenticate the binding as this browser device.
     pub fn finish_binding(
         &self,
         proof: &str,
@@ -205,6 +223,10 @@ impl Primary {
             signature,
         })
     }
+    ///
+    /// # Errors
+    /// Returns an error if the provider proof is invalid, signing fails, or the
+    /// signature does not authenticate this browser device.
     pub fn bind_request<S: Signer>(
         &self,
         proof: &str,
@@ -235,23 +257,18 @@ mod tests {
         }
     }
     #[test]
-    fn primary_cold_retry_keeps_identity_and_never_serializes_authority_into_account_or_bind() {
+    fn primary_cold_retry_keeps_identity_and_never_serializes_authority_into_account_or_bind(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = Device(RootSigner::from_secret(&[81; 32]));
-        let primary =
-            Primary::new(&device.0.id(), "https://relay.example", " Nome privado ").unwrap();
-        let account = serde_json::to_string(primary.account()).unwrap();
+        let primary = Primary::new(&device.0.id(), "https://relay.example", " Nome privado ")?;
+        let account = serde_json::to_string(primary.account())?;
         let secret = primary.authority_bytes();
         assert!(!account.contains(&hex::encode(&secret)));
         assert!(!account.contains("identity_secret"));
-        let restored = Primary::restore(
-            &secret,
-            serde_json::from_str(&account).unwrap(),
-            &device.0.id(),
-        )
-        .unwrap();
+        let restored = Primary::restore(&secret, serde_json::from_str(&account)?, &device.0.id())?;
         assert_eq!(restored.account().identity, primary.account().identity);
-        let request = restored.bind_request(&"ab".repeat(32), &device).unwrap();
-        let body = serde_json::to_string(&request).unwrap();
+        let request = restored.bind_request(&"ab".repeat(32), &device)?;
+        let body = serde_json::to_string(&request)?;
         assert!(!body.contains("Nome privado"));
         assert!(!body.contains(&hex::encode(secret)));
         assert!(event_log::verify_sig(
@@ -266,8 +283,7 @@ mod tests {
                 &request.profile,
                 &request.device,
                 &request.certificate
-            )
-            .unwrap(),
+            )?,
             &request.signature
         ));
         let other = Device(RootSigner::from_secret(&[82; 32]));
@@ -279,5 +295,6 @@ mod tests {
             &other.0.id()
         )
         .is_err());
+        Ok(())
     }
 }

@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    leaf_name, reconciliation, BTreeMap, BTreeSet, Client, Digest, Event, EventBody, GroupState,
+    OpenMlsProvider, Owed, Privacy, Role, Sealed, SealedKind, Sha256, Signer, SUITE_ID,
+};
 impl<S: Signer> Client<S> {
     pub(in crate::client) fn note_membership_event(&mut self, event: &Event) -> Result<(), String> {
         let space = &event.space;
@@ -9,7 +12,7 @@ impl<S: Signer> Client<S> {
                 for identity in members {
                     self.enqueue_control(
                         space,
-                        EventBody::MemberAdded {
+                        &EventBody::MemberAdded {
                             identity,
                             role: Role::Member,
                         },

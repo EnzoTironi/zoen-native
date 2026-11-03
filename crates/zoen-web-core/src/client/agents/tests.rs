@@ -1,4 +1,5 @@
 use super::*;
+use crate::client::{Identity, LinkedAccount, Privacy, SpaceLog};
 use event_log::{Author, Signer as NativeSigner};
 use openmls_traits::{signatures::SignerError, types::SignatureScheme};
 use types::{ItemProposal, PlanDoc, PlanLine, PlanSection};
@@ -45,7 +46,7 @@ impl Fixture {
             profile_seen_version: 0,
             profile_fields: String::new(),
         };
-        let mut client = Client::new(account, HostSigner(device), "").unwrap();
+        let mut client = Client::new(account, HostSigner(device), "")?;
         client.synced = true;
         let profile = Identity {
             id: agent.identity.clone(),
@@ -57,7 +58,8 @@ impl Fixture {
             owner: Some(identity.id()),
             bio: String::new(),
             owner_proof: Some(Box::new(
-                event_log::agent_owner::authorize(&owner, &agent.identity).unwrap(),
+                event_log::agent_owner::authorize(&owner, &agent.identity)
+                    .ok_or("authenticated test cryptographic evidence missing")?,
             )),
         };
         client.saved.profiles.insert(profile.id.clone(), profile);
@@ -164,11 +166,11 @@ impl Fixture {
         )?;
         Ok(())
     }
-    fn command(&mut self, command: Value) -> Result<documents::DocumentResponse, String> {
+    fn command(&mut self, command: &Value) -> Result<documents::DocumentResponse, String> {
         self.now += 1;
         self.client.agent_request(&command.to_string(), self.now)
     }
-    fn proposal(&mut self) -> AgentRequest {
+    fn proposal(&mut self) -> std::result::Result<AgentRequest, Box<dyn std::error::Error>> {
         let proposal = ItemProposal {
             item: "it_proposal".into(),
             kind: ItemKind::Plan,
@@ -203,8 +205,10 @@ impl Fixture {
             line: None,
             proposal: Some(Box::new(proposal)),
         };
-        request.content_hash = request.proposal_hash("sp_chat").unwrap();
-        request
+        request.content_hash = request
+            .proposal_hash("sp_chat")
+            .ok_or("authenticated proposal hash unavailable")?;
+        Ok(request)
     }
 }
 
@@ -214,8 +218,7 @@ fn exact_budgets_ignore_another_members_forged_grant_and_reject_overflow_without
     let mut fixture = Fixture::new()?;
     let id = fixture.agent.identity.clone();
     let profile = fixture
-        .command(json!({"op":"agent_profile","agent_id":id}))
-        .unwrap()
+        .command(&json!({"op":"agent_profile","agent_id":id}))?
         .result;
     assert_eq!(profile["budget_limit_cents"], "9007199254740993");
     fixture.append(
@@ -232,7 +235,7 @@ fn exact_budgets_ignore_another_members_forged_grant_and_reject_overflow_without
             },
         },
     )?;
-    let state = fixture.client.agent_projection().unwrap();
+    let state = fixture.client.agent_projection()?;
     assert_eq!(
         fixture
             .client
@@ -241,7 +244,7 @@ fn exact_budgets_ignore_another_members_forged_grant_and_reject_overflow_without
     );
     let before = fixture.client.saved.outbox.len();
     assert!(fixture
-        .command(json!({"op":"raise_budget","agent_id":id,"extra_cents":"9223372036854775807"}))
+        .command(&json!({"op":"raise_budget","agent_id":id,"extra_cents":"9223372036854775807"}))
         .is_err());
     assert_eq!(fixture.client.saved.outbox.len(), before);
     Ok(())
@@ -250,7 +253,7 @@ fn exact_budgets_ignore_another_members_forged_grant_and_reject_overflow_without
 fn retained_proposal_approval_creates_the_exact_item_and_charges_usage_only_once_after_reload(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    let request = fixture.proposal();
+    let request = fixture.proposal()?;
     fixture.append(
         "sp_chat",
         "agent",
@@ -258,40 +261,40 @@ fn retained_proposal_approval_creates_the_exact_item_and_charges_usage_only_once
             request: request.clone(),
         },
     )?;
-    let decision = fixture
-        .command(json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}))
-        .unwrap();
+    let decision = fixture.command(
+        &json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}),
+    )?;
     assert_eq!(decision.result["request"]["status"], "Approved");
     assert_eq!(
         decision.result["standing_grant_id"],
         "gr_standing_rq_proposal"
     );
     let count = fixture.client.saved.outbox.len();
-    let retry = fixture
-        .command(json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}))
-        .unwrap();
+    let retry = fixture.command(
+        &json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}),
+    )?;
     assert_eq!(fixture.client.saved.outbox.len(), count);
-    let snapshot = retry.update.unwrap().snapshot;
+    let snapshot = retry
+        .update
+        .ok_or("missing authenticated test update")?
+        .snapshot;
     let mut reopened = Client::new(
         fixture.client.account.clone(),
         fixture.client.signer.clone(),
         &snapshot,
-    )
-    .unwrap();
+    )?;
     let profile = reopened
         .agent_request(
             &json!({"op":"agent_profile","agent_id":fixture.agent.identity}).to_string(),
             fixture.now,
-        )
-        .unwrap()
+        )?
         .result;
     assert_eq!(profile["budget_spent_cents"], "37");
     let item = reopened
         .document_request(
             &json!({"op":"item","item_id":"it_proposal"}).to_string(),
             fixture.now,
-        )
-        .unwrap()
+        )?
         .result;
     assert_eq!(
         item["plan"]["sections"][0]["lines"][0]["cost_cents"],
@@ -334,28 +337,32 @@ fn red_lines_cannot_be_always_approved_and_another_member_cannot_resolve_a_reque
             resolution: None,
         },
     )?;
-    let read = fixture.command(json!({"op":"requests"})).unwrap().result;
+    let read = fixture.command(&json!({"op":"requests"}))?.result;
     assert_eq!(read[0]["status"], "Pending");
     assert_eq!(read[0]["can_always_approve"], false);
     let before = fixture.client.saved.outbox.len();
     assert!(fixture
-        .command(json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}))
+        .command(&json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}))
         .is_err());
     assert_eq!(fixture.client.saved.outbox.len(), before);
     let accepted = fixture
-        .command(json!({"op":"decide_request","request_id":request.id,"decision":"Approve"}))
-        .unwrap()
+        .command(&json!({"op":"decide_request","request_id":request.id,"decision":"Approve"}))?
         .result;
     assert_eq!(accepted["request"]["status"], "Approved");
-    assert!(accepted["message"].as_str().unwrap().contains("Aguardando"));
+    assert!(accepted["message"]
+        .as_str()
+        .ok_or("missing authenticated test as_str value")?
+        .contains("Aguardando"));
     Ok(())
 }
 #[test]
 fn editing_a_line_invalidates_the_exact_content_approval(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    let request = fixture.proposal();
-    let proposal = request.proposal.unwrap();
+    let request = fixture.proposal()?;
+    let proposal = request
+        .proposal
+        .ok_or("missing authenticated test proposal")?;
     let ItemContent::Plan(mut plan) = proposal.content else {
         panic!()
     };
@@ -403,14 +410,14 @@ fn editing_a_line_invalidates_the_exact_content_approval(
         },
     )?;
     assert_eq!(
-        fixture.command(json!({"op":"requests"})).unwrap().result[0]["status"],
+        fixture.command(&json!({"op":"requests"}))?.result[0]["status"],
         "Stale"
     );
     assert!(fixture
-        .command(json!({"op":"decide_request","request_id":request.id,"decision":"Approve"}))
+        .command(&json!({"op":"decide_request","request_id":request.id,"decision":"Approve"}))
         .is_err());
     assert!(fixture
-        .command(json!({"op":"decide_request","request_id":request.id,"decision":"Deny"}))
+        .command(&json!({"op":"decide_request","request_id":request.id,"decision":"Deny"}))
         .is_ok());
     Ok(())
 }
@@ -419,7 +426,7 @@ fn editing_a_line_invalidates_the_exact_content_approval(
 fn revocation_controls_cannot_revoke_another_kind_of_grant(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut fixture = Fixture::new()?;
-    let request = fixture.proposal();
+    let request = fixture.proposal()?;
     fixture.append(
         "sp_chat",
         "agent",
@@ -427,12 +434,12 @@ fn revocation_controls_cannot_revoke_another_kind_of_grant(
             request: request.clone(),
         },
     )?;
-    fixture
-        .command(json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}))
-        .unwrap();
+    fixture.command(
+        &json!({"op":"decide_request","request_id":request.id,"decision":"AlwaysApprove"}),
+    )?;
     let count = fixture.client.saved.outbox.len();
     assert!(fixture
-        .command(json!({"op":"revoke_app_device","grant_id":"gr_standing_rq_proposal"}))
+        .command(&json!({"op":"revoke_app_device","grant_id":"gr_standing_rq_proposal"}))
         .is_err());
     assert_eq!(fixture.client.saved.outbox.len(), count);
     let installed = fixture
@@ -442,32 +449,27 @@ fn revocation_controls_cannot_revoke_another_kind_of_grant(
                 .to_string(),
             fixture.now + 1,
             "pt-BR",
-        )
-        .unwrap()
+        )?
         .result;
-    let item = installed["id"].as_str().unwrap();
-    let grant = fixture
-        .client
-        .grant_browser_app_device(
-            item,
-            "photos.pick",
-            "Choose only these photos",
-            false,
-            fixture.now + 2,
-        )
-        .unwrap();
+    let item = installed["id"]
+        .as_str()
+        .ok_or("missing authenticated test as_str value")?;
+    let grant = fixture.client.grant_browser_app_device(
+        item,
+        "photos.pick",
+        "Choose only these photos",
+        false,
+        fixture.now + 2,
+    )?;
     let count = fixture.client.saved.outbox.len();
     assert!(fixture
-        .command(json!({"op":"revoke_standing","grant_id":grant}))
+        .command(&json!({"op":"revoke_standing","grant_id":grant}))
         .is_err());
     assert_eq!(fixture.client.saved.outbox.len(), count);
-    fixture
-        .command(json!({"op":"revoke_app_device","grant_id":grant}))
-        .unwrap();
+    fixture.command(&json!({"op":"revoke_app_device","grant_id":grant}))?;
     assert!(!fixture
         .client
-        .active_app_grants(item, fixture.now)
-        .unwrap()
+        .active_app_grants(item, fixture.now)?
         .iter()
         .any(|value| value.id == grant));
     Ok(())

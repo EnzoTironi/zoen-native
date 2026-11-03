@@ -1,6 +1,6 @@
 //! Isolated typed Plan experiment. No production Page codec or client uses this module.
 //!
-//! Plans use Page's Loro document and one movable block list, without Page::blocks' fallback
+//! Plans use Page's Loro document and one movable block list, without `Page::blocks`' fallback
 //! decoder. Financial fields are independent registers; rich text retains exact legacy bytes.
 //! A frozen, deterministic migration peer replays authenticated legacy prefixes. It is never
 //! an editor peer. Inspectable Loro operations are checked before import, including operations
@@ -83,6 +83,8 @@ struct SeedInner {
 pub struct CanonicalPlanSeed(Arc<SeedInner>);
 
 impl CanonicalPlanSeed {
+    /// # Errors
+    /// Refuses empty or ambiguous legacy history, invalid plan content or failed CRDT replay.
     pub fn replay(history: &[LegacyVersion]) -> Result<Self> {
         if history.is_empty()
             || history.iter().any(|v| v.event_id.is_empty())
@@ -122,6 +124,8 @@ impl CanonicalPlanSeed {
         })))
     }
 
+    /// # Errors
+    /// Returns an error if the verified seed cannot be forked to an independent editor peer.
     pub fn open_editor(&self) -> Result<PlanDocument> {
         Ok(PlanDocument {
             page: editor_fork(&self.0.page)?,
@@ -129,10 +133,12 @@ impl CanonicalPlanSeed {
         })
     }
 
+    #[must_use]
     pub fn legacy_at(&self, version: usize) -> Option<&LegacyVersion> {
         version.checked_sub(1).and_then(|i| self.0.history.get(i))
     }
 
+    #[must_use]
     pub fn legacy_frontiers(&self, version: usize) -> Option<&Frontiers> {
         version.checked_sub(1).and_then(|i| self.0.frontiers.get(i))
     }
@@ -146,16 +152,20 @@ impl CanonicalPlanSeed {
 pub struct PlanVersion(VersionVector);
 
 /// Opaque inspectable operations with a bounded, explicitly versioned JSON codec.
-/// No production PageContent caller is activated. Ordinary Page binary payloads are
+/// No production `PageContent` caller is activated. Ordinary Page binary payloads are
 /// unsupported here; raw original operations are inspected before collision-eliding import.
 #[derive(Debug, Clone)]
 pub struct PlanUpdate(JsonSchema);
 
 impl PlanUpdate {
+    /// # Errors
+    /// Refuses unsupported, malformed, oversized or invalid plan operation packets.
     pub fn from_json(bytes: &[u8]) -> Result<Self> {
         codec::decode(bytes)
     }
 
+    /// # Errors
+    /// Refuses invalid operation structure or an encoded packet exceeding the codec bounds.
     pub fn to_json(&self) -> Result<Vec<u8>> {
         codec::encode(self)
     }
@@ -194,7 +204,8 @@ pub struct PlanView {
 
 impl PlanView {
     /// Derived compatibility projection. Canonical prose and rich-text marks remain in
-    /// PlanDocument::blocks; this value is never an independent editable document.
+    /// `PlanDocument::blocks`; this value is never an independent editable document.
+    #[must_use]
     pub fn to_plan_doc(&self) -> PlanDoc {
         PlanDoc {
             title: self.title.clone(),
@@ -213,7 +224,7 @@ impl PlanView {
 }
 
 /// Comparison is over exact text/cents, matching the existing approval hash. The FFI
-/// must still authorize actor/grant/proposal; AnyCurrent grants no agent authority.
+/// must still authorize actor/grant/proposal; `AnyCurrent` grants no agent authority.
 #[derive(Debug, Clone)]
 pub enum ExpectedLine {
     AnyCurrent,
@@ -276,14 +287,19 @@ pub struct PlanDocument {
 }
 
 impl PlanDocument {
+    #[must_use]
     pub fn version(&self) -> PlanVersion {
         PlanVersion(self.page.version())
     }
 
+    /// # Errors
+    /// Refuses malformed plan blocks, identities or financial registers.
     pub fn view(&self) -> Result<PlanView> {
         project(&self.page, self.seed.root())
     }
 
+    /// # Errors
+    /// Returns an error if the current branch cannot be forked to an independent editor peer.
     pub fn fork(&self) -> Result<Self> {
         Ok(Self {
             page: editor_fork(&self.page)?,
@@ -291,6 +307,8 @@ impl PlanDocument {
         })
     }
 
+    /// # Errors
+    /// Refuses an unsupported or invalid exported operation packet.
     pub fn updates_since(&self, from: &PlanVersion) -> Result<PlanUpdate> {
         let current = self.page.version();
         if !current.includes_vv(&from.0) {
@@ -303,6 +321,7 @@ impl PlanDocument {
         ))
     }
 
+    #[must_use]
     pub fn full_update(&self) -> PlanUpdate {
         PlanUpdate(self.page.doc.export_json_updates_without_peer_compression(
             &VersionVector::default(),
@@ -312,6 +331,8 @@ impl PlanDocument {
 
     /// Only an independently authenticated extension can enlarge the allowed tape. A
     /// production cutover owner must stop calling this after its first accepted Page event.
+    /// # Errors
+    /// Refuses an incompatible legacy prefix or a staged import that violates plan invariants.
     pub fn admit_legacy_prefix(&mut self, seed: &CanonicalPlanSeed) -> Result<()> {
         if !seed.0.history.starts_with(&self.seed.0.history) {
             return Err(PlanError::IncompatiblePrefix);
@@ -331,6 +352,8 @@ impl PlanDocument {
         Ok(())
     }
 
+    /// # Errors
+    /// Refuses unverified migration operations, missing dependencies, operation conflicts or invalid staged plan state.
     pub fn import(&mut self, update: &PlanUpdate) -> Result<()> {
         let staged = self.import_staged(update, &self.seed)?;
         self.page = staged;
@@ -360,6 +383,8 @@ impl PlanDocument {
         Ok(staged)
     }
 
+    /// # Errors
+    /// Refuses stale line expectations, invalid commands or a staged update violating plan invariants.
     pub fn apply(&mut self, command: PlanCommand) -> Result<CommandResult> {
         let staged = editor_fork(&self.page)?;
         let nodes = read_nodes(&staged, self.seed.root())?;

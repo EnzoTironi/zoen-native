@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 zoen-word-profile = { path = "../wordcraft-profile" }
 types.workspace = true
+num-traits.workspace = true
 localization.workspace = true
 serde_json.workspace = true
 serde.workspace = true
@@ -23,3 +24,6 @@ quick-xml = "=0.41.0"
 # Structural PDF inspection only: upstream COS/filter/security layers, no UI,
 # raster/image decoder, document JavaScript interpreter or separate PDF model.
 pdfcraft-cos = { git = "https://github.com/storytold/pdfcraft", rev = "d445410807e7eefbe5b96f9662ab963ae8dd2a3a" }
+
+[lints]
+workspace = true

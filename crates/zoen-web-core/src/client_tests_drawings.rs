@@ -13,17 +13,31 @@ fn scene(text: &str) -> String {
 fn hash(text: &str) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))
 }
-fn install(client: &mut Client<HostSigner>, space: &str, now: i64) -> (String, DocumentResponse) {
-    let response = client.app_request(&json!({"op":"install_app","space_id":space,"app_id":"excalidraw","args_json":"{\"title\":\"Canvas\"}"}).to_string(), now, "en").unwrap();
-    (response.result["id"].as_str().unwrap().into(), response)
+fn install(
+    client: &mut Client<HostSigner>,
+    space: &str,
+    now: i64,
+) -> std::result::Result<(String, DocumentResponse), Box<dyn std::error::Error>> {
+    let response = client.app_request(&json!({"op":"install_app","space_id":space,"app_id":"excalidraw","args_json":"{\"title\":\"Canvas\"}"}).to_string(), now, "en")?;
+    Ok((
+        response.result["id"]
+            .as_str()
+            .ok_or("missing authenticated test as_str value")?
+            .into(),
+        response,
+    ))
 }
-fn read(client: &mut Client<HostSigner>, item: &str, now: i64) -> Value {
-    doc(
+fn read(
+    client: &mut Client<HostSigner>,
+    item: &str,
+    now: i64,
+) -> std::result::Result<Value, Box<dyn std::error::Error>> {
+    Ok(doc(
         client,
-        json!({"op":"app_document_read","item_id":item}),
+        &json!({"op":"app_document_read","item_id":item}),
         now,
-    )
-    .result
+    )?
+    .result)
 }
 fn save_request(item: &str, base: &Value, text: &str, id: &str) -> Value {
     json!({"op":"app_document_save","item_id":item,"expected_version":base["version"],"expected_sha256":base["sha256"],"scene_json":text,"mutation_id":id})
@@ -33,16 +47,18 @@ fn upload_and_confirm(
     log: &mut SpaceLog,
     now: i64,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let blobs: Vec<String> = serde_json::from_str(&client.document_uploads().unwrap()).unwrap();
+    let blobs: Vec<String> = serde_json::from_str(&client.document_uploads()?)?;
     for blob in &blobs {
-        assert!(!client.local_chunk(blob).is_empty());
+        assert_ne!(client.local_chunk(blob), Vec::<u8>::new());
     }
-    let update = client.document_uploaded(&blobs).unwrap();
+    let update = client.document_uploaded(&blobs)?;
     confirm_documents(client, log, update, now)?;
     Ok(())
 }
-fn pending_state(client: &Client<HostSigner>) -> String {
-    serde_json::to_string(&client.saved).unwrap()
+fn pending_state(
+    client: &Client<HostSigner>,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    Ok(serde_json::to_string(&client.saved)?)
 }
 
 include!("client_tests_drawings/content.rs");

@@ -70,7 +70,7 @@ fn publish(
     if key.verifying_key() != expected {
         return Err("key does not match the expected publisher".into());
     }
-    let signed = manifest.sign(&key);
+    let signed = manifest.sign(&key).map_err(|error| error.to_string())?;
     signed
         .verify(&[expected])
         .map_err(|e| format!("publication verification failed: {e}"))?;

@@ -4,6 +4,11 @@ use crate::{Result, SearchRow, Store, StoreError};
 use rusqlite::params;
 
 impl Store {
+    /// Reads one page from the disposable index within the caller's allowed kinds and spaces.
+    ///
+    /// # Errors
+    /// Returns `InvalidSearchLimit` outside 1..=100, or JSON encoding, SQLite query
+    /// and stored-row decoding errors. The caller still binds generation and access.
     pub fn universal_search_page(
         &self,
         query: &str,

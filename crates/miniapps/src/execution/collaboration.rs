@@ -1,6 +1,6 @@
 //! Built-in collaboration tool actions.
 
-use super::*;
+use super::{json, push_log, s, t, tr, ts, Applied, Effect, Value};
 
 pub(super) fn poll_vote(
     args: &Value,
@@ -45,7 +45,7 @@ pub(super) fn poll_add_option(
     now: i64,
 ) -> Result<Applied, String> {
     let text = s(args, "text").ok_or_else(|| t("escreva a opção", "type the option"))?;
-    let n = st["options"].as_array().map(|a| a.len()).unwrap_or(0) + 1;
+    let n = st["options"].as_array().map_or(0, Vec::len) + 1;
     st["options"]
         .as_array_mut()
         .ok_or_else(|| t("estado inválido", "invalid state"))?
@@ -70,13 +70,9 @@ pub(super) fn poll_close(mut st: Value, actor: &str, now: i64) -> Result<Applied
     let opts = st["options"].as_array().cloned().unwrap_or_default();
     let best = opts
         .iter()
-        .max_by_key(|o| o["votes"].as_array().map(|a| a.len()).unwrap_or(0))
+        .max_by_key(|o| o["votes"].as_array().map_or(0, Vec::len))
         .ok_or_else(|| t("sem opções", "no options"))?;
-    if best["votes"]
-        .as_array()
-        .map(|a| a.is_empty())
-        .unwrap_or(true)
-    {
+    if best["votes"].as_array().is_none_or(Vec::is_empty) {
         return Err(t("ninguém votou ainda", "nobody has voted yet"));
     }
     let winner = best["text"].as_str().unwrap_or("").to_string();

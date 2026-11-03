@@ -18,6 +18,7 @@ pub enum Format {
     Pdfcraft,
 }
 impl Format {
+    #[must_use]
     pub fn for_id(id: &str) -> Option<Self> {
         match id {
             deckcraft::APP => Some(Self::Deckcraft),
@@ -28,6 +29,7 @@ impl Format {
             _ => None,
         }
     }
+    #[must_use]
     pub fn id(self) -> &'static str {
         match self {
             Self::Deckcraft => deckcraft::APP,
@@ -37,6 +39,7 @@ impl Format {
             Self::Pdfcraft => pdfcraft::APP,
         }
     }
+    #[must_use]
     pub fn resource(self) -> &'static str {
         match self {
             Self::Deckcraft => deckcraft::RESOURCE,
@@ -46,6 +49,7 @@ impl Format {
             Self::Pdfcraft => pdfcraft::RESOURCE,
         }
     }
+    #[must_use]
     pub fn mime(self) -> &'static str {
         match self {
             Self::Deckcraft => deckcraft::MIME,
@@ -55,6 +59,7 @@ impl Format {
             Self::Pdfcraft => pdfcraft::MIME,
         }
     }
+    #[must_use]
     pub fn revision(self) -> &'static str {
         match self {
             Self::Deckcraft => deckcraft::ENGINE_REVISION,
@@ -64,6 +69,7 @@ impl Format {
             Self::Pdfcraft => pdfcraft::ENGINE_REVISION,
         }
     }
+    #[must_use]
     pub fn max_bytes(self) -> usize {
         match self {
             Self::Deckcraft => deckcraft::MAX_BYTES,
@@ -73,6 +79,7 @@ impl Format {
             Self::Pdfcraft => pdfcraft::MAX_BYTES,
         }
     }
+    #[must_use]
     pub fn seed(self) -> &'static [u8] {
         match self {
             Self::Deckcraft => deckcraft::registration::EMPTY,
@@ -82,6 +89,7 @@ impl Format {
             Self::Pdfcraft => pdfcraft::EMPTY,
         }
     }
+    #[must_use]
     pub fn available(self) -> bool {
         match self {
             Self::Deckcraft => deckcraft::registration::available(),
@@ -91,6 +99,7 @@ impl Format {
             Self::Pdfcraft => pdfcraft_registration::available(),
         }
     }
+    #[must_use]
     pub fn filename(self) -> &'static str {
         match self {
             Self::Deckcraft => "presentation.deckcraft",
@@ -100,6 +109,7 @@ impl Format {
             Self::Pdfcraft => "document.pdf",
         }
     }
+    #[must_use]
     pub fn item_prefix(self) -> &'static str {
         match self {
             Self::Deckcraft => "it_deck_",
@@ -109,6 +119,8 @@ impl Format {
             Self::Pdfcraft => "it_pdf_",
         }
     }
+    /// # Errors
+    /// Refuses malformed, unsupported or oversized binary content instead of normalizing or dropping its bytes.
     pub fn metadata(self, bytes: &[u8], title: &str) -> Result<String, &'static str> {
         match self {
             Self::Deckcraft => Ok(deckcraft::Document::parse(bytes)?.metadata(title)),

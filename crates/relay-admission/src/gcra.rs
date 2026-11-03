@@ -6,9 +6,10 @@ pub enum Decision {
     Rejected { wait_ns: u64 },
 }
 
-/// Exactly the native limiter's saturating UInt64 calculation. Rejected requests
+/// Exactly the native limiter's saturating `UInt64` calculation. Rejected requests
 /// do not update `tat_ns`. Native callers use elapsed monotonic time; durable
 /// hosts must explicitly choose and persist their own nondecreasing clock basis.
+#[must_use]
 pub fn decide(
     now_ns: u64,
     tat_ns: Option<u64>,

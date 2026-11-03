@@ -278,7 +278,7 @@ mod linux {
         reader.read_line(&mut line)?;
         let resp = match serde_json::from_str::<Request>(&line) {
             Ok(req) => dispatch(req),
-            Err(e) => Response::err(format!("bad request: {e}")),
+            Err(e) => Response::err(&format!("bad request: {e}")),
         };
         let mut out = serde_json::to_vec(&resp).unwrap_or_default();
         out.push(b'\n');
@@ -296,7 +296,7 @@ mod linux {
                 Request::Exec { .. } | Request::Put { .. } | Request::Get { .. }
             )
         {
-            return Response::err(format!(
+            return Response::err(&format!(
                 "{TAKEOVER_IN_PROGRESS}: the owner is using the browser"
             ));
         }
@@ -326,10 +326,10 @@ mod linux {
                             ok: true,
                             ..Default::default()
                         },
-                        Err(e) => Response::err(e),
+                        Err(e) => Response::err(&e),
                     }
                 }
-                Err(e) => Response::err(e),
+                Err(e) => Response::err(&e),
             },
             Request::Get { path, max_bytes } => match File::open(&path) {
                 Ok(f) => {
@@ -341,10 +341,10 @@ mod linux {
                             data_b64: B64.encode(data),
                             ..Default::default()
                         },
-                        Err(e) => Response::err(e),
+                        Err(e) => Response::err(&e),
                     }
                 }
-                Err(e) => Response::err(e),
+                Err(e) => Response::err(&e),
             },
         }
     }
@@ -440,7 +440,7 @@ mod linux {
         let started = Instant::now();
         let mut child = match cmd.spawn() {
             Ok(c) => c,
-            Err(e) => return Response::err(format!("spawn {prog}: {e}")),
+            Err(e) => return Response::err(&format!("spawn {prog}: {e}")),
         };
         let pgid = child.id() as i32;
         if let (Some(mut si), Some(data)) = (child.stdin.take(), stdin_b64) {
@@ -462,7 +462,7 @@ mod linux {
                     break (None, true);
                 }
                 Ok(None) => std::thread::sleep(Duration::from_millis(2)),
-                Err(e) => return Response::err(e),
+                Err(e) => return Response::err(&e),
             }
         };
         // Leftover background processes would hold the pipes open.

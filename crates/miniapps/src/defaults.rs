@@ -1,10 +1,10 @@
 //! Shared built-in game geography and demonstration templates.
 
-use super::*;
+use super::{is_en, json, t, Value};
 
 // ── MapTap ──
 
-/// Lugares do MapTap: os mesmos para todo mundo no grupo (sorteados pelo dia).
+/// Lugares do `MapTap`: os mesmos para todo mundo no grupo (sorteados pelo dia).
 /// (name, country, hint) in pt-BR and en, then lat/lon.
 type Place = (
     &'static str,
@@ -119,8 +119,11 @@ const PLACES: &[Place] = &[
     ),
 ];
 
-pub(super) fn maptap_places(now: i64) -> Value {
-    let day = (now / 86_400_000) as usize;
+pub(super) fn maptap_places(now: i64) -> Result<Value, String> {
+    let count = i64::try_from(PLACES.len())
+        .map_err(|_| t("catálogo de lugares inválido", "invalid place catalog"))?;
+    let day = usize::try_from((now / 86_400_000).rem_euclid(count))
+        .map_err(|_| t("dia fora do intervalo", "day outside the supported range"))?;
     let en = is_en();
     let picks: Vec<Value> = (0..5)
         .map(|i| {
@@ -134,9 +137,10 @@ pub(super) fn maptap_places(now: i64) -> Value {
             json!({ "name": name, "country": country, "hint": hint, "lat": lat, "lon": lon })
         })
         .collect();
-    Value::Array(picks)
+    Ok(Value::Array(picks))
 }
 
+#[must_use]
 pub fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let r = 6371.0_f64;
     let (p1, p2) = (lat1.to_radians(), lat2.to_radians());
@@ -147,17 +151,17 @@ pub fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 }
 
 /// (quem, pontos, rodadas jogadas), do maior para o menor.
+#[must_use]
 pub fn maptap_board(v: &Value) -> Vec<(String, i64, usize)> {
     let mut b: Vec<(String, i64, usize)> = v["guesses"]
         .as_object()
         .map(|m| {
             m.iter()
                 .map(|(who, g)| {
-                    let rounds = g.as_object().map(|r| r.len()).unwrap_or(0);
+                    let rounds = g.as_object().map_or(0, serde_json::Map::len);
                     let pts = g
                         .as_object()
-                        .map(|r| r.values().filter_map(|x| x["points"].as_i64()).sum())
-                        .unwrap_or(0);
+                        .map_or(0, |r| r.values().filter_map(|x| x["points"].as_i64()).sum());
                     (who.clone(), pts, rounds)
                 })
                 .collect()

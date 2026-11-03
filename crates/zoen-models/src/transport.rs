@@ -128,7 +128,7 @@ impl BoundedHttp {
             bytes.extend_from_slice(&chunk);
         }
         self.record(|capture| {
-            capture.body = bytes.clone();
+            capture.body.clone_from(&bytes);
             capture.complete = true;
         })
         .map_err(Error::instance)?;

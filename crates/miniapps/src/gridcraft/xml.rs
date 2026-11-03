@@ -1,5 +1,5 @@
 //! Streaming bounds and package references for the initial managed XLSX profile.
-use super::*;
+use super::{cell_reference, part_name, worksheet, BTreeMap, INVALID, MAX_CELLS, MAX_SHEETS};
 use quick_xml::{
     events::{BytesStart, Event},
     Reader,
@@ -33,9 +33,8 @@ impl Profile {
             match reader.read_event().map_err(|_| INVALID)? {
                 event @ (Event::Start(_) | Event::Empty(_)) => {
                     let empty = matches!(&event, Event::Empty(_));
-                    let tag = match event {
-                        Event::Start(tag) | Event::Empty(tag) => tag,
-                        _ => return Err(INVALID),
+                    let (Event::Start(tag) | Event::Empty(tag)) = event else {
+                        return Err(INVALID);
                     };
                     if stack.len() >= 64 {
                         return Err(INVALID);
@@ -48,62 +47,7 @@ impl Profile {
                         }
                     }
                     let attrs = attributes(&tag, &reader, version)?;
-                    if part == "[Content_Types].xml"
-                        && name == b"Override"
-                        && attrs.get("PartName").map(String::as_str) == Some("/xl/workbook.xml")
-                    {
-                        if self.workbook_type
-                            || attrs.get("ContentType").map(String::as_str)
-                                != Some(
-                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
-                                )
-                        {
-                            return Err(INVALID);
-                        }
-                        self.workbook_type = true;
-                    }
-                    if name == b"Relationship" {
-                        let target = attrs.get("Target").ok_or(INVALID)?;
-                        if attrs
-                            .get("TargetMode")
-                            .is_some_and(|mode| mode != "Internal")
-                            || target.contains(':')
-                            || target.contains('\\')
-                            || target.contains('%')
-                            || target.starts_with('/')
-                            || target.split('/').any(|p| p == ".." || p == ".")
-                        {
-                            return Err(INVALID);
-                        }
-                        let ty = attrs.get("Type").ok_or(INVALID)?;
-                        if part == "_rels/.rels" && ty.ends_with("/officeDocument") {
-                            if self.office_document || target != "xl/workbook.xml" {
-                                return Err(INVALID);
-                            }
-                            self.office_document = true;
-                        }
-                        if part == "xl/_rels/workbook.xml.rels" {
-                            let full = format!("xl/{target}");
-                            if !part_name(&full) {
-                                return Err(INVALID);
-                            }
-                            if ty.ends_with("/worksheet") {
-                                if !worksheet(&full)
-                                    || self
-                                        .sheet_targets
-                                        .insert(attrs.get("Id").ok_or(INVALID)?.clone(), full)
-                                        .is_some()
-                                {
-                                    return Err(INVALID);
-                                }
-                            } else if !ty.ends_with("/styles")
-                                && !ty.ends_with("/sharedStrings")
-                                && !ty.ends_with("/theme")
-                            {
-                                return Err(INVALID);
-                            }
-                        }
-                    }
+                    self.metadata_tag(part, &name, &attrs)?;
                     if part == "xl/workbook.xml" && name == b"sheet" {
                         self.sheets += 1;
                         if self.sheets > MAX_SHEETS
@@ -153,20 +97,7 @@ impl Profile {
                     }
                 }
                 Event::GeneralRef(value) => {
-                    let character =
-                        if let Some(c) = value.resolve_char_ref().map_err(|_| INVALID)? {
-                            c
-                        } else {
-                            let name: &[u8] = value.as_ref();
-                            match name {
-                                b"amp" => '&',
-                                b"lt" => '<',
-                                b"gt" => '>',
-                                b"quot" => '"',
-                                b"apos" => '\'',
-                                _ => return Err(INVALID),
-                            }
-                        };
+                    let character = reference_character(&value)?;
                     if let Some(formula) = &mut formula {
                         formula.push(character);
                         if formula.len() > 128 * 1024 {
@@ -175,13 +106,7 @@ impl Profile {
                     }
                 }
                 Event::Decl(declaration) => {
-                    if roots != 0 || version != quick_xml::XmlVersion::Implicit1_0 {
-                        return Err(INVALID);
-                    }
-                    version = declaration.xml_version().map_err(|_| INVALID)?;
-                    if version != quick_xml::XmlVersion::Explicit1_0 {
-                        return Err(INVALID);
-                    }
+                    validate_declaration(roots, &mut version, &declaration)?;
                 }
                 Event::Comment(_) => {}
                 Event::Eof => break,
@@ -192,6 +117,71 @@ impl Profile {
         if roots != 1 || !stack.is_empty() {
             return Err(INVALID);
         }
+        Ok(())
+    }
+    fn metadata_tag(
+        &mut self,
+        part: &str,
+        name: &[u8],
+        attrs: &BTreeMap<String, String>,
+    ) -> Result<(), &'static str> {
+        if part == "[Content_Types].xml"
+            && name == b"Override"
+            && attrs.get("PartName").map(String::as_str) == Some("/xl/workbook.xml")
+        {
+            if self.workbook_type
+                            || attrs.get("ContentType").map(String::as_str)
+                                != Some(
+                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+                                )
+                        {
+                            return Err(INVALID);
+                        }
+            self.workbook_type = true;
+        }
+        if name == b"Relationship" {
+            let target = attrs.get("Target").ok_or(INVALID)?;
+            if attrs
+                .get("TargetMode")
+                .is_some_and(|mode| mode != "Internal")
+                || target.contains(':')
+                || target.contains('\\')
+                || target.contains('%')
+                || target.starts_with('/')
+                || target.split('/').any(|p| p == ".." || p == ".")
+            {
+                return Err(INVALID);
+            }
+            let ty = attrs.get("Type").ok_or(INVALID)?;
+            if part == "_rels/.rels" && ty.ends_with("/officeDocument") {
+                if self.office_document || target != "xl/workbook.xml" {
+                    return Err(INVALID);
+                }
+                self.office_document = true;
+            }
+            if part == "xl/_rels/workbook.xml.rels" {
+                let full = format!("xl/{target}");
+                if !part_name(&full) {
+                    return Err(INVALID);
+                }
+                if ty.ends_with("/worksheet") {
+                    if !worksheet(&full)
+                        || self
+                            .sheet_targets
+                            .insert(attrs.get("Id").ok_or(INVALID)?.clone(), full)
+                            .is_some()
+                    {
+                        return Err(INVALID);
+                    }
+                } else if !ty.ends_with("/styles")
+                    && !ty.ends_with("/sharedStrings")
+                    && !ty.ends_with("/theme")
+                {
+                    return Err(INVALID);
+                }
+            }
+        }
+
         Ok(())
     }
     pub fn finish(&self, parts: &BTreeMap<String, Vec<u8>>) -> Result<(), &'static str> {
@@ -266,4 +256,37 @@ fn attributes(
         }
     }
     Ok(out)
+}
+
+fn reference_character(value: &quick_xml::events::BytesRef<'_>) -> Result<char, &'static str> {
+    Ok(
+        if let Some(c) = value.resolve_char_ref().map_err(|_| INVALID)? {
+            c
+        } else {
+            let name: &[u8] = value.as_ref();
+            match name {
+                b"amp" => '&',
+                b"lt" => '<',
+                b"gt" => '>',
+                b"quot" => '"',
+                b"apos" => '\'',
+                _ => return Err(INVALID),
+            }
+        },
+    )
+}
+
+fn validate_declaration(
+    roots: usize,
+    version: &mut quick_xml::XmlVersion,
+    declaration: &quick_xml::events::BytesDecl<'_>,
+) -> Result<(), &'static str> {
+    if roots != 0 || *version != quick_xml::XmlVersion::Implicit1_0 {
+        return Err(INVALID);
+    }
+    *version = declaration.xml_version().map_err(|_| INVALID)?;
+    if *version != quick_xml::XmlVersion::Explicit1_0 {
+        return Err(INVALID);
+    }
+    Ok(())
 }

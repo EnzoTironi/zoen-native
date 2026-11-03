@@ -2,7 +2,10 @@
 //! use grants; writes use the same signed and MLS-encrypted outbox as messages.
 //! No agent key, second document store, or approval authority lives in JavaScript.
 
-use super::*;
+use super::{
+    documents, BTreeMap, BTreeSet, Client, Deserialize, Event, EventBody, OpenMlsProvider, Role,
+    Signer, SpaceKind,
+};
 use grants::{evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason};
 use serde_json::{json, Value};
 use types::{
@@ -169,6 +172,11 @@ fn asking_note(text: &str) -> bool {
 }
 
 impl<S: Signer> Client<S> {
+    ///
+    /// # Errors
+    /// Returns an error for invalid requests, unavailable agents or grants,
+    /// insufficient ownership or conversation authority, invalid budgets,
+    /// or failed projection, signing, encryption or client updates.
     pub fn agent_request(
         &mut self,
         request: &str,
@@ -192,7 +200,7 @@ impl<S: Signer> Client<S> {
             }).collect()),
             Command::SetTrust { agent_id, space_id, level } => {
                 if self.agent_owner(&agent_id) != Some(self.account.identity.as_str()) || !writer(&state, &space_id, &self.account.identity) || !state.rosters.get(&space_id).is_some_and(|roster|roster.contains_key(&agent_id)) { return Err("Só o dono pode mudar a autonomia de um agente que participa desta conversa.".into()); }
-                self.queue_domain_body(&space_id, EventBody::GrantIssued { grant: Grant { id: format!("gr_{}",types::new_ulid(now).map_err(|error| error.to_string())?), grantor:self.account.identity.clone(),grantee:Some(agent_id),scope:GrantScope::Space(space_id.clone()),capability:Capability::Trust(level),expires_at_ms:None}},now,Vec::new())?;
+                self.queue_domain_body(&space_id, &EventBody::GrantIssued { grant: Grant { id: format!("gr_{}",types::new_ulid(now).map_err(|error| error.to_string())?), grantor:self.account.identity.clone(),grantee:Some(agent_id),scope:GrantScope::Space(space_id.clone()),capability:Capability::Trust(level),expires_at_ms:None}},now,Vec::new())?;
                 changed=true; Value::Null
             }
             Command::RaiseBudget { agent_id, extra_cents } => {
@@ -200,7 +208,7 @@ impl<S: Signer> Client<S> {
                 let budget=self.agent_budget(&state,&agent_id,now).ok_or("Este orçamento não está disponível para esta conta.")?;
                 let limit=budget.limit_cents.checked_add(extra).ok_or("O orçamento ultrapassa o limite permitido.")?;
                 let personal=self.logs.keys().find(|space| self.metadata(space).is_some_and(|(_,kind,_)|kind==SpaceKind::Personal) && writer(&state,space,&self.account.identity)).cloned().ok_or("O espaço pessoal ainda não chegou neste aparelho.")?;
-                self.queue_domain_body(&personal,EventBody::GrantIssued{grant:Grant{id:format!("gr_{}",types::new_ulid(now).map_err(|error| error.to_string())?),grantor:self.account.identity.clone(),grantee:Some(agent_id.clone()),scope:GrantScope::Everywhere,capability:Capability::MonthlyBudget{cents:limit},expires_at_ms:None}},now,Vec::new())?;
+                self.queue_domain_body(&personal,&EventBody::GrantIssued{grant:Grant{id:format!("gr_{}",types::new_ulid(now).map_err(|error| error.to_string())?),grantor:self.account.identity.clone(),grantee:Some(agent_id.clone()),scope:GrantScope::Everywhere,capability:Capability::MonthlyBudget{cents:limit},expires_at_ms:None}},now,Vec::new())?;
                 changed=true; self.agent_profile_value(&self.agent_projection()?,&agent_id,now)
             }
             Command::DecideRequest { request_id, decision } => { let result=self.decide_browser_request(&request_id,decision,now)?; changed=true; result }
@@ -208,7 +216,7 @@ impl<S: Signer> Client<S> {
                 let grant=state.grants.iter().find(|grant|grant.grant.id==grant_id && !grant.revoked && grant.grant.grantor==self.account.identity).ok_or("Esta permissão não está disponível para esta conta.")?;
                 let matching = if revoke_device { matches!((&grant.grant.capability, &grant.grant.scope), (Capability::Device { .. }, GrantScope::Item(_))) } else { matches!((&grant.grant.capability, &grant.grant.scope), (Capability::Standing { .. }, GrantScope::Space(_))) };
                 if !matching { return Err("Esta permissão não corresponde ao controle solicitado.".into()); }
-                self.queue_domain_body(&grant.space,EventBody::GrantRevoked{grant:grant_id},now,Vec::new())?; changed=true; Value::Null
+                self.queue_domain_body(&grant.space,&EventBody::GrantRevoked{grant:grant_id},now,Vec::new())?; changed=true; Value::Null
             }
             Command::PreviewDecisions { agent_id, space_id } => {
                 let cases=[("Responder","Responder quando chamado",ActionClass::Reply),("Editar o plano","Alterar um plano compartilhado",ActionClass::Reversible),("Mandar para fora","Enviar o roteiro por WhatsApp",ActionClass::External),("Pagamento pequeno","Pagar R$ 40,00",ActionClass::Money{cents:4_000}),("Pagamento grande","Reservar por R$ 640,00",ActionClass::Money{cents:64_000}),("Apagar de verdade","Apagar um histórico",ActionClass::Irreversible),("Publicar","Publicar para uma nova audiência",ActionClass::PublicAudience)];
@@ -227,7 +235,7 @@ impl<S: Signer> Client<S> {
                 let mut mentions=Vec::new();for chat in self.conversations(){for message in &chat.messages{if message.author!=self.account.identity && !message.deleted && message.text.to_lowercase().contains(&token){mentions.push((message.at_ms,json!({"space_id":chat.id,"space_title":chat.title,"message_id":message.entry.as_ref().unwrap_or(&message.id)})));}}}
                 mentions.sort_by_key(|(at,_)|std::cmp::Reverse(*at));Value::Array(mentions.into_iter().map(|(_,value)|value).collect())
             }
-            Command::AppDeviceGrants {} => Value::Array(state.grants.iter().rev().filter(|grant|!grant.revoked && grant.grant.grantor==self.account.identity && grant.grant.expires_at_ms.is_none_or(|at|at>now)).filter_map(|grant|{let Capability::Device{capability,purpose}=&grant.grant.capability else{return None;};let GrantScope::Item(item)=&grant.grant.scope else{return None;};let item=state.items.get(item)?;let ItemContent::App(app)=&item.current().content else{return None;};Some(json!({"grant_id":grant.grant.id,"item_id":item.id,"item_title":app.title,"app_name":miniapps::spec(&app.app).map(|spec|spec.name).unwrap_or(&app.app),"space_title":self.metadata(&item.space).map(|(title,_,_)|title).unwrap_or_default(),"capability":capability,"purpose":purpose,"always":grant.grant.expires_at_ms.is_none(),"at_ms":grant.at.to_string()}))}).collect()),
+            Command::AppDeviceGrants {} => Value::Array(state.grants.iter().rev().filter(|grant|!grant.revoked && grant.grant.grantor==self.account.identity && grant.grant.expires_at_ms.is_none_or(|at|at>now)).filter_map(|grant|{let Capability::Device{capability,purpose}=&grant.grant.capability else{return None;};let GrantScope::Item(item)=&grant.grant.scope else{return None;};let item=state.items.get(item)?;let ItemContent::App(app)=&item.current().content else{return None;};Some(json!({"grant_id":grant.grant.id,"item_id":item.id,"item_title":app.title,"app_name":miniapps::spec(&app.app).map_or(app.app.as_str(), |spec|spec.name),"space_title":self.metadata(&item.space).map(|(title,_,_)|title).unwrap_or_default(),"capability":capability,"purpose":purpose,"always":grant.grant.expires_at_ms.is_none(),"at_ms":grant.at.to_string()}))}).collect()),
         };
         Ok(documents::DocumentResponse {
             result,
