@@ -119,6 +119,14 @@ async fn expired_or_invalid_targets_never_reach_provider_and_dead_token_is_expli
         pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
         Outcome::Gone
     );
+    mock.replies
+        .lock()
+        .unwrap()
+        .push((400, r#"{"reason":"BadDeviceToken"}"#.into()));
+    assert_eq!(
+        pusher.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
+        Outcome::Failed("apns voip 400".into())
+    );
     let disabled = Pusher::new(mock, None, None).unwrap();
     assert_eq!(
         disabled.call_wake(&target(APNS_VOIP), &fresh_wake()).await,
