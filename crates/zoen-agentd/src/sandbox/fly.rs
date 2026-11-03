@@ -470,13 +470,21 @@ impl SandboxProvider for FlyMachinesProvider {
 
     async fn resume(&self, snap: &SnapshotRef) -> Result<Lease, SandboxError> {
         let machine = self.machine(&snap.lease)?;
-        self.call(
-            reqwest::Method::POST,
-            &format!("/machines/{machine}/start"),
-            None,
-        )
-        .await?;
-        self.wait(&machine, "started").await?;
+        let start = self
+            .call(
+                reqwest::Method::POST,
+                &format!("/machines/{machine}/start"),
+                None,
+            )
+            .await;
+        match start {
+            Ok(_) => self.wait(&machine, "started").await?,
+            Err(error) => {
+                if !matches!(self.state_of(&machine).await.as_deref(), Ok("started")) {
+                    return Err(error);
+                }
+            }
+        }
         self.machines
             .lock()
             .unwrap()

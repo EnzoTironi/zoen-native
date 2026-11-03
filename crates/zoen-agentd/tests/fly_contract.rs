@@ -391,6 +391,7 @@ async fn suspended_cleanup_can_retry_resume_then_retry_delete() {
     {
         let mut guest = api.guest.lock().unwrap();
         guest.resume_failures = 1;
+        guest.state_response = Some((200, json!({"state": "suspended"})));
         guest.delete_failures = 1;
     }
     let session = session(api.provider());
@@ -533,4 +534,27 @@ async fn the_actual_guest_scripts_round_trip_binary_data_and_quoted_paths() {
     assert_eq!(std::fs::read(path).unwrap(), bytes);
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     fly.release(lease).await.unwrap();
+}
+
+#[tokio::test]
+async fn resume_recovers_when_start_errors_but_machine_is_running() {
+    let api = MockFly::new();
+    let session = session(api.provider());
+    session
+        .exec(ExecRequest::sh("echo before"), NOW)
+        .await
+        .unwrap();
+    assert!(session.tick(NOW).await.unwrap());
+    {
+        let mut guest = api.guest.lock().unwrap();
+        guest.resume_failures = 1;
+        guest.state_response = Some((200, json!({"state": "started"})));
+    }
+    session
+        .exec(ExecRequest::sh("echo after"), NOW)
+        .await
+        .unwrap();
+    assert_eq!(session.state().await, "running");
+    assert_eq!(api.guest.lock().unwrap().resume_calls, 1);
+    session.finish(NOW).await.unwrap();
 }
