@@ -166,6 +166,8 @@ test('ambiguous write and failed read stay explicit; retry only reads', async ()
   await f.load();
   assert.equal(f.writes().length, 1);
   assert.equal(f.session.getSnapshot().phase, 'ready');
+  assert.equal(f.session.getSnapshot().readFailed, false);
+  assert.equal(f.session.getSnapshot().actionFailed, true);
 });
 test('loading, empty, malformed and foreign reads stay separate; late reads are suppressed', async () => {
   const f = mutedFixture();

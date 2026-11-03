@@ -117,6 +117,7 @@ export class MutedChatsSession {
   private state = emptyMutedChats;
   private owner: AccountScope | null = null;
   private revision = 0;
+  private failedAction: FailedMute | null = null;
   // Reads may retire a review, but cannot retire a write already dispatched.
   private readonly inFlight = new Map<string, { id: string }>();
   private readonly listeners = new Set<() => void>();
@@ -140,6 +141,7 @@ export class MutedChatsSession {
   activate(owner: AccountScope | null) {
     this.owner = owner ? Object.freeze({ ...owner }) : null;
     ++this.revision;
+    this.failedAction = null;
     const scope = accountScopeKey(owner);
     this.state = { ...emptyMutedChats, scope, pending: this.inFlight.get(scope)?.id ?? null };
     this.publish({});
@@ -162,9 +164,10 @@ export class MutedChatsSession {
   private accepts(ticket: MutedChatTicket | null) {
     return Boolean(ticket && ticket.scope === this.state.scope && this.current(ticket.revision));
   }
-  async load(ticket: MutedChatTicket | null, failedAction: FailedMute | null = null) {
+  async load(ticket: MutedChatTicket | null, failedAction = this.failedAction) {
     if (!this.accepts(ticket) || !this.owner) return;
     const owner = this.owner;
+    this.failedAction = failedAction;
     const revision = ++this.revision;
     this.publish({
       phase: 'loading',
@@ -191,6 +194,7 @@ export class MutedChatsSession {
         BigInt(failedAction.until) <= BigInt(snapshot.clock_ms) &&
         actual === null,
       );
+      this.failedAction = null;
       this.publish({
         phase: 'ready',
         chats,
