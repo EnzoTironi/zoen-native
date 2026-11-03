@@ -4,6 +4,14 @@ use super::*;
 
 type R<T> = Result<T, Box<dyn std::error::Error>>;
 
+struct RetryStorage(std::path::PathBuf);
+
+impl Drop for RetryStorage {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 enum Recovery {
     Live,
     ReconnectAndLostEcho,
@@ -57,8 +65,12 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
     let _ = rustls::crypto::ring::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let url = format!("ws://{}", listener.local_addr()?);
-    let mut engine = Engine::open(":memory:")?;
-    engine.create_account("Ana", "ana", &url)?;
+    let storage = RetryStorage(std::env::temp_dir().join(types::new_id("publication-retry")?));
+    std::fs::create_dir(&storage.0)?;
+    let database = storage.0.join("retry.sqlite");
+    let database = database.to_str().ok_or("fixture database path")?;
+    let mut engine = Engine::open(database)?;
+    let (_, device, _) = engine.create_account("Ana", "ana", &url)?;
     engine.set_registered(true)?;
     let _ = engine
         .mls_key_packages_to_publish()
@@ -115,6 +127,14 @@ async fn exercise(minimum: Duration, reason: &str, recovery: Recovery) -> R<()> 
     .collect::<R<Vec<_>>>()?;
     let original = engine.outbox_envelopes();
     assert_eq!(original.len(), queued.len());
+    drop(engine);
+    let mut engine = Engine::open(database)?;
+    assert_eq!(engine.outbox_envelopes(), original);
+    assert!(engine.unlock(Some(device.to_vec()))?);
+    if engine.mls_key_packages_to_publish().is_some() {
+        engine.mls_key_packages_published(Ok(()));
+    }
+    engine.net.poke = Some(Box::new(|| {}));
     let engine = Arc::new(Mutex::new(engine));
     let (cmd, commands) = mpsc::unbounded_channel();
     let (status, mut connection) = watch::channel(NetStatus {
