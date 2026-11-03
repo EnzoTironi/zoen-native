@@ -305,27 +305,30 @@ test('a fresh read confirms an accepted unmute after the first reconciliation fa
   assert.equal(f.writes().length, 1);
 });
 
-test('a lost unmute response in the background is reconciled on foreground', async () => {
-  const f = mutedFixture();
-  await f.load();
-  f.select();
-  const started = deferred<void>();
-  const response = deferred<void>();
-  f.write(async () => {
-    started.resolve();
-    await response.promise;
-    throw new Error('unknown acceptance');
-  });
-  const action = f.unmute();
-  await started.promise;
-  f.session.suspend();
-  response.resolve();
-  await action;
-  assert.equal(f.session.ticket(), null);
+for (const sameAccount of [true, false])
+  test(`a lost unmute response in the background is only reconciled for the same account (${sameAccount})`, async () => {
+    const f = mutedFixture();
+    await f.load();
+    f.select();
+    const started = deferred<void>();
+    const response = deferred<void>();
+    f.write(async () => {
+      started.resolve();
+      await response.promise;
+      throw new Error('unknown acceptance');
+    });
+    const action = f.unmute();
+    await started.promise;
+    f.session.suspend();
+    response.resolve();
+    await action;
+    assert.equal(f.session.ticket(), null);
 
-  f.session.activate(scope);
-  await f.load();
-  assert.equal(f.session.getSnapshot().phase, 'ready');
-  assert.equal(f.session.getSnapshot().actionFailed, true);
-  assert.equal(f.writes().length, 1);
-});
+    const next = sameAccount ? scope : { ...scope, epoch: scope.epoch + 1 };
+    f.scope(next);
+    f.session.activate(next);
+    await f.load();
+    assert.equal(f.session.getSnapshot().phase, 'ready');
+    assert.equal(f.session.getSnapshot().actionFailed, sameAccount);
+    assert.equal(f.writes().length, 1);
+  });
