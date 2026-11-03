@@ -80,6 +80,7 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
   const search = {
     status: 'none',
     state: {
+      active: true,
       query: 'question',
       completed: true,
       loading: false,
