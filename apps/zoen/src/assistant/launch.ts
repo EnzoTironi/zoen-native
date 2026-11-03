@@ -11,9 +11,15 @@ export function launchConversationAssistant(spaceId: string, query: string, stor
   const scope = conversationScope(store.getSnapshot(), store.sessionEpoch, spaceId);
   if (!scope || store.isSessionRetiring || !query.trim()) return;
   const ticket = randomUUID();
-  while (launches.size >= 4) launches.delete(launches.keys().next().value!);
   launches.set(ticket, { spaceId, query: query.trim(), scope });
-  router.push({ pathname: '/ask/[space]', params: { space: spaceId, ticket } });
+  try {
+    router.push({ pathname: '/ask/[space]', params: { space: spaceId, ticket } });
+  } catch (error) {
+    launches.delete(ticket);
+    throw error;
+  }
+  const oldest = launches.keys().next();
+  if (launches.size > 4 && !oldest.done) launches.delete(oldest.value);
 }
 export function readAssistantLaunch(
   ticket: string | undefined,
