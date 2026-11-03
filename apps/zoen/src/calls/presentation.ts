@@ -43,7 +43,7 @@ export function readCallPresentation(
 }
 
 export function callElapsed(connectedAtMs: number | null, now: number): string | null {
-  if (connectedAtMs === null) return null;
+  if (connectedAtMs === null || !Number.isFinite(now)) return null;
   const elapsed = Math.max(0, Math.floor((now - connectedAtMs) / 1000));
   const seconds = String(elapsed % 60).padStart(2, '0');
   const minutes = Math.floor(elapsed / 60);

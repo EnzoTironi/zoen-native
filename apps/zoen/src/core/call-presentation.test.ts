@@ -35,6 +35,7 @@ test('return presentation requires exact account/device and a valid transient ca
     assert.equal(readCallPresentation(json, owner), null);
   assert.equal(readCallPresentation(encode(current), { identity: undefined, device: 'a1' }), null);
   assert.equal(callElapsed(null, 4000), null);
+  assert.equal(callElapsed(1000, Number.NaN), null);  assert.equal(callElapsed(1000, Infinity), null);
   assert.equal(callElapsed(1000, 65_000), '1:04');
   assert.equal(callElapsed(1000, 0), '0:00');
 });
