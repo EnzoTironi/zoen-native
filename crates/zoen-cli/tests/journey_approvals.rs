@@ -1,5 +1,8 @@
 //! Real relay/FDB ordering, device admission, SQLite interruption and cold restart.
-//! These are core approval effects, not cloud model or provider billing proof.
+//! These tests cover core approval effects. Provider billing and inference are separate.
+//! Local execution requires `ZOEN_TEST_PG`, FoundationDB (`scripts/fdb.sh up`),
+//! and NATS (`scripts/nats.sh up`) for the restart case. Load the exports from
+//! both scripts' `env` commands before running the suite.
 
 mod common;
 use client_core::{Engine, Ingest, RequestDecision, RequestStatus};
