@@ -225,7 +225,7 @@ pub async fn owner_status(
     Ok(AgentStateRecord {
         status: status.into(),
         kind: kind.unwrap_or_default(),
-        definition_version: version.max(0) as u32,
+        definition_version: u32::try_from(version).unwrap_or_default(),
         definition,
         cursors: Vec::new(),
     })
