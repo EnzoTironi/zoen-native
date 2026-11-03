@@ -248,22 +248,21 @@ pub async fn advance_cursor(
     let seq = i64::try_from(seq).map_err(|_| AgentCitizenError::Version)?;
     sqlx::query(
         r#"
+        WITH advanced AS (
         INSERT INTO agent_space_cursors (agent, space, last_seq)
         VALUES ($1, $2, $3)
         ON CONFLICT (agent, space) DO UPDATE SET
             last_seq = GREATEST(agent_space_cursors.last_seq, EXCLUDED.last_seq),
             updated_at = now()
+        RETURNING agent
+        )
+        UPDATE agent_citizens SET last_wake_at = now(), last_seen_at = now()
+        WHERE agent IN (SELECT agent FROM advanced)
         "#,
     )
     .bind(agent)
     .bind(space)
     .bind(seq)
-    .execute(pool)
-    .await?;
-    sqlx::query(
-        "UPDATE agent_citizens SET last_wake_at = now(), last_seen_at = now() WHERE agent = $1",
-    )
-    .bind(agent)
     .execute(pool)
     .await?;
     Ok(())
