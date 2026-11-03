@@ -9,7 +9,10 @@ fn canonical_drawing_install_save_reload_and_ciphertext_barrier_preserve_origina
         .ok_or("missing authenticated test as_ref value")?
         .frames
         .iter()
-        .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string())).collect::<Result<Vec<_>, _>>()?.into_iter().all(|frame| !matches!(frame, ClientFrame::Publish { .. })));
+        .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string()))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .all(|frame| !matches!(frame, ClientFrame::Publish { .. })));
     assert_eq!(read(&mut client, &item, 11)?["scene_json"], EMPTY);
     upload_and_confirm(&mut client, &mut log, 12)?;
     let base = read(&mut client, &item, 13)?;
@@ -24,7 +27,10 @@ fn canonical_drawing_install_save_reload_and_ciphertext_barrier_preserve_origina
         .ok_or("missing authenticated test as_ref value")?
         .frames
         .iter()
-        .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string())).collect::<Result<Vec<_>, _>>()?.into_iter().all(|frame| !matches!(frame, ClientFrame::Publish { .. })));
+        .map(|frame| ClientFrame::decode(frame).map_err(|error| error.to_string()))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .all(|frame| !matches!(frame, ClientFrame::Publish { .. })));
     let snapshot = saved
         .update
         .ok_or("missing authenticated test update")?
@@ -281,9 +287,12 @@ fn revoked_own_device_cannot_read_cached_drawings_or_replay_saved_intents(
     let request = save_request(&item, &base, &scene("Previously accepted"), "accepted");
     doc(&mut client, &request, 13)?;
     upload_and_confirm(&mut client, &mut log, 14)?;
-    assert_ne!(read(&mut client, &item, 15)?["scene_json"]
-        .as_str()
-        .ok_or("missing authenticated test as_str value")?, "");
+    assert_ne!(
+        read(&mut client, &item, 15)?["scene_json"]
+            .as_str()
+            .ok_or("missing authenticated test as_str value")?,
+        ""
+    );
     client
         .saved
         .membership
