@@ -17,6 +17,7 @@ pub struct FakeProvider {
     handler: Handler,
     can_suspend: bool,
     resume_failures: AtomicUsize,
+    pending_resume: std::sync::atomic::AtomicBool,
 }
 
 impl FakeProvider {
@@ -40,7 +41,12 @@ impl FakeProvider {
             handler,
             can_suspend: true,
             resume_failures: AtomicUsize::new(0),
+            pending_resume: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    pub fn stall_next_resume(&self) {
+        self.pending_resume.store(true, Ordering::SeqCst);
     }
 
     pub fn fail_next_resume(&self) {
@@ -113,6 +119,9 @@ impl SandboxProvider for FakeProvider {
     }
 
     async fn resume(&self, snap: &SnapshotRef) -> Result<Lease, SandboxError> {
+        if self.pending_resume.swap(false, Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
         if self.resume_failures.swap(0, Ordering::SeqCst) != 0 {
             return Err(SandboxError::Backend("injected resume failure".into()));
         }

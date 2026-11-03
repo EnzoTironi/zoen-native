@@ -117,26 +117,13 @@ impl ToolSession {
             }
             .into());
         }
-        let lease = match std::mem::replace(&mut *st, State::Cold) {
+        let lease = match &*st {
             State::Cold => self.provider.acquire(&self.spec, &self.owner).await?,
-            State::Suspended { snap } => match self.provider.resume(&snap).await {
-                Ok(lease) => lease,
-                Err(error) => {
-                    *st = State::Suspended { snap };
-                    return Err(error.into());
-                }
-            },
-            State::Running { lease, since, .. } => {
-                *st = State::Running {
-                    lease: lease.clone(),
-                    since,
-                    last_used: Instant::now(),
-                };
-                lease
-            }
+            State::Suspended { snap } => self.provider.resume(snap).await?,
+            State::Running { lease, .. } => lease.clone(),
             State::Finishing { .. } | State::Done => unreachable!(),
         };
-        if let State::Cold = &*st {
+        if matches!(&*st, State::Cold | State::Suspended { .. }) {
             let now = Instant::now();
             *st = State::Running {
                 lease: lease.clone(),

@@ -179,6 +179,15 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
         "running time is charged, rounded up to the second"
     );
 
+    provider.stall_next_resume();
+    assert!(tokio::time::timeout(
+        Duration::from_millis(20),
+        session.exec(ExecRequest::sh("print(2)"), NOW),
+    )
+    .await
+    .is_err());
+    assert_eq!(session.state().await, "suspended");
+
     provider.fail_next_resume();
     assert!(session
         .exec(ExecRequest::sh("print(2)"), NOW)
