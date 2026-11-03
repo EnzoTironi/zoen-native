@@ -45,8 +45,6 @@ test(
           '-warnings-as-errors',
           '-j',
           '1',
-          '-module-cache-path',
-          join(directory, 'modules'),
           ...['ios/Calls/ZoenCallModel.swift', 'tests/CallTurnRenewalTests.swift'].map((path) =>
             fileURLToPath(new URL(path, root)),
           ),
