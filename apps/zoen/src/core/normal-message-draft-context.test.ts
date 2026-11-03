@@ -52,13 +52,14 @@ for (const kind of ['selection', 'shared'] as const) {
       cross = shared();
     const input: NormalDraftSnapshot = {
       revision: '1',
-      text: 'Retained text',
+      text: '**Retained** text 🪷',
       reply_to: kind === 'selection' ? 'source' : null,
       ...(kind === 'selection' ? { reply_quote: quote } : { shared_reply: cross }),
     };
     const f = fixture(input);
     await f.drafts.activate(main);
     const before = f.drafts.getSnapshot(main);
+    assert.equal(before.text, input.text);
     const expected = structuredClone(kind === 'selection' ? before.replyQuote : before.sharedReply);
     quote.text = 'Changed caller input';
     quote.spans[0]!.end_utf16 = 2;
@@ -73,8 +74,10 @@ for (const kind of ['selection', 'shared'] as const) {
       snapshot.spans[0]!.end_utf16 = 99;
     }, TypeError);
     assert.deepEqual(kind === 'selection' ? before.replyQuote : before.sharedReply, expected);
-    f.drafts.setText(main, 'New private text');
+    const editedText = 'Retained *text* 🪷';
+    f.drafts.setText(main, editedText);
     await f.drafts.flush(main);
+    assert.equal(f.stored().text, editedText);
     assert.deepEqual(
       kind === 'selection' ? f.stored().reply_quote : f.stored().shared_reply,
       expected,
