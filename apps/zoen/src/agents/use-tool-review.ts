@@ -62,7 +62,12 @@ export function useToolReview(id: string, onExpiry?: () => void) {
         expiryTimer = setTimeout(
           () => {
             expiryTimer = undefined;
-            if (!foreground || reviewScopeKey(port.scope()) !== key) return;
+            if (
+              !foreground ||
+              reviewScopeKey(port.scope()) !== key ||
+              session.getSnapshot() !== current
+            )
+              return;
             if (Date.now() >= expiry) {
               notify();
               void session.refresh();
