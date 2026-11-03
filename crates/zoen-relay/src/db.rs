@@ -533,5 +533,5 @@ pub async fn revoke_device(
 mod push;
 pub use push::{
     claim_voip_wake, drop_push_token, get_voip_consent, push_targets, set_push_token,
-    set_voip_consent, voip_push_targets,
+    set_voip_consent, voip_push_targets, voip_registration_current,
 };

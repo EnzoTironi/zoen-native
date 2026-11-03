@@ -50,6 +50,18 @@ impl Session {
                     .await
                     .map_err(|_| "voip_wake_unavailable")?;
                 for target in targets {
+                    if !db::voip_registration_current(
+                        &self.st.pool,
+                        peer,
+                        &self.identity,
+                        space,
+                        target.registration_id,
+                    )
+                    .await
+                    .map_err(|_| "voip_wake_unavailable")?
+                    {
+                        continue;
+                    }
                     if self.st.push.call_wake(&target, &wake).await == crate::push::Outcome::Gone {
                         if db::drop_push_token(&self.st.pool, &target).await.is_err() {
                             tracing::warn!("failed to remove invalid VoIP registration");

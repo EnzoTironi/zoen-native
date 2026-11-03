@@ -89,15 +89,39 @@ pub async fn voip_push_targets(
     sender: &str,
     space: &str,
 ) -> Result<Vec<crate::push::Target>, sqlx::Error> {
+    voip_registrations(pool, recipient, sender, space, None).await
+}
+
+pub async fn voip_registration_current(
+    pool: &PgPool,
+    recipient: &str,
+    sender: &str,
+    space: &str,
+    registration: i64,
+) -> Result<bool, sqlx::Error> {
+    Ok(!voip_registrations(pool, recipient, sender, space, Some(registration))
+        .await?
+        .is_empty())
+}
+
+async fn voip_registrations(
+    pool: &PgPool,
+    recipient: &str,
+    sender: &str,
+    space: &str,
+    registration: Option<i64>,
+) -> Result<Vec<crate::push::Target>, sqlx::Error> {
     let rows = sqlx::query_as(
         "SELECT p.platform, p.token, p.registration_id FROM push_tokens p
          JOIN devices d ON d.identity = p.identity AND d.device = p.device AND d.revoked_at IS NULL
          JOIN voip_consent c ON c.recipient = p.identity
-         WHERE p.identity = $1 AND c.sender = $2 AND c.space = $3 AND p.purpose = 'voip'",
+         WHERE p.identity = $1 AND c.sender = $2 AND c.space = $3 AND p.purpose = 'voip'
+           AND ($4::bigint IS NULL OR p.registration_id = $4)",
     )
     .bind(recipient)
     .bind(sender)
     .bind(space)
+    .bind(registration)
     .fetch_all(pool)
     .await?;
     Ok(to_targets(rows))
