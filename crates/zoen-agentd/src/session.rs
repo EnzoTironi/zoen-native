@@ -117,6 +117,12 @@ impl ToolSession {
             }
             .into());
         }
+        if req.timeout.is_zero() {
+            return Ok(ExecOutput {
+                timed_out: true,
+                ..ExecOutput::default()
+            });
+        }
         let lease = match &*st {
             State::Cold => self.provider.acquire(&self.spec, &self.owner).await?,
             State::Suspended { snap } => self.provider.resume(snap).await?,
