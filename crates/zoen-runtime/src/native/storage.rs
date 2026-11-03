@@ -454,7 +454,7 @@ impl Execution {
             )
             .await?
             .ok_or(RuntimeError::InvalidBinding)?;
-        if hash(&manifest) != staged.root.manifest_digest {
+        if !matches_manifest(&staged.root, &manifest) {
             return Err(RuntimeError::InvalidBinding);
         }
         let principal = &staged.root.context.principal;
