@@ -198,7 +198,13 @@ test('unknown, background and inactive provider mounts wait for activation befor
         { kind: 'token' },
         {
           kind: 'register',
-          value: { op: 'register_push', platform: 'apns-sandbox', token: 'ab12' },
+          value: {
+            op: 'register_push',
+            expected_identity_id: 'synthetic-owner',
+            expected_device_id: 'synthetic-device',
+            platform: 'apns-sandbox',
+            token: 'ab12',
+          },
         },
       ]);
     } finally {

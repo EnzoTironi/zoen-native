@@ -428,7 +428,19 @@ impl Client {
                     )
                     .await?,
             ),
-            RegisterPush { platform, token } => encode(&self.register_push(platform, token).await?),
+            RegisterPush {
+                expected_identity_id,
+                expected_device_id,
+                platform,
+                token,
+            } => {
+                crate::agent_enrollment::owner_context(
+                    &self.lock(),
+                    &expected_identity_id,
+                    &expected_device_id,
+                )?;
+                encode(&self.register_push(platform, token).await?)
+            }
             _ => Err(invalid("Command routed to the wrong application handler")),
         }
     }

@@ -58,9 +58,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         permission: notificationPermission,
         token: nativePushToken,
         async register(configuration, token) {
-          if (!current()) throw new Error(t('notifications.accountChanged'));
+          if (!identityId || !deviceId || !current()) throw new Error(t('notifications.accountChanged'));
           await store.driver.request({
             op: 'register_push',
+            expected_identity_id: identityId,
+            expected_device_id: deviceId,
             platform: pushPlatform(configuration),
             token,
           });
