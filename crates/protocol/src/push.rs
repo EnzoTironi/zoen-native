@@ -168,7 +168,7 @@ impl CallWake {
             nonce,
             expires_at_ms,
         };
-        value.encode(now_ms)?;
+        value.validate(now_ms)?;
         Ok(value)
     }
 
@@ -217,6 +217,14 @@ impl CallWake {
     /// Rejects an invalid nonce, nonpositive current time, or expiry at/before
     /// that time or more than 60 seconds later.
     pub fn encode(&self, now_ms: i64) -> Result<String, PushInputError> {
+        self.validate(now_ms)?;
+        Ok(serde_json::json!({
+            "aps": { "content-available": 1 },
+            "zoen": { "v": 1, "call_wake": self.nonce, "expires_at_ms": self.expires_at_ms.to_string() }
+        }).to_string())
+    }
+
+    fn validate(&self, now_ms: i64) -> Result<(), PushInputError> {
         if now_ms <= 0
             || self.expires_at_ms <= now_ms
             || self.expires_at_ms > now_ms.saturating_add(60_000)
@@ -228,10 +236,7 @@ impl CallWake {
         {
             return Err(PushInputError::CallWake);
         }
-        Ok(serde_json::json!({
-            "aps": { "content-available": 1 },
-            "zoen": { "v": 1, "call_wake": self.nonce, "expires_at_ms": self.expires_at_ms.to_string() }
-        }).to_string())
+        Ok(())
     }
 }
 
