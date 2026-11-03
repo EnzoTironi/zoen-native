@@ -158,6 +158,16 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
         w.zoen("ana", &["read", "@bruno"]).trim(),
         "Ana: primeira\nBruno: escrita sem internet"
     );
+    // A new process must see the confirmed message and have nothing left to publish.
+    assert_eq!(pending(&w.zoen("bruno", &["status", "--offline"])), 0);
+    assert_eq!(
+        w.zoen("bruno", &["read", "@ana", "--offline"]).trim(),
+        "Ana: primeira\nBruno: escrita sem internet"
+    );
+    assert_eq!(
+        pending(&w.zoen("bruno", &["sync", "--timeout", "30000"])),
+        0
+    );
     // Sent exactly once.
     assert_eq!(
         w.events()
