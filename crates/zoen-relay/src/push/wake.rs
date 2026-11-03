@@ -17,7 +17,9 @@ impl DeviceTokens for sqlx::PgPool {
     }
 
     async fn remove_dead(&self, target: &Target) {
-        let _ = crate::db::drop_push_token(self, target).await;
+        if crate::db::drop_push_token(self, target).await.is_err() {
+            tracing::warn!("failed to remove invalid push registration");
+        }
     }
 }
 
