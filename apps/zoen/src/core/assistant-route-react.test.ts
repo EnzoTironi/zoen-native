@@ -6,6 +6,9 @@ for (const interruption of ['blur', 'background'] as const) {
     const f = await assistantRouteFixture();
     try {
       f.launch();
+      assert.deepEqual(structuredClone(f.routes), [
+        { pathname: '/ask/[space]', params: { space: f.space, ticket: 'ticket-1' } },
+      ]);
       await f.mount();
       assert.deepEqual(f.opened, [f.space]);
       assert.deepEqual(f.asked, ['lease-1:Missing search question']);
