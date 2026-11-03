@@ -57,9 +57,7 @@ impl Execution {
             .get(&generation.pack(&("manifest",)), false)
             .await?
             .ok_or(RuntimeError::RestoreUnreconciled)?;
-        if !(40..MANIFEST_BYTES).contains(&manifest.len())
-            || hash(&manifest) != staged.root.manifest_digest
-        {
+        if !matches_manifest(&staged.root, &manifest) {
             return Err(RuntimeError::InvalidBinding);
         }
         let mut chunks = Vec::new();

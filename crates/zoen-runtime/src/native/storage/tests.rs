@@ -9,7 +9,21 @@ pub(in crate::native) async fn test_cuts(
     principal: &Principal,
     image: &client_core::runtime_core::NativeImage,
 ) {
-    let current = execution.read_native(principal, None).await.unwrap().root;
+    let image_before_cut = execution.read_native(principal, None).await.unwrap();
+    let current = image_before_cut.root;
+    let manifest_key = execution.native_generation(&current).pack(&("manifest",));
+    let mut corrupt_manifest = image_before_cut.manifest.clone();
+    corrupt_manifest[0] ^= 1;
+    let trx = execution.transaction().await.unwrap();
+    trx.set(&manifest_key, &corrupt_manifest);
+    trx.commit().await.unwrap();
+    assert!(matches!(
+        execution.read_native(principal, None).await,
+        Err(RuntimeError::InvalidBinding)
+    ));
+    let trx = execution.transaction().await.unwrap();
+    trx.set(&manifest_key, &image_before_cut.manifest);
+    trx.commit().await.unwrap();
     let trx = execution.transaction().await.unwrap();
     let mut run_range = foundationdb::RangeOption::from(execution.root.subspace(&("run",)).range());
     run_range.limit = Some(1);
