@@ -20,7 +20,7 @@ extension ZoenSession {
   }
 
   private func assistantIsCurrent(_ lease: ZoenAssistantLease, core engine: Client) -> Bool {
-    guard generation == lease.generation, mode == lease.mode,
+    guard generation == lease.generation, mode == lease.mode, sessionLocale == lease.locale,
           let member = try? assistantMember(lease.spaceId, core: engine) else { return false }
     return member.0 == lease.identity && member.1 == lease.device
   }
