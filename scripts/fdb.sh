@@ -56,6 +56,11 @@ up() {
   install
   mkdir -p "$DEV/data" "$DEV/logs"
   [[ -f "$CLUSTER" ]] || echo "zoen:dev@127.0.0.1:$PORT" > "$CLUSTER"
+  if ! grep -Fxq "zoen:dev@127.0.0.1:$PORT" "$CLUSTER"; then
+    echo "FoundationDB cluster file does not match FDB_PORT=$PORT: $CLUSTER" >&2
+    echo "Use the port recorded in the existing local cluster file." >&2
+    return 1
+  fi
   if ! pgrep -f "fdbserver.*$DEV/data" >/dev/null; then
     nohup "$TOOLS/bin/fdbserver" -p "127.0.0.1:$PORT" -C "$CLUSTER" -d "$DEV/data" -L "$DEV/logs" \
       --knob_min_available_space_ratio="$MIN_FREE_RATIO" \
