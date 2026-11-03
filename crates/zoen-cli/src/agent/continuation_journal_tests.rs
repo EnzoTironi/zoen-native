@@ -106,13 +106,25 @@ fn exact_request_budget_survives_reopens_and_step_recording_without_reset(
         assert_eq!(recovered.steps[0].1.len(), expected as usize);
     }
     let before = std::fs::read(&path).unwrap();
-    assert!(!JournalState::begin_resume(&path, "synthetic-request", &hash, &fixture.source).unwrap());
-    assert_eq!(std::fs::read(&path).unwrap(), before);
     assert!(
-        JournalState::begin_resume(&path, "synthetic-request", &"cd".repeat(32), &fixture.source).is_err()
+        !JournalState::begin_resume(&path, "synthetic-request", &hash, &fixture.source).unwrap()
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
-    assert!(JournalState::begin_resume(&path, "different-reviewed-request", &hash, &fixture.source).unwrap());
+    assert!(JournalState::begin_resume(
+        &path,
+        "synthetic-request",
+        &"cd".repeat(32),
+        &fixture.source
+    )
+    .is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    assert!(JournalState::begin_resume(
+        &path,
+        "different-reviewed-request",
+        &hash,
+        &fixture.source
+    )
+    .unwrap());
     assert_eq!(
         JournalState::load(&path).unwrap().continuations["synthetic-request"].attempts,
         MAX_TRIES
@@ -162,7 +174,9 @@ fn failed_atomic_reservation_and_leftover_temporary_file_never_admit_a_resume(
     // A destination that cannot be replaced prevents commit, so no attempt is admitted.
     let destination = directory.0.join("unwritable-target.json");
     std::fs::create_dir(&destination).unwrap();
-    assert!(JournalState::begin_resume(&destination, "synthetic-request", &hash, "source").is_err());
+    assert!(
+        JournalState::begin_resume(&destination, "synthetic-request", &hash, "source").is_err()
+    );
     assert!(destination.is_dir());
     assert!(!destination.with_extension("tmp").exists());
     assert_eq!(
@@ -224,8 +238,7 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
         rule: "model:low-risk".into(),
     };
     assert!(
-        JournalState::begin_resume(&path, "synthetic-request", &hash, &fixture.source)
-            .unwrap()
+        JournalState::begin_resume(&path, "synthetic-request", &hash, &fixture.source).unwrap()
     );
     JournalState::update(&path, |state| {
         let budget = state.continuations.get_mut("synthetic-request").unwrap();
@@ -283,7 +296,9 @@ fn competing_resume_cannot_reserve_while_a_journal_write_is_active(
         assert!(matches!(contender, Ok(Err(_))));
         Ok(false)
     })?;
-    assert!(JournalState::begin_resume(&path, "request", &hash, "source")?);
+    assert!(JournalState::begin_resume(
+        &path, "request", &hash, "source"
+    )?);
     assert_eq!(
         JournalState::load(&path)?.continuations["request"].attempts,
         1

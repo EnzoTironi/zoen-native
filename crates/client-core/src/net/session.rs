@@ -121,7 +121,9 @@ async fn session_with_policy_and_retries(
                 capabilities
                     .iter()
                     .any(|c| c == protocol::saved_messages::CAPABILITY),
-                capabilities.iter().any(|c| c == protocol::push::VOIP_WAKE_CAPABILITY),
+                capabilities
+                    .iter()
+                    .any(|c| c == protocol::push::VOIP_WAKE_CAPABILITY),
             ),
             Ok(ServerFrame::Challenge { protocol, .. }) => {
                 return Exit::Blocked(format!(
