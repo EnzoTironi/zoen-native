@@ -194,8 +194,11 @@ test('a stale completion cannot clear the replacement session pending confirmati
   f.select();
   const confirmation = deferred<boolean>();
   const current = f.session.revoke(other, () => confirmation.promise, f.session.ticket());
+  const callsBeforeStaleCompletion = [...f.calls];
   old.reject(new Error('retired IO'));
   await pending;
+  assert.deepEqual(f.calls, callsBeforeStaleCompletion);
+  assert.equal(f.session.getSnapshot().revokeFailed, false);
   assert.equal(f.session.getSnapshot().pending, other);
   confirmation.resolve(false);
   await current;
