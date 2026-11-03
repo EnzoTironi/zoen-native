@@ -62,3 +62,13 @@ async fn poisoned_budget_refuses_new_work_but_allows_cleanup() -> Result<(), Ses
     assert_eq!(session.usage().len(), 1);
     Ok(())
 }
+
+#[tokio::test]
+async fn oversized_exit_code_is_a_backend_error() -> Result<(), SandboxError> {
+    let api = MockFly::new();
+    let fly = api.provider();
+    let lease = fly.acquire(&spec(), "ana").await?;
+    let result = fly.exec(&lease, ExecRequest::sh("invalid-exit-code-fixture")).await;
+    assert!(matches!(result, Err(SandboxError::Backend(message)) if message.contains("out-of-range exit code")));
+    fly.release(lease).await
+}

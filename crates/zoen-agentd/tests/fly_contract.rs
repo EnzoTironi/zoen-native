@@ -98,6 +98,9 @@ impl Guest {
             .iter()
             .map(|arg| arg.as_str().unwrap())
             .collect();
+        if argv.last() == Some(&"invalid-exit-code-fixture") {
+            return (200, json!({"exit_code": i64::from(i32::MAX) + 1}));
+        }
         let stdin = body["stdin"].as_str().unwrap_or("");
         self.largest_stdin = self.largest_stdin.max(stdin.len());
         #[cfg(target_os = "linux")]
