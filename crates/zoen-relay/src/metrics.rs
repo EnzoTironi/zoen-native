@@ -4,6 +4,10 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 #[derive(Default)]
 pub struct Metrics {
+    pub push_sent: AtomicU64,
+    pub push_failed: AtomicU64,
+    pub push_gone: AtomicU64,
+    pub push_lookup_failed: AtomicU64,
     pub connections: AtomicU64,
     pub events_sequenced: AtomicU64,
     pub events_duplicate: AtomicU64,
@@ -124,6 +128,30 @@ impl Metrics {
             "Receipt admissions refused at the bounded backlog; sessions disconnected for replay",
             "counter",
             self.receipts_overloaded.load(Relaxed),
+        );
+        put(
+            "zoen_relay_push_sent_total",
+            "Provider accepted device wake requests",
+            "counter",
+            self.push_sent.load(Relaxed),
+        );
+        put(
+            "zoen_relay_push_failed_total",
+            "Device wake requests failed",
+            "counter",
+            self.push_failed.load(Relaxed),
+        );
+        put(
+            "zoen_relay_push_gone_total",
+            "Device wake targets deemed invalid",
+            "counter",
+            self.push_gone.load(Relaxed),
+        );
+        put(
+            "zoen_relay_push_lookup_failed_total",
+            "Device wake target lookups failed",
+            "counter",
+            self.push_lookup_failed.load(Relaxed),
         );
         s
     }
