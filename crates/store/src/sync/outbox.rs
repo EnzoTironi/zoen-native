@@ -112,6 +112,19 @@ impl Store {
         })
     }
 
+    /// Find a queued event that can still receive a publication outcome.
+    pub fn outbox_active_event(&self, client_id: &str) -> Result<Option<Event>> {
+        let json: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT json FROM outbox WHERE client_id = ?1 AND failed = 0",
+                [client_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(json.as_deref().map(serde_json::from_str).transpose()?)
+    }
+
     /// The retained original bytes, never an authority reconstructed from SQL columns.
     pub fn outbox_original_json(&self, client_id: &str) -> Result<Option<String>> {
         Ok(self
