@@ -341,7 +341,10 @@ impl Pusher {
     }
 
     fn apns_jwt(a: &Apns) -> anyhow::Result<String> {
-        let mut c = a.jwt.lock().unwrap();
+        let mut c = a
+            .jwt
+            .lock()
+            .map_err(|_| anyhow::anyhow!("APNs credential cache unavailable"))?;
         let t = now();
         if let Some((j, until)) = c.as_ref() {
             if *until > t {
@@ -393,7 +396,12 @@ impl Pusher {
 
     async fn fcm_access(&self, f: &Fcm) -> anyhow::Result<String> {
         let t = now();
-        if let Some((tok, until)) = f.access.lock().unwrap().as_ref() {
+        if let Some((tok, until)) = f
+            .access
+            .lock()
+            .map_err(|_| anyhow::anyhow!("FCM credential cache unavailable"))?
+            .as_ref()
+        {
             if *until > t {
                 return Ok(tok.clone());
             }
@@ -432,7 +440,10 @@ impl Pusher {
             .ok_or_else(|| anyhow::anyhow!("no access_token"))?
             .to_string();
         let ttl = v["expires_in"].as_u64().unwrap_or(3600);
-        *f.access.lock().unwrap() = Some((tok.clone(), t + ttl.saturating_sub(300)));
+        *f.access
+            .lock()
+            .map_err(|_| anyhow::anyhow!("FCM credential cache unavailable"))? =
+            Some((tok.clone(), t + ttl.saturating_sub(300)));
         Ok(tok)
     }
 
