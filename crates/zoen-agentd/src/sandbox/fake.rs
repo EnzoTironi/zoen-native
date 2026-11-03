@@ -16,6 +16,7 @@ pub struct FakeProvider {
     snaps: Mutex<HashMap<String, Lease>>,
     handler: Handler,
     can_suspend: bool,
+    resume_failures: AtomicUsize,
 }
 
 impl FakeProvider {
@@ -38,7 +39,12 @@ impl FakeProvider {
             snaps: Mutex::new(HashMap::new()),
             handler,
             can_suspend: true,
+            resume_failures: AtomicUsize::new(0),
         }
+    }
+
+    pub fn fail_next_resume(&self) {
+        self.resume_failures.store(1, Ordering::SeqCst);
     }
 
     pub fn live(&self) -> usize {
@@ -107,6 +113,9 @@ impl SandboxProvider for FakeProvider {
     }
 
     async fn resume(&self, snap: &SnapshotRef) -> Result<Lease, SandboxError> {
+        if self.resume_failures.swap(0, Ordering::SeqCst) != 0 {
+            return Err(SandboxError::Backend("injected resume failure".into()));
+        }
         let lease = self
             .snaps
             .lock()

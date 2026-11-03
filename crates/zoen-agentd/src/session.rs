@@ -119,7 +119,13 @@ impl ToolSession {
         }
         let lease = match std::mem::replace(&mut *st, State::Cold) {
             State::Cold => self.provider.acquire(&self.spec, &self.owner).await?,
-            State::Suspended { snap } => self.provider.resume(&snap).await?,
+            State::Suspended { snap } => match self.provider.resume(&snap).await {
+                Ok(lease) => lease,
+                Err(error) => {
+                    *st = State::Suspended { snap };
+                    return Err(error.into());
+                }
+            },
             State::Running { lease, since, .. } => {
                 *st = State::Running {
                     lease: lease.clone(),

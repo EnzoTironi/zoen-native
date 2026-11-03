@@ -179,6 +179,13 @@ async fn only_the_tool_that_needs_a_computer_gets_one_and_only_after_ana_says_ye
         "running time is charged, rounded up to the second"
     );
 
+    provider.fail_next_resume();
+    assert!(session
+        .exec(ExecRequest::sh("print(2)"), NOW)
+        .await
+        .is_err());
+    assert_eq!(session.state().await, "suspended");
+
     session
         .exec(ExecRequest::sh("print(2)"), NOW)
         .await
