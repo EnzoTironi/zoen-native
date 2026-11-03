@@ -135,6 +135,7 @@ test('abandon uses exact batch token, publishes distinct skipped outcomes and ne
   assert.equal(ops(f, 'abandon')[0]!.batch, review.batchId);
   assert.equal(ops(f, 'abandon')[0]!.revision, review.revision);
   assert.deepEqual(f.selected()!.skippedIds, ['a', 'b', 'c']);
+  assert.equal(f.state().error, null);
   assert.equal(
     f.selected()!.messages.every((item) => item.acceptedMessageId === null),
     true,
@@ -240,4 +241,21 @@ test('Done recovers a lost acknowledgement from the same completed batch', async
   assert.deepEqual(f.sent, ['target']);
   await f.session.finish(f.selected()!);
   assert.equal(ops(f, 'finish').length, 1);
+});
+
+test('discarding the remaining batch recovers a lost acknowledgement without sending', async () => {
+  const f = fixture();
+  await f.ready();
+  f.onAbandonAcknowledgement(() => {
+    throw new Error('lost acknowledgement');
+  });
+
+  await f.session.abandon(f.selected()!);
+  assert.equal(f.selected()!.completed, true);
+  assert.deepEqual(f.selected()!.skippedIds, ['a', 'b', 'c']);
+  assert.equal(f.state().error, null);
+  assert.deepEqual(f.sent, []);
+  await f.session.abandon(f.selected()!);
+  assert.equal(ops(f, 'abandon').length, 1);
+  assert.equal(ops(f, 'confirm').length, 0);
 });

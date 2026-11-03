@@ -340,7 +340,10 @@ export class ForwardSelectionSession {
         if (!this.current(attempt)) return;
         const retained = await this.port.status(this.source());
         if (!this.current(attempt)) return;
-        if (retained?.batch_id === review.batchId) this.project(retained);
+        if (retained?.batch_id === review.batchId) {
+          this.project(retained);
+          if (retained.completed) return;
+        }
         throw reason;
       }
     });
