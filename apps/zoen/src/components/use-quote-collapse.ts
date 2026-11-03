@@ -20,16 +20,20 @@ export function useQuoteCollapse(
   // This is only a cheap candidate gate. The maintained AST decides which
   // actual quote blocks qualify; no quote parsing or text replacement lives here.
   const enabled = process.env.EXPO_OS === 'ios' && text.includes('>') && !selecting;
-  const eventGeneration = useMemo(() => nextGeneration++, [owner, enabled]);
+  const eventOwner = useMemo(
+    () => ({ owner, enabled, generation: nextGeneration++ }),
+    [owner, enabled],
+  );
+  const eventGeneration = eventOwner.generation;
   const activeGeneration = useRef<number | null>(null);
   useLayoutEffect(() => {
-    activeGeneration.current = enabled ? eventGeneration : null;
-    if (!enabled) beginLayoutTransition?.finish(eventGeneration);
+    activeGeneration.current = eventOwner.enabled ? eventGeneration : null;
+    if (!eventOwner.enabled) beginLayoutTransition?.finish(eventGeneration);
     return () => {
       beginLayoutTransition?.finish(eventGeneration);
       activeGeneration.current = null;
     };
-  }, [owner, enabled, eventGeneration, beginLayoutTransition]);
+  }, [eventOwner, eventGeneration, beginLayoutTransition]);
   const onBlockquoteToggle = useCallback(
     (event: { nativeEvent: { index: number; generation: number } }) => {
       const { index, generation } = event.nativeEvent;
