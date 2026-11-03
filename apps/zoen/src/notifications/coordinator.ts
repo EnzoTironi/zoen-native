@@ -146,7 +146,7 @@ export class PushCoordinator {
               registration: 'refused',
               failure: t('notifications.theServerRefusedNotificationRegistrationForThisDevice'),
             });
-            return;
+            continue;
           }
           this.acknowledged = desired.token;
           this.desired = null;
@@ -163,6 +163,7 @@ export class PushCoordinator {
             registration: 'waiting',
             failure: t('notifications.registrationHasNotBeenConfirmedByTheServer'),
           });
+          if (desired !== this.desired) continue;
           this.scheduleRetry(stamp);
           return;
         }

@@ -324,3 +324,20 @@ test('rotation during a registration notification only writes the newest token',
   assert.equal(coordinator.getSnapshot().registration, 'acknowledged');
   coordinator.dispose();
 });
+
+test('rotation observed during refusal is processed by the active registration loop', async () => {
+  const { ports, writes } = fixture();
+  ports.register = async (_, token) => {
+    writes.push(token);
+    return { kind: writes.length === 1 ? 'refused' : 'acknowledged' };
+  };
+  const coordinator = new PushCoordinator(ports, configuration);
+  coordinator.subscribe(() => {
+    if (coordinator.getSnapshot().registration === 'refused')
+      void coordinator.receivedToken('bb'.repeat(32));
+  });
+  await coordinator.foreground();
+  assert.deepEqual(writes, ['aa'.repeat(32), 'bb'.repeat(32)]);
+  assert.equal(coordinator.getSnapshot().registration, 'acknowledged');
+  coordinator.dispose();
+});
