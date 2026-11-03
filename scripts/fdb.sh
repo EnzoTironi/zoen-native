@@ -56,6 +56,9 @@ up() {
   install
   mkdir -p "$DEV/data" "$DEV/logs"
   [[ -f "$CLUSTER" ]] || echo "zoen:dev@127.0.0.1:$PORT" > "$CLUSTER"
+  if [[ -z "${FDB_PORT:-}" && "$(cat "$CLUSTER")" =~ ^zoen:dev@127[.]0[.]0[.]1:([0-9]+)$ ]]; then
+    PORT="${BASH_REMATCH[1]}"
+  fi
   if ! grep -Fxq "zoen:dev@127.0.0.1:$PORT" "$CLUSTER"; then
     echo "FoundationDB cluster file does not match FDB_PORT=$PORT: $CLUSTER" >&2
     echo "Use the port recorded in the existing local cluster file." >&2
