@@ -144,8 +144,8 @@ export class ToolReviewSession {
       reviewScopeKey(this.scope) === reviewScopeKey(this.port.scope()),
     );
   }
-  async refresh() {
-    if (!this.current()) return;
+  async refresh(observed: ReviewState = this.state) {
+    if (observed !== this.state || !this.current()) return;
     const revision = ++this.revision;
     this.publish({ phase: 'loading', busy: Boolean(this.flight) });
     try {
