@@ -70,6 +70,7 @@ export class ConversationSearch {
   }
   /** Keep the reviewed projection when returning, but retire all pending reads. */
   suspend() {
+    if (this.state.loading && this.firstPage === null) this.dirty = true;
     this.generation++;
     this.publish({ active: false, loading: false });
   }

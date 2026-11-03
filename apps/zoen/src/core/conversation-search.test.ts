@@ -156,3 +156,24 @@ test('UTF-8 limit handles emoji/accents without truncating the canonical query',
   await search.search();
   assert.equal(calls, 0);
 });
+
+test('returning to search retries an interrupted first page and discards its late result', async () => {
+  const interrupted = deferred<MessageSearchPage>();
+  const resumed = deferred<MessageSearchPage>();
+  let calls = 0;
+  const search = new ConversationSearch({
+    current: () => true,
+    search: () => (++calls === 1 ? interrupted.promise : resumed.promise),
+  });
+  search.open();
+  search.setQuery('term');
+  const pending = search.search();
+  search.suspend();
+  search.open();
+  assert.equal(calls, 2);
+  resumed.resolve({ hits: [hit('fresh')], next_cursor: null });
+  interrupted.resolve({ hits: [hit('stale')], next_cursor: null });
+  await pending;
+  assert.deepEqual(search.getSnapshot().hits, [hit('fresh')]);
+  assert.equal(search.getSnapshot().loading, false);
+});
