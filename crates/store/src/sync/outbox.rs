@@ -112,6 +112,19 @@ impl Store {
         })
     }
 
+    /// Find a queued event that can still receive a publication outcome.
+    pub fn outbox_active_event(&self, client_id: &str) -> Result<Option<Event>> {
+        let json: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT json FROM outbox WHERE client_id = ?1 AND failed = 0",
+                [client_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(json.as_deref().map(serde_json::from_str).transpose()?)
+    }
+
     /// The retained original bytes, never an authority reconstructed from SQL columns.
     pub fn outbox_original_json(&self, client_id: &str) -> Result<Option<String>> {
         Ok(self
@@ -130,9 +143,12 @@ impl Store {
         Ok(())
     }
 
+    /// Record an attempt while the event is pending. The first terminal
+    /// refusal remains authoritative when responses arrive late or repeat.
     pub fn outbox_note(&self, client_id: &str, error: &str, failed: bool) -> Result<()> {
         self.conn.execute(
-            "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = ?3 WHERE client_id = ?1",
+            "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = ?3
+             WHERE client_id = ?1 AND failed = 0",
             params![client_id, error, failed as i64],
         )?;
         Ok(())

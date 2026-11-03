@@ -1,7 +1,7 @@
 //! Key-package publication and refused-handshake recovery.
 use super::{
-    identity_set, join_set, mls_err, rewelcome_meta, storage, tracing_like, welcome_meta, Engine,
-    Envelope, EventBody, KeyPackageBatch, SealedKind, KEY_PACKAGES, META_PUBLISHED, R,
+    Engine, Envelope, EventBody, KEY_PACKAGES, KeyPackageBatch, META_PUBLISHED, R, SealedKind,
+    identity_set, join_set, mls_err, rewelcome_meta, storage, tracing_like, welcome_meta,
 };
 
 impl Engine {
@@ -63,16 +63,12 @@ impl Engine {
     /// anything the person wrote, so it isn't shown as failed: a lost commit is dropped with
     /// its Welcome, the winner arrives from the log, and the group is checked again.
     /// `false` when `client_id` isn't a handshake.
-    pub(crate) fn mls_handshake_refused(&mut self, client_id: &str, reason: &str) -> R<bool> {
-        let Some(e) = self
-            .store
-            .outbox()?
-            .into_iter()
-            .map(|p| p.event)
-            .find(|e| e.client_id == client_id)
-        else {
-            return Ok(false);
-        };
+    pub(crate) fn mls_handshake_refused(
+        &mut self,
+        e: &types::Event,
+        client_id: &str,
+        reason: &str,
+    ) -> R<bool> {
         let EventBody::Sealed { kind } = &e.body else {
             return Ok(false);
         };
@@ -108,7 +104,7 @@ impl Engine {
                 } else {
                     device.forget(&e.space).map_err(mls_err)?;
                 }
-                if let Some(reference) = Envelope::plain(&e)?
+                if let Some(reference) = Envelope::plain(e)?
                     .recovery()
                     .and_then(event_log::recovery::RecoveryRef::parse)
                 {
@@ -143,7 +139,7 @@ impl Engine {
         for id in dropped {
             self.net.pending.remove(&id);
         }
-        self.net.mls.mark_group_dirty(e.space);
+        self.net.mls.mark_group_dirty(e.space.clone());
         Ok(true)
     }
 }
