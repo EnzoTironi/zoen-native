@@ -34,6 +34,7 @@ function find(value: unknown, type: string): Element | undefined {
 }
 function fixture(active = true, jump?: string, individual = false) {
   const host = hookHost();
+  let sessionEpoch = 1;
   const calls: string[] = [];
   const routes: unknown[] = [];
   const state = {
@@ -112,7 +113,7 @@ function fixture(active = true, jump?: string, individual = false) {
       if (name.endsWith('/core/provider'))
         return {
           useClient: () => ({
-            store: { sessionEpoch: 1, setTyping() {}, getSnapshot: () => state },
+            store: { sessionEpoch, setTyping() {}, getSnapshot: () => state },
             snapshot: { conversations: [{ id: 'space', kind: 'Group' }] },
             mode: 'account',
           }),
@@ -137,7 +138,11 @@ function fixture(active = true, jump?: string, individual = false) {
           useMessageDraft: () => ({
             messageDraft: { text: 'draft', reply: null, editing: null, editText: '' },
             updateDraft() {},
-            capture: () => null,
+            capture: () => ({ text: 'draft' }),
+            isCurrent: () => true,
+            send: async () => {
+              throw new Error('original send failure');
+            },
           }),
         };
       if (name.endsWith('/primitives'))
@@ -172,7 +177,8 @@ function fixture(active = true, jump?: string, individual = false) {
       throw new Error(name);
     },
   });
-  const tree = host.render(() => module.exports.default());
+  const render = () => host.render(() => module.exports.default());
+  const tree = render();
   const viewport = find(tree, 'Viewport')!;
   const content = (viewport.props.children as (spacer: unknown, scroll: unknown) => Element)(
     null,
@@ -188,7 +194,22 @@ function fixture(active = true, jump?: string, individual = false) {
   );
   const list = find(transitioned, 'FlashList');
   assert.ok(list, 'Thread viewport must retain its actual list');
-  return { calls, routes, state, entries, selection, tree, viewport, list, hookArgs, actionArgs };
+  return {
+    calls,
+    routes,
+    state,
+    entries,
+    selection,
+    tree,
+    viewport,
+    list,
+    hookArgs,
+    actionArgs,
+    render,
+    reopen: () => {
+      sessionEpoch++;
+    },
+  };
 }
 
 test('thread binds selection to its root and expands every original entry into toggle-only rows', () => {
@@ -300,4 +321,16 @@ test('message links reveal an album child and suppress automatic bottom followin
     find(missing.viewport.props.composer, 'Text')!.props.children,
     'chat.messageUnavailable',
   );
+});
+
+test('thread send failure is hidden after reopening the same account', async () => {
+  const f = fixture(false);
+  const composer = find(f.viewport.props.composer, 'Composer')!;
+  (composer.props.onSend as () => void)();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const failed = find(f.render(), 'Viewport')!;
+  assert.match(JSON.stringify(failed.props.composer), /chat.theReplyCouldNotBeSent/);
+  f.reopen();
+  const reopened = find(f.render(), 'Viewport')!;
+  assert.doesNotMatch(JSON.stringify(reopened.props.composer), /chat.theReplyCouldNotBeSent/);
 });
