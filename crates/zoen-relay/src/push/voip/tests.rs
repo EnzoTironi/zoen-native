@@ -133,3 +133,16 @@ async fn expired_or_invalid_targets_never_reach_provider_and_dead_token_is_expli
         Outcome::Disabled
     );
 }
+
+#[tokio::test]
+async fn wake_expiring_in_the_current_second_never_reaches_apns() -> anyhow::Result<()> {
+    let http = Arc::new(Mock::default());
+    let pusher = Pusher::new(http.clone(), Some(apns_cfg()), None)?;
+    let wake = protocol::push::CallWake::new("ab".repeat(16), 1_999, 1_000)?;
+    assert_eq!(
+        pusher.call_wake_at(&target(APNS_VOIP), &wake, 1_500).await,
+        Outcome::Failed("VoIP wake too close to expiry".into())
+    );
+    assert!(http.calls.lock().unwrap().is_empty());
+    Ok(())
+}
