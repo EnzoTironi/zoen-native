@@ -237,6 +237,7 @@ fn late_retry_preserves_terminal_outbox_refusal()
     assert_eq!(store.outbox_len()?, 1);
     store.outbox_note("message", "permission revoked", true)?;
     store.outbox_note("message", "late transport failure", false)?;
+    store.outbox_note("message", "repeated terminal response", true)?;
 
     let pending = store.outbox()?;
     assert_eq!(pending.len(), 1);
