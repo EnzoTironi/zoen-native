@@ -54,7 +54,8 @@ test('CallKit presentation revalidates canonical contact policy after actor and 
   const begin = source('Calls/ZoenCallCoordinator.swift')
     .split('  func begin(outgoing: Bool) async throws {')[1]!
     .split('  private func watchCanonicalLease()')[0]!;
-  before(begin, 'port.presentationRecord()', 'ZoenCallSystem.shared.install(self)');
+  before(begin, 'port.presentationRecord()', 'ZoenCallSystem.shared.install(self, adoptingWake:');
+  before(begin, 'port.presentationRecord()', 'provider.reportCall(with: id, updated: update)');
   before(begin, 'port.presentationRecord()', 'provider.reportNewIncomingCall');
   const outgoing = begin.split('try await port.prepareAudio()')[1]!;
   before(outgoing, 'port.presentationRecord()', 'controller.request(');
