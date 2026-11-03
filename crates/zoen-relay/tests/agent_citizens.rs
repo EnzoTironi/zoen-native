@@ -490,13 +490,21 @@ async fn activity_write_failure_rolls_back_cursor_advance() -> Result<(), Box<dy
     )
     .execute(&d.pool)
     .await?;
-    assert!(
-        agents::advance_cursor(&d.pool, &bot.id, device, "sp_rollback", 9)
-            .await
-            .is_err()
-    );
+    let result = agents::advance_cursor(&d.pool, &bot.id, device, "sp_rollback", 9).await;
+    assert!(matches!(
+        result,
+        Err(AgentCitizenError::Db(sqlx::Error::Database(error)))
+            if error.message() == "injected activity write failure"
+    ));
     let state = agents::state(&d.pool, &bot.id, device, &spaces).await?;
     assert_eq!(state.cursors, vec![("sp_rollback".into(), 5)]);
+
+    sqlx::query("DROP TRIGGER reject_activity_update ON agent_citizens")
+        .execute(&d.pool)
+        .await?;
+    agents::advance_cursor(&d.pool, &bot.id, device, "sp_rollback", 9).await?;
+    let state = agents::state(&d.pool, &bot.id, device, &spaces).await?;
+    assert_eq!(state.cursors, vec![("sp_rollback".into(), 9)]);
     d.finish().await;
     Ok(())
 }
