@@ -300,6 +300,11 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
         vec![&bia]
     );
     react_as(&ana, None);
+    let count = e.lock().store.event_count()?;
+    let pending = e.lock().store.outbox_len()?;
+    react_as(&ana, None);
+    assert_eq!(e.lock().store.event_count()?, count);
+    assert_eq!(e.lock().store.outbox_len()?, pending);
     let remaining = reactions();
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].emoji, "👍");
