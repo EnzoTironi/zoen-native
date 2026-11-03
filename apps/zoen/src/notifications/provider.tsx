@@ -106,8 +106,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         ? chat
         : null;
     };
-    const clearHandler = installNotificationHandler((data) =>
-      allowLocalNotification(store, data, deviceId),
+    const clearHandler = installNotificationHandler(async (data) =>
+      current() ? allowLocalNotification(store, data, deviceId) : false,
     );
     const stopToken = listenPushToken((token) => {
       void coordinator.receivedToken(token);
