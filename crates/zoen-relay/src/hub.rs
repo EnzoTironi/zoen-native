@@ -130,7 +130,7 @@ mod tests {
     async fn full_mailbox_kicks_without_blocking_other_sessions() {
         let hub = Hub::default();
         let kick = Arc::new(Notify::new());
-        let (slow, _slow_rx) = outbox::channel_with_limits(1, 1024, kick.clone());
+        let (slow, mut slow_rx) = outbox::channel_with_limits(1, 1024, kick.clone());
         let (fast, mut fast_rx) = outbox::channel_with_limits(1, 1024, Arc::new(Notify::new()));
         let frame = ServerFrame::Presence {
             identity: "alice".into(),
@@ -148,8 +148,17 @@ mod tests {
                 },
             );
         }
-        assert_eq!(hub.send(&["alice".into()], &frame, None), 1);
-        assert!(fast_rx.try_recv().is_ok());
+        let next = ServerFrame::Presence {
+            identity: "alice".into(),
+            online: false,
+        };
+        assert_eq!(hub.send(&["alice".into()], &next, None), 1);
+        assert_eq!(fast_rx.try_recv().unwrap().bytes.as_ref(), next.encode());
+        assert_eq!(slow_rx.try_recv().unwrap().bytes.as_ref(), frame.encode());
+        assert!(matches!(
+            slow_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
         tokio::time::timeout(std::time::Duration::from_millis(100), kick.notified())
             .await
             .unwrap();
