@@ -270,6 +270,8 @@ async fn a_removed_member_reads_nothing_after_removal() {
         !carla_after_reconnect.contains(queued),
         "{carla_after_reconnect}"
     );
+    let status = w.zoen("bruno", &["sync", "--timeout", "1000"]);
+    assert!(status.contains("pending=0"), "{status}");
     // Bruno's device forgot the group's secrets.
     assert!(w.try_zoen("bruno", &["keys", "Cofre"]).is_err());
     let (ae, ad) = keys(&w.zoen("ana", &["keys", "Cofre"]));

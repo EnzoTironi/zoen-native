@@ -79,6 +79,39 @@ impl Engine {
             if blocked.contains(&e.space) {
                 continue;
             }
+            if matches!(&e.body, EventBody::MessagePosted { .. })
+                && self.logs.get(&e.space).is_some_and(|log| {
+                    log.events()
+                        .iter()
+                        .rev()
+                        .find_map(|event| match &event.body {
+                            EventBody::MemberRemoved { identity } if identity == &e.author => {
+                                Some(true)
+                            }
+                            EventBody::MemberAdded { identity, .. } if identity == &e.author => {
+                                Some(false)
+                            }
+                            _ => None,
+                        })
+                        == Some(true)
+                })
+            {
+                let reason = t(
+                    "Você não faz mais parte desta conversa.",
+                    "You are no longer a member of this conversation.",
+                );
+                match self.reject(&e.client_id, &reason, true, None) {
+                    crate::sync::RejectionOutcome::UserFailed => {
+                        refused.insert(e.space);
+                    }
+                    crate::sync::RejectionOutcome::Ignored => {}
+                    crate::sync::RejectionOutcome::StorageFailure(message) => {
+                        return Err(storage(message))
+                    }
+                    _ => return Err(storage("removed member message was not refused")),
+                }
+                continue;
+            }
             if !self.app_share_consent_current(&e) {
                 self.refuse_stale_app_share(&e)?;
                 refused.insert(e.space);
