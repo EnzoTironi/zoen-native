@@ -278,6 +278,14 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     );
     tx.commit().await.unwrap();
     assert!(registration.await.is_err());
+    let retained: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM push_tokens WHERE identity = $1 AND device = $2",
+    )
+    .bind(&identity.id)
+    .bind(device)
+    .fetch_one(pool)
+    .await?;
+    assert_eq!(retained, 0);
     assert!(
         db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true)
             .await

@@ -503,7 +503,7 @@ pub async fn device_linked(
     .is_some())
 }
 
-/// Unlinks one of `identity`'s devices and drops its key packages. `false` if it isn't
+/// Unlinks one of `identity`'s devices and drops its key packages and push tokens. `false` if it isn't
 /// theirs (or already unlinked).
 pub async fn revoke_device(
     tx: &mut Transaction<'_, Postgres>,
@@ -518,6 +518,11 @@ pub async fn revoke_device(
     .execute(&mut **tx)
     .await?;
     sqlx::query("DELETE FROM key_packages WHERE identity = $1 AND device = $2")
+        .bind(identity)
+        .bind(device)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM push_tokens WHERE identity = $1 AND device = $2")
         .bind(identity)
         .bind(device)
         .execute(&mut **tx)
