@@ -79,23 +79,9 @@ pub async fn drop_push_token(
     pool: &PgPool,
     target: &crate::push::Target,
 ) -> Result<(), sqlx::Error> {
-    drop_push_token_for_purpose(pool, target, "notification").await
-}
-
-pub async fn drop_voip_push_token(
-    pool: &PgPool,
-    target: &crate::push::Target,
-) -> Result<(), sqlx::Error> {
-    drop_push_token_for_purpose(pool, target, "voip").await
-}
-
-async fn drop_push_token_for_purpose(
-    pool: &PgPool,
-    target: &crate::push::Target,
-    purpose: &str,
-) -> Result<(), sqlx::Error> {
-    // Provider death cannot delete a registration from the other purpose whose
-    // bytes happen to match. VoIP dispatch is deliberately not enabled here.
+    let purpose = crate::push::purpose(&target.platform)
+        .ok_or_else(|| sqlx::Error::Protocol("invalid push registration purpose".into()))?;
+    // An invalid provider response only applies to the registration it targeted.
     sqlx::query(
         "DELETE FROM push_tokens WHERE token = $1 AND purpose = $2 AND registration_id = $3",
     )

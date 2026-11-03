@@ -136,7 +136,7 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "eeff")
         .await
         .unwrap();
-    db::drop_voip_push_token(pool, &previous_voip).await?;
+    db::drop_push_token(pool, &previous_voip).await?;
     let owner: String = sqlx::query_scalar("SELECT device FROM push_tokens WHERE purpose = 'voip'")
         .fetch_one(pool)
         .await
