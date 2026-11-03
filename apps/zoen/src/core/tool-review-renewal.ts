@@ -132,6 +132,9 @@ export class ToolReviewSession {
   retire() {
     this.activate(null);
   }
+  visible(observed: ReviewState, scopeKey: string): ReviewState {
+    return scopeKey === reviewScopeKey(this.scope) && this.current() ? observed : emptyReview;
+  }
   private current(revision = this.revision): boolean {
     return Boolean(
       this.scope &&

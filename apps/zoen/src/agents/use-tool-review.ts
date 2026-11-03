@@ -103,5 +103,5 @@ export function useToolReview(id: string, onExpiry?: () => void) {
       };
     }, [store, port, session, key, onExpiry]),
   );
-  return { session, state };
+  return { session, state: session.visible(state, key) };
 }
