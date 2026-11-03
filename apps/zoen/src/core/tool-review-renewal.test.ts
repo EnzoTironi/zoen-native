@@ -422,3 +422,19 @@ test('renewal rechecks the content hash before sending a request', async () => {
   assert.equal(f.session.ticket()?.hash, updated.tool_approval!.content_hash);
   assert.equal(f.session.getSnapshot().busy, false);
 });
+
+test('a stale approval refresh cannot read on behalf of a newer review', async () => {
+  const f = fixture();
+  let reads = 0;
+  f.reads(async () => {
+    reads++;
+    return [request()];
+  });
+  await f.session.refresh();
+  const previous = f.session.getSnapshot();
+  await f.session.refresh(previous);
+  const current = f.session.getSnapshot();
+  await f.session.refresh(previous);
+  assert.equal(reads, 2);
+  assert.equal(f.session.getSnapshot(), current);
+});
