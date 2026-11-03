@@ -8,6 +8,7 @@ impl NativeDirectoryGuard {
         mut self,
         signed: SignedOwnerPolicy,
     ) -> Result<crate::OwnerPolicyInstallation, RuntimeError> {
+        Finance::require_unmanaged_policy(&mut self.tx).await?;
         if signed.policy.owner != self.owner {
             return Err(RuntimeError::Denied);
         }
@@ -55,30 +56,7 @@ impl NativeDirectoryGuard {
         signed: &SignedOwnerPolicy,
         digest: &str,
     ) -> Result<Option<bool>, RuntimeError> {
-        let policy = &signed.policy;
-        let (start, _) = period(policy.year, policy.month)?;
-        let row: Option<(String, Json<SignedOwnerPolicy>)> = sqlx::query_as(
-            "SELECT digest,signed FROM runtime_policies WHERE owner=$1 AND period_start=$2 AND version=$3 FOR SHARE",
-        ).bind(&self.owner).bind(start).bind(i64::from(policy.version))
-            .fetch_optional(&mut *self.tx).await?;
-        let Some((stored_digest, Json(stored))) = row else {
-            return Ok(None);
-        };
-        if !event_log::owner_budget::verify(&stored)
-            || stored.policy.owner != self.owner
-            || stored.policy.year != policy.year
-            || stored.policy.month != policy.month
-            || stored.policy.version != policy.version
-            || event_log::owner_budget::digest(&stored.policy).as_deref() != Some(&stored_digest)
-        {
-            return Err(RuntimeError::RestoreUnreconciled);
-        }
-        if stored_digest == digest && stored.policy != *policy {
-            return Err(RuntimeError::RestoreUnreconciled);
-        }
-        // Historical acknowledgement only, under CURRENT native directory locks.
-        // Expiry/disabled latest never becomes usable through this read.
-        Ok(Some(stored_digest == digest))
+        Finance::observe_owner_policy(&mut self.tx, &self.owner, signed, digest).await
     }
 
     /// A read does not install a policy, reserve money, or admit dispatch.
@@ -166,5 +144,42 @@ impl NativeDirectoryGuard {
         }
         self.tx.commit().await?;
         Ok(options)
+    }
+}
+
+impl Finance {
+    pub(crate) async fn observe_owner_policy(
+        tx: &mut Transaction<'_, Postgres>,
+        owner: &str,
+        signed: &SignedOwnerPolicy,
+        digest: &str,
+    ) -> Result<Option<bool>, RuntimeError> {
+        if signed.policy.owner != owner {
+            return Err(RuntimeError::Denied);
+        }
+        let policy = &signed.policy;
+        let (start, _) = period(policy.year, policy.month)?;
+        let row: Option<(String, Json<SignedOwnerPolicy>)> = sqlx::query_as(
+            "SELECT digest,signed FROM runtime_policies WHERE owner=$1 AND period_start=$2 AND version=$3 FOR SHARE",
+        ).bind(owner).bind(start).bind(i64::from(policy.version))
+            .fetch_optional(&mut **tx).await?;
+        let Some((stored_digest, Json(stored))) = row else {
+            return Ok(None);
+        };
+        if !event_log::owner_budget::verify(&stored)
+            || stored.policy.owner != owner
+            || stored.policy.year != policy.year
+            || stored.policy.month != policy.month
+            || stored.policy.version != policy.version
+            || event_log::owner_budget::digest(&stored.policy).as_deref() != Some(&stored_digest)
+        {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        if stored_digest == digest && stored.policy != *policy {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        // Historical acknowledgement only, under CURRENT native directory locks.
+        // Expiry/disabled latest never becomes usable through this read.
+        Ok(Some(stored_digest == digest))
     }
 }

@@ -26,6 +26,7 @@ async fn native() -> std::result::Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn authority() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(shared_policy_continuity::run()).await?;
     failure_cuts::other_namespace_cannot_refund_dispatched_hold().await?;
     println!("authority journey: another FDB namespace cannot refund an in-flight paid hold PASS");
     deployment::matching_workers_and_immutable_pairing().await?;

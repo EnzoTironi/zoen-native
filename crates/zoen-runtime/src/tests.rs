@@ -12,6 +12,7 @@ mod managed_images;
 mod owner_policy_controls;
 mod policy_replay;
 mod retained;
+mod shared_policy_continuity;
 mod stores;
 mod vault;
 use super::*;
@@ -47,15 +48,19 @@ impl World {
         workers: usize,
         competing_namespaces: bool,
     ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Self::build(workers, competing_namespaces, false).await
+        Self::build(workers, competing_namespaces, false, true).await
     }
     async fn with_relay() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Self::build(1, false, true).await
+        Self::build(1, false, true, true).await
+    }
+    async fn without_policy() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Self::build(1, false, true, false).await
     }
     async fn build(
         workers: usize,
         competing_namespaces: bool,
         relay: bool,
+        install_policy: bool,
     ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let admin = std::env::var("ZOEN_TEST_PG").expect("real Postgres fixture required");
         let database = format!("zoen_authority_{}", &Signer::generate()?.id()[..16]);
@@ -136,7 +141,11 @@ impl World {
             },
         )
         .unwrap();
-        let policy_digest = runtime.install_policy(signed.clone()).await.unwrap();
+        let policy_digest = if install_policy {
+            runtime.install_policy(signed.clone()).await?
+        } else {
+            event_log::owner_budget::digest(&signed.policy).ok_or("fixture policy digest")?
+        };
         // Explicit fresh isolated fixture continuity, never a production entry point.
         runtime.continuity.store(true, Ordering::SeqCst);
         Ok(Self {

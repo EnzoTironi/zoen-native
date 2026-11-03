@@ -328,6 +328,7 @@ pub(crate) fn period(year: i32, month: u8) -> Result<(i64, i64), RuntimeError> {
         .ok_or(RuntimeError::InvalidPolicy)?;
     Ok((start.timestamp_millis(), end.timestamp_millis()))
 }
+mod continuity;
 mod directory;
 mod image_checkpoint;
 mod image_checkpoint_recovery;

@@ -103,6 +103,7 @@ impl Finance {
             return Err(RuntimeError::InvalidPolicy);
         }
         let mut tx = self.begin().await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
         let digest = Self::install_policy_in(&mut tx, signed).await?;
         tx.commit().await?;
         Ok(digest)

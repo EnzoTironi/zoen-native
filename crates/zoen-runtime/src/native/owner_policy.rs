@@ -18,7 +18,7 @@ impl NativeCustody {
         if signed.policy.owner != credential.owner.id {
             return Err(RuntimeError::Denied);
         }
-        runtime
+        let guard = runtime
             .finance
             .native_directory(
                 &credential.agent,
@@ -26,9 +26,11 @@ impl NativeCustody {
                 &config.device,
                 &credential.certificate,
             )
-            .await?
-            .install_owner_policy(signed)
-            .await
+            .await?;
+        if runtime.runtime_continuity.is_some() {
+            return runtime.install_continuous_owner_policy(signed, guard).await;
+        }
+        guard.install_owner_policy(signed).await
     }
 
     pub(crate) async fn owner_policy_options(
