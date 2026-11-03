@@ -241,7 +241,9 @@ impl Execution {
             .get(&generation.pack(&("manifest",)), false)
             .await?
             .ok_or(RuntimeError::InvalidBinding)?;
-        if !(40..MANIFEST_BYTES).contains(&manifest.len()) {
+        if !(40..MANIFEST_BYTES).contains(&manifest.len())
+            || hash(&manifest) != root.manifest_digest
+        {
             return Err(RuntimeError::InvalidBinding);
         }
         let mut chunks = Vec::new();
