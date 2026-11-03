@@ -254,8 +254,12 @@ export async function assistantRouteFixture() {
       launch.launchConversationAssistant(space, query, store);
       ticket = routes.at(-1)!.params.ticket;
     },
-    failNavigation: () => { failNavigation = true; },
-    useTicket: (next: string) => { ticket = next; },
+    failNavigation: () => {
+      failNavigation = true;
+    },
+    useTicket: (next: string) => {
+      ticket = next;
+    },
     mount: () => root.render(React.createElement(Route)),
     changeLocale: (locale: string) => {
       i18n.locale = locale;
