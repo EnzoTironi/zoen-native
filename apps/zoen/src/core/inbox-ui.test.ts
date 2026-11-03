@@ -184,3 +184,26 @@ test('Saved Messages retains inbox actions and routes an unready room through re
     await f.close();
   }
 });
+
+test('accessibility Archive and Undo use the canonical operation without opening the conversation', async () => {
+  const f = await inboxUi();
+  try {
+    const row = `inbox-chat-${f.core.chat.id}`;
+    await f.act(() =>
+      f.control(row).onAccessibilityAction({ nativeEvent: { actionName: 'archive' } }),
+    );
+    assert.equal(f.has(row), false);
+    const change = f.calls.find(
+      (call) => call.op === 'chat_layout' && call.input.kind === 'change',
+    );
+    assert.equal(change?.input.field, 'archived');
+
+    await f.act(() => f.control('inbox-undo').onPress());
+    assert.equal(f.has(row), true);
+    const undo = f.calls.find((call) => call.op === 'chat_layout' && call.input.kind === 'undo');
+    assert.equal(undo?.input.original_operation_id, change.input.operation_id);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});
