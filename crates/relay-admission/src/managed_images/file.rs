@@ -335,6 +335,11 @@ impl AnchorWriter {
 
     /// Hash commitments advance in the same durable checkpoint as their
     /// original SQL/FDB transactions. This creates no native/financial permit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stores need reconciliation, the transition is
+    /// invalid, or the checkpoint cannot be locked, read, or written.
     pub fn prepare_subjects(
         &mut self,
         effect: &str,
