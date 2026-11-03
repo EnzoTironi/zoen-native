@@ -241,3 +241,24 @@ test('conversation updates do not submit a draft search query', async () => {
   assert.deepEqual(queries, ['submitted']);
   assert.equal(search.getSnapshot().completed, false);
 });
+
+test('assistant action only accepts the empty result snapshot presented to the user', async () => {
+  let authorized = true;
+  const search = new ConversationSearch({
+    current: () => authorized,
+    search: async () => ({ hits: [], next_cursor: null }),
+  });
+  search.open();
+  search.setQuery('first');
+  await search.search();
+  const first = search.getSnapshot();
+  assert.equal(search.assistantQuery(first), 'first');
+
+  search.setQuery('second');
+  await search.search();
+  const second = search.getSnapshot();
+  assert.equal(search.assistantQuery(first), null);
+  assert.equal(search.assistantQuery(second), 'second');
+  authorized = false;
+  assert.equal(search.assistantQuery(second), null);
+});

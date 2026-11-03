@@ -38,6 +38,20 @@ export function conversationQueryFits(query: string): boolean {
   return true;
 }
 
+export function emptySearchQuery(state: ConversationSearchState): string | null {
+  const query = state.query.trim();
+  return state.active &&
+    state.completed &&
+    !state.loading &&
+    !state.error &&
+    !state.hits.length &&
+    !state.cursor &&
+    query &&
+    conversationQueryFits(query)
+    ? query
+    : null;
+}
+
 /** Transient search only. Generation and owner checks fence every asynchronous read. */
 export class ConversationSearch {
   private state = initial();
@@ -55,6 +69,10 @@ export class ConversationSearch {
     return this.state.active && this.source.current();
   }
   getSnapshot = () => this.state;
+  assistantQuery(observed: ConversationSearchState): string | null {
+    if (observed !== this.state || !this.isCurrent()) return null;
+    return emptySearchQuery(observed);
+  }
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {
