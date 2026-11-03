@@ -313,7 +313,12 @@ fn cold_reopen_reconciles_a_lost_message_confirmation() -> R<()> {
         let mut reopened = Engine::open(db)?;
         assert_eq!(reopened.outbox_envelopes(), original);
         assert_eq!(reopened.ingest(confirmed.clone()), Ingest::Confirmed);
-        let _ = reopened.ingest(confirmed);
+        assert_eq!(reopened.outbox_len(), 0);
+        drop(reopened);
+
+        let mut reopened = Engine::open(db)?;
+        assert_eq!(reopened.outbox_len(), 0);
+        assert_eq!(reopened.ingest(confirmed), Ingest::Duplicate);
         assert_eq!(reopened.outbox_len(), 0);
         let log = reopened.logs.get("room").ok_or("missing confirmed log")?;
         assert_eq!(log.events().len(), 2);
