@@ -314,10 +314,24 @@ pub(super) fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_rep
             role: types::Role::Reader,
         },
     )?;
-    assert!(matches!(
-        e.react(s.id.clone(), message.id.clone(), None),
-        Err(CoreError::Forbidden { .. })
-    ));
+    let persisted_before = {
+        let engine = e.lock();
+        (engine.store.event_count()?, engine.store.outbox_len()?)
+    };
+    for emoji in [None, Some("👍".into())] {
+        assert!(matches!(
+            e.react(s.id.clone(), message.id.clone(), emoji),
+            Err(CoreError::Forbidden { .. })
+        ));
+    }
+    {
+        let engine = e.lock();
+        assert_eq!(
+            (engine.store.event_count()?, engine.store.outbox_len()?),
+            persisted_before
+        );
+    }
+    assert_eq!(reactions(), remaining);
     drop(e);
     let e = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
     e.lock().me = Some(ana);
