@@ -61,3 +61,26 @@ async fn suspend_recovers_when_response_errors_but_machine_is_suspended() {
     session.finish(NOW).await.unwrap();
     assert_eq!(session.usage().len(), 1);
 }
+
+#[tokio::test]
+async fn resume_recovers_when_wait_errors_but_machine_is_running() {
+    let api = MockFly::new();
+    let session = session(api.provider());
+    session
+        .exec(ExecRequest::sh("echo before"), NOW)
+        .await
+        .unwrap();
+    assert!(session.tick(NOW).await.unwrap());
+    {
+        let mut guest = api.guest.lock().unwrap();
+        guest.wait_failures = 1;
+        guest.state_response = Some((200, json!({"state": "started"})));
+    }
+    session
+        .exec(ExecRequest::sh("echo after"), NOW)
+        .await
+        .unwrap();
+    assert_eq!(session.state().await, "running");
+    assert_eq!(api.guest.lock().unwrap().resume_calls, 1);
+    session.finish(NOW).await.unwrap();
+}

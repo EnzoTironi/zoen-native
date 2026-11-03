@@ -186,6 +186,29 @@ impl FlyMachinesProvider {
         .map(|_| ())
     }
 
+    async fn transition(
+        &self,
+        machine: &str,
+        action: &str,
+        target: &str,
+    ) -> Result<(), SandboxError> {
+        let result = match self
+            .call(
+                reqwest::Method::POST,
+                &format!("/machines/{machine}/{action}"),
+                None,
+            )
+            .await
+        {
+            Ok(_) => self.wait(machine, target).await,
+            Err(error) => Err(error),
+        };
+        if result.is_err() && self.state_of(machine).await.as_deref().ok() == Some(target) {
+            return Ok(());
+        }
+        result
+    }
+
     /// The Machine's state; a confirmed 404 means destroyed. Other API failures remain errors.
     pub async fn state_of(&self, machine: &str) -> Result<String, SandboxError> {
         let (status, text) = self
@@ -455,21 +478,7 @@ impl SandboxProvider for FlyMachinesProvider {
 
     async fn suspend(&self, lease: &Lease) -> Result<SnapshotRef, SandboxError> {
         let machine = self.machine(&lease.id)?;
-        let suspend = self
-            .call(
-                reqwest::Method::POST,
-                &format!("/machines/{machine}/suspend"),
-                None,
-            )
-            .await;
-        match suspend {
-            Ok(_) => self.wait(&machine, "suspended").await?,
-            Err(error) => {
-                if !matches!(self.state_of(&machine).await.as_deref(), Ok("suspended")) {
-                    return Err(error);
-                }
-            }
-        }
+        self.transition(&machine, "suspend", "suspended").await?;
         Ok(SnapshotRef {
             id: machine,
             lease: lease.id.clone(),
@@ -478,21 +487,7 @@ impl SandboxProvider for FlyMachinesProvider {
 
     async fn resume(&self, snap: &SnapshotRef) -> Result<Lease, SandboxError> {
         let machine = self.machine(&snap.lease)?;
-        let start = self
-            .call(
-                reqwest::Method::POST,
-                &format!("/machines/{machine}/start"),
-                None,
-            )
-            .await;
-        match start {
-            Ok(_) => self.wait(&machine, "started").await?,
-            Err(error) => {
-                if !matches!(self.state_of(&machine).await.as_deref(), Ok("started")) {
-                    return Err(error);
-                }
-            }
-        }
+        self.transition(&machine, "start", "started").await?;
         self.machines
             .lock()
             .unwrap()

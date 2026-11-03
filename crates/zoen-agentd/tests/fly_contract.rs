@@ -27,6 +27,7 @@ struct Guest {
     delete_calls: usize,
     already_gone: bool,
     resume_failures: usize,
+    wait_failures: usize,
     suspend_failures: usize,
     resume_calls: usize,
     largest_stdin: usize,
@@ -68,6 +69,10 @@ impl Guest {
         }
         if method == "POST" && path.ends_with("/machines") {
             return (200, json!({"id": "machine-test"}));
+        }
+        if path.contains("/wait?") && self.wait_failures > 0 {
+            self.wait_failures -= 1;
+            return (503, json!({"error": "injected wait failure"}));
         }
         if path.contains("/wait?") || path.ends_with("/suspend") || path.ends_with("/start") {
             return (200, json!({"ok": true}));
