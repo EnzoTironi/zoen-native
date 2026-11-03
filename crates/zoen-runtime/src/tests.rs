@@ -342,6 +342,7 @@ async fn register(pool: &PgPool, actor: &Author, owner: Option<&Author>, handle:
 #[test]
 fn real_postgres_fdb_http_authority_journeys() -> std::result::Result<(), Box<dyn std::error::Error>>
 {
+    shared_policy_continuity::snapshot::check_postgres_tools()?;
     let network = unsafe { foundationdb::boot() };
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

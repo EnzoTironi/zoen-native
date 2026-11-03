@@ -32,6 +32,23 @@ fn postgres(program: &str) -> Command {
     }
 }
 
+pub(in crate::tests) fn check_postgres_tools() -> Result<(), Box<dyn std::error::Error>> {
+    let url = std::env::var("ZOEN_TEST_PG")?;
+    let output = postgres("pg_dump")
+        .args(["--schema-only", "--lock-wait-timeout=5000", "--dbname"])
+        .arg(url)
+        .stdout(Stdio::null())
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "PostgreSQL snapshot preflight failed ({}). Check the connection and use pg_dump at least as new as the server.",
+            output.status
+        )
+        .into());
+    }
+    Ok(())
+}
+
 impl Snapshot {
     pub(super) fn capture(w: &World) -> Result<Self, Box<dyn std::error::Error>> {
         let directory = std::env::temp_dir().join(types::new_id("policy-snapshot")?);
