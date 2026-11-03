@@ -37,6 +37,7 @@ const Context = createContext<PushCoordinator | null>(null);
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { store, snapshot, mode } = useClient();
   const dialogs = useDialogs();
+  const sessionEpoch = store.sessionEpoch;
   const deviceId = mode === 'account' ? (snapshot?.account?.device_id ?? null) : null;
   const jobs = useMemo(() => (deviceId ? new NotificationJobs() : null), [deviceId]);
   const identityId = mode === 'account' ? (snapshot?.account?.identity_id ?? null) : null;
@@ -46,6 +47,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const account = state.snapshot?.account;
       return (
         state.mode === 'account' &&
+        store.sessionEpoch === sessionEpoch &&
         identityId !== null &&
         deviceId !== null &&
         account?.identity_id === identityId &&
@@ -72,7 +74,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       },
       nativePushConfiguration(),
     );
-  }, [store, identityId, deviceId]);
+  }, [store, identityId, deviceId, sessionEpoch]);
 
   useEffect(
     () =>
@@ -88,9 +90,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     coordinator.activate();
     if (!deviceId || !jobs || !nativeNotificationPlatform(Platform.OS))
       return () => coordinator.dispose();
-    const current = () =>
+    const sameDevice = () =>
       store.getSnapshot().mode === 'account' &&
       store.getSnapshot().snapshot?.account?.device_id === deviceId;
+    const current = () => sameDevice() && store.sessionEpoch === sessionEpoch;
     const canOpen = (data: unknown) => {
       if (!current()) return null;
       const target = validLocalNotification(data, deviceId);
@@ -181,13 +184,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       clearHandler();
       foreground.remove();
       coordinator.dispose();
-      if (!current() && !store.getSnapshot().erasePending)
+      if (!sameDevice() && !store.getSnapshot().erasePending)
         void jobs
           .drain()
           .then(() => clearDeviceNotifications(deviceId))
           .catch(() => {});
     };
-  }, [store, deviceId, coordinator, jobs, dialogs]);
+  }, [store, deviceId, coordinator, jobs, dialogs, sessionEpoch]);
   return <Context value={coordinator}>{children}</Context>;
 }
 

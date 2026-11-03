@@ -69,7 +69,9 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
       return { remove: () => changes.delete(callback) };
     },
   };
+  let respond: (data: unknown) => void = () => {};
   const store = {
+    sessionEpoch: 1,
     getSnapshot: () => current,
     registerDeviceCleanup: () => () => {},
     subscribe: (fn: () => void) => {
@@ -99,7 +101,10 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
       return 'ab12';
     },
     listenPushToken: () => () => {},
-    listenNotificationEvents: () => () => {},
+    listenNotificationEvents: (_wake: unknown, onResponse: typeof respond) => {
+      respond = onResponse;
+      return () => {};
+    },
     installNotificationHandler: () => () => {},
     nativeNotificationPresentation: () => true,
     requestNativeNotes: async () => {
@@ -123,7 +128,9 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
       jsx: (type: unknown, props: unknown) => ({ type, props }),
     },
     'react-native': { AppState: appState, Platform: { OS: platform } },
-    'expo-router': { router: { push: () => assert.fail('unexpected navigation') } },
+    'expo-router': {
+      router: { push: (value: unknown) => calls.push({ kind: 'navigation', value }) },
+    },
     'fixture:i18n': { t: (key: string) => key },
     'fixture:dialogs': { useDialogs: () => ({ inform: async () => {} }) },
     'fixture:client': {
@@ -151,6 +158,10 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
   }
   return {
     calls,
+    respond,
+    reopen() {
+      store.sessionEpoch++;
+    },
     async flush() {
       // Ports above resolve immediately. One event-loop turn drains their real
       // coordinator continuations without sleeping or changing its deadlines.
@@ -317,6 +328,21 @@ test('foreground resync retries a waiting registration once', async () => {
     f.synced(true);
     await f.flush();
     assert.equal(registrations(), 2);
+  } finally {
+    f.close();
+  }
+});
+
+test('notification response from a retired same-device session cannot navigate', () => {
+  const f = fixture('background');
+  try {
+    f.conversations([{ id: 'chat', members: [{ id: 'synthetic-owner' }] } as SpaceSummary]);
+    const data = { zoen_local: 1, device_id: 'synthetic-device', event_seq: '1', space_id: 'chat' };
+    f.respond(data);
+    assert.equal(f.calls.filter(({ kind }) => kind === 'navigation').length, 1);
+    f.reopen();
+    f.respond(data);
+    assert.equal(f.calls.filter(({ kind }) => kind === 'navigation').length, 1);
   } finally {
     f.close();
   }
