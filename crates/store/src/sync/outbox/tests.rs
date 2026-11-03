@@ -231,11 +231,18 @@ fn disk_reopen_and_vacuum_into_keep_named_order(
 #[test]
 fn late_retry_preserves_terminal_outbox_refusal()
 -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let store = Store::in_memory()?;
+    let directory = std::env::temp_dir().join(types::new_id("outbox-refusal")?);
+    std::fs::create_dir(&directory)?;
+    let path = directory.join("outbox.sqlite");
+    let path = path.to_str().ok_or("invalid outbox fixture path")?;
+    let store = Store::open(path)?;
     store.outbox_put(&event("message", 100, "Application"))?;
     store.outbox_note("message", "connection lost", false)?;
     assert_eq!(store.outbox_len()?, 1);
     store.outbox_note("message", "permission revoked", true)?;
+    drop(store);
+
+    let store = Store::open(path)?;
     store.outbox_note("message", "late transport failure", false)?;
     store.outbox_note("message", "repeated terminal response", true)?;
 
@@ -245,5 +252,7 @@ fn late_retry_preserves_terminal_outbox_refusal()
     assert_eq!(pending[0].attempts, 2);
     assert_eq!(pending[0].last_error.as_deref(), Some("permission revoked"));
     assert_eq!(store.outbox_len()?, 0);
+    drop(store);
+    std::fs::remove_dir_all(directory)?;
     Ok(())
 }
