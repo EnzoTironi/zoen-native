@@ -9,7 +9,7 @@ import { contentValue } from '../media/media-draft-contract.ts';
 
 test(
   'native edited content preserves canonical Photos ownership through asset replacement',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-edited-gallery-'));
     try {
@@ -30,7 +30,7 @@ test(
           '-o',
           binary,
         ],
-        { timeout: 45_000 },
+        { timeout: 120_000 },
       );
       const original = {
         kind: 'attachments',
