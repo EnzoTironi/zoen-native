@@ -75,10 +75,10 @@ up() {
   # A brand-new cluster answers nothing until it is configured, so configure exactly once.
   if [[ ! -f "$DEV/.configured" ]]; then
     "${fdbcli[@]}" --exec "configure new single ssd" >/dev/null 2>&1 || true
-    touch "$DEV/.configured"
   fi
   for _ in $(seq 1 60); do
     if "${fdbcli[@]}" --exec "status minimal" 2>/dev/null | grep -q "is available"; then
+      touch "$DEV/.configured"
       echo "fdb up ($CLUSTER)"; return
     fi
     sleep 1
