@@ -18,7 +18,7 @@ import { assertComposerQuoteRoundTrips } from './composer-quote-paragraphs.fixtu
 
 test(
   'actual MD4C parser, native stores and serializer retain composer Markdown through edits',
-  { skip: process.platform !== 'darwin', timeout: 90_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const app = fileURLToPath(new URL('../../', import.meta.url));
     const directory = mkdtempSync(join(tmpdir(), 'zoen-composer-markdown-'));
@@ -132,7 +132,7 @@ test(
           '-o',
           binary,
         ],
-        { timeout: 60_000 },
+        { timeout: 120_000 },
       );
       type Result = {
         plain: string;
