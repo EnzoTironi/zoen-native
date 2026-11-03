@@ -104,7 +104,7 @@ impl Engine {
                 } else {
                     device.forget(&e.space).map_err(mls_err)?;
                 }
-                if let Some(reference) = Envelope::plain(&e)?
+                if let Some(reference) = Envelope::plain(e)?
                     .recovery()
                     .and_then(event_log::recovery::RecoveryRef::parse)
                 {
