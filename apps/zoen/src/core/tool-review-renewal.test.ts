@@ -268,9 +268,13 @@ test('an in-flight request stays latched across read refreshes and cannot dispat
   assert.equal(f.session.ticket(), null);
   await f.session.renew(ticket);
   assert.equal(f.writes.length, 1);
+  const updated = request();
+  updated.tool_approval!.review!.state = 'Requested';
+  f.rows([updated]);
   pending.resolve({});
   await first;
   assert.equal(f.session.getSnapshot().busy, false);
+  assert.equal(f.session.getSnapshot().request?.tool_approval?.review?.state, 'Requested');
 });
 
 test('closed metadata and eligible expired approval never route or renew another request', async () => {

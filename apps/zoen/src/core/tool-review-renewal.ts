@@ -228,7 +228,7 @@ export class ToolReviewSession {
       }
       dispatched = true;
       await this.port.requestReview(ticket.id, ticket.hash);
-      if (this.current(ticket.revision)) await this.refresh();
+      if (this.flight === ticket && this.current()) await this.refresh();
       return (
         this.current() && ticket.scope === reviewScopeKey(this.scope) && this.flight === ticket
       );
