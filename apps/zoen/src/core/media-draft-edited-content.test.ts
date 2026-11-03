@@ -23,8 +23,6 @@ test(
           '6',
           '-strict-concurrency=complete',
           '-warnings-as-errors',
-          '-module-cache-path',
-          join(directory, 'module-cache'),
           join(native, 'ios/ZoenMediaDraftEditedContent.swift'),
           join(native, 'tests/MediaDraftEditedContentTests.swift'),
           '-o',
