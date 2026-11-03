@@ -16,7 +16,7 @@ async fn database() -> std::result::Result<(PgPool, String, String), Box<dyn std
         .unwrap()
         .database(&name);
     let pool = PgPool::connect_with(options).await.unwrap();
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    zoen_relay::MIGRATIONS.run(&pool).await.unwrap();
     Ok((pool, admin, name))
 }
 

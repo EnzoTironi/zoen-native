@@ -60,7 +60,7 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         .execute(pool)
         .await
         .unwrap();
-    sqlx::migrate!("./migrations").run(pool).await.unwrap();
+    zoen_relay::MIGRATIONS.run(pool).await.unwrap();
 
     let root = Signer::generate()?;
     let first = Author::device(&root, Signer::generate()?);

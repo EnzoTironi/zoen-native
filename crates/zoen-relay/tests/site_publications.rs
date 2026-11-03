@@ -24,7 +24,7 @@ async fn sites_selected_publication_replay_rollback_revocation_and_isolated_http
         .unwrap()
         .database(&name);
     let pool = PgPool::connect_with(options).await.unwrap();
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    zoen_relay::MIGRATIONS.run(&pool).await.unwrap();
     let result = std::panic::AssertUnwindSafe(fixture::exercise(&pool, &directory))
         .catch_unwind()
         .await;
