@@ -301,7 +301,7 @@ async fn absent_legacy_or_unknown_journal_cannot_restage_an_expired_page_action_
                 &journal,
                 &expired.id,
                 &expired.content_hash,
-                Some(&fixture.source),
+                &fixture.source,
             )
             .unwrap();
         }

@@ -260,7 +260,7 @@ impl<'a> SpaceTools<'a> {
     pub(super) fn begin_resume(&self, request: &str, content_hash: &str) -> Result<bool, String> {
         self.check_selection()?;
         let (request, content_hash) = self.journal_binding(request, content_hash)?;
-        JournalState::begin_resume(self.journal, &request, &content_hash, Some(self.source))
+        JournalState::begin_resume(self.journal, &request, &content_hash, self.source)
     }
 
     pub(super) fn canonical_continuation(

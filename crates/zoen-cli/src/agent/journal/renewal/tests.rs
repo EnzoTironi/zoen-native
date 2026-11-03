@@ -24,7 +24,7 @@ fn absent_or_legacy_data_never_proves_the_held_call_did_not_execute(
     let path = dir.path();
     let hash = "ab".repeat(32);
     assert!(!JournalState::renewal_safe(&path, "root", &hash, "source").unwrap());
-    JournalState::begin_resume(&path, "root", &hash, Some("source")).unwrap();
+    JournalState::begin_resume(&path, "root", &hash, "source").unwrap();
     let legacy = std::fs::read(&path).unwrap();
     JournalState::register_hold(&path, "root", &hash, "source").unwrap();
     assert_eq!(std::fs::read(&path).unwrap(), legacy);
@@ -45,7 +45,7 @@ fn before_executor_witness_and_operational_budget_survive_cold_journal_reads(
         0
     );
     assert!(JournalState::renewal_safe(&path, "root", &hash, "source").unwrap());
-    assert!(JournalState::begin_resume(&path, "root", &hash, Some("source")).unwrap());
+    assert!(JournalState::begin_resume(&path, "root", &hash, "source").unwrap());
     JournalState::entering_executor(&path, "root", &hash, "source").unwrap();
     let held = JournalState::load(&path).unwrap();
     assert!(held.continuations["root"].outcome_unknown);
@@ -54,9 +54,9 @@ fn before_executor_witness_and_operational_budget_survive_cold_journal_reads(
     JournalState::register_hold(&path, "root", &hash, "source").unwrap();
     assert!(!JournalState::renewal_safe(&path, "root", &hash, "source").unwrap());
     for _ in 1..MAX_TRIES {
-        assert!(JournalState::begin_resume(&path, "root", &hash, Some("source")).unwrap());
+        assert!(JournalState::begin_resume(&path, "root", &hash, "source").unwrap());
     }
-    assert!(!JournalState::begin_resume(&path, "root", &hash, Some("source")).unwrap());
+    assert!(!JournalState::begin_resume(&path, "root", &hash, "source").unwrap());
     assert_eq!(JournalState::load(&path).unwrap().continuations.len(), 1);
     Ok(())
 }

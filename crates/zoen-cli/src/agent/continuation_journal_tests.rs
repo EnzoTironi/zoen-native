@@ -106,13 +106,13 @@ fn exact_request_budget_survives_reopens_and_step_recording_without_reset(
         assert_eq!(recovered.steps[0].1.len(), expected as usize);
     }
     let before = std::fs::read(&path).unwrap();
-    assert!(!JournalState::begin_resume(&path, "synthetic-request", &hash, None).unwrap());
+    assert!(!JournalState::begin_resume(&path, "synthetic-request", &hash, &fixture.source).unwrap());
     assert_eq!(std::fs::read(&path).unwrap(), before);
     assert!(
-        JournalState::begin_resume(&path, "synthetic-request", &"cd".repeat(32), None).is_err()
+        JournalState::begin_resume(&path, "synthetic-request", &"cd".repeat(32), &fixture.source).is_err()
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
-    assert!(JournalState::begin_resume(&path, "different-reviewed-request", &hash, None).unwrap());
+    assert!(JournalState::begin_resume(&path, "different-reviewed-request", &hash, &fixture.source).unwrap());
     assert_eq!(
         JournalState::load(&path).unwrap().continuations["synthetic-request"].attempts,
         MAX_TRIES
@@ -133,7 +133,7 @@ fn corrupt_or_unsupported_journal_cannot_reset_the_budget_or_be_overwritten_by_r
         let directory = Directory::new()?;
         let path = directory.journal();
         std::fs::write(&path, corrupt).unwrap();
-        assert!(JournalState::begin_resume(&path, "synthetic-request", &"ab".repeat(32), None).is_err());
+        assert!(JournalState::begin_resume(&path, "synthetic-request", &"ab".repeat(32), "source").is_err());
         let fixture = crate::deckcraft::tests::fixture_at(directory.0.clone(), [72; 32])?;
         tools(&fixture, &path).record(step("must-not-replace-corrupt-data"));
         assert_eq!(std::fs::read(&path).unwrap(), corrupt);
@@ -148,11 +148,11 @@ fn failed_atomic_reservation_and_leftover_temporary_file_never_admit_a_resume(
     let directory = Directory::new()?;
     let path = directory.journal();
     let hash = "ab".repeat(32);
-    assert!(JournalState::begin_resume(&path, "synthetic-request", &hash, None).unwrap());
+    assert!(JournalState::begin_resume(&path, "synthetic-request", &hash, "source").unwrap());
     let before = std::fs::read(&path).unwrap();
     // An interrupted writer or a competing reservation owns the temporary path.
     std::fs::write(path.with_extension("tmp"), b"interrupted-reservation").unwrap();
-    assert!(JournalState::begin_resume(&path, "synthetic-request", &hash, None).is_err());
+    assert!(JournalState::begin_resume(&path, "synthetic-request", &hash, "source").is_err());
     assert_eq!(std::fs::read(&path).unwrap(), before);
     assert_eq!(
         std::fs::read(path.with_extension("tmp")).unwrap(),
@@ -162,7 +162,7 @@ fn failed_atomic_reservation_and_leftover_temporary_file_never_admit_a_resume(
     // A destination that cannot be replaced prevents commit, so no attempt is admitted.
     let destination = directory.0.join("unwritable-target.json");
     std::fs::create_dir(&destination).unwrap();
-    assert!(JournalState::begin_resume(&destination, "synthetic-request", &hash, None).is_err());
+    assert!(JournalState::begin_resume(&destination, "synthetic-request", &hash, "source").is_err());
     assert!(destination.is_dir());
     assert!(!destination.with_extension("tmp").exists());
     assert_eq!(
@@ -224,7 +224,7 @@ fn prepared_and_completed_metadata_survive_reopen_bound_to_the_same_source_and_r
         rule: "model:low-risk".into(),
     };
     assert!(
-        JournalState::begin_resume(&path, "synthetic-request", &hash, Some(&fixture.source))
+        JournalState::begin_resume(&path, "synthetic-request", &hash, &fixture.source)
             .unwrap()
     );
     JournalState::update(&path, |state| {
@@ -277,13 +277,13 @@ fn competing_resume_cannot_reserve_while_a_journal_write_is_active(
     JournalState::update(&path, |_| {
         let contender = std::thread::scope(|scope| {
             scope
-                .spawn(|| JournalState::begin_resume(&path, "request", &hash, None))
+                .spawn(|| JournalState::begin_resume(&path, "request", &hash, "source"))
                 .join()
         });
         assert!(matches!(contender, Ok(Err(_))));
         Ok(false)
     })?;
-    assert!(JournalState::begin_resume(&path, "request", &hash, None)?);
+    assert!(JournalState::begin_resume(&path, "request", &hash, "source")?);
     assert_eq!(
         JournalState::load(&path)?.continuations["request"].attempts,
         1

@@ -83,7 +83,7 @@ impl JournalState {
                 // A retry cannot manufacture evidence that inference did not run.
                 return Err("The source model outcome needs reconciliation".into());
             }
-            let reserved = state.reserve_resume(&key, &binding, Some(&source.id))?;
+            let reserved = state.reserve_resume(&key, &binding, &source.id)?;
             if reserved {
                 let attempt = state
                     .continuations
