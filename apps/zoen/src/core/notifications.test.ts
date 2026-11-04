@@ -134,6 +134,9 @@ test('local notifications require synchronized current-account membership, new u
     (value: Snapshot) => {
       value.account!.device_id = 'other_device';
     },
+    (value: Snapshot) => {
+      value.account!.relay_url = 'https://other.example';
+    },
   ]) {
     const value = notificationSnapshot();
     mutate(value);

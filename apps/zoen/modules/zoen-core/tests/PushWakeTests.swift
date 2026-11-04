@@ -63,7 +63,7 @@ private func snapshotModels(_ fixture: URL) throws {
   }
   var changed = root["after"] as! [String: Any]
   var account = changed["account"] as! [String: Any]
-  for field in ["identity_id", "device_id"] {
+  for field in ["identity_id", "device_id", "relay_url"] {
     var replacement = account; replacement[field] = "other-scope"
     changed["account"] = replacement
     check(try ZoenPushSnapshot(json: encode(changed)).notes(since: before).isEmpty)
@@ -110,7 +110,7 @@ private func fetchedEvents(_ fixture: URL) throws {
   check(try model("1").notes(since: unreadBaseline).isEmpty)
   check(try model("0").notes(since: unreadBaseline).isEmpty)
   check(permissionIndependent.hasFetchedEvents(since: unreadBaseline), "Fetch progress does not require presentation permission")
-  for key in ["identity_id", "device_id"] {
+  for key in ["identity_id", "device_id", "relay_url"] {
     check(try !model("2", account: [key: "other-owner"]).hasFetchedEvents(since: before))
   }
   check(try !model("2", account: ["unlocked": false]).hasFetchedEvents(since: before))

@@ -22,7 +22,7 @@ extension ZoenSession {
   private func notificationIsCurrent(_ engine: Client, _ expected: UInt64, _ account: ZoenPushSnapshot.Account, _ lease: ZoenPushWakeLease) -> Bool {
     guard lease.isLive, !erasing, !closing, generation == expected, core === engine, mode == "account",
           let now = engine.account(), now.unlocked, now.registered, !now.setupPending else { return false }
-    return now.identityId == account.identity_id && now.deviceId == account.device_id
+    return now.identityId == account.identity_id && now.deviceId == account.device_id && now.relayUrl == account.relay_url
   }
 
   /// The deadline starts at OS callback admission, before the process transition queue.

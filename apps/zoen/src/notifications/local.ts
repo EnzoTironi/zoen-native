@@ -23,6 +23,7 @@ export function localNotes(before: Snapshot, after: Snapshot): LocalNote[] {
     account.setup_pending ||
     before.account?.identity_id !== account.identity_id ||
     before.account.device_id !== account.device_id ||
+    before.account.relay_url !== account.relay_url ||
     !after.connection.synced
   )
     return [];
