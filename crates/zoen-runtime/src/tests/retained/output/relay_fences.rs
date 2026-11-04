@@ -67,9 +67,16 @@ pub(super) async fn late_relay_fence_races() -> std::result::Result<(), Box<dyn 
         );
         runtime.fault.store(0, Ordering::SeqCst);
         changed?;
-        // Consumed external intent plus a refused append is uncertainty, never
-        // permission to recreate or resend the paid original from absence.
-        assert_eq!(delivery, Err(RuntimeError::RestoreUnreconciled), "{change}");
+        let reason = match change {
+            "cancel" => crate::ReplyRefusal::Cancelled,
+            "expired" => crate::ReplyRefusal::Expired,
+            _ => crate::ReplyRefusal::SourceChanged,
+        };
+        assert_eq!(
+            delivery,
+            Ok(ReplyReceiptProgress::Refused { reason }),
+            "{change}"
+        );
         let entries = f.log.read(&f.space, 1, 256).await?;
         assert!(
             entries.iter().all(|position| position.env != original),
@@ -84,14 +91,30 @@ pub(super) async fn late_relay_fence_races() -> std::result::Result<(), Box<dyn 
         drop(scope);
         drop(runtime);
         cold(&mut f).await;
+        let actor = &f.world.agents[0];
+        let device = actor.device.as_deref().ok_or("fixture device")?;
+        let generation =
+            native::testing::generation(&f.world.runtime, &actor.identity, device).await;
+        assert_eq!(
+            proof::receive(&f.world.runtime, &run.run).await?,
+            ReplyReceiptProgress::Refused { reason }
+        );
+        assert_eq!(
+            proof::receive(&f.world.runtime, &run.run).await?,
+            ReplyReceiptProgress::Refused { reason }
+        );
         assert_eq!(
             proof::publication(&f.world.runtime, &run.run).await,
             original
         );
+        assert_eq!(
+            native::testing::generation(&f.world.runtime, &actor.identity, device).await,
+            generation
+        );
         assert_one_bill(&f).await;
         relay.stop().await;
         f.world.finish().await;
-        println!("managed text late {change}: change after final local authorization is conflict-checked by real relay append, zero response events, cold original and one bill retained, no absence-based resend PASS");
+        println!("managed text late {change}: change after final local authorization is conflict-checked by real relay append, zero response events, cold original and one bill retained, known durable refusal, no absence-based resend PASS");
     }
     Ok(())
 }

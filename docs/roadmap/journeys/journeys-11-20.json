@@ -70,7 +70,10 @@
       "crates/zoen-runtime/src/tests/retained/output/delivery.rs",
       "crates/protocol/src/runtime_binding/source_tests.rs",
       "crates/zoen-relay/src/log/fdb/source_fence.rs",
-      "crates/zoen-runtime/src/tests/retained/output/relay_fences.rs"
+      "crates/zoen-runtime/src/tests/retained/output/relay_fences.rs",
+      "crates/client-core/src/runtime_core/retained_reply.rs",
+      "crates/relay-admission/src/managed_images/publish/refusal.rs",
+      "crates/zoen-relay/src/log/fdb/terminal.rs"
     ],
     "remaining": [
       "Qualificar retomada durável e provedores reais com resultado atribuído",

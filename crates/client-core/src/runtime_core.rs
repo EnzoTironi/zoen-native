@@ -57,6 +57,8 @@ pub use image_tasks::{ImageTaskFacts, PreparedImageTask};
 mod key_packages;
 pub use key_packages::InitialKeyPackages;
 mod pending_reply;
+mod retained_reply;
+pub use retained_reply::RetainedReply;
 mod publication;
 pub use pending_reply::PendingReply;
 mod receipt;

@@ -248,6 +248,29 @@ impl NativeCustody {
         let mut core =
             DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
                 .map_err(native_error)?;
+        if loaded.publication.value.checkpoint.is_some() {
+            let retained = core
+                .retained_reply(&loaded.record.intent, &loaded.publication.value.client_id)
+                .map_err(native_error)?;
+            if !loaded.publication.value.matches_retained(&retained) {
+                return Err(RuntimeError::InvalidBinding);
+            }
+            if let Some(reason) = runtime
+                .reply_publication_refusal(
+                    retained.envelope(),
+                    loaded.publication.value.checkpoint.as_ref(),
+                )
+                .await?
+            {
+                if loaded.receipt.is_some() {
+                    return Err(RuntimeError::RestoreUnreconciled);
+                }
+                // This is positive independent terminal evidence, never inferred
+                // from absence in a relay log or a local pending projection.
+                drop(receipt_snapshot(runtime, loaded, capability).await?);
+                return Ok(ReplyReceiptProgress::Refused { reason });
+            }
+        }
         let source = runtime.execution.reply_source()?;
         if let Some(prior) = &loaded.receipt {
             #[cfg(test)]

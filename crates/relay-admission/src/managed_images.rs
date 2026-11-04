@@ -11,7 +11,9 @@ mod state;
 mod subjects;
 pub use deployment::RuntimeDeployment;
 pub use file::{AnchorReader, AnchorWriter, GenerationGuard};
-pub use publish::{publish_digest, ConsumePublish, ManagedPublishPermit, PublishCondition};
+pub use publish::{
+    publish_digest, ConsumePublish, ManagedPublishPermit, PublishCondition, PublishRefusal,
+};
 pub use state::{Checkpoint, Deployment, Prepared, Recovery};
 pub use subjects::SubjectUpdate;
 

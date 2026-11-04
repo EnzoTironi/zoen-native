@@ -451,7 +451,11 @@ fn decode_parts(bytes: &[u8]) -> Result<(Answer, &[u8]), Reject> {
 fn decode(bytes: &[u8]) -> Result<Sequencing, Reject> {
     let (meta, event) = decode_parts(bytes)?;
     if let Answer::Rejected { reason, permanent } = meta {
-        return Err(Reject { reason, permanent });
+        return Err(Reject {
+            reason,
+            permanent,
+            managed_refusal: None,
+        });
     }
     let ev = Sequenced::decode(event).map_err(|_| Reject::unavailable())?;
     match meta {

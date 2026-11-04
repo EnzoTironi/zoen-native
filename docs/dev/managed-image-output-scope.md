@@ -73,11 +73,16 @@ queue carries those facts on the same private linear publication permit. Before
 a fresh append, the real log transaction compares its current (including
 same-batch) head, reads cancellation/closure with conflicts, and checks deadline.
 Historical exact dedupe remains observation before these fresh-effect checks.
-Invalid or foreign-space fences refuse before independent consumption. Unknown
-append outcomes after consumption retain the original response and financial
-obligation; they never authorize resend/refund from absence. Recovering such a
-refused/uncertain original as an explicit terminal result remains part of normal
-paid-chat host integration, whose production boundary stays closed.
+Invalid or foreign-space fences refuse before independent consumption. Known
+committed refusals update the original independent consumption atomically with
+file/directory fsync and retire its held permit. The pinned upstream runner's
+maybe-committed signal is accumulated: once uncertain, a later known retry cannot
+manufacture a negative outcome. I/O failure stays unknown. Native historical
+publication facts validate the original without requiring a current send grant;
+Runtime exposes a durable `Refused` outcome after cold reopen without changing
+its capsule or creating another charge. Missing consumption/receipt is never a
+refusal, append permit or financial release. General paid-chat host/continuity
+integration remains incomplete and its production boundary stays closed.
 
 Scope lifetime retains the OS generation lock; stopping the host/dropping its
 last scope releases it before retirement can complete. Actual relay effects

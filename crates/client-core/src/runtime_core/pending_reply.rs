@@ -1,16 +1,12 @@
 //! Read the original sealed reply for transport; never create or reseal it.
-use super::{DeviceCore, NativeError, ReplyFacts, ReplyIntent, Result};
+use super::{DeviceCore, NativeError, ReplyFacts, ReplyIntent, Result, RetainedReply};
 use protocol::Envelope;
 
 /// Native facts at the supplied clock. The Runtime still owns source-head,
 /// directory, continuity and publication admission immediately before transport.
 pub struct PendingReply {
     facts: ReplyFacts,
-    envelope: Envelope,
-    message: String,
-    event_digest: String,
-    reference_digest: String,
-    publish_digest: String,
+    retained: RetainedReply,
 }
 
 impl std::fmt::Debug for PendingReply {
@@ -21,28 +17,32 @@ impl std::fmt::Debug for PendingReply {
 
 impl PendingReply {
     #[must_use]
+    pub fn retained(&self) -> &RetainedReply {
+        &self.retained
+    }
+    #[must_use]
     pub fn facts(&self) -> &ReplyFacts {
         &self.facts
     }
     #[must_use]
     pub fn envelope(&self) -> &Envelope {
-        &self.envelope
+        self.retained.envelope()
     }
     #[must_use]
     pub fn message(&self) -> &str {
-        &self.message
+        self.retained.message()
     }
     #[must_use]
     pub fn event_digest(&self) -> &str {
-        &self.event_digest
+        self.retained.event_digest()
     }
     #[must_use]
     pub fn reference_digest(&self) -> &str {
-        &self.reference_digest
+        self.retained.reference_digest()
     }
     #[must_use]
     pub fn publish_digest(&self) -> &str {
-        &self.publish_digest
+        self.retained.publish_digest()
     }
 }
 
@@ -56,12 +56,6 @@ impl DeviceCore {
         at_ms: i64,
     ) -> Result<PendingReply> {
         let facts = self.refresh(original, at_ms)?;
-        let reference = self
-            .reply_reference(client_id)?
-            .ok_or(NativeError::History)?;
-        if reference.original != *original {
-            return Err(NativeError::History);
-        }
         let heads = self
             .engine
             .store
@@ -82,24 +76,10 @@ impl DeviceCore {
             .outbox_active_event(client_id)
             .map_err(|_| NativeError::Storage)?
             .ok_or(NativeError::NotReady)?;
-        let envelope = reference.envelope(self)?;
-        if self.pending_envelope(&pending, Some(&reference))? != envelope
-            || self.engine.logs.get(original.space()).is_none_or(|log| {
-                log.events()
-                    .iter()
-                    .any(|event| event.client_id == client_id)
-            })
-        {
+        let retained = self.retained_reply(original, client_id)?;
+        if pending.client_id != retained.envelope().client_id() {
             return Err(NativeError::History);
         }
-        let (reference_digest, publish_digest) = reference.digests()?;
-        Ok(PendingReply {
-            facts,
-            envelope,
-            message: reference.message,
-            event_digest: reference.inner_digest,
-            reference_digest,
-            publish_digest,
-        })
+        Ok(PendingReply { facts, retained })
     }
 }

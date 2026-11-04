@@ -26,6 +26,8 @@ pub fn code_hash(code: &str) -> String {
 pub struct Reject {
     pub reason: String,
     pub permanent: bool,
+    /// Candidate only; the paired log owner must durably confirm it.
+    pub managed_refusal: Option<managed_images::PublishRefusal>,
 }
 
 impl Reject {
@@ -33,6 +35,7 @@ impl Reject {
         Self {
             reason: reason.into(),
             permanent: true,
+            managed_refusal: None,
         }
     }
 
@@ -40,13 +43,19 @@ impl Reject {
         Self {
             reason: reason.into(),
             permanent: false,
+            managed_refusal: None,
+        }
+    }
+
+    pub fn managed_candidate(refusal: managed_images::PublishRefusal) -> Self {
+        Self {
+            reason: refusal.message().into(),
+            permanent: false,
+            managed_refusal: Some(refusal),
         }
     }
 
     pub fn unavailable() -> Self {
-        Self {
-            reason: "log store unavailable".into(),
-            permanent: false,
-        }
+        Self::retry("log store unavailable")
     }
 }

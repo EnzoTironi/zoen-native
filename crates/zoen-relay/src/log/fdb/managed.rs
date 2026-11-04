@@ -53,12 +53,21 @@ impl FdbLog {
                     span.record("attempts", stats.attempts);
                     result.map(ManagedPublication::Sequenced)
                 }
-                ManagedAdmission::Consumed(condition) => self
-                    .observed_managed_publication(&condition, env)
-                    .await
-                    .map_err(|_| Reject::retry("original managed publication is uncertain"))?
-                    .map(ManagedPublication::Observed)
-                    .ok_or_else(|| Reject::retry("original managed publication is uncertain")),
+                ManagedAdmission::Consumed(condition) => {
+                    if let Some(reason) =
+                        configured
+                            .anchor()
+                            .publication_refusal(checkpoint, env)
+                            .map_err(|_| Reject::retry("original managed outcome unavailable"))?
+                    {
+                        return Err(Reject::no(reason.message()));
+                    }
+                    self.observed_managed_publication(&condition, env)
+                        .await
+                        .map_err(|_| Reject::retry("original managed publication is uncertain"))?
+                        .map(ManagedPublication::Observed)
+                        .ok_or_else(|| Reject::retry("original managed publication is uncertain"))
+                }
             }
         };
         tokio::time::timeout(std::time::Duration::from_secs(6), result)

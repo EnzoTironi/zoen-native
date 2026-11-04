@@ -374,7 +374,7 @@ impl DeviceCore {
         result
     }
 
-    fn accepted_reply_event<'a>(
+    pub(super) fn accepted_reply_event<'a>(
         &'a self,
         reference: &ReplyReference,
         envelope: &Envelope,

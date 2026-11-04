@@ -172,9 +172,14 @@ pub struct ReplyOutputInspection {
     pub generation: u64,
 }
 
+pub use relay_admission::managed_images::PublishRefusal as ReplyRefusal;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReplyReceiptProgress {
     Waiting,
+    Refused {
+        reason: ReplyRefusal,
+    },
     CatchingUp {
         through: types::Seen,
         generation: u64,

@@ -15,13 +15,19 @@ fn transport_error(error: RelayOutputError) -> RuntimeError {
 }
 
 impl PublicationRecord {
+    pub(super) fn matches_retained(
+        &self,
+        retained: &client_core::runtime_core::RetainedReply,
+    ) -> bool {
+        self.intent == *retained.original()
+            && self.client_id == retained.envelope().client_id()
+            && self.message == retained.message()
+            && self.inner == retained.event_digest()
+            && self.reference == retained.reference_digest()
+            && self.publish == retained.publish_digest()
+    }
     fn matches_pending(&self, pending: &PendingReply) -> bool {
-        self.intent == *pending.facts().intent()
-            && self.client_id == pending.envelope().client_id()
-            && self.message == pending.message()
-            && self.inner == pending.event_digest()
-            && self.reference == pending.reference_digest()
-            && self.publish == pending.publish_digest()
+        self.intent == *pending.facts().intent() && self.matches_retained(pending.retained())
     }
 }
 
@@ -53,7 +59,17 @@ impl NativeCustody {
             .execution
             .release_reply(&loaded.record, &loaded.fences)
             .await;
-        result?;
+        if let Err(error) = result {
+            if error == RuntimeError::Denied {
+                released?;
+                if let Ok(progress @ ReplyReceiptProgress::Refused { .. }) =
+                    self.reconcile_output(runtime, run, capability).await
+                {
+                    return Ok(progress);
+                }
+            }
+            return Err(error);
+        }
         released?;
         // Genuine ACK is not a receipt; the original ordered source is.
         self.reconcile_output(runtime, run, capability).await

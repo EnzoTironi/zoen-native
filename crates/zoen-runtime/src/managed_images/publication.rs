@@ -46,6 +46,25 @@ impl RuntimeAuthority {
         Ok(())
     }
 
+    pub(crate) async fn reply_publication_refusal(
+        &self,
+        envelope: &Envelope,
+        checkpoint: Option<&Checkpoint>,
+    ) -> Result<Option<crate::ReplyRefusal>, RuntimeError> {
+        self.validate_image_publish_checkpoint(envelope, checkpoint)
+            .await?;
+        let (Some(managed), Some(checkpoint)) = (&self.managed_images, checkpoint) else {
+            return Ok(None);
+        };
+        managed
+            .lock()
+            .await
+            .anchor
+            .reader()
+            .publication_refusal(checkpoint, envelope)
+            .map_err(error)
+    }
+
     pub(crate) async fn begin_image_publish_checkpoint(
         &self,
         envelope: &Envelope,

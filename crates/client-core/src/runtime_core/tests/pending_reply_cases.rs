@@ -33,6 +33,11 @@ fn pending_reply_reuses_original_wire_and_leaves_native_state_unchanged(
         cold.pending_reply(&original, prepared.envelope().client_id(), 1000),
         Err(NativeError::Permission)
     ));
+    assert_eq!(
+        cold.retained_reply(&original, prepared.envelope().client_id())?
+            .envelope(),
+        prepared.envelope()
+    );
     // A rejected read does not invalidate an otherwise usable scratch image.
     cold.pending_reply(&original, prepared.envelope().client_id(), 600)?;
     let frame = ordered(&f.owner, prepared.envelope().clone())?;
@@ -119,6 +124,13 @@ fn pending_reply_refuses_changed_authority_or_original_without_mutating_queue(
             f.core.pending_reply(&original, requested, 600).is_err(),
             "{case}"
         );
+        if ["revoked", "replaced", "reader", "failed"].contains(&case) {
+            assert_eq!(
+                f.core.retained_reply(&original, client)?.envelope(),
+                prepared.envelope(),
+                "{case}"
+            );
+        }
         assert_eq!(f.core.image()?.as_bytes(), before.as_bytes(), "{case}");
     }
     Ok(())
