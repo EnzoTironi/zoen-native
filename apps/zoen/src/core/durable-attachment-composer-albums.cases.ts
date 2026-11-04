@@ -115,3 +115,23 @@ test('recovered grouped drafts preserve admitted mode on append/reorder and expl
   assert.equal(f.sendCalls(), 0);
   f.unmount();
 });
+
+test('a new multi-document selection saves a file album in chosen order before explicit Send', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([
+    { ...photo('second.pdf'), mime: 'application/pdf' },
+    { ...photo('first.txt'), mime: 'text/plain' },
+  ]);
+  await f.render().pick('document');
+  const saved = JSON.parse(f.durable().content_json);
+  assert.deepEqual(saved.options, { presentation: 'file', grouping: 'grouped' });
+  assert.equal(saved.items.length, 2);
+  assert.equal(f.sendCalls(), 0);
+  f.render().field!.onSend();
+  await tick();
+  assert.deepEqual(JSON.parse(f.sent[0]!).items, saved.items);
+  assert.deepEqual(JSON.parse(f.sent[0]!).options, saved.options);
+  f.unmount();
+});

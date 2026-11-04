@@ -89,16 +89,23 @@ test('partial, conflicting, deleted, duplicate and cross-author membership never
   }
 });
 
-test('ordinary adjacent photos never become an album and explicit file presentation stays a file', () => {
-  for (const entries of [
-    complete().map((entry) => ({ ...entry, media: undefined })),
-    complete().map((entry) => ({
-      ...entry,
-      media: { ...entry.media!, presentation: 'file' as const },
-    })),
-  ]) {
-    assert.equal(projectMediaAlbums(entries, 'qa').albums.size, 0);
-  }
+test('ordinary adjacent photos never become an album and signed file groups retain file presentation', () => {
+  assert.equal(
+    projectMediaAlbums(
+      complete().map((entry) => ({ ...entry, media: undefined })),
+      'qa',
+    ).albums.size,
+    0,
+  );
+  const files = complete().map((entry) => ({
+    ...entry,
+    media: { ...entry.media!, presentation: 'file' as const },
+  }));
+  const projected = projectMediaAlbums(files, 'qa');
+  assert.equal(projected.albums.size, 1);
+  assert.equal(projected.hidden.size, 2);
+  assert.equal([...projected.albums.values()][0]!.presentation, 'file');
+  assert.deepEqual([...projected.albums.values()][0]!.entries, files);
 });
 
 test('reveals and per-message reaction/thread affordances keep canonical rows individually addressable', () => {

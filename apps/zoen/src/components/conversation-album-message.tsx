@@ -29,6 +29,33 @@ export function ConversationAlbumMessage({
   const gutter = !message.entry.author.is_me && message.groupChat ? 44 : 0;
   const available = Math.max(0, width - 32 - gutter);
   const limit = Math.min(available, Math.max(160, Math.min(294, available * 0.87)));
+  if (album.presentation === 'file')
+    return (
+      <ConversationMessage
+        {...message}
+        albumContent={{
+          width: limit,
+          delivery: albumDelivery(album.entries),
+          captions: null,
+          media: (
+            <View testID={`message-file-album-${album.entries[0]!.id}`} style={{ width: limit }}>
+              {album.entries.map((entry) => (
+                <View key={entry.id}>
+                  <ConversationMessage {...message} entry={entry} albumPart={{ fileOnly: true }} />
+                  {messageText(entry).trim() ? (
+                    <ConversationMessage
+                      {...message}
+                      entry={entry}
+                      albumPart={{ captionOnly: true }}
+                    />
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ),
+        }}
+      />
+    );
   const sizes = album.entries.map((entry): readonly [number, number] => {
     const image = decoded[entry.id];
     const card = messageCard(entry);

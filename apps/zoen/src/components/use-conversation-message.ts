@@ -59,6 +59,7 @@ export type ConversationMessageProps = {
   albumPart?: {
     tile?: MediaTile;
     captionOnly?: boolean;
+    fileOnly?: boolean;
     onDecoded?: (image: DecodedMessageImage) => void;
     onInlineUnavailable?: () => void;
     galleryEntries?: readonly TimelineEntry[];
