@@ -177,7 +177,7 @@ function SearchBody({
           if (message.in_thread)
             router.push({
               pathname: '/thread/[space]/[root]',
-              params: { space: hit.space_id, root: message.in_thread },
+              params: { space: hit.space_id, root: message.in_thread, jump: message.id },
             });
           else
             router.push({ pathname: '/chat/[id]', params: { id: hit.space_id, jump: hit.ref_id } });

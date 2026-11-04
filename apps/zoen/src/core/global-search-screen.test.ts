@@ -40,7 +40,10 @@ test('compiled result opening preserves query and resolves the canonical thread 
     });
     assert.equal(f.input.value, 'old query');
     assert.deepEqual(JSON.parse(JSON.stringify(f.routes)), [
-      { pathname: '/thread/[space]/[root]', params: { space: 'chat', root: 'root' } },
+      {
+        pathname: '/thread/[space]/[root]',
+        params: { space: 'chat', root: 'root', jump: 'message' },
+      },
     ]);
     assert.equal(f.dismissals, 1);
     assert.deepEqual(f.root.errors, []);
