@@ -74,6 +74,7 @@ export class PushCoordinator {
     if (!this.active()) return;
     const revision = ++this.permissionRevision;
     const stamp = this.epoch;
+    let tokenRevision: number | undefined;
     this.publish({ busy: true, failure: null });
     try {
       const permission = await this.ports.permission(requestPermission);
@@ -85,7 +86,7 @@ export class PushCoordinator {
         return;
       }
       if (permission !== 'allowed') return;
-      const tokenRevision = this.revision;
+      tokenRevision = this.revision;
       const token = await this.ports.token();
       if (!this.active(stamp) || revision !== this.permissionRevision) return;
       // A native rotation received while the token query was pending is newer.
@@ -94,7 +95,11 @@ export class PushCoordinator {
       if (!canonical) throw new Error('invalid token');
       await this.change(canonical);
     } catch {
-      if (this.active(stamp) && revision === this.permissionRevision)
+      if (
+        this.active(stamp) &&
+        revision === this.permissionRevision &&
+        (tokenRevision === undefined || tokenRevision === this.revision)
+      )
         this.publish({
           failure: t('notifications.notificationsCouldNotBeSetUpNowTry'),
         });
