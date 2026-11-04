@@ -465,9 +465,15 @@
     "implementation": "partial",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/ZoenConversationVideoPlayback.swift"
+      "apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/ZoenConversationVideoPlayback.swift",
+      "crates/client-core/src/media_playback.rs",
+      "crates/client-core/src/media_playback/tests.rs",
+      "apps/zoen/src/media/media-playback-journal.ts",
+      "apps/zoen/src/media/use-video-checkpoint.ts",
+      "apps/zoen/src/core/native-playback-resume.test.ts",
+      "apps/zoen/src/core/video-checkpoint.test.ts"
     ],
-    "gap": "Restaurar posição de vídeo ao reabrir e após reiniciar; o player atual mantém posição só na instância.",
+    "gap": "Conta iOS retoma vídeo inline e galeria canônica pelo checkpoint criptografado local, com CAS e troca coordenada entre players sem autoplay. Testes incluem AVPlayer real no Mac, reinício, falhas, isolamento e exclusão de backup. Faltam aceite manual no iPhone, retomada no viewer genérico de encaminhados/arquivos e plataformas posteriores.",
     "issues": [
       170
     ]

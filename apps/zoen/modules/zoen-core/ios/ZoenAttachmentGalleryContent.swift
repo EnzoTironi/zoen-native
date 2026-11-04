@@ -34,6 +34,7 @@ import UIKit
   var scrollView: UIScrollView { pager }
   var animatedViews: [UIView] { [root, pager, strip, toolbar, captionPanel, counter, check, recipient] }
   var hasKeyboardFocus: Bool { caption.isFirstResponder }
+  var playbackBookmarks: [String: ZoenMediaPlaybackBookmark] = [:]
   var didBeginEditing: (() -> Void)?
   var transitionSourceView: ((String) -> UIView?)?
   let send: (String,[String:Any]) -> Void

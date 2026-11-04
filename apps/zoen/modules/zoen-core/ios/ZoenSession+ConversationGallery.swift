@@ -73,6 +73,11 @@ extension ZoenSession {
       } catch { releaseLocalFile(uri); throw error }
       return
     }
+    var bookmarks: [String: ZoenMediaPlaybackBookmark] = [:]
+    for item in items where item.mime.hasPrefix("video/") {
+      if let bookmark = try? await conversationPlaybackBookmark(item, scope: scope) { bookmarks[item.message.reference.messageId] = bookmark }
+    }
+    let playbackBookmarks = bookmarks
     let copies = await ZoenFilePreview.ReadOnlyCopies()
     let ticket = try await conversationGalleryCopy(selected, scope: scope, copyOwner: copies.registration)
     let preview = filePreview
@@ -82,11 +87,37 @@ extension ZoenSession {
     } catch { try await preview.abandon(id: ticket); throw error }
     try await preview.open(id: ticket, title: selected.name, edit: nil, readOnlyCopies: copies,
       initialKey: request.selectedId) { [weak self] _ in
-      ZoenConversationMediaGallery(presenter: presenter, items: items, selectedId: request.selectedId, copies: copies) { item in
+      ZoenConversationMediaGallery(presenter: presenter, items: items, selectedId: request.selectedId, bookmarks: playbackBookmarks, copies: copies) { item in
         guard let self else { throw ZoenFilePreview.Failure.changed }
         return try await self.conversationGalleryCopy(item, scope: scope, copyOwner: copies.registration)
       }
     }
+    for bookmark in playbackBookmarks.values { await bookmark.flush() }
+  }
+
+  private func conversationPlaybackBookmark(_ item: ZoenConversationMediaGallery.Item, scope: ConversationGalleryScope) async throws -> ZoenMediaPlaybackBookmark {
+    let target: [String: Any] = ["expected_identity_id": scope.owner.identity, "expected_device_id": scope.owner.device,
+      "space_id": scope.spaceId, "message_id": item.message.reference.messageId, "item_id": item.message.reference.itemId,
+      "version": item.message.reference.version, "sha256": item.sha256]
+    let encoded = try ZoenMediaFiles.json(target)
+    let value = try await conversationPlaybackRequest(encoded, scope: scope)
+    return await ZoenMediaPlaybackBookmark(value: value) { [weak self] revision, position in
+      guard let self else { throw ZoenFilePreview.Failure.changed }
+      return try await self.conversationPlaybackRequest(encoded, scope: scope, revision: revision, position: position)
+    }
+  }
+  private func conversationPlaybackRequest(_ target: String, scope: ConversationGalleryScope, revision: String? = nil,
+      position: ZoenMediaPlaybackBookmark.Position? = nil) async throws -> ZoenMediaPlaybackBookmark.Value {
+    try checkConversationGallery(scope)
+    var request: [String: Any] = ["op": revision == nil ? "media_playback_read" : "media_playback_save",
+      "scope": try JSONSerialization.jsonObject(with: Data(target.utf8))]
+    if let revision, let position {
+      request["expected_revision"] = revision
+      request["position"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(position))
+    }
+    let response = try await scope.engine.clientRequest(request: ZoenMediaFiles.json(request))
+    try checkConversationGallery(scope)
+    return try JSONDecoder().decode(ZoenMediaPlaybackBookmark.Value.self, from: Data(response.utf8))
   }
 
   private func conversationGalleryCopy(_ item: ZoenConversationMediaGallery.Item,

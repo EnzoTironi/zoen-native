@@ -1,3 +1,4 @@
+import type { MediaPlaybackBookmark } from './generated/MediaPlaybackBookmark';
 import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { MessageInfo } from './generated/MessageInfo';
 import type { ForwardBatchReview } from './generated/ForwardBatchReview';
@@ -100,6 +101,8 @@ import type { InboxFoldersResult } from './generated/InboxFoldersResult';
 import type { MessageMediaEditResult } from './generated/MessageMediaEditResult';
 type Results = {
   replace_message_media: MessageMediaEditResult;
+  media_playback_read: MediaPlaybackBookmark;
+  media_playback_save: MediaPlaybackBookmark;
   inbox_folders: InboxFoldersResult;
   call_wake_consent: boolean;
   chat_layout: ChatLayoutResult;

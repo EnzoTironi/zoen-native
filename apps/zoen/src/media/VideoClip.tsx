@@ -1,3 +1,5 @@
+import { useVideoCheckpoint } from './use-video-checkpoint';
+import type { MediaPlaybackScope } from '../core/generated/MediaPlaybackScope';
 import { useEvent, useEventListener } from 'expo';
 import { useEffect, useRef, useState } from 'react';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -11,6 +13,8 @@ import { mediaPlayback, type PlaybackOwner } from './playback-owner.ts';
 
 type VideoClipProps = {
   uri: string;
+  checkpoint?: MediaPlaybackScope;
+  isCurrent?: () => boolean;
   compact?: boolean;
   tile?: { width: number; height: number };
   onDimensions?: (size: { width: number; height: number }) => void;
@@ -18,6 +22,8 @@ type VideoClipProps = {
 };
 export function VideoClip({
   uri,
+  checkpoint,
+  isCurrent,
   compact = false,
   tile,
   onDimensions,
@@ -28,6 +34,8 @@ export function VideoClip({
     <VideoClipContent
       key={`${uri}:${attempt}`}
       uri={uri}
+      checkpoint={checkpoint}
+      isCurrent={isCurrent}
       compact={compact}
       tile={tile}
       onDimensions={onDimensions}
@@ -39,6 +47,8 @@ export function VideoClip({
 
 function VideoClipContent({
   uri,
+  checkpoint,
+  isCurrent,
   compact,
   onRetry,
   tile,
@@ -46,6 +56,8 @@ function VideoClipContent({
   onInlineUnavailable,
 }: {
   uri: string;
+  checkpoint?: MediaPlaybackScope;
+  isCurrent?: () => boolean;
   compact: boolean;
   onRetry: () => void;
   tile?: VideoClipProps['tile'];
@@ -66,19 +78,22 @@ function VideoClipContent({
   });
   const player = useVideoPlayer({ uri }, (value) => {
     value.allowsExternalPlayback = false;
+    value.timeUpdateEventInterval = 1;
   });
+  const checkpointControl = useVideoCheckpoint(player, checkpoint, isCurrent);
   const playback = useRef<{ player: typeof player; owner: PlaybackOwner } | null>(null);
   useEffect(() => {
     const owner = mediaPlayback.register(
       () => player.pause(),
       () => player.playing,
+      checkpointControl.checkpoint,
     );
     playback.current = { player, owner };
     return () => {
       if (playback.current?.owner === owner) playback.current = null;
       owner.dispose();
     };
-  }, [player]);
+  }, [player, checkpointControl.checkpoint]);
   useEventListener(player, 'playingChange', ({ isPlaying }) => {
     const current = playback.current;
     if (current?.player === player) current.owner.observe(isPlaying);
@@ -87,9 +102,12 @@ function VideoClipContent({
   useEffect(() => {
     // The ordinary row keeps its visible Retry. A failed mosaic cell must
     // release the bounded tile before that control would fall below its clip.
-    if ((status.status === 'error' || status.error) && playback.current?.player === player)
+    if (
+      (status.status === 'error' || status.error || checkpointControl.unavailable) &&
+      playback.current?.player === player
+    )
       onInlineUnavailable?.();
-  }, [player, status.status, status.error, onInlineUnavailable]);
+  }, [player, status.status, status.error, onInlineUnavailable, checkpointControl.unavailable]);
   const source = useEvent(player, 'sourceLoad', {
     videoSource: { uri },
     duration: player.duration,
@@ -139,11 +157,12 @@ function VideoClipContent({
                   : { width: '100%', height: 320 }
             }
             contentFit={tile ? 'cover' : 'contain'}
-            nativeControls
+            nativeControls={checkpointControl.ready}
             fullscreenOptions={{ enable: true }}
             playsInline
           />
-          {status.status === 'loading' ? (
+          {status.status === 'loading' ||
+          (!checkpointControl.ready && !checkpointControl.unavailable) ? (
             <View
               pointerEvents="none"
               style={{
@@ -158,7 +177,7 @@ function VideoClipContent({
           ) : null}
         </View>
       </GestureDetector>
-      {status.error || status.status === 'error' ? (
+      {status.error || status.status === 'error' || checkpointControl.unavailable ? (
         <View style={{ gap: 8 }}>
           <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 14 }}>
             {t('media.thisVideoCouldNotBePlayed')}

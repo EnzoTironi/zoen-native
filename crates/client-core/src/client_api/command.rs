@@ -196,12 +196,6 @@ pub(super) enum Command {
         scope: DraftScope,
         expected_revision: String,
     },
-    RecoverFailedMediaDraft {
-        scope: crate::MediaDraftScope,
-        message_id: String,
-        expected_revision: String,
-        expected_message_revision: String,
-    },
     AppEditTargets {
         input: crate::app_edit_requests::AppEditTargetInput,
     },
@@ -817,4 +811,6 @@ pub(super) enum Command {
     /// This domain retains the same flat op tags and strict field checks.
     #[serde(untagged)]
     Forwarding(super::forwarding_command::ForwardingCommand),
+    #[serde(untagged)]
+    PrivateMedia(super::private_media_command::PrivateMediaCommand),
 }

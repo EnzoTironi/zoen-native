@@ -13,7 +13,7 @@ import UIKit
       }
       for item in wanted {
         if pages[item.id] == nil {
-          let page=GalleryMediaView(item:item,allowNetwork:false,conversation:true)
+          let page=GalleryMediaView(item:item,allowNetwork:false,conversation:true,bookmark:playbackBookmarks[item.id])
           page.accessibilityIdentifier="conversation-gallery-item-\(item.id)"
           page.toggle = { [weak self] in self?.toggleControls() }
           page.zoomChanged = { [weak self] _ in self?.updateControls() }

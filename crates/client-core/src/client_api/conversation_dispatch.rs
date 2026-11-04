@@ -23,15 +23,16 @@ impl Client {
             JoinInviteTracked, LeaveSpace, MarkRead, Message, MessageDateTarget, MessageDraft,
             NewMutationId, OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus, PageBlockMarkdown,
             PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite, ProviderSignIn, React,
-            RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
-            RequestAccountPolicyOptions, RequestAppEdit, RequestOwnerPolicyOptions, RespondCall,
-            ReviewOwnerPolicy, ReviewReplySelection, ReviewSharedReply, RevokeAgentInvite,
-            SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft, SendMessageEditDraft,
-            SetChatMute, SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping,
-            ShareAppCurrent, Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect,
-            SubmitOwnerPolicy, Thread, Timeline, UniversalSearch, UniversalSearchPage,
+            RemoveMember, RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
+            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
+            ReviewSharedReply, RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage,
+            SendMessageDraft, SendMessageEditDraft, SetChatMute, SetChatMuted, SetChatPrefs,
+            SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot, SpaceMemberContext,
+            StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline,
+            UniversalSearch, UniversalSearchPage,
         };
         match command {
+            Command::PrivateMedia(input) => input.execute(self),
             MessageDateTarget(input) => encode(&self.lock().message_date_target(&input)?),
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
             ShareAppCurrent {
@@ -184,20 +185,6 @@ impl Client {
             | SendMessageEditDraft { .. }
             | ReviewReplySelection { .. }
             | ReviewSharedReply { .. }) => self.dispatch_draft(command),
-            RecoverFailedMediaDraft {
-                scope,
-                message_id,
-                expected_revision,
-                expected_message_revision,
-            } => {
-                let draft = self.lock().recover_failed_media_draft(
-                    &scope,
-                    &message_id,
-                    &expected_revision,
-                    &expected_message_revision,
-                )?;
-                encode(&draft)
-            }
             command @ RequestAppEdit { .. } => self.request_app_edit_command(command),
             AppEditTargets { input } => encode(&self.lock().app_edit_targets(&input)?),
             SendMessage {

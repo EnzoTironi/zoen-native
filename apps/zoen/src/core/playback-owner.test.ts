@@ -190,3 +190,30 @@ test('an authorized SDK audio resume preserves its explicit intent and an unowne
   audio.owner.observeExplicitPlayback();
   assert.equal(audio.owner.isCurrent(next), true);
 });
+
+test('gallery handoff pauses every owner and awaits checkpoint completion before proceeding', async () => {
+  const coordinator = new PlaybackCoordinator();
+  let resume!: () => void,
+    paused = false,
+    finished = false;
+  const pending = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const owner = coordinator.register(
+    () => {
+      paused = true;
+    },
+    () => false,
+    { flush: () => pending },
+  );
+  const handoff = coordinator.pauseAllAndFlush().then(() => {
+    finished = true;
+  });
+  await Promise.resolve();
+  assert.equal(paused, true);
+  assert.equal(finished, false);
+  resume();
+  await handoff;
+  assert.equal(finished, true);
+  owner.dispose();
+});

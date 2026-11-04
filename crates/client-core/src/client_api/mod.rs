@@ -13,6 +13,7 @@ mod conversation_dispatch;
 mod draft_dispatch;
 mod forwarding_command;
 mod forwarding_dispatch;
+mod private_media_command;
 mod search;
 use command::Command;
 
@@ -105,6 +106,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::chat_layout::ChatLayoutResult::export_all(&config)?;
     crate::inbox_folders::InboxFoldersResult::export_all(&config)?;
     crate::message_media_edit::MessageMediaEditResult::export_all(&config)?;
+    crate::MediaPlaybackBookmark::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;
     crate::MessageDraftSendResult::export_all(&config)?;
     TimelinePage::export_all(&config)?;

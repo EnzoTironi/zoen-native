@@ -87,3 +87,47 @@ enum ZoenConversationGalleryCompletion {
     catch is CancellationError { }
   }
 }
+
+/// Transient CAS writer for the Rust-owned checkpoint. Never owns a file or grants playback access.
+@MainActor final class ZoenMediaPlaybackBookmark {
+  struct Position: Codable, Equatable, Sendable {
+    let position_ms: UInt32
+    let duration_ms: UInt32
+    let rate_milli: UInt32
+  }
+  struct Value: Codable, Sendable { let revision: String; let position: Position? }
+  private let save: @Sendable (String, Position) async throws -> Value
+  private var revision: String
+  private var last: Position?
+  private var pending: Position?
+  private var task: Task<Void, Never>?
+  private(set) var failed = false
+  private(set) var position: Position?
+  var resumeSeconds: Double? {
+    position.map { $0.position_ms >= $0.duration_ms ? 0 : Double($0.position_ms) / 1000 }
+  }
+  init(value: Value, save: @escaping @Sendable (String, Position) async throws -> Value) {
+    revision = value.revision; position = value.position; last = value.position; self.save = save
+  }
+  func observe(seconds: Double, duration: Double, playing: Bool) {
+    guard !failed, seconds.isFinite, duration.isFinite, duration > 0, duration <= 604800 else { return }
+    let total = UInt32((duration * 1000).rounded())
+    guard total > 0 else { return }
+    let next = Position(position_ms: UInt32((max(0, min(duration, seconds)) * 1000).rounded()), duration_ms: total, rate_milli: 1000)
+    position = next
+    let previous = pending ?? last
+    guard previous != next else { return }
+    if playing, let previous, previous.position_ms / 5000 == next.position_ms / 5000 { return }
+    pending = next
+    guard task == nil else { return }
+    task = Task { [self] in
+      defer { task = nil }
+      while let next = pending, !failed {
+        pending = nil
+        do { let result = try await save(revision, next); revision = result.revision; last = result.position }
+        catch { failed = true; pending = nil } // Reopen must read again; uncertain/stale writes are never replayed.
+      }
+    }
+  }
+  func flush() async { await task?.value }
+}

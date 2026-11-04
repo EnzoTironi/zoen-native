@@ -1,3 +1,4 @@
+import { MediaPlaybackJournal } from './media-playback-journal';
 import {
   createContext,
   use,
@@ -30,6 +31,21 @@ function createSession(store: ClientStore) {
       : null;
   };
   return new MessageAudioSession({
+    resume: new MediaPlaybackJournal({
+      current: (source) => {
+        const owner = scope();
+        return Boolean(
+          owner &&
+          owner.identityId === source.scope.identityId &&
+          owner.deviceId === source.scope.deviceId &&
+          owner.epoch === source.scope.epoch &&
+          homeSpacesFor(store.getSnapshot()).has(source.spaceId),
+        );
+      },
+      read: (scope) => store.driver.request({ op: 'media_playback_read', scope }),
+      save: (scope, expected_revision, position) =>
+        store.driver.request({ op: 'media_playback_save', scope, expected_revision, position }),
+    }),
     coordinator: mediaPlayback,
     scope,
     authorized: (source) => {

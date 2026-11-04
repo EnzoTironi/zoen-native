@@ -79,6 +79,8 @@ mod liveview;
 mod sites;
 pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod local_sealed;
+mod media_playback;
+pub use media_playback::{MediaPlaybackBookmark, MediaPlaybackPosition, MediaPlaybackScope};
 mod media;
 mod media_drafts;
 mod recent_attachments;
