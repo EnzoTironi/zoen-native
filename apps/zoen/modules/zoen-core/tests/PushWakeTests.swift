@@ -107,6 +107,8 @@ private func fetchedEvents(_ fixture: URL) throws {
   let permissionIndependent = try model("2")
   let unreadBaseline = try model("1", chat: ["unread": 0])
   check(permissionIndependent.notes(since: unreadBaseline).count == 1)
+  check(try model("1").notes(since: unreadBaseline).isEmpty)
+  check(try model("0").notes(since: unreadBaseline).isEmpty)
   check(permissionIndependent.hasFetchedEvents(since: unreadBaseline), "Fetch progress does not require presentation permission")
   for key in ["identity_id", "device_id"] {
     check(try !model("2", account: [key: "other-owner"]).hasFetchedEvents(since: before))

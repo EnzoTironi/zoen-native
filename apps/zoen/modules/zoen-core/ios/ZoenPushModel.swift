@@ -103,12 +103,15 @@ struct ZoenPushSnapshot: Decodable, Sendable {
     guard let account, account.unlocked, !account.setup_pending, connection.synced,
           before.account?.identity_id == account.identity_id,
           before.account?.device_id == account.device_id else { return [] }
-    let previous = Dictionary(before.conversations.map { ($0.id, $0.unread) }, uniquingKeysWith: { _, new in new })
+    let previous = Dictionary(before.conversations.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
     return conversations.compactMap { chat in
+      let prior = previous[chat.id]
       guard !chat.muted, !chat.archived, chat.last_author?.is_me != true,
-            chat.unread > (previous[chat.id] ?? 0),
+            chat.unread > (prior?.unread ?? 0),
             chat.members.contains(where: { $0.id == account.identity_id }),
-            ZoenPushWakePayload.exactSequence(chat.event_count) != nil else { return nil }
+            let count = Self.eventCount(chat.event_count),
+            let oldCount = Self.eventCount(prior?.event_count ?? "0"),
+            count > oldCount else { return nil }
       let title = chat.kind == "Direct" ? (chat.last_author?.name ?? chat.title) : chat.title
       let body = chat.kind == "Direct" || chat.last_author == nil
         ? chat.last_preview : "\(chat.last_author!.name): \(chat.last_preview)"
