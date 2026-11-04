@@ -4,7 +4,7 @@ use super::*;
 use relay_admission::managed_images::AnchorReader;
 use std::path::Path;
 mod recovery;
-mod snapshot;
+pub(super) mod snapshot;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 type Home = managed_images::Directory;
 
