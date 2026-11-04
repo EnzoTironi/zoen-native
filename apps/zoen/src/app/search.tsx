@@ -190,6 +190,28 @@ function SearchBody({
       t('chat.thisResultCouldNotBeOpened'),
     );
   }
+  const pageFailed = Boolean(
+    results.cursor && !results.completed && results.error && !operation.error,
+  );
+  const errorNotice = error ? (
+    <View style={{ paddingHorizontal: 24, paddingBottom: 16, gap: 12 }}>
+      <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
+        {error}
+      </Text>
+      <NativeButton
+        secondary
+        label={t('chat.tryAgain2')}
+        disabled={!queryFits}
+        onPress={() => {
+          if (operation.error) {
+            void actions.retry();
+            return;
+          }
+          if (results === search.getSnapshot() && search.isCurrent()) void search.search();
+        }}
+      />
+    </View>
+  ) : null;
   const empty = !scope ? (
     <EmptyState title={t('chat.chatUnavailable')} />
   ) : !query.trim() && !search.allowsEmptyQuery ? (
@@ -263,27 +285,7 @@ function SearchBody({
         keyExtractor={(hit) => `${hit.kind}:${hit.space_id}:${hit.ref_id}`}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={process.env.EXPO_OS === 'ios' ? 'interactive' : 'on-drag'}
-        ListHeaderComponent={
-          error ? (
-            <View style={{ paddingHorizontal: 24, paddingBottom: 16, gap: 12 }}>
-              <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
-                {error}
-              </Text>
-              <NativeButton
-                secondary
-                label={t('chat.tryAgain2')}
-                disabled={!queryFits}
-                onPress={() => {
-                  if (operation.error) {
-                    void actions.retry();
-                    return;
-                  }
-                  if (results === search.getSnapshot() && search.isCurrent()) void search.search();
-                }}
-              />
-            </View>
-          ) : null
-        }
+        ListHeaderComponent={pageFailed ? null : errorNotice}
         ListEmptyComponent={empty}
         renderItem={({ item }) => (
           <Pressable
@@ -332,7 +334,9 @@ function SearchBody({
           </Pressable>
         )}
         ListFooterComponent={
-          results.cursor ? (
+          pageFailed ? (
+            errorNotice
+          ) : results.cursor ? (
             <View style={{ padding: 20 }}>
               <NativeButton
                 secondary
