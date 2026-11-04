@@ -74,3 +74,28 @@ for (const retirement of ['query', 'unmount', 'account', 'access-ABA'] as const)
       await f.root.close();
     }
   });
+
+for (const message of [
+  null,
+  { id: 'other', in_thread: null, deleted: false },
+  { id: 'message', in_thread: null, deleted: true },
+])
+  test(`compiled search rejects an unavailable result before dismissing the keyboard: ${JSON.stringify(message)}`, async () => {
+    const f = await fixture('old query');
+    try {
+      await f.root.act(() => f.list.renderItem({ item: f.list.data[0] }).props.onPress());
+      await f.root.act(async () => {
+        f.pending.resolve(message);
+        await f.pending.promise;
+      });
+      assert.equal(f.routes.length, 0);
+      assert.equal(f.dismissals, 0);
+      assert.equal(f.input.value, 'old query');
+      assert.equal(
+        f.list.ListHeaderComponent.props.children[0].props.children,
+        'chat.thisResultCouldNotBeOpened',
+      );
+    } finally {
+      await f.root.close();
+    }
+  });

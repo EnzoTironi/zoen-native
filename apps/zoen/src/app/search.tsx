@@ -163,14 +163,17 @@ function SearchBody({
               })
             : null;
         if (!actions.isCurrent()) return null;
+        if (
+          hit.kind === 'message' &&
+          (!destination || destination.id !== hit.ref_id || destination.deleted)
+        )
+          throw new Error(t('chat.thisResultCouldNotBeOpened'));
         await KeyboardController.dismiss();
         return destination;
       },
       (message) => {
         if (hit.space_id && !homeSpacesFor(store.getSnapshot()).has(hit.space_id)) return;
         if (hit.kind === 'message' && hit.space_id && message) {
-          if (message.id !== hit.ref_id || message.deleted)
-            throw new Error(t('chat.thisResultCouldNotBeOpened'));
           if (message.in_thread)
             router.push({
               pathname: '/thread/[space]/[root]',
