@@ -10,6 +10,7 @@ import {
 import { AppState, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useClient } from '../core/provider';
+import { accountScope } from '../core/account-scope';
 import { useDialogs } from '../components/dialogs';
 import { PushCoordinator } from './coordinator';
 import { validLocalNotification } from './links';
@@ -41,6 +42,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const deviceId = mode === 'account' ? (snapshot?.account?.device_id ?? null) : null;
   const jobs = useMemo(() => (deviceId ? new NotificationJobs() : null), [deviceId]);
   const identityId = mode === 'account' ? (snapshot?.account?.identity_id ?? null) : null;
+  const relay = mode === 'account' ? snapshot?.account?.relay_url : undefined;
   const coordinator = useMemo(() => {
     const current = () => {
       const state = store.getSnapshot();
@@ -95,16 +97,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       store.getSnapshot().snapshot?.account?.device_id === deviceId;
     const current = () => sameDevice() && store.sessionEpoch === sessionEpoch;
     const canOpen = (data: unknown) => {
-      if (!current()) return null;
+      const state = store.getSnapshot();
+      const owner = accountScope(store, state);
+      if (
+        !owner ||
+        owner.identity !== identityId ||
+        owner.device !== deviceId ||
+        owner.relay !== relay ||
+        owner.epoch !== sessionEpoch
+      )
+        return null;
       const target = validLocalNotification(data, deviceId);
-      const currentSnapshot = store.getSnapshot().snapshot;
-      const chat =
-        target && currentSnapshot?.conversations.find((value) => value.id === target.spaceId);
-      return chat &&
-        currentSnapshot?.account &&
-        chat.members.some((member) => member.id === currentSnapshot.account?.identity_id)
-        ? chat
-        : null;
+      return (
+        target &&
+        state.snapshot?.conversations.find(
+          (chat) =>
+            chat.id === target.spaceId &&
+            chat.members.some((member) => member.id === owner.identity),
+        )
+      );
     };
     const clearHandler = installNotificationHandler(async (data) =>
       current() ? allowLocalNotification(store, data, deviceId) : false,
@@ -190,7 +201,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           .then(() => clearDeviceNotifications(deviceId))
           .catch(() => {});
     };
-  }, [store, deviceId, coordinator, jobs, dialogs, sessionEpoch]);
+  }, [store, deviceId, coordinator, jobs, dialogs, identityId, relay, sessionEpoch]);
   return <Context value={coordinator}>{children}</Context>;
 }
 
