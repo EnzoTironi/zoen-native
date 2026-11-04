@@ -103,12 +103,18 @@ function notificationSnapshot(): Snapshot {
 test('local notifications require synchronized current-account membership, new unread content and unmuted space', () => {
   const before = notificationSnapshot();
   before.conversations[0]!.unread = 0;
+  before.conversations[0]!.event_count = '18446744073709551614';
   const after = notificationSnapshot();
   const note = localNotes(before, after)[0]!;
   assert.equal(note.body, 'Hello');
   assert.equal(note.sequence, '18446744073709551615');
   assert.equal(note.deviceId, 'device');
   assert.deepEqual(localNotes(after, after), []);
+  for (const count of ['18446744073709551614', '18446744073709551613']) {
+    const stale = notificationSnapshot();
+    stale.conversations[0]!.event_count = count;
+    assert.deepEqual(localNotes(before, stale), []);
+  }
   for (const mutate of [
     (value: Snapshot) => {
       value.conversations[0]!.muted = true;
