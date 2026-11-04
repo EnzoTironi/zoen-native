@@ -103,3 +103,19 @@ test('opening and foreground adoption qualify source changes before refreshing n
     'await callCanonicalChanges(spaces)',
   );
 });
+
+test('camera switch reuses the call queue and preview detaches when the screen hides', () => {
+  const rtc = source('Calls/ZoenCallRTC.swift');
+  const switching = rtc.slice(rtc.indexOf('  func switchCamera('), rtc.indexOf('  func setMuted('));
+  before(switching, 'enqueue { rtc in', 'try await rtc.current()');
+  before(switching, 'try await rtc.current()', 'await rtc.stopCamera()');
+  before(switching, 'await rtc.stopCamera()', 'try await rtc.startCamera()');
+  const view = source('Calls/ZoenCallViewController.swift');
+  const hidden = view.slice(view.indexOf('  override func viewWillDisappear'));
+  before(hidden, 'visible = false', 'localTrack?.remove(local)');
+  assert.match(rtc, /localVideo\(localPreview\)/);
+  assert.match(
+    source('Calls/ZoenCallCoordinator.swift'),
+    /view\.showLocalVideo\(rtc\?\.localPreview\)/,
+  );
+});
