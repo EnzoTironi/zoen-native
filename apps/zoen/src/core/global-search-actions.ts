@@ -14,11 +14,6 @@ export class GlobalSearchActions {
   isCurrent() {
     return this.active && this.current();
   }
-  clearError() {
-    if (!this.isCurrent() || this.state.pending) return;
-    this.retryFailedRead = null;
-    this.publish(false, null);
-  }
   retry() {
     if (this.isCurrent() && !this.state.pending) return this.retryFailedRead?.();
   }
@@ -54,16 +49,17 @@ export class GlobalSearchActions {
     const valid = () => this.active && generation === this.generation && this.current();
     this.retryFailedRead = null;
     this.publish(true, null);
+    let error: string | null = null;
     try {
       const value = await read();
       if (valid()) complete(value);
     } catch (reason) {
       if (valid()) {
         this.retryFailedRead = () => this.run(read, complete, fallback);
-        this.publish(false, reason instanceof Error ? reason.message : fallback);
+        error = reason instanceof Error ? reason.message : fallback;
       }
     } finally {
-      if (valid()) this.publish(false, this.state.error);
+      if (valid()) this.publish(false, error);
     }
   }
 }
