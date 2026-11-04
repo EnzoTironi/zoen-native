@@ -49,14 +49,17 @@
   {
     "id": "TG-search-author-and-chat-filters",
     "scope": "active",
-    "implementation": "partial",
-    "acceptance": "scoped",
+    "implementation": "present",
+    "acceptance": "pending",
     "evidence": [
-      "apps/zoen/src/app/search.tsx",
-      "apps/zoen/src/core/conversation-search.ts",
-      "apps/zoen/src/core/chat-search-react.test.ts"
+      "crates/client-core/src/universal_pages.rs",
+      "crates/store/src/universal_pages.rs",
+      "crates/client-core/src/tests/universal_search_filters.rs",
+      "apps/zoen/src/components/search-identity-filters.tsx",
+      "apps/zoen/src/core/global-search-identities.test.ts",
+      "apps/zoen/src/core/search-identity-filters.test.ts"
     ],
-    "gap": "Filtro de conversa existe via rota space; falta seleção de autor e combinação de filtros na interface.",
+    "gap": "Conta nativa combina conversa/autor por ID com mídia/período antes da paginação; cursores vinculam filtros, acesso e geração. Sheets pesquisáveis usam membros atuais e autores nos resultados visíveis, sem catálogo remoto de ex-participantes. Aceite visual/teclado no iPhone pendente por Enzo; Web/Android e busca remota de histórico permanecem posteriores.",
     "issues": [
       172
     ]

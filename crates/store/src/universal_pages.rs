@@ -3,6 +3,14 @@
 use crate::{Result, SearchRow, Store, StoreError};
 use rusqlite::params;
 
+/// Filters are applied to canonical indexed rows before ranking and pagination.
+#[derive(Default)]
+pub struct SearchPageFilters<'a> {
+    pub period: Option<std::ops::Range<i64>>,
+    pub space: Option<&'a str>,
+    pub author: Option<&'a str>,
+}
+
 const MEDIA_PREVIEW_CHARS: u32 = 240;
 
 impl Store {
@@ -45,6 +53,28 @@ impl Store {
         limit: u32,
         range: Option<std::ops::Range<i64>>,
     ) -> Result<Vec<SearchRow>> {
+        self.universal_search_page_filtered(
+            query,
+            kinds,
+            readable_spaces,
+            offset,
+            limit,
+            SearchPageFilters {
+                period: range,
+                ..SearchPageFilters::default()
+            },
+        )
+    }
+
+    pub fn universal_search_page_filtered(
+        &self,
+        query: &str,
+        kinds: &[String],
+        readable_spaces: &[String],
+        offset: u32,
+        limit: u32,
+        filters: SearchPageFilters<'_>,
+    ) -> Result<Vec<SearchRow>> {
         if !(1..=100).contains(&limit) {
             return Err(StoreError::InvalidSearchLimit);
         }
@@ -53,7 +83,8 @@ impl Store {
             .filter(|word| !word.is_empty())
             .map(|word| format!("\"{word}\"*"))
             .collect();
-        let browse = query.trim().is_empty() && kinds == ["media"];
+        let browse = query.trim().is_empty()
+            && (kinds == ["media"] || filters.author.is_some() || filters.space.is_some());
         if terms.is_empty() && !browse {
             return Ok(Vec::new());
         }
@@ -92,6 +123,8 @@ impl Store {
                AND (space = '' OR space IN (SELECT value FROM json_each(?3)))
                AND (?6 IS NULL OR CAST(at_ms AS INTEGER) >= ?6)
                AND (?7 IS NULL OR CAST(at_ms AS INTEGER) < ?7)
+               AND (?8 IS NULL OR (kind = 'message' AND space = ?8))
+               AND (?9 IS NULL OR (kind = 'message' AND author = ?9))
              {media_clause}
              ORDER BY {rank},
                       CAST(at_ms AS INTEGER) DESC, kind ASC, space ASC, ref_id ASC
@@ -110,8 +143,10 @@ impl Store {
                 serde_json::to_string(readable_spaces)?,
                 limit + 1,
                 offset,
-                range.as_ref().map(|range| range.start),
-                range.as_ref().map(|range| range.end),
+                filters.period.as_ref().map(|range| range.start),
+                filters.period.as_ref().map(|range| range.end),
+                filters.space,
+                filters.author,
             ],
             |row| {
                 Ok(SearchRow {

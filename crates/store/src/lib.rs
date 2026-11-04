@@ -13,6 +13,7 @@ mod recent_attachments;
 mod search;
 mod universal_pages;
 pub use recent_attachments::RecentAttachmentIndexRow;
+pub use universal_pages::SearchPageFilters;
 mod read_times;
 #[cfg(test)]
 mod search_tests;

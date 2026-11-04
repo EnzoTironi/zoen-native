@@ -26,6 +26,7 @@ const ports = new Set([
   './provider',
   '../theme',
   '../components/primitives',
+  '../components/search-identity-filters',
 ]);
 const compiled = await build({
   entryPoints: [fileURLToPath(new URL('../app/search.tsx', import.meta.url))],
@@ -83,6 +84,7 @@ export async function fixture(
     input: any,
     avoiding: any,
     dismissals = 0;
+  let identities: any;
   const routes: any[] = [],
     reads: any[] = [],
     queries: any[] = [];
@@ -221,6 +223,13 @@ export async function fixture(
       if (name === '../theme') return { useTheme: () => ({ colors: {} }) };
       if (name === '../i18n/index.ts') return { t: (key: string) => key };
       if (name === '../profile/profile-avatar') return { ProfileAvatar: () => null };
+      if (name === '../components/search-identity-filters')
+        return {
+          SearchIdentityFilters: (props: any) => {
+            identities = props;
+            return null;
+          },
+        };
       if (name === '../components/primitives')
         return { EmptyState, Loading, NativeButton: () => null };
       throw Error(name);
@@ -249,6 +258,9 @@ export async function fixture(
     },
     EmptyState,
     Loading,
+    get identities() {
+      return identities;
+    },
     get list() {
       return list;
     },

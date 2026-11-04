@@ -114,3 +114,46 @@ fn browsing_media_without_text_orders_authorized_messages_before_limiting() -> R
     assert_eq!(hits[1].snippet, "older-media");
     Ok(())
 }
+
+#[test]
+fn identity_filters_apply_before_limit_and_exclude_non_message_rows() -> Result<()> {
+    let store = Store::in_memory()?;
+    store.reset_search_media()?;
+    for (kind, id, space, author, at) in [
+        ("message", "wanted", "room", "alice", 15),
+        ("message", "other-author", "room", "bob", 19),
+        ("message", "other-room", "other", "alice", 19),
+        ("message", "too-old", "room", "alice", 9),
+        ("person", "person-row", "room", "alice", 19),
+    ] {
+        store.index_put(kind, id, space, author, at, "", "needle")?;
+    }
+    store.index_search_media("room", "wanted")?;
+    let kinds = ["message".into(), "person".into()];
+    let media_kinds = ["media".into()];
+    let readable = ["room".into(), "other".into()];
+    for query in ["needle", ""] {
+        for media in [false, true] {
+            let result = store.universal_search_page_filtered(
+                query,
+                if media { &media_kinds } else { &kinds },
+                &readable,
+                0,
+                1,
+                SearchPageFilters {
+                    period: Some(10..20),
+                    space: Some("room"),
+                    author: Some("alice"),
+                },
+            )?;
+            assert_eq!(
+                result
+                    .iter()
+                    .map(|row| row.ref_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["wanted"]
+            );
+        }
+    }
+    Ok(())
+}

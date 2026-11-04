@@ -1,3 +1,5 @@
+import { SearchIdentityFilters } from '../components/search-identity-filters';
+import { searchIdentityOptions } from '../core/search-identity-options';
 import { t } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import {
@@ -91,6 +93,8 @@ function SearchBody({
     query: initial,
     days: 0,
     period: undefined as SearchPageInput['period'],
+    messages: undefined as SearchPageInput['messages'],
+    labels: {} as { author?: string; space?: string },
   });
   const supportsNativeFilters =
     process.env.EXPO_OS !== 'web' && store.getSnapshot().mode === 'account';
@@ -103,6 +107,7 @@ function SearchBody({
     filter.query,
     filters[filterIndex].kinds,
     supportsNativeFilters ? filter.period : undefined,
+    supportsNativeFilters ? filter.messages : undefined,
   );
   const query = results.query;
   const actions = useMemo(
@@ -144,6 +149,12 @@ function SearchBody({
     return () => clearTimeout(timer);
   }, [search, query, results.active, results.loading, results.completed, results.error]);
   const hits = scope ? results.hits : [];
+  const readable = homeSpacesFor(store.getSnapshot());
+  const choices = searchIdentityOptions(
+    store.getSnapshot().snapshot?.conversations.filter((chat) => readable.has(chat.id)) ?? [],
+    hits,
+    space ?? filter.messages?.space_id,
+  );
   const queryFits = search.fitsQuery(query.trim());
   const error = !queryFits ? t('chat.searchQueryTooLong') : (operation.error ?? results.error);
   function open(hit: UniversalHit) {
@@ -254,9 +265,10 @@ function SearchBody({
           options={filters.map(({ label }) => t(label))}
           selected={filterIndex}
           onSelect={(index) => {
-            if (filterIndex === index || !search.isCurrent()) return;
+            if (filterIndex === index || results !== search.getSnapshot() || !search.isCurrent())
+              return;
             search.suspend();
-            setFilter({ ...filter, index, query });
+            setFilter({ ...filter, index, query, ...(index === 2 ? { messages: undefined } : {}) });
           }}
         />
       ) : null}
@@ -266,9 +278,36 @@ function SearchBody({
           selected={searchPeriods.findIndex(({ days }) => days === filter.days)}
           onSelect={(index) => {
             const { days } = searchPeriods[index];
-            if (filter.days === days || !search.isCurrent()) return;
+            if (filter.days === days || results !== search.getSnapshot() || !search.isCurrent())
+              return;
             search.suspend();
             setFilter({ ...filter, days, query, period: recentPeriod(days) });
+          }}
+        />
+      ) : null}
+      {scope && supportsNativeFilters && filterIndex !== 2 ? (
+        <SearchIdentityFilters
+          value={filter.messages}
+          labels={filter.labels}
+          options={choices}
+          fixedSpace={Boolean(space)}
+          isCurrent={() => results === search.getSnapshot() && search.isCurrent()}
+          onChange={(messages) => {
+            if (results !== search.getSnapshot() || !search.isCurrent()) return;
+            search.suspend();
+            setFilter({
+              ...filter,
+              query,
+              messages,
+              labels: {
+                author:
+                  choices.authors.find((item) => item.id === messages?.author_id)?.title ??
+                  (messages?.author_id === filter.messages?.author_id
+                    ? filter.labels.author
+                    : undefined),
+                space: choices.spaces.find((item) => item.id === messages?.space_id)?.title,
+              },
+            });
           }}
         />
       ) : null}

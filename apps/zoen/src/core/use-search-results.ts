@@ -30,26 +30,21 @@ export function useSearchResults(
   initial = '',
   kinds = allKinds,
   period?: SearchPageInput['period'],
+  messages?: SearchPageInput['messages'],
 ) {
   const search = useMemo(
     () =>
       new ConversationSearch(
         {
-          allowsEmptyQuery: !space && kinds.includes('media'),
+          allowsEmptyQuery:
+            (!space && kinds.includes('media')) ||
+            Boolean(messages?.author_id || messages?.space_id),
           current: () => scope !== null && searchScope(store, space) === scope,
           fitsQuery: (query) =>
             process.env.EXPO_OS === 'web' ||
             (!space && store.getSnapshot().mode !== 'account') ||
             conversationQueryFits(query),
           search: async (query, cursor) => {
-            if (space)
-              return store.driver.request({
-                op: 'search_messages',
-                space_id: space,
-                query,
-                cursor,
-                limit: 30,
-              });
             const state = store.getSnapshot(),
               account = state.snapshot?.account;
             if (process.env.EXPO_OS !== 'web' && state.mode === 'account' && account) {
@@ -58,12 +53,23 @@ export function useSearchResults(
                 query,
                 kinds,
                 ...(period ? { period } : {}),
+                ...(space || messages
+                  ? { messages: { ...messages, ...(space ? { space_id: space } : {}) } }
+                  : {}),
                 cursor,
                 limit: 30,
                 expected_identity_id: account.identity_id,
                 expected_device_id: account.device_id,
               });
             }
+            if (space)
+              return store.driver.request({
+                op: 'search_messages',
+                space_id: space,
+                query,
+                cursor,
+                limit: 30,
+              });
             // Browser and native demo retain their existing bounded search authority.
             const result = await store.driver.request({
               op: 'universal_search',
@@ -76,7 +82,7 @@ export function useSearchResults(
         },
         initial,
       ),
-    [store, scope, space, initial, kinds, period],
+    [store, scope, space, initial, kinds, period, messages],
   );
   const state = useSyncExternalStore(search.subscribe, search.getSnapshot, search.getSnapshot);
   useLayoutEffect(() => {

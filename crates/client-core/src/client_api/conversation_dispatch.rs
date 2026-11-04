@@ -250,14 +250,7 @@ impl Client {
                     })?;
                 encode(&entry)
             }
-            UniversalSearchPage(input) => encode(&self.universal_search_page_in_range(
-                &input.query,
-                &input.kinds,
-                input.cursor.as_deref(),
-                input.limit,
-                (&input.expected_identity_id, &input.expected_device_id),
-                input.period.map(|period| period.start_ms..period.end_ms),
-            )?),
+            UniversalSearchPage(input) => input.execute(self),
             UniversalSearch(input) => {
                 encode(&self.universal_search(input.query, input.kinds, input.limit.min(100))?)
             }

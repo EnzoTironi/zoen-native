@@ -16,6 +16,7 @@ mod peer_receipts;
 mod profile_photos;
 mod trust_baseline;
 mod universal_pages;
+mod universal_search_filters;
 mod voice_notes;
 
 #[test]

@@ -35,7 +35,7 @@ impl Engine {
         cursor: Option<&str>,
         limit: u32,
         owner: (&str, &str),
-        period: Option<std::ops::Range<i64>>,
+        filters: store::SearchPageFilters<'_>,
     ) -> R<UniversalSearchPage> {
         let (identity, device) = owner;
         if !self.is_unlocked()
@@ -53,11 +53,22 @@ impl Engine {
         if !(1..=100).contains(&limit)
             || query.len() > 512
             || query.contains('\0')
-            || period.as_ref().is_some_and(|range| {
+            || filters.period.as_ref().is_some_and(|range| {
                 range.start < 0 || range.start >= range.end || range.end > 8_640_000_000_000_000
             })
             || kinds.len() > ALL.len()
             || (kinds != ["media"] && kinds.iter().any(|kind| !ALL.contains(&kind.as_str())))
+        {
+            return Err(invalid());
+        }
+        for id in [filters.space, filters.author].into_iter().flatten() {
+            if id.is_empty() || id.len() > 256 || id.chars().any(char::is_control) {
+                return Err(invalid());
+            }
+        }
+        if filters
+            .space
+            .is_some_and(|space| !self.is_member(space, identity))
         {
             return Err(invalid());
         }
@@ -82,9 +93,13 @@ impl Engine {
         }
         let generation = self.store.search_generation()?;
         let scope = (1_u8, query, &wanted, identity, device, &spaces, generation);
-        let bytes = match &period {
-            Some(range) => serde_json::to_vec(&(scope, range)),
-            None => serde_json::to_vec(&scope),
+        let bytes = if filters.space.is_some() || filters.author.is_some() {
+            serde_json::to_vec(&(scope, &filters.period, filters.space, filters.author))
+        } else {
+            match &filters.period {
+                Some(range) => serde_json::to_vec(&(scope, range)),
+                None => serde_json::to_vec(&scope),
+            }
         }
         .map_err(|_| invalid())?;
         let binding = hex::encode(Sha256::digest(bytes));
@@ -103,7 +118,7 @@ impl Engine {
             .unwrap_or_default();
         let mut rows = self
             .store
-            .universal_search_page_in_range(query, &wanted, &spaces, offset, limit, period)?;
+            .universal_search_page_filtered(query, &wanted, &spaces, offset, limit, filters)?;
         let more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
         let next_cursor = if more {
@@ -166,22 +181,22 @@ impl Client {
             cursor.as_deref(),
             limit,
             (&expected_identity_id, &expected_device_id),
-            None,
+            store::SearchPageFilters::default(),
         )
     }
 }
 
 impl Client {
-    pub(crate) fn universal_search_page_in_range(
+    pub(crate) fn universal_search_page_filtered(
         &self,
         query: &str,
         kinds: &[String],
         cursor: Option<&str>,
         limit: u32,
         owner: (&str, &str),
-        period: Option<std::ops::Range<i64>>,
+        filters: store::SearchPageFilters<'_>,
     ) -> Result<UniversalSearchPage, CoreError> {
         self.lock()
-            .universal_page(query, kinds, cursor, limit, owner, period)
+            .universal_page(query, kinds, cursor, limit, owner, filters)
     }
 }
