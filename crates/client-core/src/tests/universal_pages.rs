@@ -283,7 +283,7 @@ async fn global_search_command_binds_cursor_to_period() -> TestResult {
 #[test]
 fn global_media_filter_returns_attachment_messages_and_excludes_deleted_rows() -> TestResult {
     let (core, account, space) = fixture()?;
-    let attachment = core.send_file_message(
+    let attachment = core.send_file_message_with_caption(
         space.clone(),
         "needle.pdf".into(),
         "application/pdf".into(),
@@ -292,6 +292,7 @@ fn global_media_filter_returns_attachment_messages_and_excludes_deleted_rows() -
         None,
         false,
         "media-filter".into(),
+        "quarterly report".into(),
     )?;
     core.send_message(space.clone(), "needle plain message".into())?;
     let search = || {
