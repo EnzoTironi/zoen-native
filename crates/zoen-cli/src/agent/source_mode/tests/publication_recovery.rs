@@ -67,3 +67,49 @@ async fn reconnect_replays_the_original_publication_once_after_lost_receipts(
     );
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn refused_reply_ends_source_run_without_inference_after_reopen(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let server = relay(Mode::RejectPublication).await;
+    let mut f = Fixture::new(&server.url)?;
+    let history = f.history()?;
+    server
+        .histories
+        .lock()
+        .unwrap()
+        .insert(f.space.clone(), history);
+    online(&f.client, true).await;
+    let reply = f.client.send_reply(
+        f.space.clone(),
+        "This reply is refused.".into(),
+        f.source.clone(),
+        false,
+    )?;
+    f.client.wait_until_settled(3000).await?;
+    let calls = Arc::new(AtomicUsize::new(0));
+    for _ in 0..2 {
+        let entry = f
+            .client
+            .timeline(f.space.clone())?
+            .into_iter()
+            .find(|entry| entry.id == reply.id)
+            .ok_or("retained reply missing")?;
+        assert_eq!(entry.delivery, Delivery::Failed);
+        let mut run = Run::prepare(&f.client, source(&f.source), &[])?;
+        assert_eq!(
+            run.tick(
+                &f.client,
+                &context(&f, &calls, false),
+                &definition(),
+                deadline()
+            )
+            .await,
+            Err("agent_host_source_reply_failed".into())
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        f.reopen();
+        online(&f.client, true).await;
+    }
+    Ok(())
+}

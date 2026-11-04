@@ -32,6 +32,7 @@ impl SecretVault for Vault {
 pub(super) enum Mode {
     Normal,
     LostPublicationReceipt,
+    RejectPublication,
     Paused,
     Revoked,
     CursorAck,
@@ -320,6 +321,12 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         ClientFrame::Publish { env } => {
                             seen.lock().unwrap().push("event_publish");
                             env.verify().unwrap();
+                            if matches!(mode, Mode::RejectPublication) {
+                                ws.send(Message::Binary(publication::reject(&env).encode().into()))
+                                    .await
+                                    .unwrap();
+                                continue;
+                            }
                             let (ev, accepted) = {
                                 let mut logs = history.lock().unwrap();
                                 let log = logs.entry(env.space().into()).or_default();
