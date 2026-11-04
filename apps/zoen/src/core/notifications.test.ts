@@ -354,3 +354,19 @@ test('losing session ownership during a registration failure leaves no scheduled
   await coordinator.foreground();
   assert.deepEqual(retries, []);
 });
+
+test('a superseded token lookup failure does not overwrite a successful rotation', async () => {
+  const { ports, writes } = fixture();
+  const { promise, reject } = Promise.withResolvers<string>();
+  ports.token = () => promise;
+  const coordinator = new PushCoordinator(ports, configuration);
+  const foreground = coordinator.foreground();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await coordinator.receivedToken('BB'.repeat(32));
+  reject(new Error('superseded token lookup'));
+  await foreground;
+  assert.deepEqual(writes, ['bb'.repeat(32)]);
+  assert.equal(coordinator.getSnapshot().registration, 'acknowledged');
+  assert.equal(coordinator.getSnapshot().failure, null);
+  assert.equal(coordinator.getSnapshot().busy, false);
+});
