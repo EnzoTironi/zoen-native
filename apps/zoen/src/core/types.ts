@@ -208,6 +208,8 @@ type Results = {
   create_agent_invite: InviteDto;
   preview_invite: InvitePreviewDto;
   join_invite: string;
+  join_invite_tracked: [string, string | null];
+  invite_join_status: 'joined' | 'refused' | 'pending';
   profile: ProfileDto;
   standing_decisions: StandingDecisionDto[];
   verify_log: LogReport;

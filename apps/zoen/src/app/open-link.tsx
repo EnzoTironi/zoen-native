@@ -6,7 +6,6 @@ import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
 import { parseZoenLink } from '../notifications/links';
 import { useTheme } from '../theme';
-import { homeSpacesFor } from '../home/access';
 import { Avatar, EmptyState, Loading, NativeButton } from '../components/primitives';
 
 export default function OpenLink() {
@@ -69,28 +68,44 @@ export default function OpenLink() {
     setBusy(true);
     setFailure(null);
     try {
-      const space =
-        link.kind === 'invite'
-          ? await store.request({ op: 'join_invite', code: link.code })
-          : link.kind === 'agent'
-            ? await store.request({ op: 'open_agent_link', target: link.target })
-            : null;
+      const [space, receipt] =
+        link.kind === 'invite' && process.env.EXPO_OS !== 'web'
+          ? await store.request({ op: 'join_invite_tracked', code: link.code })
+          : [
+              link.kind === 'invite'
+                ? await store.request({ op: 'join_invite', code: link.code })
+                : link.kind === 'agent'
+                  ? await store.request({ op: 'open_agent_link', target: link.target })
+                  : null,
+              null,
+            ];
       if (!space || !current()) return;
       const navigate = () => router.replace({ pathname: '/chat/[id]', params: { id: space } });
-      if (link.kind !== 'invite' || preview?.kind === 'agent') {
+      if (!receipt) {
         navigate();
         return;
       }
-      const observe = () => {
-        if (!current() || !homeSpacesFor(store.getSnapshot()).has(space)) return;
-        lease.stop?.();
-        lease.stop = undefined;
-        setAwaitingMembership(false);
-        navigate();
+      const observe = async () => {
+        if (!current() || !lease.stop) return;
+        try {
+          const status = await store.driver.request({
+            op: 'invite_join_status',
+            space_id: space,
+            client_id: receipt,
+          });
+          if (!current() || !lease.stop || status === 'pending') return;
+          lease.stop();
+          lease.stop = undefined;
+          setAwaitingMembership(false);
+          if (status === 'joined') navigate();
+          else setFailure(t('chat.theInviteCouldNotBeOpened'));
+        } catch {
+          // The signed request remains in the outbox. The next store change can read it again.
+        }
       };
       setAwaitingMembership(true);
-      lease.stop = store.subscribe(observe);
-      observe();
+      lease.stop = store.subscribe(() => void observe());
+      void observe();
     } catch (reason) {
       if (current())
         setFailure(reason instanceof Error ? reason.message : t('chat.thisInviteCouldNotBeOpened'));
