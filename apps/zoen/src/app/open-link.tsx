@@ -20,7 +20,10 @@ export default function OpenLink() {
   const identity = snapshot?.account?.identity_id;
   const device = snapshot?.account?.device_id;
   const epoch = store.sessionEpoch;
-  const scope = useMemo(() => ({}), [store, identity, device, epoch, kind, target]);
+  const scope = useMemo(
+    () => ({ store, identity, device, epoch, kind, target }),
+    [store, identity, device, epoch, kind, target],
+  );
   const admission = useRef<{ scope: object; pending: boolean } | null>(null);
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
