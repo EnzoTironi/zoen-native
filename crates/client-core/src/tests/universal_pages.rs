@@ -279,3 +279,37 @@ async fn global_search_command_binds_cursor_to_period() -> TestResult {
     assert!(core.client_request(request.to_string()).await.is_err());
     Ok(())
 }
+
+#[test]
+fn global_media_filter_returns_attachment_messages_and_excludes_deleted_rows() -> TestResult {
+    let (core, account, space) = fixture()?;
+    let attachment = core.send_file_message(
+        space.clone(),
+        "needle.pdf".into(),
+        "application/pdf".into(),
+        vec![7; 64],
+        None,
+        None,
+        false,
+        "media-filter".into(),
+    )?;
+    core.send_message(space.clone(), "needle plain message".into())?;
+    let search = || {
+        core.universal_search_page(
+            "needle".into(),
+            vec!["media".into()],
+            None,
+            1,
+            account.identity_id.clone(),
+            account.device_id.clone(),
+        )
+    };
+    let result = search()?;
+    assert_eq!(result.hits.len(), 1);
+    assert_eq!(result.hits[0].kind, "message");
+    assert_eq!(result.hits[0].ref_id, attachment.id);
+    assert!(result.next_cursor.is_none());
+    core.delete_message(space, attachment.id)?;
+    assert!(search()?.hits.is_empty());
+    Ok(())
+}

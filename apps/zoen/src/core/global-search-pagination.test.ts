@@ -277,3 +277,20 @@ test('native global search sends the selected calendar period before requesting 
     await f.root.close();
   }
 });
+
+test('native media search restarts the query with the canonical media filter', async () => {
+  const f = await fixture('needle', 'account', first());
+  try {
+    f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
+    const select = f.filters.get('chat.searchMediaFilter');
+    assert.ok(select);
+    await f.root.act(select);
+    await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
+    assert.equal(f.input.value, 'needle');
+    assert.deepEqual(normalized(f.queries[1].kinds), ['media']);
+    assert.equal(f.queries[1].cursor, null);
+    assert.equal(f.list.data[0].ref_id, 'message-55');
+  } finally {
+    await f.root.close();
+  }
+});

@@ -178,11 +178,35 @@ impl Engine {
         (!body.trim().is_empty()).then_some(body)
     }
 
+    fn searchable_attachment_name<'a>(&'a self, entry: &Entry) -> Option<&'a str> {
+        let EntryBody::Message {
+            attaches: Some(id),
+            marks,
+            ..
+        } = &entry.body
+        else {
+            return None;
+        };
+        if marks.deleted || !self.visible_message(entry) || self.state.is_recovery_item(id) {
+            return None;
+        }
+        let item = self
+            .state
+            .items
+            .get(id)
+            .filter(|item| item.space == entry.space)?;
+        let ItemContent::File(file) = &item.current().content else {
+            return None;
+        };
+        Some(&file.name)
+    }
+
     fn fill_index(&self) -> R<()> {
         self.check_private_message_view()?;
         let st = &self.store;
         st.index_clear()?;
         st.recent_attachments_reset()?;
+        st.reset_search_media()?;
         let me = self.me.clone().unwrap_or_default();
         for id in &self.identity_order {
             if *id == me {
@@ -236,7 +260,14 @@ impl Engine {
                         &file.name,
                     )?;
                 }
-                let Some(body) = self.searchable_entry_text(e) else {
+                let attachment = self.searchable_attachment_name(e);
+                if attachment.is_some() {
+                    st.index_search_media(&s.id, e.id())?;
+                }
+                let body = self
+                    .searchable_entry_text(e)
+                    .or_else(|| attachment.map(str::to_owned));
+                let Some(body) = body else {
                     continue;
                 };
                 let who = self
