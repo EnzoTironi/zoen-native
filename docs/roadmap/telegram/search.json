@@ -34,14 +34,14 @@
   {
     "id": "TG-search-search-filters",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "partial",
     "acceptance": "pending",
     "evidence": [
       "apps/zoen/src/app/search.tsx",
       "apps/zoen/src/core/conversation-search.ts",
-      "apps/zoen/src/core/chat-search-react.test.ts"
+      "apps/zoen/src/core/global-search-pagination.test.ts"
     ],
-    "gap": "Filtrar por mídia/tipo/período mantendo cursor e escopo da consulta.",
+    "gap": "Busca global filtra Mensagens e Pessoas pelo tipo canônico. Ao trocar, preserva a consulta e reinicia o cursor, descartando páginas antigas em trânsito. Faltam mídia, período e aceite no iPhone.",
     "issues": [
       172
     ]
