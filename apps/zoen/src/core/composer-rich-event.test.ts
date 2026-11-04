@@ -88,4 +88,5 @@ test('rich input switches plain search and caption on the same editor while stal
   const restored = richEventAdapter(caption.props).rendered;
   assert.equal(restored.props.selectionMenuConfig.format.enabled, true);
   assert.equal(restored.props.formatMenuConfig.underline.enabled, false);
+  assert.equal(restored.props.formatMenuConfig.spoiler.label, 'composerKeyboard.spoiler');
 });

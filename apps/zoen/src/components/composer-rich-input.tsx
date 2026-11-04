@@ -76,7 +76,7 @@ export function ComposerRichInput({
         italic: { label: t('documents.italic') },
         underline: { enabled: false },
         strikethrough: { label: t('documents.strikethrough') },
-        spoiler: { enabled: false },
+        spoiler: { label: t('composerKeyboard.spoiler') },
         link: { label: t('composerKeyboard.link') },
       }}
       onComposerChange={(event) => {
