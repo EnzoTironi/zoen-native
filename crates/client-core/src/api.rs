@@ -238,6 +238,24 @@ impl Client {
 // Keep this complete exported family in api: UniFFI metadata includes module_path!().
 include!("api/account_surface.rs");
 
+impl Client {
+    pub(crate) async fn join_invite_tracked(
+        &self,
+        code: String,
+    ) -> Result<(String, Option<String>), CoreError> {
+        let code = normalize_code(&code);
+        let p = self.preview(code.clone()).await?;
+        if p.kind == "agent" {
+            return self
+                .enter_agent_invite(code, &p)
+                .await
+                .map(|space| (space, None));
+        }
+        let attempt = self.lock().queue_join(&p.space, p.role, &code)?;
+        Ok((p.space, attempt))
+    }
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl Client {
     /// People on Zoen by @ (prefix search). Their profiles are kept locally.
@@ -452,13 +470,7 @@ impl Client {
 
     /// Joins with a code or link. Returns the Space id (or the direct chat with an agent).
     pub async fn join_invite(&self, code: String) -> Result<String, CoreError> {
-        let code = normalize_code(&code);
-        let p = self.preview(code.clone()).await?;
-        if p.kind == "agent" {
-            return self.enter_agent_invite(code, &p).await;
-        }
-        self.lock().queue_join(&p.space, p.role, &code)?;
-        Ok(p.space)
+        self.join_invite_tracked(code).await.map(|(space, _)| space)
     }
 
     /// Waits (up to `timeout_ms`) until the chat's current photo is on this device (it may

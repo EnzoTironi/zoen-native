@@ -311,6 +311,13 @@ pub(super) enum Command {
     JoinInvite {
         code: String,
     },
+    JoinInviteTracked {
+        code: String,
+    },
+    InviteJoinStatus {
+        space_id: String,
+        client_id: String,
+    },
     AddMember {
         space_id: String,
         identity_id: String,

@@ -30,10 +30,10 @@ function button(node: Element | Element[]): Element | undefined {
 function fixture() {
   const host = hookHost();
   const routes: unknown[] = [];
-  const members = new Set<string>();
+  let status = 'pending';
   const listeners = new Set<() => void>();
   const joins: string[] = [];
-  const pending = deferred<string>();
+  const pending = deferred<[string, string]>();
   const snapshot = { account: { identity_id: 'person', device_id: 'device' } };
   const store = {
     sessionEpoch: 1,
@@ -41,6 +41,13 @@ function fixture() {
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    driver: {
+      request: async (command: { space_id: string; client_id: string }) => {
+        assert.equal(command.space_id, 'joined-space');
+        assert.equal(command.client_id, 'join-receipt');
+        return status;
+      },
     },
     request: ({ code }: { code: string }) => {
       joins.push(code);
@@ -53,6 +60,7 @@ function fixture() {
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
     exports: module.exports,
+    process: { env: { EXPO_OS: 'ios' } },
     require(name: string) {
       switch (name) {
         case 'react':
@@ -76,8 +84,6 @@ function fixture() {
           return {
             parseZoenLink: (url: string) => ({ kind: 'invite', code: url.split('/').at(-1) }),
           };
-        case '../home/access':
-          return { homeSpacesFor: () => members };
         case '../theme':
           return { useTheme: () => ({ colors: {} }) };
         case '../components/primitives':
@@ -100,8 +106,8 @@ function fixture() {
     setTarget: (value: string) => {
       target = value;
     },
-    confirm: (space: string) => {
-      members.add(space);
+    update: (value: string) => {
+      status = value;
       for (const listener of listeners) listener();
     },
   };
@@ -118,7 +124,7 @@ test('invite admission rejects an old route callback and late navigation after s
   current();
   assert.deepEqual(f.joins, ['second']);
   f.store.sessionEpoch++;
-  f.pending.resolve('joined-space');
+  f.pending.resolve(['joined-space', 'join-receipt']);
   await tick();
   assert.deepEqual(f.routes, []);
   f.host.blur();
@@ -127,17 +133,30 @@ test('invite admission rejects an old route callback and late navigation after s
 test('queued group invite opens only after the exact membership appears', async () => {
   const f = fixture();
   f.render().onPress();
-  f.pending.resolve('joined-space');
+  f.pending.resolve(['joined-space', 'join-receipt']);
   await tick();
   const waiting = f.render();
   assert.equal(waiting.label, 'chat.waitingForInviteConfirmation');
   assert.equal(waiting.disabled, true);
   waiting.onPress();
   assert.deepEqual(f.joins, ['first']);
-  f.confirm('other-space');
   assert.equal(f.routes.length, 0);
-  f.confirm('joined-space');
+  f.update('joined');
+  await tick();
   assert.equal(f.routes.length, 1);
   assert.equal(f.listeners.size, 0);
+  f.host.blur();
+});
+
+test('refusal of the exact invite leaves the screen open and clears its pending action', async () => {
+  const f = fixture();
+  f.render().onPress();
+  f.pending.resolve(['joined-space', 'join-receipt']);
+  await tick();
+  f.update('refused');
+  await tick();
+  assert.equal(f.routes.length, 0);
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.render().disabled, false);
   f.host.blur();
 });

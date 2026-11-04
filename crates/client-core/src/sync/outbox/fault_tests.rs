@@ -538,6 +538,17 @@ fn reopening_and_retrying_an_invite_reuses_the_queued_event(
     reopened.queue_join("sp_invite_retry", types::Role::Member, "invite-code")?;
     let retained = reopened.store.outbox_heads()?;
     assert_eq!(retained.len(), 1);
-    assert_eq!(retained[0].client_id, original[0].client_id);
+    let id = &retained[0].client_id;
+    assert_eq!(id, &original[0].client_id);
+    assert_eq!(
+        reopened.invite_join_status("sp_invite_retry", id)?,
+        "pending"
+    );
+    reopened.store.outbox_note(id, "invite expired", true)?;
+    assert_eq!(
+        reopened.invite_join_status("sp_invite_retry", id)?,
+        "refused"
+    );
+    assert_eq!(reopened.invite_join_status("other_space", id)?, "pending");
     Ok(())
 }

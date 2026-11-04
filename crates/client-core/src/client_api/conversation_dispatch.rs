@@ -19,17 +19,17 @@ impl Client {
             CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
             DeleteMessages, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
-            ForwardMessage, Forwarding, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
-            MessageDateTarget, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
-            OwnerPolicyStatus, PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy,
-            PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
-            RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
-            RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
-            ReviewSharedReply, RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage,
-            SendMessageDraft, SendMessageEditDraft, SetChatMute, SetChatMuted, SetChatPrefs,
-            SetMemberRoleReviewed, SetTyping, ShareAppCurrent, Snapshot, SpaceMemberContext,
-            StartDirect, StartOwnerPolicyDirect, SubmitOwnerPolicy, Thread, Timeline,
-            UniversalSearch, UniversalSearchPage,
+            ForwardMessage, Forwarding, InviteCall, InviteJoinStatus, JoinInvite,
+            JoinInviteTracked, LeaveSpace, MarkRead, Message, MessageDateTarget, MessageDraft,
+            NewMutationId, OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus, PageBlockMarkdown,
+            PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite, ProviderSignIn, React,
+            RecoverFailedMediaDraft, RemoveMember, RemoveMemberReviewed,
+            RequestAccountPolicyOptions, RequestAppEdit, RequestOwnerPolicyOptions, RespondCall,
+            ReviewOwnerPolicy, ReviewReplySelection, ReviewSharedReply, RevokeAgentInvite,
+            SaveMessageDraft, SavedMessages, SendMessage, SendMessageDraft, SendMessageEditDraft,
+            SetChatMute, SetChatMuted, SetChatPrefs, SetMemberRoleReviewed, SetTyping,
+            ShareAppCurrent, Snapshot, SpaceMemberContext, StartDirect, StartOwnerPolicyDirect,
+            SubmitOwnerPolicy, Thread, Timeline, UniversalSearch, UniversalSearchPage,
         };
         match command {
             MessageDateTarget(input) => encode(&self.lock().message_date_target(&input)?),
@@ -250,6 +250,11 @@ impl Client {
             CreateInvite { space_id } => encode(&self.create_invite(space_id).await?),
             PreviewInvite { code } => encode(&self.preview_invite(code).await?),
             JoinInvite { code } => encode(&self.join_invite(code).await?),
+            JoinInviteTracked { code } => encode(&self.join_invite_tracked(code).await?),
+            InviteJoinStatus {
+                space_id,
+                client_id,
+            } => encode(&self.lock().invite_join_status(&space_id, &client_id)?),
             command @ (AddMember { .. }
             | FindMemberCandidates { .. }
             | AddMemberReviewed { .. }

@@ -247,10 +247,10 @@ impl Engine {
     }
 
     /// Queues "I'm joining" for a Space we don't have yet; the relay checks the code.
-    pub fn queue_join(&mut self, space: &str, role: Role, code: &str) -> R<()> {
+    pub fn queue_join(&mut self, space: &str, role: Role, code: &str) -> R<Option<String>> {
         let me = self.me_id()?;
         if self.receipt_members(space)?.iter().any(|(id, _)| id == &me) {
-            return Ok(());
+            return Ok(None);
         }
         for pending in self.store.outbox_heads()? {
             if !pending.failed
@@ -261,7 +261,7 @@ impl Engine {
                     .as_deref()
                     == Some(code)
             {
-                return Ok(());
+                return Ok(Some(pending.client_id));
             }
         }
         let author = self.author_for(&me)?;
@@ -278,9 +278,28 @@ impl Engine {
         self.store.outbox_put(&e)?;
         self.store.set_synced(space)?;
         self.net.synced.insert(space.to_string());
-        self.net.pending.insert(client_id, space.to_string());
+        self.net
+            .pending
+            .insert(client_id.clone(), space.to_string());
         self.net.wake();
-        Ok(())
+        Ok(Some(client_id))
+    }
+
+    pub(crate) fn invite_join_status(&self, space: &str, client_id: &str) -> R<&'static str> {
+        let me = self.me_id()?;
+        if self.receipt_members(space)?.iter().any(|(id, _)| id == &me) {
+            return Ok("joined");
+        }
+        let failed = self
+            .store
+            .outbox_heads()?
+            .into_iter()
+            .any(|entry| entry.failed && entry.space == space && entry.client_id == client_id);
+        if failed && self.store.outbox_get(client_id)?.is_some_and(|event|
+            matches!(event.body, EventBody::MemberAdded { identity, .. } if identity == me)) {
+            return Ok("refused");
+        }
+        Ok("pending")
     }
 }
 
