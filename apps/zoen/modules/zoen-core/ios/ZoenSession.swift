@@ -148,9 +148,9 @@ actor ZoenSession {
     var directory = root
     try directory.setResourceValues(excluded)
     let engine = try Client.open(path: root.appending(path: "client.sqlite").path, locale: sessionLocale)
-    let bridge = ZoenListener(changed, sourceChanged: { [weak self] spaces in
-      guard !forNotification else { return }
-      Task { await self?.validateConversationGalleryChanges(spaces); await self?.callCanonicalChanges(spaces) }
+    let bridge = ZoenListener(changed, sourceChanged: { [weak self, weak engine] spaces in
+      guard !forNotification, let engine else { return }
+      Task { await self?.sessionSourceChanged(spaces, engine: engine, expected: openingGeneration) }
     }) { [weak self] in
       guard !forNotification else { return }
       Task { await self?.resumePendingHistory() }

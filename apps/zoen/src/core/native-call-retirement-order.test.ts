@@ -88,3 +88,18 @@ test('failure before system installation projects terminal presentation and clea
     /catch \{ await coordinator\.stop\(writeEnd: true, reason: \.failed\); throw error \}/,
   );
 });
+
+test('opening and foreground adoption qualify source changes before refreshing native calls', () => {
+  const adoption = source('ZoenSession+ForegroundAdoption.swift');
+  assert.match(
+    session,
+    /sessionSourceChanged\(spaces, engine: engine, expected: openingGeneration\)/,
+  );
+  assert.match(adoption, /sessionSourceChanged\(spaces, engine: core, expected: expected\)/);
+  const refresh = adoption.slice(adoption.indexOf('  func sessionSourceChanged('));
+  before(
+    refresh,
+    'guard core === engine, generation == expected',
+    'await callCanonicalChanges(spaces)',
+  );
+});

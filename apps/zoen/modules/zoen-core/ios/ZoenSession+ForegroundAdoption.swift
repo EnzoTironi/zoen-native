@@ -31,8 +31,9 @@ extension ZoenSession {
     }
     guard resumed, self.core === core, generation == expected, lease.isLive, !closing, !erasing else { throw SessionError.closed }
     sessionLocale = locale
-    listener.rebind(changed, sourceChanged: { [weak self] spaces in
-      Task { await self?.adoptedSourceChanged(spaces, engine: core, expected: expected) }
+    listener.rebind(changed, sourceChanged: { [weak self, weak core] spaces in
+      guard let core else { return }
+      Task { await self?.sessionSourceChanged(spaces, engine: core, expected: expected) }
     }, resumeHistory: { [weak self] in
       Task { await self?.adoptedHistoryReady(engine: core, expected: expected) }
     })
@@ -43,9 +44,9 @@ extension ZoenSession {
     return try await core.clientRequest(request: #"{"op":"snapshot"}"#)
   }
 
-  private func adoptedSourceChanged(_ spaces: [String], engine: Client, expected: UInt64) async {
+  func sessionSourceChanged(_ spaces: [String], engine: Client, expected: UInt64) async {
     guard core === engine, generation == expected, !closing, !erasing else { return }
-    await validateConversationGalleryChanges(spaces)
+    validateConversationGalleryChanges(spaces)
     await callCanonicalChanges(spaces)
   }
   private func adoptedHistoryReady(engine: Client, expected: UInt64) async {
