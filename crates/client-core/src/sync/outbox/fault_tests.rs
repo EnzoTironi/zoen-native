@@ -518,3 +518,26 @@ fn deserializable_event_cannot_replace_signed_bytes_projection_signature_or_cert
     assert_eq!(f.engine.outbox_envelopes(), healthy);
     Ok(())
 }
+
+#[test]
+fn reopening_and_retrying_an_invite_reuses_the_queued_event(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let database = OwnedDatabase(std::env::temp_dir().join(types::new_id("invite-retry")?));
+    let path = database.0.to_str().ok_or("invalid fixture path")?;
+    let mut fixture = Fixture::new(path, Privacy::Closed)?;
+    fixture
+        .engine
+        .queue_join("sp_invite_retry", types::Role::Member, "invite-code")?;
+    let original = fixture.engine.store.outbox_heads()?;
+    assert_eq!(original.len(), 1);
+    let device = fixture.device;
+    drop(fixture);
+
+    let mut reopened = Engine::open(path)?;
+    assert!(reopened.unlock(Some(device.to_vec()))?);
+    reopened.queue_join("sp_invite_retry", types::Role::Member, "invite-code")?;
+    let retained = reopened.store.outbox_heads()?;
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0].client_id, original[0].client_id);
+    Ok(())
+}

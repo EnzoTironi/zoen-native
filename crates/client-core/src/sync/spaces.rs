@@ -249,6 +249,21 @@ impl Engine {
     /// Queues "I'm joining" for a Space we don't have yet; the relay checks the code.
     pub fn queue_join(&mut self, space: &str, role: Role, code: &str) -> R<()> {
         let me = self.me_id()?;
+        if self.receipt_members(space)?.iter().any(|(id, _)| id == &me) {
+            return Ok(());
+        }
+        for pending in self.store.outbox_heads()? {
+            if !pending.failed
+                && pending.space == space
+                && self
+                    .store
+                    .meta(&format!("invite:{}", pending.client_id))?
+                    .as_deref()
+                    == Some(code)
+            {
+                return Ok(());
+            }
+        }
         let author = self.author_for(&me)?;
         let at = crate::engine::now_ms();
         let client_id = new_ulid(at)?;
