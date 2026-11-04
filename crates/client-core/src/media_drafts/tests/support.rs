@@ -415,19 +415,15 @@ pub(super) fn refuse_pending_media(f: &Fixture) {
             .unwrap()
             .is_some()
         {
-            assert!(
-                engine
-                    .reject(client_id, "permission denied", true, None)
-                    .user_failed()
-            );
+            assert!(engine
+                .reject(client_id, "permission denied", true, None)
+                .user_failed());
         }
-        assert!(
-            engine
-                .store
-                .outbox()
-                .unwrap()
-                .iter()
-                .any(|retained| retained.event.client_id == *client_id && retained.failed)
-        );
+        assert!(engine
+            .store
+            .outbox()
+            .unwrap()
+            .iter()
+            .any(|retained| retained.event.client_id == *client_id && retained.failed));
     }
 }
