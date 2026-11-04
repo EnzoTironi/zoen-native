@@ -54,6 +54,7 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
       account: {
         identity_id: 'synthetic-owner',
         device_id: 'synthetic-device',
+        relay_url: 'https://relay.example',
         registered: true,
         unlocked: true,
         setup_pending: false,
@@ -75,6 +76,7 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
   let respond: (data: unknown) => void = () => {};
   const store = {
     sessionEpoch: 1,
+    isSessionRetiring: false,
     getSnapshot: () => current,
     registerDeviceCleanup: () => () => {},
     subscribe: (fn: () => void) => {
@@ -173,6 +175,15 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
     reopen() {
       store.sessionEpoch++;
     },
+    retire() {
+      store.isSessionRetiring = true;
+    },
+    lock() {
+      current.snapshot.account.unlocked = false;
+    },
+    changeRelay() {
+      current.snapshot.account.relay_url = 'https://other.example';
+    },
     async flush() {
       // Ports above resolve immediately. One event-loop turn drains their real
       // coordinator continuations without sleeping or changing its deadlines.
@@ -195,6 +206,7 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
             registered: true,
             identity_id: 'other-owner',
             device_id: 'other-device',
+            relay_url: 'https://other.example',
             unlocked: true,
             setup_pending: false,
           },
@@ -362,5 +374,23 @@ test('retired same-device notification callbacks cannot navigate or query presen
     assert.equal(f.calls.filter(({ kind }) => kind === 'navigation').length, 1);
   } finally {
     f.close();
+  }
+});
+
+test('notification taps require an unlocked live account on the original relay', () => {
+  for (const invalidate of ['lock', 'retire', 'changeRelay'] as const) {
+    const f = fixture('background');
+    try {
+      f.conversations([{ id: 'chat', members: [{ id: 'synthetic-owner' }] } as SpaceSummary]);
+      f[invalidate]();
+      f.respond({ zoen_local: 1, device_id: 'synthetic-device', event_seq: '1', space_id: 'chat' });
+      assert.equal(
+        f.calls.some(({ kind }) => kind === 'navigation'),
+        false,
+        invalidate,
+      );
+    } finally {
+      f.close();
+    }
   }
 });
