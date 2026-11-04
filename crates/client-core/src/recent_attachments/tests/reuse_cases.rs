@@ -145,20 +145,16 @@ pub(super) fn unconfirmed_and_recovery_only_sources_never_become_publishable_rec
             .unwrap()
             .is_some()
         {
-            assert!(
-                engine
-                    .reject(client_id, "permission denied", true, None)
-                    .user_failed()
-            );
+            assert!(engine
+                .reject(client_id, "permission denied", true, None)
+                .user_failed());
         }
-        assert!(
-            engine
-                .store
-                .outbox()
-                .unwrap()
-                .iter()
-                .any(|retained| retained.event.client_id == *client_id && retained.failed)
-        );
+        assert!(engine
+            .store
+            .outbox()
+            .unwrap()
+            .iter()
+            .any(|retained| retained.event.client_id == *client_id && retained.failed));
     }
     receive(
         &f,
