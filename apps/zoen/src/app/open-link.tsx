@@ -53,8 +53,12 @@ export default function OpenLink() {
   async function open() {
     const lease = admission.current;
     function current() {
-      const account = store.getSnapshot().snapshot?.account;
+      const state = store.getSnapshot();
+      const account = state.snapshot?.account;
       return (
+        state.phase === 'ready' &&
+        !state.erasePending &&
+        (state.mode === 'demo' || account?.unlocked === true) &&
         lease !== null &&
         lease.scope === scope &&
         admission.current === lease &&
