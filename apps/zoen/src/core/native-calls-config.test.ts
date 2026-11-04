@@ -62,3 +62,24 @@ test('calls disclose microphone/camera use and preserve existing background capa
     /Invalid iOS background modes/,
   );
 });
+
+test('VoIP background mode follows explicit build opt-in and is removed on opt-out', () => {
+  const previous = process.env.ZOEN_IOS_VOIP_WAKE;
+  try {
+    process.env.ZOEN_IOS_VOIP_WAKE = '1';
+    const config = {
+      modResults: { UIBackgroundModes: ['remote-notification'] } as Record<string, unknown>,
+    };
+    applyCallInfoPlist(config);
+    applyCallInfoPlist(config);
+    assert.equal(config.modResults.ZoenVoipWakeEnabled, true);
+    assert.deepEqual(config.modResults.UIBackgroundModes, ['remote-notification', 'audio', 'voip']);
+    process.env.ZOEN_IOS_VOIP_WAKE = '0';
+    applyCallInfoPlist(config);
+    assert.equal(config.modResults.ZoenVoipWakeEnabled, false);
+    assert.deepEqual(config.modResults.UIBackgroundModes, ['remote-notification', 'audio']);
+  } finally {
+    if (previous === undefined) delete process.env.ZOEN_IOS_VOIP_WAKE;
+    else process.env.ZOEN_IOS_VOIP_WAKE = previous;
+  }
+});

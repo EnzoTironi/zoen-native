@@ -66,8 +66,8 @@ export function useChatController() {
   );
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
-  const [sending, setSending] = useState(false);
-  const sendingNow = useRef(false);
+  const [pending, setPending] = useState<string | null>(null);
+  const sendRef = useRef<{ scope: string } | null>(null);
   const [loadedSpace, setLoadedSpace] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [nativeTimeline, setNativeTimeline] = useState<{ scope: string; tag: number } | null>(null);
@@ -76,11 +76,8 @@ export function useChatController() {
   const composerText = editing ? editDraft : draft;
   const chat = snapshot?.conversations.find((conversation) => conversation.id === id);
   const { owner, search, searchState } = useConversationSearch(id);
-  const rail = useConversationRail(
-    `${owner}:${store.sessionEpoch}:${id}`,
-    railHeight,
-    conversationMiniapps.length > 0,
-  );
+  const scope = `${owner}:${store.sessionEpoch}:${id}`;
+  const rail = useConversationRail(scope, railHeight, conversationMiniapps.length > 0);
   const { visibleHeight: railVisibleHeight } = rail;
   useMessageAudioFocus(id, `${owner}:${store.sessionEpoch}`);
   const [searchRead, setSearchRead] = useState<{
@@ -485,26 +482,28 @@ export function useChatController() {
   );
 
   async function send() {
-    if (search.getSnapshot().active || sendingNow.current) return;
+    if (search.getSnapshot().active || sendRef.current?.scope === scope) return;
     const attempt = normalDraft.capture();
     if (!attempt) return;
-    const text = attempt.text;
-    if (!text.trim() && !(attempt.editingId && editing?.isCaption)) return;
-    sendingNow.current = true;
+    if (!attempt.text.trim() && !(attempt.editingId && editing?.isCaption)) return;
+    const token = { scope };
+    sendRef.current = token;
     store.setTyping(id, false);
-    setSending(true);
+    setPending(scope);
     try {
       if (attempt.editingId) await normalDraft.sendEdit(attempt);
       else await normalDraft.send();
     } catch (reason) {
-      if (normalDraft.isCurrent(attempt))
+      if (sendRef.current === token && normalDraft.isCurrent(attempt))
         void inform(
           t(attempt.editingId ? 'chat.editCouldNotBeSaved' : 'chat.theReplyCouldNotBeSent'),
           reason instanceof Error ? reason.message : t('chat.tryAgain'),
         );
     } finally {
-      sendingNow.current = false;
-      setSending(false);
+      if (sendRef.current === token) {
+        sendRef.current = null;
+        setPending(null);
+      }
     }
   }
 
@@ -552,7 +551,7 @@ export function useChatController() {
     reply,
     updateDraft,
     composerText,
-    sending,
+    sending: pending === scope,
     send,
     searchRevealBusy,
     searchRevealError,

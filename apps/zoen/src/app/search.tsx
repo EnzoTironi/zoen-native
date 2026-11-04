@@ -24,6 +24,12 @@ import { EmptyState, Loading, NativeButton } from '../components/primitives';
 
 const plain = (text: string) => text.replace(/\[\[|\]\]/g, '');
 
+const searchFilters = [
+  { label: 'chat.all', kinds: [] },
+  { label: 'chat.searchMessagesFilter', kinds: ['message'] },
+  { label: 'chat.people', kinds: ['person', 'agent'] },
+] satisfies { label: 'chat.all' | 'chat.searchMessagesFilter' | 'chat.people'; kinds: string[] }[];
+
 export default function Search() {
   const params = useLocalSearchParams<{ space?: string; query?: string }>();
   const { store } = useClient();
@@ -57,7 +63,14 @@ function SearchBody({
   const insets = useSafeAreaInsets();
   const { store } = useClient();
   const { colors } = useTheme();
-  const { search, state: results } = useSearchResults(store, scope, space, initial);
+  const [filter, setFilter] = useState({ index: 0, query: initial });
+  const { search, state: results } = useSearchResults(
+    store,
+    scope,
+    space,
+    filter.query,
+    searchFilters[filter.index].kinds,
+  );
   const query = results.query;
   const actions = useMemo(
     () =>
@@ -178,6 +191,32 @@ function SearchBody({
           fontSize: 17,
         }}
       />
+      {scope && !space ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginHorizontal: 20 }}>
+          {searchFilters.map(({ label }, index) => (
+            <Pressable
+              key={label}
+              accessibilityLabel={t(label)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filter.index === index }}
+              onPress={() => {
+                if (filter.index === index || !search.isCurrent()) return;
+                search.suspend();
+                setFilter({ index, query });
+              }}
+              style={{
+                minHeight: 44,
+                justifyContent: 'center',
+                paddingHorizontal: 14,
+                borderRadius: 22,
+                backgroundColor: filter.index === index ? colors.muted : 'transparent',
+              }}
+            >
+              <Text style={{ color: colors.text }}>{t(label)}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       <FlashList
         testID="global-search-results"
         contentInsetAdjustmentBehavior="never"

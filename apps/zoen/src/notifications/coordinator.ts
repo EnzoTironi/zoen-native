@@ -128,11 +128,15 @@ export class PushCoordinator {
     if (!this.active() || !this.configuration || !this.desired) return Promise.resolve();
     const stamp = this.epoch;
     const configuration = this.configuration;
-    const operation = (async () => {
+    const operation = Promise.resolve().then(async () => {
       while (this.active(stamp) && this.desired) {
         const desired = this.desired;
         this.publish({ registration: 'registering', failure: null });
+        if (!this.active(stamp)) return;
+        if (desired !== this.desired) continue;
         try {
+          // A write may change the relay token even if its reply is lost or superseded.
+          this.acknowledged = undefined;
           const result = await this.ports.register(configuration, desired.token);
           if (!this.active(stamp)) return;
           if (desired.revision !== this.desired?.revision) continue;
@@ -142,7 +146,7 @@ export class PushCoordinator {
               registration: 'refused',
               failure: t('notifications.theServerRefusedNotificationRegistrationForThisDevice'),
             });
-            return;
+            continue;
           }
           this.acknowledged = desired.token;
           this.desired = null;
@@ -159,11 +163,13 @@ export class PushCoordinator {
             registration: 'waiting',
             failure: t('notifications.registrationHasNotBeenConfirmedByTheServer'),
           });
+          if (!this.active(stamp)) return;
+          if (desired !== this.desired) continue;
           this.scheduleRetry(stamp);
           return;
         }
       }
-    })();
+    });
     this.pump = operation.finally(() => {
       this.pump = null;
       if (stamp !== this.epoch && this.active() && this.desired) void this.flush();

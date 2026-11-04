@@ -48,11 +48,13 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
   const storeListeners = new Set<() => void>();
   const changes = new Set<(state: State) => void>();
   let current = {
+    phase: 'ready',
     mode: 'account',
     snapshot: {
       account: {
         identity_id: 'synthetic-owner',
         device_id: 'synthetic-device',
+        registered: true,
         unlocked: true,
         setup_pending: false,
       },
@@ -69,7 +71,10 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
       return { remove: () => changes.delete(callback) };
     },
   };
+  let present: (data: unknown) => Promise<boolean> = async () => false;
+  let respond: (data: unknown) => void = () => {};
   const store = {
+    sessionEpoch: 1,
     getSnapshot: () => current,
     registerDeviceCleanup: () => () => {},
     subscribe: (fn: () => void) => {
@@ -80,6 +85,10 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
     refresh: async () => {},
     driver: {
       async request(value: unknown) {
+        if ((value as { op?: string }).op === 'snapshot') {
+          calls.push({ kind: 'snapshot' });
+          return current.snapshot;
+        }
         calls.push({ kind: 'register', value });
         if (failFirstRegistration) {
           failFirstRegistration = false;
@@ -99,8 +108,14 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
       return 'ab12';
     },
     listenPushToken: () => () => {},
-    listenNotificationEvents: () => () => {},
-    installNotificationHandler: () => () => {},
+    listenNotificationEvents: (_wake: unknown, onResponse: typeof respond) => {
+      respond = onResponse;
+      return () => {};
+    },
+    installNotificationHandler: (handler: typeof present) => {
+      present = handler;
+      return () => {};
+    },
     nativeNotificationPresentation: () => true,
     requestNativeNotes: async () => {
       calls.push({ kind: 'nativeNote' });
@@ -123,7 +138,9 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
       jsx: (type: unknown, props: unknown) => ({ type, props }),
     },
     'react-native': { AppState: appState, Platform: { OS: platform } },
-    'expo-router': { router: { push: () => assert.fail('unexpected navigation') } },
+    'expo-router': {
+      router: { push: (value: unknown) => calls.push({ kind: 'navigation', value }) },
+    },
     'fixture:i18n': { t: (key: string) => key },
     'fixture:dialogs': { useDialogs: () => ({ inform: async () => {} }) },
     'fixture:client': {
@@ -151,6 +168,11 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
   }
   return {
     calls,
+    respond,
+    present,
+    reopen() {
+      store.sessionEpoch++;
+    },
     async flush() {
       // Ports above resolve immediately. One event-loop turn drains their real
       // coordinator continuations without sleeping or changing its deadlines.
@@ -170,6 +192,7 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
         snapshot: {
           ...current.snapshot,
           account: {
+            registered: true,
             identity_id: 'other-owner',
             device_id: 'other-device',
             unlocked: true,
@@ -317,6 +340,26 @@ test('foreground resync retries a waiting registration once', async () => {
     f.synced(true);
     await f.flush();
     assert.equal(registrations(), 2);
+  } finally {
+    f.close();
+  }
+});
+
+test('retired same-device notification callbacks cannot navigate or query presentation', async () => {
+  const f = fixture('background');
+  try {
+    f.conversations([{ id: 'chat', members: [{ id: 'synthetic-owner' }] } as SpaceSummary]);
+    const data = { zoen_local: 1, device_id: 'synthetic-device', event_seq: '1', space_id: 'chat' };
+    f.respond(data);
+    assert.equal(f.calls.filter(({ kind }) => kind === 'navigation').length, 1);
+    f.reopen();
+    assert.equal(await f.present(data), false);
+    assert.equal(
+      f.calls.some(({ kind }) => kind === 'register'),
+      false,
+    );
+    f.respond(data);
+    assert.equal(f.calls.filter(({ kind }) => kind === 'navigation').length, 1);
   } finally {
     f.close();
   }

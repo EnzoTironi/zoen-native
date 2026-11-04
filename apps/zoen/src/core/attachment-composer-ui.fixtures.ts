@@ -12,6 +12,7 @@ import * as composerPresentation from './telegram-composer-presentation.ts';
 import type { AttachmentKeyboardSession } from '../media/attachment-keyboard-session.ts';
 import { keyboardFieldHook } from './attachment-keyboard-field.fixtures.ts';
 import { homeOwnerFor } from '../home/access.ts';
+import * as conversationSearch from './conversation-search.ts';
 import { composerOwnerFixture } from './composer-owner.fixtures.ts';
 
 export type Element = { type: unknown; props: Record<string, unknown> };
@@ -334,7 +335,7 @@ export function fixture(
     './keyboard-motion': { useKeyboardMotion: () => ({ progress: { value: 0 } }) },
     '../theme': { useTheme: () => theme },
     '../i18n/index.ts': { t: (key: string) => key },
-    '../core/conversation-search': { conversationQueryFits: () => true },
+    '../core/conversation-search': conversationSearch,
     '../core/telegram-audio-presentation': { composerVerticalInsets },
     '../media/MediaComposer': { MediaComposer: 'MediaComposer' },
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },

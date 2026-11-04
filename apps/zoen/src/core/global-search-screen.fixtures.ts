@@ -118,6 +118,7 @@ export async function fixture(
     error: string | null = null;
   let focused = true;
   const focusListeners = new Set<(value: boolean) => void>();
+  const filters = new Map<string, () => void>();
   function useFocusEffect(effect: () => void | (() => void)) {
     React.useEffect(() => {
       let cleanup = focused ? effect() : undefined;
@@ -185,7 +186,10 @@ export async function fixture(
         return {
           View: Container,
           Text: () => null,
-          Pressable: () => null,
+          Pressable: (props: { accessibilityLabel?: string; onPress: () => void }) => {
+            if (props.accessibilityLabel) filters.set(props.accessibilityLabel, props.onPress);
+            return null;
+          },
           TextInput: (props: any) => {
             input = props;
             return null;
@@ -234,6 +238,7 @@ export async function fixture(
     routes,
     reads,
     queries,
+    filters,
     canonicalSnapshot,
     searchRead: (fn: typeof searchRead) => {
       searchRead = fn;

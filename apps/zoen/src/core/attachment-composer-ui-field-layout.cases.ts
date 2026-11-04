@@ -254,6 +254,8 @@ test('compiled field preserves its actual native owner while input-mode, caption
         search: {
           state: {
             active: true,
+            query: 'term',
+            error: null,
             completed: true,
             loading: false,
             hits: [{}],
@@ -300,7 +302,7 @@ test('compiled field preserves its actual native owner while input-mode, caption
   }
   const providerFor = (patch: Record<string, unknown>) =>
     find(f.renderRoot(patch), (node) => node.type === 'AttachmentKeyboardProvider');
-  const provider = providerFor({ search: { state: { completed: false } } });
+  const provider = providerFor({ search: { state: { query: '', completed: false } } });
   assert.equal(provider.type, 'AttachmentKeyboardProvider');
   const [ownerScope, space, thread] = JSON.parse(provider.props.scope as string);
   assert.equal(space, 'space');
@@ -365,7 +367,9 @@ test('the shared composer guards both main and thread content while retaining qu
       find(root, (node) => node.type === 'MediaComposer').props.threadRootId,
       threadRootId ?? null,
     );
-    const search = f.renderRoot({ search: { state: {} } });
+    const search = f.renderRoot({
+      search: { state: { active: true, query: '', completed: false, hits: [] } },
+    });
     assert.equal(search.props.searching, true);
   }
 });

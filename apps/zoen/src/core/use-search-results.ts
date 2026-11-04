@@ -19,12 +19,15 @@ export function searchScope(store: ClientStore, space?: string) {
       ]);
 }
 
+const allKinds: string[] = [];
+
 /** One disposable canonical result projection for the focused search journey. */
 export function useSearchResults(
   store: ClientStore,
   scope: string | null,
   space?: string,
   initial = '',
+  kinds = allKinds,
 ) {
   const search = useMemo(
     () =>
@@ -50,7 +53,7 @@ export function useSearchResults(
               return store.driver.request({
                 op: 'universal_search_page',
                 query,
-                kinds: [],
+                kinds,
                 cursor,
                 limit: 30,
                 expected_identity_id: account.identity_id,
@@ -61,7 +64,7 @@ export function useSearchResults(
             const result = await store.driver.request({
               op: 'universal_search',
               query,
-              kinds: [],
+              kinds,
               limit: 30,
             });
             return { hits: result.hits, next_cursor: null };
@@ -69,7 +72,7 @@ export function useSearchResults(
         },
         initial,
       ),
-    [store, scope, space, initial],
+    [store, scope, space, initial, kinds],
   );
   const state = useSyncExternalStore(search.subscribe, search.getSnapshot, search.getSnapshot);
   useLayoutEffect(() => {

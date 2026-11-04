@@ -277,7 +277,12 @@ export function screen(f: Fixture, mode: 'image' | 'account' = 'image') {
     if (name === '../../home/access')
       return { homeSpacesFor: () => new Set(routeSpaces.map((space) => space.id)) };
     if (name === '../../core/provider')
-      return { useClient: () => ({ snapshot: { conversations: routeSpaces }, store: { isSessionRetiring: false } }) };
+      return {
+        useClient: () => ({
+          snapshot: { conversations: routeSpaces },
+          store: { isSessionRetiring: false },
+        }),
+      };
     // The alternative account selector is qualified by its own real component/port cases.
     if (name === '../../agents/account-budget-screen')
       return { AccountBudgetScreen: 'AccountBudgetScreen' };

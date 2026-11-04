@@ -5,7 +5,7 @@ import { loadEditorAgent } from './editor-agent-compile.fixtures.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 import * as presentation from './telegram-composer-presentation.ts';
 import * as motion from './telegram-composer-motion.ts';
-import { conversationQueryFits } from './conversation-search.ts';
+import * as conversationSearch from './conversation-search.ts';
 import { composerOwnerFixture } from './composer-owner.fixtures.ts';
 import { homeOwnerFor } from '../home/access.ts';
 
@@ -123,7 +123,7 @@ export async function composerSafeAreaFixture(searching = true, noResults = fals
     '../i18n/index.ts': { t: (key: string) => key },
     '../core/telegram-composer-presentation': presentation,
     '../core/telegram-composer-motion': motion,
-    '../core/conversation-search': { conversationQueryFits },
+    '../core/conversation-search': conversationSearch,
     '../core/provider': { useClient: () => client },
     '../home/access': { homeOwnerFor },
     './composer-action-motion': {
