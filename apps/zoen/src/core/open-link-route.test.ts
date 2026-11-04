@@ -34,10 +34,10 @@ function fixture() {
   const listeners = new Set<() => void>();
   const joins: string[] = [];
   const pending = deferred<[string, string]>();
-  const snapshot = { account: { identity_id: 'person', device_id: 'device' } };
+  const snapshot = { account: { identity_id: 'person', device_id: 'device', unlocked: true } };
   const store = {
     sessionEpoch: 1,
-    getSnapshot: () => ({ snapshot }),
+    getSnapshot: () => ({ snapshot, phase: 'ready', mode: 'account', erasePending: false }),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -96,6 +96,7 @@ function fixture() {
     },
   });
   return {
+    snapshot,
     host,
     routes,
     joins,
@@ -159,4 +160,17 @@ test('refusal of the exact invite leaves the screen open and clears its pending 
   assert.equal(f.listeners.size, 0);
   assert.equal(f.render().disabled, false);
   f.host.blur();
+});
+
+test('locking the same account suppresses an invite confirmation without changing its epoch', async () => {
+  const f = fixture();
+  f.render().onPress();
+  f.pending.resolve(['joined-space', 'join-receipt']);
+  await tick();
+  f.snapshot.account.unlocked = false;
+  f.update('joined');
+  await tick();
+  assert.equal(f.routes.length, 0);
+  f.host.blur();
+  assert.equal(f.listeners.size, 0);
 });
