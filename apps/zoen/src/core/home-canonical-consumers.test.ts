@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createContext } from 'react';
 import { conversationTitle } from '../saved-messages/presentation.ts';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +50,7 @@ const compiled = Object.fromEntries(
             name: 'actual-chat-owner-and-view',
             setup(builder) {
               builder.onResolve({ filter: /./ }, ({ path }) =>
-                /\/(?:chat-screen|use-chat-controller|use-conversation-search|use-reply-destination-focus)$/.test(
+                /\/(?:chat-screen|use-chat-controller|use-conversation-search|use-reply-destination-focus|conversation-hashtag-search|conversation-hashtag-provider|message-hashtag)$/.test(
                   path,
                 )
                   ? undefined
@@ -187,6 +188,7 @@ function renderScreen(
     if (path === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
     if (path === 'react')
       return {
+        createContext,
         useState: (value: unknown) => [typeof value === 'function' ? value() : value, noop],
         useRef: (value: unknown) => ({ current: value }),
         useMemo: (value: () => unknown) => value(),

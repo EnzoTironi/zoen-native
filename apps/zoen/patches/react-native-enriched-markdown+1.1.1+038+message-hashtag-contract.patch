@@ -1,0 +1,322 @@
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownTextNativeComponent.ts
+@@ -359,6 +359,7 @@
+ export interface Md4cFlagsInternal {
+   /** iOS-only media-free AST admission; defaults false in the public wrapper. */
+   noMedia: boolean;
++  hashtags: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextNativeComponent.ts
+@@ -359,6 +359,7 @@
+ export interface Md4cFlagsInternal {
+   /** iOS-only media-free AST admission; defaults false in the public wrapper. */
+   noMedia: boolean;
++  hashtags: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownTextNativeComponent.d.ts
+@@ -305,6 +305,7 @@
+ export interface Md4cFlagsInternal {
+   /** iOS-only media-free AST admission; defaults false in the public wrapper. */
+   noMedia: boolean;
++  hashtags: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts b/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
+--- a/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
++++ b/node_modules/react-native-enriched-markdown/src/types/MarkdownStyle.ts
+@@ -398,6 +398,8 @@
+    * Supported on iOS. Other platform wrappers reject true instead of ignoring it.
+    * @default false */
+   noMedia?: boolean;
++  /** iOS message hashtag entities; disabled by default. */
++  hashtags?: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/types/MarkdownStyle.d.ts
+@@ -365,6 +365,8 @@
+    * Supported on iOS. Other platform wrappers reject true instead of ignoring it.
+    * @default false */
+   noMedia?: boolean;
++  /** iOS message hashtag entities; disabled by default. */
++  hashtags?: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx b/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
+--- a/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
++++ b/node_modules/react-native-enriched-markdown/src/native/EnrichedMarkdownText.tsx
+@@ -117,6 +117,7 @@
+   latexMath: true,
+   highlight: false,
+   noMedia: false,
++  hashtags: false,
+   hardSoftBreaks: false,
+   preserveBlankLines: false,
+   admonitions: true,
+@@ -181,6 +182,7 @@
+       latexMath: md4cFlags.latexMath ?? true,
+       highlight: md4cFlags.highlight ?? false,
+       noMedia: md4cFlags.noMedia ?? false,
++      hashtags: md4cFlags.hashtags ?? false,
+       hardSoftBreaks: md4cFlags.hardSoftBreaks ?? false,
+       preserveBlankLines: md4cFlags.preserveBlankLines ?? false,
+       // Admonitions are a GitHub-flavor feature; force them off in commonmark so
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js b/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
+--- a/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
++++ b/node_modules/react-native-enriched-markdown/lib/module/native/EnrichedMarkdownText.js
+@@ -64,6 +64,7 @@
+   latexMath: true,
+   highlight: false,
+   noMedia: false,
++  hashtags: false,
+   hardSoftBreaks: false,
+   preserveBlankLines: false,
+   admonitions: true
+@@ -125,6 +126,7 @@
+     latexMath: md4cFlags.latexMath ?? true,
+     highlight: md4cFlags.highlight ?? false,
+     noMedia: md4cFlags.noMedia ?? false,
++      hashtags: md4cFlags.hashtags ?? false,
+     hardSoftBreaks: md4cFlags.hardSoftBreaks ?? false,
+     preserveBlankLines: md4cFlags.preserveBlankLines ?? false,
+     // Admonitions are a GitHub-flavor feature; force them off in commonmark so
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
+--- a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
++++ b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.h
+@@ -12,6 +12,7 @@
+ @property (nonatomic, assign) BOOL preserveBlankLines;
+ @property (nonatomic, assign) BOOL admonitions;
+ @property (nonatomic, assign) BOOL noMedia;
++@property (nonatomic, assign) BOOL hashtags;
+ 
+ + (instancetype)defaultFlags;
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
+--- a/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
++++ b/node_modules/react-native-enriched-markdown/ios/parser/ENRMMarkdownParser.mm
+@@ -17,6 +17,7 @@
+     _preserveBlankLines = NO;
+     _admonitions = YES;
+     _noMedia = NO;
++    _hashtags = NO;
+   }
+   return self;
+ }
+@@ -38,6 +39,7 @@
+   copy.preserveBlankLines = self.preserveBlankLines;
+   copy.admonitions = self.admonitions;
+   copy.noMedia = self.noMedia;
++  copy.hashtags = self.hashtags;
+   return copy;
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdownText.mm
+@@ -147,6 +147,7 @@
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
+   flags.noMedia = props.noMedia;
++  flags.hashtags = props.hashtags;
+   return flags;
+ }
+ 
+@@ -649,7 +650,8 @@
+       newViewProps.md4cFlags.hardSoftBreaks != oldViewProps.md4cFlags.hardSoftBreaks ||
+       newViewProps.md4cFlags.preserveBlankLines != oldViewProps.md4cFlags.preserveBlankLines ||
+       newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions ||
+-      newViewProps.md4cFlags.noMedia != oldViewProps.md4cFlags.noMedia) {
++      newViewProps.md4cFlags.noMedia != oldViewProps.md4cFlags.noMedia ||
++      newViewProps.md4cFlags.hashtags != oldViewProps.md4cFlags.hashtags) {
+     _md4cFlags = [EnrichedMarkdownText flagsFromProps:newViewProps.md4cFlags];
+     _forceHeightUpdateOnNextRender = YES;
+     _dirtyFlags |= ENRMDirtyRender;
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h b/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
+--- a/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/ENRMViewFreeMeasurement.h
+@@ -95,6 +95,7 @@
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
+   flags.noMedia = props.noMedia;
++  flags.hashtags = props.hashtags;
+   return flags;
+ }
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h b/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
+--- a/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/MeasurementCache.h
+@@ -44,6 +44,7 @@
+   bool md4cFlagsPreserveBlankLines;
+   bool md4cFlagsAdmonitions;
+   bool md4cFlagsNoMedia;
++  bool md4cFlagsHashtags;
+   size_t styleFingerprint;
+   CGFloat fontScale;
+   MarkdownFlavor flavor;
+@@ -56,13 +57,13 @@
+   {
+     return std::tie(markdown, maxWidth, allowTrailingMargin, allowFontScaling, maxFontSizeMultiplier,
+                     md4cFlagsUnderline, md4cFlagsSuperscript, md4cFlagsSubscript, md4cFlagsHighlight,
+-                    md4cFlagsLatexMath, md4cFlagsHardSoftBreaks, md4cFlagsPreserveBlankLines, md4cFlagsAdmonitions, md4cFlagsNoMedia,
++                    md4cFlagsLatexMath, md4cFlagsHardSoftBreaks, md4cFlagsPreserveBlankLines, md4cFlagsAdmonitions, md4cFlagsNoMedia, md4cFlagsHashtags,
+                     styleFingerprint, fontScale, flavor, lineBreakStrategyIOS, writingDirection, numberOfLines,
+                     ellipsizeMode) ==
+            std::tie(other.markdown, other.maxWidth, other.allowTrailingMargin, other.allowFontScaling,
+                     other.maxFontSizeMultiplier, other.md4cFlagsUnderline, other.md4cFlagsSuperscript,
+                     other.md4cFlagsSubscript, other.md4cFlagsHighlight, other.md4cFlagsLatexMath,
+-                    other.md4cFlagsHardSoftBreaks, other.md4cFlagsPreserveBlankLines, other.md4cFlagsAdmonitions, other.md4cFlagsNoMedia,
++                    other.md4cFlagsHardSoftBreaks, other.md4cFlagsPreserveBlankLines, other.md4cFlagsAdmonitions, other.md4cFlagsNoMedia, other.md4cFlagsHashtags,
+                     other.styleFingerprint, other.fontScale, other.flavor, other.lineBreakStrategyIOS,
+                     other.writingDirection, other.numberOfLines, other.ellipsizeMode);
+   }
+@@ -86,6 +87,7 @@
+     HashUtils::hash_one(h, key.md4cFlagsPreserveBlankLines);
+     HashUtils::hash_one(h, key.md4cFlagsAdmonitions);
+     HashUtils::hash_one(h, key.md4cFlagsNoMedia);
++    HashUtils::hash_one(h, key.md4cFlagsHashtags);
+     HashUtils::hash_one(h, key.styleFingerprint);
+     HashUtils::hash_one(h, key.fontScale);
+     HashUtils::hash_one(h, static_cast<uint8_t>(key.flavor));
+@@ -178,6 +180,7 @@
+       .md4cFlagsPreserveBlankLines = props.md4cFlags.preserveBlankLines,
+       .md4cFlagsAdmonitions = props.md4cFlags.admonitions,
+       .md4cFlagsNoMedia = props.md4cFlags.noMedia,
++      .md4cFlagsHashtags = props.md4cFlags.hashtags,
+       .styleFingerprint = computeStyleFingerprint(props.markdownStyle),
+       .fontScale = fontScale,
+       .flavor = flavor,
+diff --git a/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h b/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
+--- a/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
++++ b/node_modules/react-native-enriched-markdown/ios/internals/ShadowMeasurementUtils.h
+@@ -71,6 +71,7 @@
+          oldProps.md4cFlags.hardSoftBreaks != newProps.md4cFlags.hardSoftBreaks ||
+          oldProps.md4cFlags.preserveBlankLines != newProps.md4cFlags.preserveBlankLines ||
+          oldProps.isGFM != newProps.isGFM || oldProps.md4cFlags.noMedia != newProps.md4cFlags.noMedia ||
++         oldProps.md4cFlags.hashtags != newProps.md4cFlags.hashtags ||
+          oldProps.md4cFlags.admonitions != newProps.md4cFlags.admonitions ||
+          computeStyleFingerprint(oldProps.markdownStyle) != computeStyleFingerprint(newProps.markdownStyle);
+ }
+diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+--- a/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
++++ b/node_modules/react-native-enriched-markdown/ios/generated/ReactCodegen/EnrichedMarkdownTextSpec/Props.h
+@@ -2684,6 +2684,7 @@
+ 
+ struct EnrichedMarkdownMd4cFlagsStruct {
+   bool noMedia{false};
++  bool hashtags{false};
+   bool underline{false};
+   bool superscript{false};
+   bool subscript{false};
+@@ -2700,6 +2701,7 @@
+   folly::dynamic toDynamic() const {
+     folly::dynamic result = folly::dynamic::object();
+     result["noMedia"] = noMedia;
++    result["hashtags"] = hashtags;
+     result["underline"] = underline;
+     result["superscript"] = superscript;
+     result["subscript"] = subscript;
+@@ -2719,6 +2721,10 @@
+   auto tmp_noMedia = map.find("noMedia");
+   if (tmp_noMedia != map.end()) {
+     fromRawValue(context, tmp_noMedia->second, result.noMedia);
++  }
++  auto tmp_hashtags = map.find("hashtags");
++  if (tmp_hashtags != map.end()) {
++    fromRawValue(context, tmp_hashtags->second, result.hashtags);
+   }
+   auto tmp_underline = map.find("underline");
+   if (tmp_underline != map.end()) {
+@@ -6888,6 +6894,7 @@
+ 
+ struct EnrichedMarkdownTextMd4cFlagsStruct {
+   bool noMedia{false};
++  bool hashtags{false};
+   bool underline{false};
+   bool superscript{false};
+   bool subscript{false};
+@@ -6904,6 +6911,7 @@
+   folly::dynamic toDynamic() const {
+     folly::dynamic result = folly::dynamic::object();
+     result["noMedia"] = noMedia;
++    result["hashtags"] = hashtags;
+     result["underline"] = underline;
+     result["superscript"] = superscript;
+     result["subscript"] = subscript;
+@@ -6923,6 +6931,10 @@
+   auto tmp_noMedia = map.find("noMedia");
+   if (tmp_noMedia != map.end()) {
+     fromRawValue(context, tmp_noMedia->second, result.noMedia);
++  }
++  auto tmp_hashtags = map.find("hashtags");
++  if (tmp_hashtags != map.end()) {
++    fromRawValue(context, tmp_hashtags->second, result.hashtags);
+   }
+   auto tmp_underline = map.find("underline");
+   if (tmp_underline != map.end()) {
+diff --git a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+--- a/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/src/EnrichedMarkdownNativeComponent.ts
+@@ -359,6 +359,7 @@
+ export interface Md4cFlagsInternal {
+   /** iOS-only media-free AST admission; defaults false in the public wrapper. */
+   noMedia: boolean;
++  hashtags: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownNativeComponent.ts
+@@ -358,6 +358,7 @@
+ export interface Md4cFlagsInternal {
+   /** iOS-only media-free AST admission; defaults false in the public wrapper. */
+   noMedia: boolean;
++  hashtags: boolean;
+   /**
+    * Enable underline syntax support (__text__).
+    * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
+--- a/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
++++ b/node_modules/react-native-enriched-markdown/lib/typescript/src/EnrichedMarkdownNativeComponent.d.ts
+@@ -305,6 +305,7 @@
+ export interface Md4cFlagsInternal {
+   /** iOS-only media-free AST admission; defaults false in the public wrapper. */
+   noMedia: boolean;
++  hashtags: boolean;
+     /**
+      * Enable underline syntax support (__text__).
+      * When enabled, underscores are treated as underline markers.
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+@@ -171,6 +171,7 @@
+   flags.preserveBlankLines = props.preserveBlankLines;
+   flags.admonitions = props.admonitions;
+   flags.noMedia = props.noMedia;
++  flags.hashtags = props.hashtags;
+   return flags;
+ }
+ 
+@@ -1240,7 +1241,8 @@
+       newViewProps.md4cFlags.hardSoftBreaks != oldViewProps.md4cFlags.hardSoftBreaks ||
+       newViewProps.md4cFlags.preserveBlankLines != oldViewProps.md4cFlags.preserveBlankLines ||
+       newViewProps.md4cFlags.admonitions != oldViewProps.md4cFlags.admonitions ||
+-      newViewProps.md4cFlags.noMedia != oldViewProps.md4cFlags.noMedia) {
++      newViewProps.md4cFlags.noMedia != oldViewProps.md4cFlags.noMedia ||
++      newViewProps.md4cFlags.hashtags != oldViewProps.md4cFlags.hashtags) {
+     _md4cFlags = [EnrichedMarkdown flagsFromProps:newViewProps.md4cFlags];
+     _dirtyFlags |= ENRMDirtyForceHeight | ENRMDirtyRender;
+   }

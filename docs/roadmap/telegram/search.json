@@ -135,11 +135,15 @@
     "implementation": "partial",
     "acceptance": "scoped",
     "evidence": [
-      "apps/zoen/src/app/search.tsx",
-      "apps/zoen/src/core/conversation-search.ts",
-      "apps/zoen/src/core/chat-search-react.test.ts"
+      "apps/zoen/src/core/message-hashtag.ts",
+      "apps/zoen/src/components/chat-screen.tsx",
+      "apps/zoen/src/core/message-hashtag.test.ts",
+      "apps/zoen/src/core/message-hashtag-native.test.ts",
+      "crates/store/src/hashtags.rs",
+      "crates/store/src/hashtag_tests.rs",
+      "crates/client-core/src/tests/message_search/hashtag_cases.rs"
     ],
-    "gap": "Tratar toque em hashtag como consulta contextual, com correspondência canônica em vez de texto aproximado.",
+    "gap": "Toque em hashtag na conversa iOS usa a busca existente, sem alterar o rascunho; o AST preserva texto/offsets e ignora código/links. A busca canônica exige entidade exata NFC/case-insensitive antes da paginação e revalida o escopo. Restam aceite manual por Enzo, toque contextual nas threads e suporte posterior Web/Android; não implementa descoberta pública de hashtags.",
     "issues": [
       172
     ]

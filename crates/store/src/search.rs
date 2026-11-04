@@ -49,7 +49,10 @@ impl Store {
         if !(1..=100).contains(&limit) {
             return Err(StoreError::InvalidSearchLimit);
         }
-        let terms: Vec<String> = query
+        let hashtag = crate::hashtags::query(query);
+        let terms: Vec<String> = hashtag
+            .as_deref()
+            .map_or(query, |tag| tag)
             .split(|c: char| !c.is_alphanumeric())
             .filter(|word| !word.is_empty())
             .map(|word| format!("\"{word}\"*"))
@@ -61,7 +64,7 @@ impl Store {
         let mut statement = self.conn.prepare_cached(
             "SELECT kind, ref_id, space, author, at_ms, title,
                     snippet(search, 6, '[[', ']]', '…', 10),
-                    snippet(search, 5, '[[', ']]', '…', 8)
+                    snippet(search, 5, '[[', ']]', '…', 8), body
              FROM search WHERE search MATCH ?1 AND kind = 'message' AND space = ?2
                AND (?3 = 0 OR CAST(at_ms AS INTEGER) < ?4
                     OR (CAST(at_ms AS INTEGER) = ?4 AND ref_id > ?5))
@@ -74,21 +77,41 @@ impl Store {
                 after.is_some(),
                 at_ms,
                 ref_id,
-                limit + 1
+                if hashtag.is_some() {
+                    -1_i64
+                } else {
+                    i64::from(limit) + 1
+                }
             ],
             |row| {
-                Ok(SearchRow {
-                    kind: row.get(0)?,
-                    ref_id: row.get(1)?,
-                    space: row.get(2)?,
-                    author: row.get(3)?,
-                    at_ms: row.get(4)?,
-                    title: row.get(5)?,
-                    snippet: row.get(6)?,
-                    title_snippet: row.get(7)?,
-                })
+                Ok((
+                    SearchRow {
+                        kind: row.get(0)?,
+                        ref_id: row.get(1)?,
+                        space: row.get(2)?,
+                        author: row.get(3)?,
+                        at_ms: row.get(4)?,
+                        title: row.get(5)?,
+                        snippet: row.get(6)?,
+                        title_snippet: row.get(7)?,
+                    },
+                    row.get::<_, String>(8)?,
+                ))
             },
         )?;
-        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+        let mut hits = Vec::new();
+        for row in rows {
+            let (hit, body) = row?;
+            if hashtag
+                .as_ref()
+                .is_none_or(|tag| crate::hashtags::contains(&body, tag))
+            {
+                hits.push(hit);
+                if hits.len() > limit as usize {
+                    break;
+                }
+            }
+        }
+        Ok(hits)
     }
 }

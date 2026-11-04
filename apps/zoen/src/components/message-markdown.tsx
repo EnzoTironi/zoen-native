@@ -1,3 +1,5 @@
+import { ConversationHashtagSearch } from './conversation-hashtag-search';
+import { messageHashtagLink } from '../core/message-hashtag';
 import type { RenderedMessageText } from './use-rendered-message-text';
 import { MessageTextSelection } from './message-context-ports';
 import { t } from '../i18n/index.ts';
@@ -41,6 +43,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
 }: MessageMarkdownProps) {
   const { colors, scheme } = useTheme();
   const selection = use(MessageTextSelection);
+  const hashtagSearch = use(ConversationHashtagSearch);
   const quoteMotion = useQuoteLayoutTransition();
   const quotePresentation = useQuoteCollapse(
     text,
@@ -162,6 +165,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         preserveBlankLines: true,
         latexMath: false,
         noMedia: process.env.EXPO_OS === 'ios',
+        hashtags: process.env.EXPO_OS === 'ios' && hashtagSearch !== null,
       }}
       selectable={selectable || selection?.active === true}
       contextMenuItems={
@@ -192,6 +196,11 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       }}
       onLinkPress={({ url }) => {
         if (selection?.active || onQuoteSelection) return;
+        const hashtag = messageHashtagLink(url);
+        if (hashtag) {
+          void launchLink(url);
+          return;
+        }
         const target = messageMarkdownLink(url);
         if (target) void launchLink(target);
       }}

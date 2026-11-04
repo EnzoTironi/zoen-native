@@ -7,6 +7,9 @@
 //! Seams para depois: SQLCipher (mesma API, `PRAGMA key`), FTS5 para busca local,
 //! App Group compartilhado com as extensões do iOS.
 
+#[cfg(test)]
+mod hashtag_tests;
+mod hashtags;
 mod image;
 mod profiles;
 mod recent_attachments;

@@ -84,6 +84,13 @@ export class ConversationSearch {
     this.state = { ...this.state, ...change };
     for (const listener of this.listeners) listener();
   }
+  /** Enter contextual search without touching the conversation composer draft. */
+  openQuery(query: string) {
+    if (!this.source.current() || !this.fitsQuery(query)) return false;
+    this.setQuery(query);
+    this.open();
+    return true;
+  }
   open() {
     this.publish({ active: true });
     if (this.dirty) void this.refreshCanonical();
