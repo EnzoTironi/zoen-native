@@ -109,7 +109,17 @@ test('camera switch reuses the call queue and preview detaches when the screen h
   const switching = rtc.slice(rtc.indexOf('  func switchCamera('), rtc.indexOf('  func setMuted('));
   before(switching, 'enqueue { rtc in', 'try await rtc.current()');
   before(switching, 'try await rtc.current()', 'await rtc.stopCamera()');
-  before(switching, 'await rtc.stopCamera()', 'try await rtc.startCamera()');
+  before(
+    switching,
+    'await rtc.stopCamera()',
+    'try await rtc.startCamera(position: next, revision: revision)',
+  );
+  before(switching, 'try await rtc.current()', 'guard rtc.cameraIntentRevision == revision else');
+  before(
+    switching,
+    'await rtc.stopCamera()',
+    'guard rtc.live, rtc.cameraIntentRevision == revision',
+  );
   const view = source('Calls/ZoenCallViewController.swift');
   const hidden = view.slice(view.indexOf('  override func viewWillDisappear'));
   before(hidden, 'visible = false', 'localTrack?.remove(local)');
