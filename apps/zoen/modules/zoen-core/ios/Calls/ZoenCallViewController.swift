@@ -1,3 +1,4 @@
+import AVFoundation
 import UIKit
 @preconcurrency import WebRTC
 
@@ -52,22 +53,27 @@ final class ZoenCallViewController: UIViewController {
       local.clipsToBounds = true
       local.isAccessibilityElement = false
       view.addSubview(local)
-      let flip = button("camera.rotate", label: text("Alternar câmera", "Switch camera")) { [weak self] _ in
-        self?.switchCamera?()
-      }
-      flip.translatesAutoresizingMaskIntoConstraints = false
-      view.addSubview(flip)
-      switchCameraButton = flip
       NSLayoutConstraint.activate([
         local.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
         local.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
         local.widthAnchor.constraint(equalToConstant: 96),
         local.heightAnchor.constraint(equalToConstant: 128),
-        flip.centerXAnchor.constraint(equalTo: local.centerXAnchor),
-        flip.topAnchor.constraint(equalTo: local.bottomAnchor, constant: 4),
-        flip.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
-        flip.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
       ])
+      let positions = Set(RTCCameraVideoCapturer.captureDevices().map(\.position))
+      if positions.contains(.front), positions.contains(.back) {
+        let flip = button("camera.rotate", label: text("Alternar câmera", "Switch camera")) { [weak self] _ in
+          self?.switchCamera?()
+        }
+        flip.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(flip)
+        switchCameraButton = flip
+        NSLayoutConstraint.activate([
+          flip.centerXAnchor.constraint(equalTo: local.centerXAnchor),
+          flip.topAnchor.constraint(equalTo: local.bottomAnchor, constant: 4),
+          flip.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+          flip.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+        ])
+      }
       updateLocalPreviewVisibility()
     }
     NSLayoutConstraint.activate([
