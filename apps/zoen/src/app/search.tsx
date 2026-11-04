@@ -18,6 +18,7 @@ import { homeOwnerFor, homeSpacesFor } from '../home/access';
 import { GlobalSearchActions } from '../core/global-search-actions';
 import { searchScope, useSearchResults } from '../core/use-search-results';
 import { useClient } from '../core/provider';
+import { messageDestination } from '../core/message-link';
 import type { SearchPageInput } from '../core/generated/SearchPageInput';
 import type { UniversalHit } from '../core/generated/UniversalHit';
 import { useTheme } from '../theme';
@@ -174,13 +175,7 @@ function SearchBody({
       (message) => {
         if (hit.space_id && !homeSpacesFor(store.getSnapshot()).has(hit.space_id)) return;
         if (hit.kind === 'message' && hit.space_id && message) {
-          if (message.in_thread)
-            router.push({
-              pathname: '/thread/[space]/[root]',
-              params: { space: hit.space_id, root: message.in_thread, jump: message.id },
-            });
-          else
-            router.push({ pathname: '/chat/[id]', params: { id: hit.space_id, jump: hit.ref_id } });
+          router.push(messageDestination(hit.space_id, message));
         } else if (hit.kind === 'space')
           router.push({ pathname: '/chat/[id]', params: { id: hit.ref_id } });
         else if (hit.kind === 'person' || hit.kind === 'agent')

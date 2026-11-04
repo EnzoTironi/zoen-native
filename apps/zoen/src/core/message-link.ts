@@ -6,6 +6,19 @@ export type MessageDestination =
   | { pathname: '/chat/[id]'; params: { id: string; jump: string } }
   | { pathname: '/thread/[space]/[root]'; params: { space: string; root: string; jump: string } };
 
+/** Build a destination for a message already projected by the conversation core. */
+export function messageDestination(
+  space: string,
+  entry: { id: string; in_thread?: string | null },
+): MessageDestination {
+  return entry.in_thread
+    ? {
+        pathname: '/thread/[space]/[root]',
+        params: { space, root: entry.in_thread, jump: entry.id },
+      }
+    : { pathname: '/chat/[id]', params: { id: space, jump: entry.id } };
+}
+
 /** A link never supplies its own thread, read authority or publication operation. */
 export async function resolveMessageLink(
   store: ClientStore,
@@ -35,14 +48,9 @@ export async function resolveMessageLink(
     });
     if (!current()) return null;
     if (entry.id !== message || entry.deleted) throw new Error('Message unavailable');
-    if (entry.in_thread) {
-      if (!messageAddress(space, entry.in_thread)) throw new Error('Message unavailable');
-      return {
-        pathname: '/thread/[space]/[root]',
-        params: { space, root: entry.in_thread, jump: message },
-      };
-    }
-    return { pathname: '/chat/[id]', params: { id: space, jump: message } };
+    if (entry.in_thread && !messageAddress(space, entry.in_thread))
+      throw new Error('Message unavailable');
+    return messageDestination(space, entry);
   } finally {
     unsubscribe();
   }
