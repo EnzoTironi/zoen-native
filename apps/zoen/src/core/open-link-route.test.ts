@@ -31,14 +31,14 @@ function fixture() {
   const host = hookHost();
   const routes: unknown[] = [];
   let status = 'pending';
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(spaces?: readonly string[]) => void>();
   const joins: string[] = [];
   const pending = deferred<[string, string]>();
   const snapshot = { account: { identity_id: 'person', device_id: 'device', unlocked: true } };
   const store = {
     sessionEpoch: 1,
     getSnapshot: () => ({ snapshot, phase: 'ready', mode: 'account', erasePending: false }),
-    subscribe: (listener: () => void) => {
+    subscribeCanonicalChanges: (listener: (spaces?: readonly string[]) => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
@@ -107,9 +107,9 @@ function fixture() {
     setTarget: (value: string) => {
       target = value;
     },
-    update: (value: string) => {
+    update: (value: string, spaces?: readonly string[]) => {
       status = value;
-      for (const listener of listeners) listener();
+      for (const listener of listeners) listener(spaces);
     },
   };
 }
@@ -142,7 +142,10 @@ test('queued group invite opens only after the exact membership appears', async 
   waiting.onPress();
   assert.deepEqual(f.joins, ['first']);
   assert.equal(f.routes.length, 0);
-  f.update('joined');
+  f.update('joined', ['other-space']);
+  await tick();
+  assert.equal(f.routes.length, 0);
+  f.update('joined', ['joined-space']);
   await tick();
   assert.equal(f.routes.length, 1);
   assert.equal(f.listeners.size, 0);
