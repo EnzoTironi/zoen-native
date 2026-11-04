@@ -136,11 +136,29 @@ pub(super) fn unconfirmed_and_recovery_only_sources_never_become_publishable_rec
     .unwrap();
     let pending = f.core.lock().store.outbox().unwrap();
     for row in pending {
-        assert!(f
-            .core
-            .lock()
-            .reject(&row.event.client_id, "permission denied", true, None)
-            .user_failed());
+        let mut engine = f.core.lock();
+        let client_id = &row.event.client_id;
+        // Rejecting a file can already have settled its dependent message.
+        if engine
+            .store
+            .outbox_active_event(client_id)
+            .unwrap()
+            .is_some()
+        {
+            assert!(
+                engine
+                    .reject(client_id, "permission denied", true, None)
+                    .user_failed()
+            );
+        }
+        assert!(
+            engine
+                .store
+                .outbox()
+                .unwrap()
+                .iter()
+                .any(|retained| retained.event.client_id == *client_id && retained.failed)
+        );
     }
     receive(
         &f,

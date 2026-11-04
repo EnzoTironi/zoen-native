@@ -1,5 +1,5 @@
 //! Review and removal use the existing log/outbox, never a second membership store.
-use super::{t, CoreError, Engine, EventBody, Role, SpaceKind, R};
+use super::{t, CoreError, Engine, Event, EventBody, Role, SpaceKind, R};
 use crate::{MemberActionState, SpaceMemberContext};
 use sha2::{Digest, Sha256};
 
@@ -21,6 +21,23 @@ pub(super) fn role_name(role: Role) -> String {
     .into()
 }
 impl Engine {
+    /// Return the last confirmed event affecting this member's access.
+    pub(crate) fn membership_cut(&self, space: &str, identity: &str) -> Option<&Event> {
+        self.logs
+            .get(space)?
+            .events()
+            .iter()
+            .rev()
+            .find(|event| match &event.body {
+                EventBody::SpaceCreated { .. } => event.author == identity,
+                EventBody::MemberAdded {
+                    identity: member, ..
+                }
+                | EventBody::MemberRemoved { identity: member } => member == identity,
+                _ => false,
+            })
+    }
+
     /// Confirmed membership plus pending intent are reported separately. The
     /// optimistic disappearance of a person is never a successful removal receipt.
     pub(crate) fn space_member_context(
@@ -56,20 +73,8 @@ impl Engine {
                 .find(|(id, _)| id == who)
                 .map(|(_, role)| *role)
         };
-        // Only membership cuts participate, so unrelated chat messages do not
-        // invalidate a review; remove/rejoin and role replacement always do.
-        let cut = |who: &str| {
-            self.logs.get(space).and_then(|log| {
-                log.events().iter().rev().find(|event| match &event.body {
-                    EventBody::SpaceCreated { .. } => event.author == who,
-                    EventBody::MemberAdded { identity, .. }
-                    | EventBody::MemberRemoved { identity } => identity == who,
-                    _ => false,
-                })
-            })
-        };
-        let actor_cut = cut(identity);
-        let member_cut = cut(member);
+        let actor_cut = self.membership_cut(space, identity);
+        let member_cut = self.membership_cut(space, member);
         let pending = self.store.outbox()?;
         let mut updating = false;
         let mut removing = false;
