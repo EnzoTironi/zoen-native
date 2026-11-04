@@ -108,7 +108,9 @@ export default function OpenLink() {
         }
       };
       setAwaitingMembership(true);
-      lease.stop = store.subscribe(() => void observe());
+      lease.stop = store.subscribeCanonicalChanges((spaces) => {
+        if (!spaces || spaces.includes(space)) void observe();
+      });
       void observe();
     } catch (reason) {
       if (current())
