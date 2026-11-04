@@ -528,3 +528,25 @@ pub(crate) async fn reserve_retained_reply(
     released?;
     Ok(binding)
 }
+
+/// Actual retained extraction through the ordinary shared claim phase. The
+/// production continuity/dispatch/output guards remain untouched.
+pub(crate) async fn claim_retained_reply(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<Option<crate::finance::FreshClaim>, RuntimeError> {
+    let step = crate::VerifiedStep::Native(Box::new(retained_reply_holder(runtime, run).await?));
+    let result: Result<Option<crate::finance::FreshClaim>, RuntimeError> = async {
+        let dispatch = runtime
+            .gateway
+            .preflight(step.request())
+            .map_err(|_| RuntimeError::InvalidProfile)?;
+        let binding = step.binding(&dispatch, &runtime.price)?;
+        runtime.claim_verified_budget(&step, &binding).await
+    }
+    .await;
+    let released = step.release(&runtime.execution).await;
+    let claim = result?;
+    released?;
+    Ok(claim)
+}

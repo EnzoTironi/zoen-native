@@ -1,5 +1,6 @@
 //! Shared actual policies/native capsules, source cursors and cold failure cuts.
 mod cancellation;
+mod claims;
 mod discovery;
 mod reservation;
 use super::*;
@@ -139,5 +140,6 @@ pub(in crate::tests) async fn run() -> TestResult {
     Box::pin(discovery::run()).await?;
     Box::pin(cancellation::run()).await?;
     Box::pin(reservation::run()).await?;
+    Box::pin(claims::run()).await?;
     Ok(())
 }

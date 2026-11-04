@@ -187,7 +187,11 @@ impl DispatchAuthority for Session<'_> {
             if self.runtime.fault.load(Ordering::SeqCst) == 4 {
                 return Err(RuntimeError::Unavailable);
             }
-            let Some(claim) = self.runtime.finance.claim(&binding).await? else {
+            let Some(claim) = self
+                .runtime
+                .claim_verified_budget(self.step, &binding)
+                .await?
+            else {
                 return Ok(Admission::AlreadyKnown);
             };
             let checkpoint = if self.image.is_some() {

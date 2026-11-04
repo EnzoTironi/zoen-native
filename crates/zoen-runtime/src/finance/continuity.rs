@@ -90,7 +90,7 @@ impl NativeDirectoryGuard {
 }
 
 impl Finance {
-    pub(crate) async fn check_reservation_deadline(
+    pub(crate) async fn check_financial_deadline(
         tx: &mut Transaction<'_, Postgres>,
         binding: &crate::Binding,
         deadline: Option<i64>,
@@ -119,6 +119,25 @@ impl Finance {
             return Err(RuntimeError::RestoreUnreconciled);
         };
         if actual != *binding || digest != binding.digest()? || hold != binding.hold_units {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        Ok(())
+    }
+}
+
+impl Finance {
+    pub(crate) async fn observe_claim(
+        tx: &mut Transaction<'_, Postgres>,
+        binding: &crate::Binding,
+        nonce: &str,
+    ) -> Result<(), RuntimeError> {
+        Self::observe_reservation(tx, binding).await?;
+        let actual: Option<String> =
+            sqlx::query_scalar("SELECT nonce FROM runtime_claims WHERE attempt=$1")
+                .bind(&binding.context.attempt_id)
+                .fetch_optional(&mut **tx)
+                .await?;
+        if actual.as_deref() != Some(nonce) {
             return Err(RuntimeError::RestoreUnreconciled);
         }
         Ok(())

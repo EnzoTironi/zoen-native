@@ -88,7 +88,9 @@
       "crates/zoen-runtime/src/finance/snapshot.rs",
       "crates/zoen-runtime/src/continuity/reservation.rs",
       "crates/zoen-runtime/src/continuity/reservation/recovery.rs",
-      "crates/zoen-runtime/src/tests/retained/shared_native/reservation.rs"
+      "crates/zoen-runtime/src/tests/retained/shared_native/reservation.rs",
+      "crates/zoen-runtime/src/finance/claims.rs",
+      "crates/zoen-runtime/src/tests/retained/shared_native/claims.rs"
     ],
     "remaining": [
       "Qualificar retomada durável e provedores reais com resultado atribuído",

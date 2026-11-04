@@ -27,6 +27,7 @@ pub(super) async fn run() -> TestResult {
         assert_eq!(cp.sequence, before.sequence + 1);
         let binding = native::testing::reserve_retained_reply(&f.world.runtime, &run.run).await?;
         assert_eq!(checkpoint(&f).await?, cp);
+        RuntimeAuthority::assert_legacy_reservation_format(&binding)?;
         assert!(binding.hold_units > 0);
         assert_eq!(f.world.balance().await.held_units, binding.hold_units);
         assert_eq!(f.world.balance().await.spent_units, 0);
@@ -64,6 +65,7 @@ pub(super) async fn run() -> TestResult {
                 &f.shared_directory.as_ref().ok_or("shared directory")?.0,
                 &backup,
                 &cp,
+                0,
             )
             .await?;
             reopen(&mut f).await?;

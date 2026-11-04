@@ -267,61 +267,6 @@ impl Finance {
         Self::journal(tx, b, "reserve", 0).await?;
         Ok(true)
     }
-    pub async fn claim(&self, b: &Binding) -> Result<Option<FreshClaim>, RuntimeError> {
-        let digest = b.digest()?;
-        let mut tx = self.begin().await?;
-        Self::require_unmanaged_policy(&mut tx).await?;
-        Self::directory(&mut tx, b).await?;
-        let balance = Self::lock_period(&mut tx, b, false).await?;
-        Self::not_closed(&mut tx, b).await?;
-        let policy = Self::policy(&mut tx, b).await?;
-        if balance
-            .held_units
-            .checked_add(balance.spent_units)
-            .is_none_or(|v| v > policy.limit_units)
-        {
-            return Err(RuntimeError::OverBudget);
-        }
-        let exact: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM runtime_attempts WHERE attempt=$1 AND binding_digest=$2",
-        )
-        .bind(&b.context.attempt_id)
-        .bind(&digest)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if exact.is_none() {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let terminal: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM runtime_dispositions WHERE attempt=$1)",
-        )
-        .bind(&b.context.attempt_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if terminal {
-            tx.commit().await?;
-            return Ok(None);
-        }
-        let mut nonce = [0; 32];
-        getrandom::getrandom(&mut nonce).map_err(|_| RuntimeError::Unavailable)?;
-        let nonce = hex::encode(nonce);
-        let new = sqlx::query(
-            "INSERT INTO runtime_claims(attempt,nonce) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-        )
-        .bind(&b.context.attempt_id)
-        .bind(&nonce)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected()
-            == 1;
-        tx.commit().await?;
-        Ok(new.then(|| FreshClaim {
-            attempt: b.context.attempt_id.clone(),
-            nonce,
-            binding: digest,
-            checkpoint: None,
-        }))
-    }
     pub async fn guard(
         &self,
         b: &Binding,

@@ -1,26 +1,13 @@
-//! Recover the original SQL-first hold. Observing it never recovers a fresh
-//! one-shot claim or admits a provider. New holds need actual native extraction.
+//! Recover original SQL-first financial state. Observing a nonce never recovers
+//! a fresh one-shot claim. New financial writes need actual native extraction.
 use super::*;
 impl ManagedRuntime {
-    pub(in crate::continuity) async fn recover_reservation(
+    pub(in crate::continuity) async fn recover_financial_phase(
         &mut self,
         runtime: &RuntimeAuthority,
         prepared: &Prepared,
     ) -> Result<(), RuntimeError> {
-        let encoded = prepared
-            .intent
-            .as_deref()
-            .and_then(|value| value.strip_prefix(PREFIX))
-            .ok_or(RuntimeError::RestoreUnreconciled)?;
-        if encoded.len() > 16_384 {
-            return Err(RuntimeError::EvidenceTooLarge);
-        }
-        let bytes = STANDARD
-            .decode(encoded)
-            .map_err(|_| RuntimeError::InvalidBinding)?;
-        let intent: Intent = runtime
-            .custody
-            .open("runtime-reservation/1", None, &bytes)?;
+        let intent = Intent::decode(runtime, prepared)?;
         if prepared.retirement
             || prepared.effect_digest != intent.effect()?
             || prepared.subject_updates != [intent.update()?]
@@ -41,7 +28,10 @@ impl ManagedRuntime {
             if actual != expected || (fdb_cp != prepared.previous && fdb_cp != prepared.next) {
                 return Err(RuntimeError::RestoreUnreconciled);
             }
-            Finance::observe_reservation(&mut sql, &intent.binding).await?;
+            match &intent.claim_nonce {
+                Some(nonce) => Finance::observe_claim(&mut sql, &intent.binding, nonce).await?,
+                None => Finance::observe_reservation(&mut sql, &intent.binding).await?,
+            }
             if fdb_cp == prepared.previous {
                 self.write_fdb(runtime, &tx, prepared).await?;
                 tx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
@@ -88,17 +78,17 @@ impl ManagedRuntime {
                     return Err(RuntimeError::RestoreUnreconciled);
                 }
                 scope(runtime, &step, &intent.binding, &tx).await?;
-                if !Finance::reserve_in(&mut sql, &intent.binding).await?
-                    || inventory(runtime, &mut sql, &tx).await? != expected
-                {
+                let inserted = match &intent.claim_nonce {
+                    Some(nonce) => {
+                        Finance::restore_claim_in(&mut sql, &intent.binding, nonce).await?
+                    }
+                    None => Finance::reserve_in(&mut sql, &intent.binding).await?,
+                };
+                if !inserted || inventory(runtime, &mut sql, &tx).await? != expected {
                     return Err(RuntimeError::RestoreUnreconciled);
                 }
-                Finance::check_reservation_deadline(
-                    &mut sql,
-                    &intent.binding,
-                    step.grant_deadline(),
-                )
-                .await?;
+                Finance::check_financial_deadline(&mut sql, &intent.binding, step.grant_deadline())
+                    .await?;
                 scope(runtime, &step, &intent.binding, &tx).await?;
                 self.write_sql(&mut sql, prepared).await?;
                 sql.commit().await?;
