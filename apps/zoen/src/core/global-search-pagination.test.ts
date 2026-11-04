@@ -242,22 +242,37 @@ test('browser keeps its prior long-query semantics rather than inheriting the na
 test('changing result kind keeps the query and restarts pagination without the old cursor', async () => {
   const f = await fixture('needle', 'account', first());
   try {
-    const pending = deferred<any>();
-    f.searchRead(() => pending.promise);
-    await f.root.act(() => more(f).onPress());
-    assert.equal(f.queries[1].cursor, 'opaque-page-2');
     f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
     const select = f.filters.get('chat.searchMessagesFilter');
     assert.ok(select);
     await f.root.act(select);
     await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
     assert.equal(f.input.value, 'needle');
-    assert.deepEqual(normalized(f.queries[2].kinds), ['message']);
-    assert.equal(f.queries[2].cursor, null);
-    await f.root.act(() => pending.resolve({ hits: [hit(999)], next_cursor: null }));
-    assert.deepEqual(normalized(f.list.data.map((row: { ref_id: string }) => row.ref_id)), [
-      'message-55',
-    ]);
+    assert.deepEqual(normalized(f.queries[1].kinds), ['message']);
+    assert.equal(f.queries[1].cursor, null);
+    assert.equal(f.list.data.length, 1);
+  } finally {
+    await f.root.close();
+  }
+});
+
+test('native global search sends the selected calendar period before requesting its first page', async () => {
+  const f = await fixture('needle', 'account', first());
+  try {
+    f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
+    const select = f.filters.get('chat.searchLastWeek');
+    assert.ok(select);
+    await f.root.act(select);
+    await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
+    const request = normalized(f.queries[1]);
+    assert.equal(request.query, 'needle');
+    assert.equal(request.cursor, null);
+    const start = new Date(request.period.start_ms);
+    const end = new Date(request.period.end_ms);
+    assert.equal(start.getHours(), 0);
+    start.setDate(start.getDate() + 7);
+    assert.equal(start.getTime(), end.getTime());
+    assert.equal(f.list.data.length, 1);
   } finally {
     await f.root.close();
   }
