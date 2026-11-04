@@ -1,6 +1,6 @@
 import { t } from '../i18n/index.ts';
-import { useState } from 'react';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Text, View } from 'react-native';
 import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
@@ -16,17 +16,49 @@ export default function OpenLink() {
           `zoen://${kind === 'invite' ? 'join' : 'agent'}/${encodeURIComponent(target)}`,
         )
       : null;
-  const { store } = useClient();
+  const { store, snapshot } = useClient();
+  const identity = snapshot?.account?.identity_id;
+  const device = snapshot?.account?.device_id;
+  const epoch = store.sessionEpoch;
+  const scope = useMemo(() => ({}), [store, identity, device, epoch, kind, target]);
+  const admission = useRef<{ scope: object; pending: boolean } | null>(null);
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const lease = { scope, pending: false };
+      admission.current = lease;
+      setBusy(false);
+      setFailure(null);
+      return () => {
+        if (admission.current === lease) admission.current = null;
+      };
+    }, [scope]),
+  );
   const {
     data: preview,
     error,
     retry,
-  } = useCoreQuery(link?.kind === 'invite' ? { op: 'preview_invite', code: link.code } : null);
+  } = useCoreQuery(
+    link?.kind === 'invite' ? { op: 'preview_invite', code: link.code } : null,
+    JSON.stringify([device, epoch]),
+  );
   async function open() {
-    if (!link || busy) return;
+    const lease = admission.current;
+    function current() {
+      const account = store.getSnapshot().snapshot?.account;
+      return (
+        lease !== null &&
+        lease.scope === scope &&
+        admission.current === lease &&
+        store.sessionEpoch === epoch &&
+        account?.identity_id === identity &&
+        account?.device_id === device
+      );
+    }
+    if (!link || !lease || lease.pending || !current()) return;
+    lease.pending = true;
     setBusy(true);
     setFailure(null);
     try {
@@ -36,11 +68,13 @@ export default function OpenLink() {
           : link.kind === 'agent'
             ? await store.request({ op: 'open_agent_link', target: link.target })
             : null;
-      if (space) router.replace({ pathname: '/chat/[id]', params: { id: space } });
+      if (space && current()) router.replace({ pathname: '/chat/[id]', params: { id: space } });
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : t('chat.thisInviteCouldNotBeOpened'));
+      if (current())
+        setFailure(reason instanceof Error ? reason.message : t('chat.thisInviteCouldNotBeOpened'));
     } finally {
-      setBusy(false);
+      lease.pending = false;
+      if (current()) setBusy(false);
     }
   }
   return (
