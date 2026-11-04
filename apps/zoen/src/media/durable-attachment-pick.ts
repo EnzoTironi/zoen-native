@@ -127,7 +127,6 @@ export async function pick(
             (!sendAsFileAllowed ||
               ((!existing || !existing.items.length) &&
                 (!submission.send || submission.requestEdit)) ||
-              submission.options.grouping !== 'separate' ||
               (existing &&
                 existing.items.length > 0 &&
                 existing.options?.presentation !== 'file'))) ||
