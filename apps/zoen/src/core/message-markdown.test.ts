@@ -558,6 +558,7 @@ test('a grouped file keeps its canonical media and action target without duplica
     elements(face.tree).some((node) => node.type === 'MessageMarkdown'),
     false,
   );
+  assert.ok(typeof media.props.onActions === 'function');
   media.props.onActions();
   assert.deepEqual(face.calls, [{ mode: 'actions', entry: file }]);
 });
