@@ -26,30 +26,39 @@ impl Finance {
     ) -> Result<FinancialState, RuntimeError> {
         let mut tx = self.begin().await?;
         Self::require_unmanaged_policy(&mut tx).await?;
-        let balance = Self::lock_period(&mut tx, b, false).await?;
+        let state = Self::settle_capture_in(&mut tx, b, charge, digest, sealed).await?;
+        tx.commit().await?;
+        Ok(state)
+    }
+    pub(crate) async fn settle_capture_in(
+        tx: &mut Transaction<'_, Postgres>,
+        b: &Binding,
+        charge: Option<i64>,
+        digest: &str,
+        sealed: &[u8],
+    ) -> Result<FinancialState, RuntimeError> {
+        let balance = Self::lock_period(tx, b, false).await?;
         let exact: Option<i32> = sqlx::query_scalar("SELECT 1 FROM runtime_attempts a JOIN runtime_claims c USING (attempt) WHERE a.attempt=$1 AND a.binding_digest=$2")
-            .bind(&b.context.attempt_id).bind(b.digest()?).fetch_optional(&mut *tx).await?;
+            .bind(&b.context.attempt_id).bind(b.digest()?).fetch_optional(&mut **tx).await?;
         if exact.is_none() {
             return Err(RuntimeError::InvalidBinding);
         }
         sqlx::query("INSERT INTO runtime_evidence(attempt,digest,sealed) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING")
-            .bind(&b.context.attempt_id).bind(digest).bind(sealed).execute(&mut *tx).await?;
-        Self::outbox(&mut tx, b, "evidence", digest).await?;
+            .bind(&b.context.attempt_id).bind(digest).bind(sealed).execute(&mut **tx).await?;
+        Self::outbox(tx, b, "evidence", digest).await?;
         let existing: Option<(String, i64, String)> = sqlx::query_as(
             "SELECT kind,amount_units,source_digest FROM runtime_dispositions WHERE attempt=$1",
         )
         .bind(&b.context.attempt_id)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?;
         if let Some((kind, units, source)) = existing {
             if kind != "settle" || source != digest {
                 return Err(RuntimeError::InvalidBinding);
             }
-            tx.commit().await?;
             return Ok(FinancialState::Settled { units });
         }
         let Some(charge) = charge else {
-            tx.commit().await?;
             return Ok(FinancialState::Claimed);
         };
         let held = balance
@@ -62,12 +71,11 @@ impl Finance {
             .checked_add(charge)
             .ok_or(RuntimeError::InvalidProfile)?;
         sqlx::query("INSERT INTO runtime_dispositions(attempt,kind,amount_units,source_digest) VALUES ($1,'settle',$2,$3)")
-            .bind(&b.context.attempt_id).bind(charge).bind(digest).execute(&mut *tx).await?;
+            .bind(&b.context.attempt_id).bind(charge).bind(digest).execute(&mut **tx).await?;
         sqlx::query("UPDATE runtime_periods SET held_units=$3,spent_units=$4 WHERE owner=$1 AND period_start=$2")
-            .bind(&b.context.owner).bind(b.period_start).bind(held).bind(spent).execute(&mut *tx).await?;
-        Self::journal(&mut tx, b, "settle", charge).await?;
-        Self::outbox(&mut tx, b, "settle", digest).await?;
-        tx.commit().await?;
+            .bind(&b.context.owner).bind(b.period_start).bind(held).bind(spent).execute(&mut **tx).await?;
+        Self::journal(tx, b, "settle", charge).await?;
+        Self::outbox(tx, b, "settle", digest).await?;
         Ok(FinancialState::Settled { units: charge })
     }
     pub(super) async fn outbox(

@@ -439,6 +439,9 @@ impl RuntimeAuthority {
         if !(1..=64).contains(&limit) {
             return Err(RuntimeError::InvalidBinding);
         }
+        if self.runtime_continuity.is_some() {
+            return self.reconcile_shared_captures(limit).await;
+        }
         let mut report = ReconcileReport::default();
         for (attempt, digest, sealed) in self.execution.pending_evidence(limit).await? {
             report.inspected += 1;
@@ -512,6 +515,12 @@ impl RuntimeAuthority {
             &format!("evidence/{}", capture.binding.context.attempt_id),
             &capture,
         )?;
+        if self.runtime_continuity.is_some() {
+            let state = self
+                .capture_shared(&capture.binding.context.attempt_id, &digest, &sealed)
+                .await?;
+            return Ok((result, state));
+        }
         // Output association refusal must not prevent either independent store
         // from retaining an already incurred expense, including late captures.
         let _ = native::associate_capture(self, step, &capture, &admitted.nonce, &digest, &sealed)

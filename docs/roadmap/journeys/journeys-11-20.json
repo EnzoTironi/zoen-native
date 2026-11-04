@@ -93,7 +93,11 @@
       "crates/zoen-runtime/src/tests/retained/shared_native/claims.rs",
       "crates/zoen-runtime/src/continuity/dispatch.rs",
       "crates/zoen-runtime/src/continuity/dispatch/recovery.rs",
-      "crates/zoen-runtime/src/tests/retained/shared_native/dispatch.rs"
+      "crates/zoen-runtime/src/tests/retained/shared_native/dispatch.rs",
+      "crates/zoen-runtime/src/continuity/capture.rs",
+      "crates/zoen-runtime/src/continuity/capture/recovery.rs",
+      "crates/zoen-runtime/src/tests/retained/shared_native/capture.rs",
+      "docs/dev/shared-runtime-capture.md"
     ],
     "remaining": [
       "Qualificar retomada durável e provedores reais com resultado atribuído",

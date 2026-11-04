@@ -2,7 +2,7 @@ use super::*;
 pub(in crate::continuity) async fn commitments(
     runtime: &RuntimeAuthority,
     tx: &foundationdb::Transaction,
-) -> Result<BTreeMap<String, String>, RuntimeError> {
+) -> Result<(BTreeMap<String, String>, std::collections::BTreeSet<String>), RuntimeError> {
     let prefix = runtime
         .execution
         .root
@@ -18,6 +18,7 @@ pub(in crate::continuity) async fn commitments(
         return Err(RuntimeError::EvidenceTooLarge);
     }
     let mut pointers = BTreeMap::new();
+    let mut attempts = std::collections::BTreeSet::new();
     for (key, bytes) in rows {
         let pointer: Pointer =
             serde_json::from_slice(&bytes).map_err(|_| RuntimeError::InvalidBinding)?;
@@ -25,6 +26,7 @@ pub(in crate::continuity) async fn commitments(
             return Err(RuntimeError::InvalidBinding);
         }
         pointer.observe(runtime, tx).await?;
+        attempts.insert(pointer.attempt.clone());
         if pointers
             .insert(pointer.subject(), crate::hash(&bytes))
             .is_some()
@@ -32,5 +34,5 @@ pub(in crate::continuity) async fn commitments(
             return Err(RuntimeError::InvalidBinding);
         }
     }
-    Ok(pointers)
+    Ok((pointers, attempts))
 }

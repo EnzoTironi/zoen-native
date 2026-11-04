@@ -67,6 +67,7 @@ pub(super) async fn run() -> TestResult {
                 &cp,
                 0,
                 0,
+                0,
             )
             .await?;
             reopen(&mut f).await?;

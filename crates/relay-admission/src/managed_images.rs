@@ -6,6 +6,7 @@ mod deployment;
 mod file;
 mod history;
 mod lock;
+mod originals;
 mod publish;
 mod state;
 mod subjects;

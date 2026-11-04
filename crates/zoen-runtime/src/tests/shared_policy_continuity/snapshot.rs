@@ -215,6 +215,7 @@ pub(in crate::tests) async fn restored_finance_refuses(
     tip: &relay_admission::managed_images::Checkpoint,
     expected_attempts: i64,
     expected_claims: i64,
+    expected_witnesses: i64,
 ) -> TestResult {
     let restored = snapshot.restore(w).await?;
     let pool = PgPool::connect(&restored.url).await?;
@@ -229,7 +230,10 @@ pub(in crate::tests) async fn restored_finance_refuses(
     let witnesses: i64 = sqlx::query_scalar("SELECT count(*) FROM runtime_admission_witnesses")
         .fetch_one(&pool)
         .await?;
-    assert_eq!(witnesses, 0, "actual backup predates the send witness");
+    assert_eq!(
+        witnesses, expected_witnesses,
+        "actual backup retains the expected original admission count"
+    );
     let immutable: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='runtime_attempts'::regclass AND tgname='immutable_history' AND tgenabled='O')")
         .fetch_one(&pool).await?;
     assert!(

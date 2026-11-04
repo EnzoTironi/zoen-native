@@ -1,6 +1,7 @@
 //! Shared independent continuity, retaining the existing SQL financial
 //! authority. No constructor here opens paid dispatch, output or refund gates.
 #![deny(clippy::all, clippy::perf, clippy::unwrap_used, clippy::expect_used)]
+mod capture;
 pub(crate) mod dispatch;
 mod policy;
 mod recovery;
@@ -116,12 +117,31 @@ pub(crate) async fn inventory(
             return Err(RuntimeError::InvalidBinding);
         }
     }
-    for (subject, value) in dispatch::commitments(runtime, fdb).await? {
+    let (dispatch, admitted) = dispatch::commitments(runtime, fdb).await?;
+    for (subject, value) in dispatch {
         if result.insert(subject, value).is_some() {
             return Err(RuntimeError::InvalidBinding);
         }
     }
-    if result.len() > 512 {
+    let (captures, captured, bytes) = capture::commitments(runtime, fdb).await?;
+    for (subject, value) in captures {
+        if result.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
+    // A live provider must have room to retain its largest allowed result.
+    // Unrelated transitions cannot consume another in-flight call's capacity.
+    let pending = admitted.difference(&captured).count();
+    let reserved_bytes = pending
+        .checked_mul(crate::custody::MAX_SEALED)
+        .and_then(|value| value.checked_add(bytes))
+        .ok_or(RuntimeError::EvidenceTooLarge)?;
+    if result
+        .len()
+        .checked_add(pending)
+        .is_none_or(|value| value > 512)
+        || reserved_bytes > 2 * 1024 * 1024
+    {
         return Err(RuntimeError::EvidenceTooLarge);
     }
     Ok(result)

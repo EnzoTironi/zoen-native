@@ -133,7 +133,11 @@ impl RuntimeAuthority {
             if capture.binding.context.attempt_id != attempt {
                 return Err(RuntimeError::InvalidBinding);
             }
-            self.finance.capture(&capture, digest, sealed).await
+            if self.runtime_continuity.is_some() {
+                self.capture_shared(attempt, digest, sealed).await
+            } else {
+                self.finance.capture(&capture, digest, sealed).await
+            }
         }
     }
 }
