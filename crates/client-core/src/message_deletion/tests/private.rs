@@ -234,3 +234,44 @@ fn another_identity_and_a_shared_log_cannot_hide_this_accounts_messages() -> Tes
         .any(|row| row.id == mine.id && !row.deleted));
     Ok(())
 }
+
+#[test]
+fn hiding_a_queued_message_survives_late_confirmation_without_changing_the_send() -> TestResult {
+    let f = fixture(":memory:")?;
+    let pending = &f.unrelated;
+    assert_eq!(pending.delivery, crate::Delivery::Sending);
+    let queued = {
+        let engine = f.client.lock();
+        engine
+            .store
+            .outbox()?
+            .into_iter()
+            .find(|row| row.event.client_id == pending.id)
+            .ok_or("queued message")?
+            .event
+    };
+    hide(&f, std::slice::from_ref(pending))?;
+    assert!(!timeline(&f)?.iter().any(|entry| entry.id == pending.id));
+    {
+        let mut engine = f.client.lock();
+        let retained = engine
+            .store
+            .outbox()?
+            .into_iter()
+            .find(|row| row.event.client_id == queued.client_id)
+            .ok_or("retained send")?;
+        assert_eq!(
+            serde_json::to_vec(&retained.event)?,
+            serde_json::to_vec(&queued)?
+        );
+        ingest(&mut engine, queued.clone(), crate::sync::Ingest::Confirmed)?;
+        assert!(!engine
+            .store
+            .outbox()?
+            .iter()
+            .any(|row| row.event.client_id == queued.client_id));
+        engine.reload()?;
+    }
+    assert!(!timeline(&f)?.iter().any(|entry| entry.id == pending.id));
+    Ok(())
+}
