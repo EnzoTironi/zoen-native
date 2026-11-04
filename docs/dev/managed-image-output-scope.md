@@ -55,6 +55,18 @@ native root before restoring its reference. Current output context is checked
 before automatic checkpoint maintenance. This is exercised with explicit native
 fixture continuity; it does not open production paid chat or text transport.
 
+Retained text transport reads the exact pending native reply (including its
+original reference, event and wire digests), with current grant, per-chat FIFO
+and failed-head checks. Runtime reconciles historical receipts first; only a
+still-pending reply loads fresh run/device leases, directory and source facts.
+The shared relay transport rebinds to the publication checkpoint before invoking
+the owner's final authorization callback. Cancellation, grant expiry, native
+root or source changes during the handshake therefore refuse before Publish.
+A lost ACK is resolved by the original sequencer position after cold reopen,
+without another model call. The public paid-chat boundary remains closed until
+normal host admission/continuity is qualified; these are real local relay tests
+with explicit fixture continuity, not production readiness evidence.
+
 Scope lifetime retains the OS generation lock; stopping the host/dropping its
 last scope releases it before retirement can complete. Actual relay effects
 also retain their own guard/linear publication permit through commit. Runtime

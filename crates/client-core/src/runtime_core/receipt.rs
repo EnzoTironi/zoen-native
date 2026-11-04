@@ -195,7 +195,7 @@ impl DeviceCore {
         Ok(())
     }
 
-    fn pending_envelope(
+    pub(super) fn pending_envelope(
         &self,
         pending: &Event,
         reference: Option<&ReplyReference>,

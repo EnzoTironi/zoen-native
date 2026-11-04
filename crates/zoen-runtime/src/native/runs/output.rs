@@ -1,4 +1,5 @@
 //! Original output associations. Retained metadata grants no live permission.
+mod delivery;
 mod prepare;
 mod recovery;
 pub(in crate::native) use recovery::{recover_activation_reference, ActivationPublication};

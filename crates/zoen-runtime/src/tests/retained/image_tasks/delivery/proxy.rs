@@ -10,14 +10,14 @@ use tokio::{
 };
 use tokio_tungstenite::tungstenite::Message;
 
-pub(super) struct Proxy {
-    pub(super) address: std::net::SocketAddr,
-    pub(super) blob_dropped: Arc<AtomicUsize>,
-    pub(super) publish_dropped: Arc<AtomicUsize>,
+pub(in crate::tests::retained) struct Proxy {
+    pub(in crate::tests::retained) address: std::net::SocketAddr,
+    pub(in crate::tests::retained) blob_dropped: Arc<AtomicUsize>,
+    pub(in crate::tests::retained) publish_dropped: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Proxy {
-    pub(super) async fn start(upstream: std::net::SocketAddr) -> Self {
+    pub(in crate::tests::retained) async fn start(upstream: std::net::SocketAddr) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let drop_blob = Arc::new(AtomicBool::new(true));

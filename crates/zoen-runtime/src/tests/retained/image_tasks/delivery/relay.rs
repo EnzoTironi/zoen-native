@@ -3,20 +3,20 @@ use super::*;
 use tokio::net::TcpListener;
 use zoen_relay::{AppState, Shared};
 
-pub(super) struct Relay {
-    pub(super) address: std::net::SocketAddr,
-    pub(super) state: Shared,
+pub(in crate::tests::retained) struct Relay {
+    pub(in crate::tests::retained) address: std::net::SocketAddr,
+    pub(in crate::tests::retained) state: Shared,
     server: tokio::task::JoinHandle<()>,
     blobs: std::path::PathBuf,
 }
 impl Relay {
-    pub(super) async fn start(
+    pub(in crate::tests::retained) async fn start(
         f: &Fixture,
     ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let pool = sqlx::PgPool::connect(&f.world.db_url).await.unwrap();
         Self::start_with(f, pool, f.log.clone()).await
     }
-    pub(super) async fn start_with(
+    pub(in crate::tests::retained) async fn start_with(
         f: &Fixture,
         pool: sqlx::PgPool,
         log: Arc<dyn zoen_relay::log::LogStore>,
@@ -66,7 +66,7 @@ impl Relay {
             blobs,
         })
     }
-    pub(super) fn target(
+    pub(in crate::tests::retained) fn target(
         &self,
         f: &Fixture,
         address: std::net::SocketAddr,
@@ -78,7 +78,7 @@ impl Relay {
         )
         .unwrap()
     }
-    pub(super) async fn stop(self) {
+    pub(in crate::tests::retained) async fn stop(self) {
         self.state.pool.close().await;
     }
 }

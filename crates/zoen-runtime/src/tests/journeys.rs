@@ -9,6 +9,7 @@ pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>>
 
 async fn native() -> std::result::Result<(), Box<dyn std::error::Error>> {
     Box::pin(retained::output::managed::run()).await?;
+    Box::pin(retained::output::delivery::run()).await?;
     owner_policy_controls::run().await?;
     Box::pin(image_tasks::run()).await?;
     Box::pin(managed_image_recovery::run()).await?;

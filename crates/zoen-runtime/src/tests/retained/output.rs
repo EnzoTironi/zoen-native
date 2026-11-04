@@ -1,6 +1,7 @@
 //! Private fresh-namespace output transactions, never production activation.
 mod authority;
 mod cold;
+pub(in crate::tests) mod delivery;
 pub(in crate::tests) mod managed;
 mod recovery;
 use super::*;

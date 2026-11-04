@@ -23,6 +23,7 @@ pub use native::{
 };
 mod pricing;
 mod relay_binding;
+mod reply_output;
 pub use pricing::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
@@ -377,37 +378,6 @@ impl RuntimeAuthority {
         Err(RuntimeError::CoreAuthorityUnavailable)
     }
 
-    /// Closed until actual custody, continuity and old-writer barrier evidence
-    /// can authorize this boundary. A locator never creates that evidence.
-    pub async fn prepare_reply_output(
-        &self,
-        run: &str,
-    ) -> Result<ReplyOutputInspection, RuntimeError> {
-        if !id(run) {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let scope = self.production_output_scope()?;
-        self.native
-            .as_ref()
-            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
-            .prepare_output(self, run, scope)
-            .await
-    }
-
-    pub async fn reconcile_reply_receipt(
-        &self,
-        run: &str,
-    ) -> Result<ReplyReceiptProgress, RuntimeError> {
-        if !id(run) {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let scope = self.production_output_scope()?;
-        self.native
-            .as_ref()
-            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
-            .reconcile_output(self, run, scope)
-            .await
-    }
     async fn verified_step(&self, run: &str) -> Result<VerifiedStep, RuntimeError> {
         let native = self
             .native

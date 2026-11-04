@@ -1,7 +1,7 @@
 //! Real relay HTTP/WS ACK loss, cold native recovery and original output dedupe.
 mod binding;
-mod proxy;
-mod relay;
+pub(in crate::tests::retained) mod proxy;
+pub(in crate::tests::retained) mod relay;
 mod restore;
 mod review;
 use super::*;

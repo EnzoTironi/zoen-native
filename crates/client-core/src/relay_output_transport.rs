@@ -26,6 +26,13 @@ pub enum RelayOutputError {
     Blob(#[from] BlobUploadError),
 }
 
+/// Preserve the owner's authorization error separately from network failure.
+#[derive(Debug)]
+pub enum AuthorizedPublishError<E> {
+    Transport(RelayOutputError),
+    Authorization(E),
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -271,6 +278,41 @@ impl RelayOutputTransport {
         }
         self.rebind_expected(expected).await?;
         self.publish_checked(env, true).await
+    }
+
+    /// Rebind first, then ask the owner for current permission immediately
+    /// before sending bytes. A delayed Challenge never preserves stale consent.
+    pub async fn publish_authorized<E, F, A>(
+        &mut self,
+        env: &Envelope,
+        expected: Option<Expectation>,
+        authorize: A,
+    ) -> Result<u64, AuthorizedPublishError<E>>
+    where
+        A: FnOnce() -> F,
+        F: std::future::Future<Output = Result<(), E>>,
+    {
+        let managed = expected.is_some();
+        if let Some(expected) = expected {
+            if expected.request().managed.is_none() {
+                return Err(AuthorizedPublishError::Transport(RelayOutputError::Invalid));
+            }
+            self.rebind_expected(expected)
+                .await
+                .map_err(AuthorizedPublishError::Transport)?;
+        } else if self
+            .binding
+            .as_ref()
+            .is_some_and(|binding| binding.request.managed.is_some())
+        {
+            return Err(AuthorizedPublishError::Transport(RelayOutputError::Refused));
+        }
+        authorize()
+            .await
+            .map_err(AuthorizedPublishError::Authorization)?;
+        self.publish_checked(env, managed)
+            .await
+            .map_err(AuthorizedPublishError::Transport)
     }
 
     async fn publish_checked(
