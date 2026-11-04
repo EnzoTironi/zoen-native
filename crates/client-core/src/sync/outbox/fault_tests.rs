@@ -544,7 +544,14 @@ fn reopening_and_retrying_an_invite_reuses_the_queued_event(
         reopened.invite_join_status("sp_invite_retry", id)?,
         "pending"
     );
-    reopened.store.outbox_note(id, "invite expired", true)?;
+    let retry = reopened.reject(id, "relay unavailable", false, None);
+    assert!(!retry.user_failed());
+    assert_eq!(
+        reopened.invite_join_status("sp_invite_retry", id)?,
+        "pending"
+    );
+    let refusal = reopened.reject(id, "invite expired", true, None);
+    assert!(refusal.user_failed());
     assert_eq!(
         reopened.invite_join_status("sp_invite_retry", id)?,
         "refused"
