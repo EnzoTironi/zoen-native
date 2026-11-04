@@ -188,13 +188,13 @@ export class AudioClipController implements AudioClipPlayback {
   observe(status: AudioClipStatus) {
     const binding = this.binding;
     if (!binding?.live) return;
-    if (!this.admitted(binding)) this.invalidate();
+    const loadFailed = Boolean(status.error) || status.playbackState === 'failed';
+    if (loadFailed || !this.admitted(binding)) this.invalidate();
     binding.owner.observeExplicitPlayback();
     const durationSeconds = positive(status.duration) ? status.duration : this.durationHint;
     this.lastSeconds = Number.isFinite(status.currentTime)
       ? Math.max(0, Math.min(durationSeconds, status.currentTime))
       : 0;
-    const loadFailed = Boolean(status.error) || status.playbackState === 'failed';
     const message = status.error || 'Audio could not be loaded';
     const error = loadFailed
       ? this.state.loadFailed && this.state.error?.message === message
@@ -205,7 +205,7 @@ export class AudioClipController implements AudioClipPlayback {
         : this.state.error;
     let playing = false;
     try {
-      playing = this.admitted(binding) && binding.port.playing();
+      playing = !loadFailed && this.admitted(binding) && binding.port.playing();
     } catch {
       /* released by its hook */
     }
