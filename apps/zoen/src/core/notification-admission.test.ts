@@ -73,6 +73,30 @@ for (const transition of ['close', 'reopen', 'membership'] as const)
     }
   });
 
+test('restored membership cannot revive an earlier presentation read', async () => {
+  const f = await fixture();
+  try {
+    const chat = f.snapshot.conversations[0]!;
+    chat.muted = false;
+    const members = chat.members;
+    const read = deferred<typeof f.snapshot>();
+    f.driver.operation = () => read.promise;
+    const pending = f.allow();
+
+    f.driver.operation = async () => structuredClone(f.snapshot);
+    chat.members = [];
+    await f.store.refresh();
+    chat.members = members;
+    await f.store.refresh();
+
+    read.resolve(structuredClone(f.snapshot));
+    assert.equal(await pending, false);
+    assert.equal(await f.allow(), true);
+  } finally {
+    await f.store.close();
+  }
+});
+
 test('fresh foreign owner or membership cannot authorize a cached local notification', async () => {
   const f = await fixture();
   try {

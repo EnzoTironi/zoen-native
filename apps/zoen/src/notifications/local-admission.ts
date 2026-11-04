@@ -11,27 +11,36 @@ export async function allowLocalNotification(
   const owner = accountScope(store);
   const target = validLocalNotification(data, deviceId);
   if (!owner || owner.device !== deviceId || !target) return false;
-  const current = () =>
-    accountScopeKey(accountScope(store)) === accountScopeKey(owner) &&
-    store
-      .getSnapshot()
-      .snapshot?.conversations.some(
+  const ownerKey = accountScopeKey(owner);
+  let retired = false;
+  const current = () => {
+    const state = store.getSnapshot();
+    retired ||=
+      accountScopeKey(accountScope(store, state)) !== ownerKey ||
+      !state.snapshot?.conversations.some(
         (chat) => chat.id === target.spaceId && chat.members.some((m) => m.id === owner.identity),
       );
+    return !retired;
+  };
   if (!current()) return false;
-  const snapshot = await store.driver.request({ op: 'snapshot' });
-  if (!current()) return false;
-  const account = snapshot.account;
-  const chat = snapshot.conversations.find((row) => row.id === target.spaceId);
-  return Boolean(
-    account?.registered &&
-    account.unlocked &&
-    !account.setup_pending &&
-    account.identity_id === owner.identity &&
-    account.device_id === owner.device &&
-    account.relay_url === owner.relay &&
-    chat?.members.some((m) => m.id === owner.identity) &&
-    !chat.muted &&
-    !chat.archived,
-  );
+  const unsubscribe = store.subscribe(current);
+  try {
+    const snapshot = await store.driver.request({ op: 'snapshot' });
+    if (!current()) return false;
+    const account = snapshot.account;
+    const chat = snapshot.conversations.find((row) => row.id === target.spaceId);
+    return Boolean(
+      account?.registered &&
+      account.unlocked &&
+      !account.setup_pending &&
+      account.identity_id === owner.identity &&
+      account.device_id === owner.device &&
+      account.relay_url === owner.relay &&
+      chat?.members.some((m) => m.id === owner.identity) &&
+      !chat.muted &&
+      !chat.archived,
+    );
+  } finally {
+    unsubscribe();
+  }
 }
