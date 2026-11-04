@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """Exercise the real native S3 create-only contract, then stop/start its owned storage."""
 import argparse
-import importlib.util
 import json
 import pathlib
 import secrets
 import time
 
-SPEC = importlib.util.spec_from_file_location('local_manage', pathlib.Path(__file__).with_name('manage.py'))
-m = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(m)
+import manage_runtime as m
 
 
 def main():

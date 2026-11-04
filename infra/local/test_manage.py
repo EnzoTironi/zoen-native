@@ -11,7 +11,9 @@ import unittest
 from unittest import mock
 
 from manage_gateway_cases import GatewayCases
-from manage_test_support import manage
+import manage_backup as backup
+import manage_frontdoor as gateway
+import manage_runtime as manage
 
 
 class LifecycleTests(GatewayCases, unittest.TestCase):
@@ -80,16 +82,16 @@ class LifecycleTests(GatewayCases, unittest.TestCase):
         data = bytearray(p.read_bytes())
         data[-3] ^= 1
         p.write_bytes(data)
-        with mock.patch.object(manage, 'init') as create, mock.patch.object(manage, 'inspect') as inspect:
+        with mock.patch.object(backup, 'init') as create, mock.patch.object(backup, 'inspect') as inspect:
             with self.assertRaisesRegex(ValueError, 'integrity mismatch'):
-                manage.restore(self.source, 'restored', 8890)
+                backup.restore(self.source, 'restored', 8890)
             create.assert_not_called()
             inspect.assert_not_called()
 
     def test_absent_exact_image_rejected_before_resources_created(self):
-        with mock.patch.object(manage, 'init') as create, mock.patch.object(manage, 'inspect', return_value=None):
+        with mock.patch.object(backup, 'init') as create, mock.patch.object(backup, 'inspect', return_value=None):
             with self.assertRaisesRegex(ValueError, 'image absent'):
-                manage.restore(self.source, 'restored', 8890)
+                backup.restore(self.source, 'restored', 8890)
             create.assert_not_called()
 
     def test_image_tag_is_never_accepted_as_restore_identity(self):
@@ -101,19 +103,19 @@ class LifecycleTests(GatewayCases, unittest.TestCase):
 
     def test_backup_retains_all_services_and_secret_inventory(self):
         with mock.patch.object(manage, 'inspect', side_effect=lambda _kind, identifier: {'Id': identifier}):
-            result = manage.validate_backup(self.source, self.manifest)
+            result = backup.validate_backup(self.source, self.manifest)
         self.assertEqual(result['images'], self.owner['images'])
         damaged = copy.deepcopy(self.manifest)
         damaged['private'].pop()
         with self.assertRaisesRegex(ValueError, 'secret inventory'):
-            manage.validate_backup(self.source, damaged)
+            backup.validate_backup(self.source, damaged)
 
     def test_changed_current_image_does_not_relabel_historical_backup(self):
         current = copy.deepcopy(self.owner)
         current['images']['relay'] = 'sha256:' + 'f' * 64
         manage.write_json(self.path / 'owner.json', current)
         with mock.patch.object(manage, 'inspect', side_effect=lambda _kind, identifier: {'Id': identifier}):
-            result = manage.validate_backup(self.source, self.manifest)
+            result = backup.validate_backup(self.source, self.manifest)
         self.assertEqual(result['images']['relay'], self.owner['images']['relay'])
         self.assertNotEqual(result['images']['relay'], current['images']['relay'])
 
@@ -141,16 +143,16 @@ class LifecycleTests(GatewayCases, unittest.TestCase):
 
     def test_timed_out_archive_removes_only_its_owned_helper(self):
         labels = {'app': 'zoen.local', 'owner': self.owner['nonce'], 'purpose': 'archive'}
-        with mock.patch.object(manage, 'inspect', side_effect=[None, {'Id': 'owned-id', 'Config': {'Labels': labels}}]), mock.patch.object(manage.secrets, 'token_hex', return_value='a' * 12), mock.patch.object(manage, 'command', side_effect=[subprocess.TimeoutExpired('docker', 180), '']) as calls:
+        with mock.patch.object(backup, 'inspect', side_effect=[None, {'Id': 'owned-id', 'Config': {'Labels': labels}}]), mock.patch.object(manage.secrets, 'token_hex', return_value='a' * 12), mock.patch.object(backup, 'command', side_effect=subprocess.TimeoutExpired('docker', 180)), mock.patch.object(manage, 'command') as cleanup:
             with self.assertRaises(subprocess.TimeoutExpired):
-                manage.archive(self.owner, 'source:/source:ro', 'target:/backup', ['-cf', '/backup/data.tar', '-C', '/source', '.'])
-        self.assertEqual(calls.call_args_list[1].args[0], manage.DOCKER + ['rm', '-f', 'owned-id'])
+                backup.archive(self.owner, 'source:/source:ro', 'target:/backup', ['-cf', '/backup/data.tar', '-C', '/source', '.'])
+        cleanup.assert_called_once_with(manage.DOCKER + ['rm', '-f', 'owned-id'])
 
     def test_archive_timeout_cannot_remove_a_foreign_container(self):
         labels = {'app': 'zoen.local', 'owner': 'someone-else', 'purpose': 'archive'}
-        with mock.patch.object(manage, 'inspect', side_effect=[None, {'Id': 'owned-id', 'Config': {'Labels': labels}}]), mock.patch.object(manage, 'command', side_effect=subprocess.TimeoutExpired('docker', 180)) as calls:
+        with mock.patch.object(backup, 'inspect', side_effect=[None, {'Id': 'owned-id', 'Config': {'Labels': labels}}]), mock.patch.object(backup, 'command', side_effect=subprocess.TimeoutExpired('docker', 180)) as calls:
             with self.assertRaisesRegex(ValueError, 'foreign archive helper'):
-                manage.archive(self.owner, 'source:/source:ro', 'target:/backup', ['-cf', '/backup/data.tar'])
+                backup.archive(self.owner, 'source:/source:ro', 'target:/backup', ['-cf', '/backup/data.tar'])
         self.assertEqual(calls.call_count, 1)
 
     def test_cluster_checks_protected_secondary_port_before_docker(self):

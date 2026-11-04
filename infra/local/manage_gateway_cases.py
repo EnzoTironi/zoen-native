@@ -5,7 +5,9 @@ import re
 import subprocess
 from unittest import mock
 
-from manage_test_support import manage
+import manage_backup as backup_ops
+import manage_frontdoor as gateway
+import manage_runtime as manage
 
 
 class GatewayCases:
@@ -14,7 +16,7 @@ class GatewayCases:
         self.owner['images']['bus'] = 'sha256:' + 'a' * 64
         self.owner['images']['frontdoor'] = 'sha256:' + 'f' * 64
         data = (manage.REPO / 'infra/local/haproxy.cfg').read_bytes()
-        manage.publish_frontdoor_config(self.path, data)
+        gateway.publish_frontdoor_config(self.path, data)
         self.owner['frontdoor'] = {'port': 8882, 'config_sha256': manage.sha256(self.path / 'haproxy.cfg')}
         manage.write_json(self.path / 'owner.json', self.owner)
         manage.config(self.path, self.owner)
@@ -41,16 +43,16 @@ class GatewayCases:
         self.assertNotIn('frontdoor', manage.image_keys(self.owner))
         self.assertNotIn('compose.frontdoor.yaml', ' '.join(manage.compose(self.path, self.owner)))
         with mock.patch.object(manage, 'inspect', side_effect=lambda _kind, identifier: {'Id': identifier}):
-            manage.validate_backup(self.source, self.manifest)
+            backup_ops.validate_backup(self.source, self.manifest)
 
     def test_proxy_config_bitrot_refuses_before_docker_or_restore_creation(self):
         self.frontdoor_backup()
         (self.path / 'haproxy.cfg').unlink()  # Source runtime loss cannot excuse a bad backup.
         config = self.source / 'runtime/haproxy.cfg'
         config.write_bytes(config.read_bytes() + b'\ncorrupt')
-        with mock.patch.object(manage, 'init') as create, mock.patch.object(manage, 'inspect') as inspect:
+        with mock.patch.object(backup_ops, 'init') as create, mock.patch.object(backup_ops, 'inspect') as inspect:
             with self.assertRaisesRegex(ValueError, 'integrity mismatch'):
-                manage.restore(self.source, 'restored', 8890)
+                backup_ops.restore(self.source, 'restored', 8890)
             create.assert_not_called()
             inspect.assert_not_called()
 
@@ -69,8 +71,8 @@ class GatewayCases:
                 with self.assertRaisesRegex(ValueError, 'Pinned frontdoor config'):
                     manage.instance('original')  # Ordinary runtime actions remain strict.
                 name = 'restored-' + fault
-                with mock.patch.object(manage, 'inspect', side_effect=lambda kind, identifier: None if kind == 'volume' else {'Id': identifier}), mock.patch.object(manage, 'command', return_value=''), mock.patch.object(manage, 'archive'), mock.patch.object(manage, 'up') as up:
-                    manage.restore(self.source, name, 8890)
+                with mock.patch.object(manage, 'inspect', side_effect=lambda _kind, identifier: {'Id': identifier}), mock.patch.object(backup_ops, 'inspect', return_value=None), mock.patch.object(backup_ops, 'command', return_value=''), mock.patch.object(backup_ops, 'archive'), mock.patch.object(backup_ops, 'up') as up:
+                    backup_ops.restore(self.source, name, 8890)
                 restored_path, restored = manage.instance(name)
                 self.assertEqual((restored_path / 'haproxy.cfg').read_bytes(), backup)
                 self.assertEqual(restored['frontdoor']['config_sha256'], self.owner['frontdoor']['config_sha256'])
@@ -82,23 +84,23 @@ class GatewayCases:
         self.frontdoor_backup()
         def image(_kind, identifier):
             return None if identifier == self.owner['images']['frontdoor'] else {'Id': identifier}
-        with mock.patch.object(manage, 'init') as create, mock.patch.object(manage, 'inspect', side_effect=image):
+        with mock.patch.object(backup_ops, 'init') as create, mock.patch.object(manage, 'inspect', side_effect=image):
             with self.assertRaisesRegex(ValueError, 'frontdoor image absent'):
-                manage.restore(self.source, 'restored', 8890)
+                backup_ops.restore(self.source, 'restored', 8890)
             create.assert_not_called()
 
     def test_restore_checks_proxy_port_before_creating_any_state(self):
         self.frontdoor_backup()
-        with mock.patch.object(manage, 'init') as create, mock.patch.object(manage, 'inspect', side_effect=lambda _kind, identifier: {'Id': identifier}):
+        with mock.patch.object(backup_ops, 'init') as create, mock.patch.object(manage, 'inspect', side_effect=lambda _kind, identifier: {'Id': identifier}):
             with self.assertRaisesRegex(ValueError, 'unprotected distinct'):
-                manage.restore(self.source, 'restored', 8890, frontdoor_port=8790)
+                backup_ops.restore(self.source, 'restored', 8890, frontdoor_port=8790)
             create.assert_not_called()
 
     def test_restore_retains_exact_proxy_config_and_remaps_only_listener(self):
         self.frontdoor_backup()
         original = copy.deepcopy(self.manifest)
-        with mock.patch.object(manage, 'inspect', side_effect=lambda kind, identifier: None if kind == 'volume' else {'Id': identifier}), mock.patch.object(manage, 'command', return_value=''), mock.patch.object(manage, 'archive'), mock.patch.object(manage, 'up') as up:
-            manage.restore(self.source, 'restored', 8890)
+        with mock.patch.object(manage, 'inspect', side_effect=lambda _kind, identifier: {'Id': identifier}), mock.patch.object(backup_ops, 'inspect', return_value=None), mock.patch.object(backup_ops, 'command', return_value=''), mock.patch.object(backup_ops, 'archive'), mock.patch.object(backup_ops, 'up') as up:
+            backup_ops.restore(self.source, 'restored', 8890)
         path, restored = manage.instance('restored')
         self.assertEqual(restored['frontdoor']['port'], 8892)
         self.assertEqual(restored['frontdoor']['config_sha256'], self.owner['frontdoor']['config_sha256'])
@@ -118,14 +120,14 @@ class GatewayCases:
             output = pathlib.Path(target.removesuffix(':/backup')) / pathlib.Path(owned_output).name
             output.write_bytes(b'owned volume archive')
             output.chmod(0o600)
-        with mock.patch.object(manage, 'owned'), mock.patch.object(manage, 'installed_images'), mock.patch.object(manage, 'stop') as stop, mock.patch.object(manage, 'up') as up, mock.patch.object(manage, 'command', side_effect=command), mock.patch.object(manage, 'inspect', return_value={'Name': 'owned'}), mock.patch.object(manage, 'archive', side_effect=archive):
-            manage.backup(self.path, self.owner)
+        with mock.patch.object(backup_ops, 'owned'), mock.patch.object(backup_ops, 'installed_images'), mock.patch.object(backup_ops, 'stop') as stop, mock.patch.object(backup_ops, 'up') as up, mock.patch.object(backup_ops, 'command', side_effect=command), mock.patch.object(backup_ops, 'inspect', return_value={'Name': 'owned'}), mock.patch.object(backup_ops, 'archive', side_effect=archive):
+            backup_ops.backup(self.path, self.owner)
         saved = next(p for p in (self.path / 'backups').iterdir() if p.name != 'snapshot')
         manifest = json.loads((saved / 'manifest.json').read_text())
         self.assertEqual(manifest['images']['frontdoor'], self.owner['images']['frontdoor'])
         self.assertEqual(manifest['runtime'], [{'name': 'haproxy.cfg', 'bytes': (saved / 'runtime/haproxy.cfg').stat().st_size, 'sha256': self.owner['frontdoor']['config_sha256']}])
         with mock.patch.object(manage, 'inspect', side_effect=lambda _kind, identifier: {'Id': identifier}):
-            manage.validate_backup(saved, manifest)
+            backup_ops.validate_backup(saved, manifest)
         stop.assert_called_once()
         up.assert_called_once()
 
@@ -135,9 +137,9 @@ class GatewayCases:
                 return 'foreign-id\n'
             return json.dumps([{'Config': {'Labels': {'app': 'zoen.local', 'owner': 'someone-else'}}}])
         before = (self.path / 'owner.json').read_bytes()
-        with mock.patch.object(manage, 'command', side_effect=output):
+        with mock.patch.object(manage, 'command', side_effect=output), mock.patch.object(gateway, 'command', side_effect=output):
             with self.assertRaisesRegex(ValueError, 'Foreign container'):
-                manage.frontdoor(self.path, self.owner)
+                gateway.frontdoor(self.path, self.owner)
         self.assertEqual((self.path / 'owner.json').read_bytes(), before)
         self.assertFalse((self.path / 'haproxy.cfg').exists())
 
@@ -161,13 +163,13 @@ class GatewayCases:
         def inspect(kind, _identifier):
             return {'Id': 'sha256:' + 'f' * 64, 'RepoDigests': [manage.IMAGE_REFS['frontdoor']]} if kind == 'image' else self.proxy_value()
         stable = [{'service': str(i), 'id': str(i), 'pid': i, 'config_sha256': 'stable'} for i in range(6)]
-        with mock.patch.object(manage, 'owned'), mock.patch.object(manage, 'installed_images'), mock.patch.object(manage, 'native_snapshot', return_value=stable), mock.patch.object(manage, 'ready'), mock.patch.object(manage, 'check_frontdoor_parser'), mock.patch.object(manage.socket, 'socket'), mock.patch.object(manage, 'inspect', side_effect=inspect), mock.patch.object(manage, 'command', side_effect=command):
+        with mock.patch.object(gateway, 'owned'), mock.patch.object(gateway, 'installed_images'), mock.patch.object(gateway, 'native_snapshot', return_value=stable), mock.patch.object(gateway, 'ready'), mock.patch.object(gateway, 'check_frontdoor_parser'), mock.patch.object(manage.socket, 'socket'), mock.patch.object(gateway, 'inspect', side_effect=inspect), mock.patch.object(gateway, 'command', side_effect=command):
             with self.assertRaises(subprocess.TimeoutExpired):
-                manage.frontdoor(self.path, self.owner)
+                gateway.frontdoor(self.path, self.owner)
             path, enabled = manage.instance('original')
             self.assertEqual(enabled['frontdoor']['port'], 8882)
             self.assertEqual(manage.sha256(path / 'haproxy.cfg'), enabled['frontdoor']['config_sha256'])
-            manage.frontdoor(path, enabled)
+            gateway.frontdoor(path, enabled)
         starts = [args for args in commands if 'up' in args]
         self.assertEqual(len(starts), 2)
         self.assertTrue(all('--no-deps' in args and args[-1] == 'frontdoor' for args in starts))
@@ -179,9 +181,9 @@ class GatewayCases:
         manage.write_json(self.path / 'owner.json', self.owner)
         before = (self.path / 'owner.json').read_bytes()
         image = {'Id': 'sha256:' + 'f' * 64, 'RepoDigests': [manage.IMAGE_REFS['frontdoor']]}
-        with mock.patch.object(manage, 'owned'), mock.patch.object(manage, 'installed_images'), mock.patch.object(manage, 'native_snapshot'), mock.patch.object(manage, 'ready'), mock.patch.object(manage.socket, 'socket'), mock.patch.object(manage, 'inspect', return_value=image), mock.patch.object(manage, 'check_frontdoor_parser', side_effect=RuntimeError('actual parser refusal')), mock.patch.object(manage, 'command') as command:
+        with mock.patch.object(gateway, 'owned'), mock.patch.object(gateway, 'installed_images'), mock.patch.object(gateway, 'native_snapshot'), mock.patch.object(gateway, 'ready'), mock.patch.object(manage.socket, 'socket'), mock.patch.object(gateway, 'inspect', return_value=image), mock.patch.object(gateway, 'check_frontdoor_parser', side_effect=RuntimeError('actual parser refusal')), mock.patch.object(gateway, 'command') as command:
             with self.assertRaisesRegex(RuntimeError, 'parser refusal'):
-                manage.frontdoor(self.path, self.owner)
+                gateway.frontdoor(self.path, self.owner)
             command.assert_not_called()
         self.assertEqual((self.path / 'owner.json').read_bytes(), before)
         self.assertFalse((self.path / 'haproxy.cfg').exists())
@@ -193,10 +195,10 @@ class GatewayCases:
         manage.write_json(self.path / 'owner.json', self.owner)
         before = (self.path / 'owner.json').read_bytes()
         image = {'Id': 'sha256:' + 'f' * 64, 'RepoDigests': [manage.IMAGE_REFS['frontdoor']]}
-        with mock.patch.object(manage, 'owned'), mock.patch.object(manage, 'installed_images'), mock.patch.object(manage, 'native_snapshot'), mock.patch.object(manage, 'ready'), mock.patch.object(manage, 'inspect', return_value=image), mock.patch.object(manage, 'check_frontdoor_parser') as parser, mock.patch.object(manage.socket, 'socket') as socket:
+        with mock.patch.object(gateway, 'owned'), mock.patch.object(gateway, 'installed_images'), mock.patch.object(gateway, 'native_snapshot'), mock.patch.object(gateway, 'ready'), mock.patch.object(gateway, 'inspect', return_value=image), mock.patch.object(gateway, 'check_frontdoor_parser') as parser, mock.patch.object(manage.socket, 'socket') as socket:
             socket.return_value.__enter__.return_value.bind.side_effect = OSError('address in use')
             with self.assertRaisesRegex(OSError, 'address in use'):
-                manage.frontdoor(self.path, self.owner)
+                gateway.frontdoor(self.path, self.owner)
             parser.assert_not_called()
         self.assertEqual((self.path / 'owner.json').read_bytes(), before)
         self.assertFalse((self.path / 'haproxy.cfg').exists())
@@ -214,15 +216,15 @@ class GatewayCases:
         self.frontdoor_backup()
         value = self.proxy_value()
         value['HostConfig']['PortBindings']['8080/tcp'][0]['HostIp'] = '0.0.0.0'
-        with mock.patch.object(manage, 'command', return_value='proxy-id\n') as command, mock.patch.object(manage, 'inspect', return_value=value):
+        with mock.patch.object(gateway, 'command', return_value='proxy-id\n') as command, mock.patch.object(gateway, 'inspect', return_value=value):
             with self.assertRaisesRegex(ValueError, 'binding differs'):
-                manage.stop_frontdoor(self.path, self.owner, remove=True)
+                gateway.stop_frontdoor(self.path, self.owner, remove=True)
         self.assertEqual(command.call_count, 1)
 
     def test_down_removes_gateway_before_compose_network_removal(self):
         self.frontdoor_backup()
         order = []
-        with mock.patch.object(manage, 'owned'), mock.patch.object(manage, 'stop_frontdoor', side_effect=lambda *args, **kwargs: order.append(('proxy', kwargs))), mock.patch.object(manage, 'command', side_effect=lambda args, **kwargs: order.append(('compose', args))):
-            manage.down(self.path, self.owner)
+        with mock.patch.object(gateway, 'owned'), mock.patch.object(gateway, 'stop_frontdoor', side_effect=lambda *args, **kwargs: order.append(('proxy', kwargs))), mock.patch.object(gateway, 'command', side_effect=lambda args, **kwargs: order.append(('compose', args))):
+            gateway.down(self.path, self.owner)
         self.assertEqual(order[0], ('proxy', {'remove': True}))
         self.assertIn('down', order[1][1])
