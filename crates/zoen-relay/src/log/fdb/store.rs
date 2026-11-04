@@ -31,6 +31,17 @@ impl LogStore for FdbLog {
             .await
     }
 
+    async fn append_managed_fenced(
+        &self,
+        env: &Envelope,
+        target_known: bool,
+        checkpoint: &relay_admission::managed_images::Checkpoint,
+        source_fence: protocol::runtime_binding::SourceFence,
+    ) -> Result<super::super::ManagedPublication, Reject> {
+        self.append_registered_fenced(env, target_known, checkpoint, Some(source_fence))
+            .await
+    }
+
     async fn runtime_cell(
         &self,
         namespace: &str,

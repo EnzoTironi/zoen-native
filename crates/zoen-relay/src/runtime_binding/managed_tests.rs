@@ -50,6 +50,7 @@ fn bootstrap_binding_cannot_authorize_http_or_ws_effects() -> Result<(), Box<dyn
             generation: genesis.generation,
             sequence: genesis.sequence,
             digest: genesis.digest,
+            source_fence: None,
         }),
     };
     // The protocol permits this request only as an exact read-only proof.

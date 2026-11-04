@@ -73,6 +73,7 @@ impl ManagedNativeOutput {
                     generation: checkpoint.generation,
                     sequence: checkpoint.sequence,
                     digest: checkpoint.digest.clone(),
+                    source_fence: None,
                 }),
             )
             .await?;

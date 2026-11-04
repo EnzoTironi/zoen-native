@@ -108,6 +108,15 @@ pub trait LogStore: Send + Sync {
     ) -> Result<ManagedPublication, Reject> {
         Err(Reject::retry("managed publication unavailable"))
     }
+    async fn append_managed_fenced(
+        &self,
+        _env: &Envelope,
+        _target_known: bool,
+        _checkpoint: &relay_admission::managed_images::Checkpoint,
+        _source_fence: protocol::runtime_binding::SourceFence,
+    ) -> Result<ManagedPublication, Reject> {
+        Err(Reject::retry("managed source fencing unavailable"))
+    }
     /// Observe only the exact retained publication. Absence after independent
     /// consumption is uncertainty, never a new append capability.
     async fn managed_publication_observation(

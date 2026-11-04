@@ -13,6 +13,33 @@ pub struct ManagedCheckpoint {
     pub generation: u64,
     pub sequence: u64,
     pub digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_fence: Option<SourceFence>,
+}
+
+/// Current native authorization position. The relay must compare these facts
+/// inside its log transaction; a successful transport handshake is insufficient.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceFence {
+    pub space: String,
+    pub head: types::Seen,
+    pub run: String,
+    pub attempt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at_ms: Option<i64>,
+}
+impl SourceFence {
+    #[must_use]
+    pub fn valid(&self) -> bool {
+        !self.space.is_empty()
+            && self.space.len() <= 256
+            && i64::try_from(self.head.seq).is_ok()
+            && hex32(&self.head.hash)
+            && valid_namespace(&self.run)
+            && valid_namespace(&self.attempt)
+            && self.expires_at_ms.is_none_or(|expiry| expiry > 0)
+    }
 }
 
 impl ManagedCheckpoint {
@@ -23,6 +50,10 @@ impl ManagedCheckpoint {
             && (self.sequence > 0 || self.generation == 1)
             && i64::try_from(self.sequence).is_ok()
             && hex32(&self.digest)
+            && self
+                .source_fence
+                .as_ref()
+                .is_none_or(|fence| self.sequence > 0 && fence.valid())
     }
 }
 
@@ -166,5 +197,7 @@ impl BlobBinding {
     }
 }
 
+#[cfg(test)]
+mod source_tests;
 #[cfg(test)]
 mod tests;

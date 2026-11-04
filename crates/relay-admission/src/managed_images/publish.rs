@@ -50,6 +50,7 @@ pub enum ConsumePublish {
 pub struct ManagedPublishPermit {
     reader: AnchorReader,
     condition: PublishCondition,
+    source_fence: Option<Box<protocol::runtime_binding::SourceFence>>,
     _generation: GenerationGuard,
 }
 
@@ -232,6 +233,7 @@ impl AnchorReader {
         let permit = ManagedPublishPermit {
             reader: self.clone(),
             condition: record.condition()?,
+            source_fence: None,
             _generation: generation,
         };
         permit.check(envelope)?;
@@ -240,6 +242,20 @@ impl AnchorReader {
 }
 
 impl ManagedPublishPermit {
+    pub fn with_source_fence(
+        mut self,
+        fence: Option<protocol::runtime_binding::SourceFence>,
+    ) -> Result<Self, AnchorError> {
+        if fence.as_ref().is_some_and(|fence| !fence.valid()) {
+            return Err(AnchorError::Invalid);
+        }
+        self.source_fence = fence.map(Box::new);
+        Ok(self)
+    }
+    pub fn source_fence(&self) -> Option<&protocol::runtime_binding::SourceFence> {
+        self.source_fence.as_deref()
+    }
+
     pub fn condition(&self) -> &PublishCondition {
         &self.condition
     }
@@ -261,7 +277,11 @@ impl ManagedPublishPermit {
     /// absent consumption in the same transaction as the exact original append.
     pub fn check(&self, envelope: &Envelope) -> Result<(), AnchorError> {
         let state = self.reader.state()?;
-        if state.committed.generation != self.condition.checkpoint.generation
+        if self
+            .source_fence
+            .as_ref()
+            .is_some_and(|fence| fence.space != envelope.space())
+            || state.committed.generation != self.condition.checkpoint.generation
             || publish_digest(&self.condition.namespace, envelope)? != self.condition.effect_digest
             || self
                 .reader

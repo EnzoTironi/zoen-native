@@ -4,6 +4,7 @@ mod cold;
 pub(in crate::tests) mod delivery;
 pub(in crate::tests) mod managed;
 mod recovery;
+mod relay_fences;
 use super::*;
 pub(super) use cold::cold;
 use native::testing::output as proof;

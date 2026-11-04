@@ -1,9 +1,11 @@
 //! Actual text relay publication, ACK loss and cold source reconciliation.
+use super::relay_fences::late_relay_fence_races;
 use super::*;
 use crate::tests::retained::image_tasks::delivery::{proxy::Proxy, relay::Relay};
 
 pub(in crate::tests) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
     cancellation_after_rebind().await?;
+    late_relay_fence_races().await?;
     for lose_ack in [false, true] {
         let mut fixture = Fixture::with_managed_output().await?;
         fixture.grant("text-delivery-trust").await?;

@@ -10,6 +10,17 @@ impl FdbLog {
         target_known: bool,
         checkpoint: &Checkpoint,
     ) -> Result<ManagedPublication, Reject> {
+        self.append_registered_fenced(env, target_known, checkpoint, None)
+            .await
+    }
+
+    pub(super) async fn append_registered_fenced(
+        &self,
+        env: &Envelope,
+        target_known: bool,
+        checkpoint: &Checkpoint,
+        source_fence: Option<protocol::runtime_binding::SourceFence>,
+    ) -> Result<ManagedPublication, Reject> {
         let configured = self
             .managed_device(env.device().unwrap_or_default())
             .ok_or_else(|| Reject::retry("unconfigured managed device"))?;
@@ -33,6 +44,7 @@ impl FdbLog {
                 fence,
                 configured.anchor(),
                 checkpoint,
+                source_fence,
             )? {
                 ManagedAdmission::Queued(queued) => {
                     let (result, stats) = queued.append().await;

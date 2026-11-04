@@ -127,10 +127,20 @@ impl NativeCustody {
         ))
         .await?;
         let expected = runtime
-            .image_publish_expectation(
+            .reply_publish_expectation(
                 &target.relay,
                 pending.envelope(),
                 publication.value.checkpoint.as_ref(),
+                protocol::runtime_binding::SourceFence {
+                    space: loaded.record.intent.space().into(),
+                    head: Seen {
+                        seq: loaded.facts.frontier().seq(),
+                        hash: loaded.facts.frontier().hash().into(),
+                    },
+                    run: loaded.record.locator.run.clone(),
+                    attempt: loaded.record.locator.attempt.clone(),
+                    expires_at_ms: loaded.facts.expires_at_ms(),
+                },
             )
             .await?;
         match transport
@@ -222,6 +232,11 @@ impl NativeCustody {
             runtime.finance.reply_clock().await?,
         )
         .map_err(native_error)?;
+        #[cfg(test)]
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 73 {
+            runtime.native_cut_entered.notify_one();
+            runtime.native_cut_resume.notified().await;
+        }
         Ok(())
     }
 }

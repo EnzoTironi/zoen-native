@@ -67,6 +67,18 @@ without another model call. The public paid-chat boundary remains closed until
 normal host admission/continuity is qualified; these are real local relay tests
 with explicit fixture continuity, not production readiness evidence.
 
+Reply transport additionally binds the native source head, original run/attempt
+and optional grant deadline into the existing managed transport MAC. Its relay
+queue carries those facts on the same private linear publication permit. Before
+a fresh append, the real log transaction compares its current (including
+same-batch) head, reads cancellation/closure with conflicts, and checks deadline.
+Historical exact dedupe remains observation before these fresh-effect checks.
+Invalid or foreign-space fences refuse before independent consumption. Unknown
+append outcomes after consumption retain the original response and financial
+obligation; they never authorize resend/refund from absence. Recovering such a
+refused/uncertain original as an explicit terminal result remains part of normal
+paid-chat host integration, whose production boundary stays closed.
+
 Scope lifetime retains the OS generation lock; stopping the host/dropping its
 last scope releases it before retirement can complete. Actual relay effects
 also retain their own guard/linear publication permit through commit. Runtime

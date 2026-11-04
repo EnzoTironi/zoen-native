@@ -93,6 +93,7 @@ mod managed_registry;
 mod membership_reads;
 mod routing;
 mod runtime;
+mod source_fence;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
 
 pub struct FdbLog {

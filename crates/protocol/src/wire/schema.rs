@@ -567,33 +567,8 @@ pub mod pb_res {
     }
 }
 
-#[derive(Clone, PartialEq, Message)]
-pub struct PbRuntimeBindingRequest {
-    #[prost(string, tag = "1")]
-    pub namespace: String,
-    #[prost(bytes = "vec", tag = "2")]
-    pub nonce: Vec<u8>,
-    #[prost(message, optional, tag = "3")]
-    pub managed: Option<PbManagedCheckpoint>,
-}
-
-#[derive(Clone, PartialEq, Message)]
-pub struct PbManagedCheckpoint {
-    #[prost(uint64, tag = "1")]
-    pub generation: u64,
-    #[prost(uint64, tag = "2")]
-    pub sequence: u64,
-    #[prost(string, tag = "3")]
-    pub digest: String,
-}
-
-#[derive(Clone, PartialEq, Message)]
-pub struct PbRuntimeBindingProof {
-    #[prost(string, tag = "1")]
-    pub cell: String,
-    #[prost(bytes = "vec", tag = "2")]
-    pub tag: Vec<u8>,
-}
+mod runtime_binding;
+pub use runtime_binding::*;
 
 #[derive(Clone, PartialEq, Message)]
 pub struct PbCallTurnRequest {

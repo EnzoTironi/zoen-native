@@ -1,7 +1,7 @@
 use super::*;
 use event_log::{Author, Signer};
 use relay_admission::managed_images::{
-    publish_digest, AnchorError, AnchorWriter, Checkpoint, Deployment, Recovery,
+    publish_digest, AnchorError, AnchorWriter, Checkpoint, ConsumePublish, Deployment, Recovery,
 };
 
 struct HeldBatch {
@@ -93,6 +93,7 @@ impl Case {
             self.fence(),
             &self.writer.reader(),
             &self.checkpoint,
+            None,
         )
     }
 }
@@ -219,5 +220,52 @@ async fn reserved_slot_keeps_the_worker_alive_across_idle_until_the_original_is_
     assert_eq!(result.unwrap_err().reason, "fixture result");
     assert_eq!(stats.size, 1);
     assert_eq!(sequencer.count.available_permits(), MAX_PENDING);
+    Ok(())
+}
+
+#[tokio::test]
+async fn invalid_source_fence_refuses_before_independent_consumption(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    for foreign_space in [false, true] {
+        let case = Case::new()?;
+        let sequencer = Sequencer::new(batcher());
+        let source = protocol::runtime_binding::SourceFence {
+            space: if foreign_space {
+                "other-space"
+            } else {
+                "space"
+            }
+            .into(),
+            head: types::Seen {
+                seq: 1,
+                hash: if foreign_space {
+                    "ab".repeat(32)
+                } else {
+                    "invalid".into()
+                },
+            },
+            run: "original-run".into(),
+            attempt: "original-attempt".into(),
+            expires_at_ms: None,
+        };
+        let refused = sequencer
+            .admit_managed(
+                case.envelope.clone(),
+                true,
+                case.fence(),
+                &case.writer.reader(),
+                &case.checkpoint,
+                Some(source),
+            )
+            .err()
+            .ok_or("invalid source fence was admitted")?;
+        assert!(refused.permanent);
+        assert!(matches!(
+            case.writer
+                .reader()
+                .consume_publish(&case.checkpoint, &case.envelope)?,
+            ConsumePublish::Fresh(_)
+        ));
+    }
     Ok(())
 }

@@ -7,6 +7,7 @@ fn managed_genesis_is_binding_only_and_has_no_later_generation_alias() {
         generation: 1,
         sequence: 0,
         digest: "ab".repeat(32),
+        source_fence: None,
     });
     let frame = crate::ClientFrame::Req {
         id: 9,
@@ -36,6 +37,7 @@ fn managed_checkpoint_roundtrip_binds_every_field_and_cannot_be_stripped() {
         generation: 2,
         sequence: 17,
         digest: "ab".repeat(32),
+        source_fence: None,
     };
     let mut managed = request();
     managed.managed = Some(checkpoint.clone());

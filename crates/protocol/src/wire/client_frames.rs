@@ -201,6 +201,17 @@ fn runtime_binding_to(r: &crate::runtime_binding::Request) -> PbRuntimeBindingRe
             generation: checkpoint.generation,
             sequence: checkpoint.sequence,
             digest: checkpoint.digest.clone(),
+            source_fence: checkpoint
+                .source_fence
+                .as_ref()
+                .map(|fence| super::PbSourceFence {
+                    space: fence.space.clone(),
+                    sequence: fence.head.seq,
+                    hash: fence.head.hash.clone(),
+                    run: fence.run.clone(),
+                    attempt: fence.attempt.clone(),
+                    expires_at_ms: fence.expires_at_ms,
+                }),
         }),
     }
 }
@@ -303,6 +314,18 @@ fn runtime_binding_from(
                 generation: checkpoint.generation,
                 sequence: checkpoint.sequence,
                 digest: checkpoint.digest,
+                source_fence: checkpoint.source_fence.map(|fence| {
+                    crate::runtime_binding::SourceFence {
+                        space: fence.space,
+                        head: types::Seen {
+                            seq: fence.sequence,
+                            hash: fence.hash,
+                        },
+                        run: fence.run,
+                        attempt: fence.attempt,
+                        expires_at_ms: fence.expires_at_ms,
+                    }
+                }),
             }),
     };
     if !request.valid() {
