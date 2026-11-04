@@ -38,7 +38,7 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         run: &str,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyOutputInspection, RuntimeError> {
         runtime.continuity()?;
         let trx = runtime.execution.transaction().await?;
@@ -90,7 +90,7 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         loaded: &LoadedReply,
         retained: RetainedCapture,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyOutputInspection, RuntimeError> {
         let principal = &loaded.record.original.context.principal;
         let credential = self.credential(&principal.agent, &principal.device)?;
@@ -114,14 +114,7 @@ impl NativeCustody {
             .prepare_reply(&loaded.record.intent, retained.text(&loaded.record)?, at)
             .map_err(native_error)?;
         #[cfg(test)]
-        capability
-            .observed
-            .lock()
-            .map_err(|_| RuntimeError::Unavailable)?
-            .insert(
-                prepared.publish_digest().into(),
-                prepared.envelope().clone(),
-            );
+        capability.observe(prepared.publish_digest(), prepared.envelope())?;
         if prepared.facts().frontier() != loaded.facts.frontier() {
             return Err(RuntimeError::Denied);
         }
@@ -199,8 +192,11 @@ impl NativeCustody {
         let guard = match runtime.fault.load(std::sync::atomic::Ordering::SeqCst) {
             45 => guard.suppress_known_ack(),
             46 => guard.delay_known_ack(),
-            50 => guard
-                .delay_output_expiry(std::sync::Arc::clone(&capability.output_expiry_remaining)),
+            50 => guard.delay_output_expiry(
+                capability
+                    .expiry_remaining()
+                    .ok_or(RuntimeError::InvalidBinding)?,
+            ),
             _ => guard,
         };
         let admission = guard.authorize_output(scope).await?;

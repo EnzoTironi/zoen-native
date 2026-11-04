@@ -39,7 +39,7 @@ pub enum ImageDeliveryProgress {
 struct Delivery<'a> {
     runtime: &'a RuntimeAuthority,
     custody: &'a NativeCustody,
-    capability: &'a dyn ImageOutputAuthority,
+    capability: &'a dyn NativeOutputAuthority,
     credential: &'a Credential,
     fence: &'a Fence,
     run: &'a str,
@@ -72,7 +72,7 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         run: &str,
         target: &ImageDeliveryTarget,
-        capability: &dyn ImageOutputAuthority,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ImageDeliveryProgress, RuntimeError> {
         runtime.image_continuity()?;
         capability.check_target(target)?;

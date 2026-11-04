@@ -109,7 +109,7 @@ pub(super) fn verify_position(
 async fn receipt_snapshot(
     runtime: &RuntimeAuthority,
     loaded: &LoadedReceipt,
-    capability: &FreshOutputNamespace,
+    capability: &dyn NativeOutputAuthority,
 ) -> Result<Transaction, RuntimeError> {
     let trx = receipt_stage!("transaction", runtime.execution.transaction().await)?;
     capability.check_in(&runtime.execution, &trx).await?;
@@ -128,7 +128,7 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         run: &str,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<LoadedReceipt, RuntimeError> {
         let trx = receipt_stage!("transaction", runtime.execution.transaction().await)?;
         capability.check_in(&runtime.execution, &trx).await?;
@@ -203,7 +203,7 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         run: &str,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyReceiptProgress, RuntimeError> {
         runtime.continuity()?;
         let loaded = receipt_stage!(
@@ -226,7 +226,7 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         loaded: &LoadedReceipt,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyReceiptProgress, RuntimeError> {
         let principal = &loaded.record.original.context.principal;
         let credential = self.credential(&principal.agent, &principal.device)?;

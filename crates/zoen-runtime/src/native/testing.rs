@@ -482,3 +482,12 @@ pub(crate) async fn admitted_before_revocation(
     );
     println!("native maintenance revocation ordering: known pre-revocation SQL admission finishes within window; subsequent calls denied PASS");
 }
+
+/// Runs the normal managed constructor against a real qualified relay route.
+/// No fixture capability or publication permission is synthesized here.
+pub(crate) async fn qualify_output(
+    runtime: &RuntimeAuthority,
+    target: ImageDeliveryTarget,
+) -> Result<impl NativeOutputAuthority, RuntimeError> {
+    ManagedNativeOutput::qualify(runtime, target).await
+}

@@ -4,7 +4,7 @@ impl Execution {
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn associate_native_capture(
         &self,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
         loaded: &LoadedReply,
         capture: &Capture,
         nonce: &str,
@@ -218,7 +218,7 @@ impl Execution {
 
     pub(super) async fn activate_output(
         &self,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
         output: prepare::PreparedOutput<'_>,
         admission: crate::finance::ReplyOutputAdmission,
         runtime: &RuntimeAuthority,
@@ -354,7 +354,7 @@ impl Execution {
 
     pub(super) async fn activate_receipt(
         &self,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
         activation: receipt::ReceiptActivation<'_>,
         runtime: &RuntimeAuthority,
     ) -> Result<ReplyReceiptProgress, RuntimeError> {

@@ -28,8 +28,10 @@ string cannot replace the pairing proof or external history.
 
 ## Private scope and actual effects
 
-The private `ManagedImageOutput` type is not Clone/Deserialize and is separate
-from `FreshOutputNamespace`. It binds namespace/source, certified agent/device,
+The private `ManagedNativeOutput` type is not Clone/Deserialize. Its checks and
+qualification implementation live behind the shared `NativeOutputAuthority`
+interface. The independent `FreshOutputNamespace` implementation is compiled only
+for tests; production text-output transactions no longer depend on its type. It binds namespace/source, certified agent/device,
 fixed route and the live generation lock. Each native owner transaction reads
 current FDB checkpoint with conflicts and compares it with the independent live
 anchor, in addition to existing root/head/lease/directory checks. Missing or

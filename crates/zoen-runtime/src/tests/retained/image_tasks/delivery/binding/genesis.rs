@@ -21,6 +21,40 @@ pub(in crate::tests::retained::image_tasks::delivery) async fn run(
     assert_eq!(sql, fdb);
     assert_eq!((sql.generation, sql.sequence), (1, 0));
     let before = head(f).await;
+    // Exercise the same private constructor used by the normal host, including
+    // real legacy refusal and checkpoint-bound socket acceptance.
+    let target = relay.target(f, relay.address);
+    let output = native::testing::qualify_output(&f.world.runtime, target.clone()).await?;
+    use native::NativeOutputAuthority;
+    output.check_context(&f.world.runtime)?;
+    output.check_device(
+        &actor.identity,
+        actor.device.as_deref().ok_or("fixture device")?,
+    )?;
+    output.check_target(&target)?;
+    output
+        .check_in(
+            &f.world.runtime.execution,
+            &f.world.runtime.execution.transaction().await?,
+        )
+        .await?;
+    assert_eq!(
+        output.check_device(
+            "other-agent",
+            actor.device.as_deref().ok_or("fixture device")?
+        ),
+        Err(RuntimeError::InvalidBinding)
+    );
+    let wrong_target = crate::ImageDeliveryTarget::configured(
+        format!("http://{}", relay.address),
+        "other-relay".into(),
+        target.source.clone(),
+    )?;
+    assert_eq!(
+        output.check_target(&wrong_target),
+        Err(RuntimeError::InvalidBinding)
+    );
+    assert_eq!(head(f).await, before);
     let scope = expected(f, 61, &sql);
     let mut transport = RelayOutputTransport::connect_bound(
         &format!("http://{}", relay.address),

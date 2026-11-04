@@ -196,7 +196,7 @@ pub struct RuntimeAuthority {
     // No production setter: an incarnation UUID does not prove absence after restore.
     continuity: Arc<AtomicBool>,
     managed_images: Option<Arc<tokio::sync::Mutex<managed_images::ManagedImages>>>,
-    image_output: Option<native::ManagedImageOutput>,
+    image_output: Option<native::ManagedNativeOutput>,
     runtime_continuity: Option<Arc<tokio::sync::Mutex<continuity::ManagedRuntime>>>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
@@ -372,7 +372,7 @@ impl RuntimeAuthority {
             .await
     }
 
-    fn production_output_scope(&self) -> Result<&native::FreshOutputNamespace, RuntimeError> {
+    fn production_output_scope(&self) -> Result<&dyn native::NativeOutputAuthority, RuntimeError> {
         // A fresh fixture cannot attest that old production writers stopped.
         Err(RuntimeError::CoreAuthorityUnavailable)
     }

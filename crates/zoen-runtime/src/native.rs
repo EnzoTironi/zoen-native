@@ -4,7 +4,8 @@
 mod image_activation;
 mod image_scope;
 mod image_tasks;
-pub(crate) use image_scope::{ImageOutputAuthority, ManagedImageOutput};
+mod output_scope;
+pub(crate) use output_scope::{ManagedNativeOutput, NativeOutputAuthority};
 mod managed;
 mod owner_policy;
 mod packages;
@@ -16,7 +17,9 @@ pub use image_tasks::{
     ImageReviewProgress,
 };
 mod storage;
-pub(crate) use runs::output::{associate_capture, FreshOutputNamespace, ReplyOutputScope};
+#[cfg(test)]
+pub(crate) use runs::output::FreshOutputNamespace;
+pub(crate) use runs::output::{associate_capture, ReplyOutputScope};
 pub(crate) use runs::{CleanupAcquisition, CleanupStep, ReplyStep};
 
 use std::collections::BTreeMap;

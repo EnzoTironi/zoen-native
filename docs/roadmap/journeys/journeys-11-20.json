@@ -58,7 +58,10 @@
       "apps/zoen/src/agents/use-agent-control.ts",
       "apps/zoen/src/core/agent-control-hook.test.ts",
       "apps/zoen/src/core/agent-control-refresh.test.ts",
-      "crates/client-core/src/agent_control/tests.rs"
+      "crates/client-core/src/agent_control/tests.rs",
+      "crates/zoen-runtime/src/native/output_scope.rs",
+      "crates/zoen-runtime/src/tests/retained/output/authority.rs",
+      "crates/zoen-runtime/src/tests/retained/image_tasks/delivery/binding/genesis.rs"
     ],
     "remaining": [
       "Qualificar retomada durável e provedores reais com resultado atribuído",

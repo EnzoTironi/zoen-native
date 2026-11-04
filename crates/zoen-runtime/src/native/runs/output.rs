@@ -17,6 +17,7 @@ const METADATA_BYTES: usize = 16 * 1024;
 
 // No production constructor or read reconstruction exists. Only a cfg(test)
 // empty-namespace transaction can establish this private fixture capability.
+#[cfg(test)]
 pub(crate) struct FreshOutputNamespace {
     namespace: Vec<u8>,
     deployment: String,
@@ -27,6 +28,7 @@ pub(crate) struct FreshOutputNamespace {
     output_expiry_remaining: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
+#[cfg(test)]
 impl FreshOutputNamespace {
     pub(crate) async fn check_in(
         &self,
@@ -351,4 +353,35 @@ pub(crate) async fn associate_capture(
             &runtime.custody,
         )
         .await
+}
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl NativeOutputAuthority for FreshOutputNamespace {
+    async fn check_in(
+        &self,
+        execution: &Execution,
+        transaction: &Transaction,
+    ) -> Result<(), RuntimeError> {
+        FreshOutputNamespace::check_in(self, execution, transaction).await
+    }
+    fn check_context(&self, runtime: &RuntimeAuthority) -> Result<(), RuntimeError> {
+        runtime.continuity()
+    }
+    fn check_device(&self, _: &str, _: &str) -> Result<(), RuntimeError> {
+        Ok(())
+    }
+    fn check_target(&self, _: &ImageDeliveryTarget) -> Result<(), RuntimeError> {
+        Ok(())
+    }
+    fn observe(&self, digest: &str, envelope: &protocol::Envelope) -> Result<(), RuntimeError> {
+        self.observed
+            .lock()
+            .map_err(|_| RuntimeError::Unavailable)?
+            .insert(digest.into(), envelope.clone());
+        Ok(())
+    }
+    fn expiry_remaining(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicU64>> {
+        Some(std::sync::Arc::clone(&self.output_expiry_remaining))
+    }
 }

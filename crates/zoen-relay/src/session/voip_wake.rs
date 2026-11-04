@@ -65,10 +65,10 @@ impl Session {
                     {
                         continue;
                     }
-                    if self.st.push.call_wake(&target, &wake).await == crate::push::Outcome::Gone {
-                        if db::drop_push_token(&self.st.pool, &target).await.is_err() {
-                            tracing::warn!("failed to remove invalid VoIP registration");
-                        }
+                    if self.st.push.call_wake(&target, &wake).await == crate::push::Outcome::Gone
+                        && db::drop_push_token(&self.st.pool, &target).await.is_err()
+                    {
+                        tracing::warn!("failed to remove invalid VoIP registration");
                     }
                 }
             }
