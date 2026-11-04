@@ -53,7 +53,12 @@
     "evidence": [
       "apps/zoen/acceptance.json",
       "https://github.com/EnzoTironi/zoen-native/issues/175",
-      "https://github.com/EnzoTironi/zoen-native/pull/633"
+      "https://github.com/EnzoTironi/zoen-native/pull/633",
+      "apps/zoen/src/agents/agent-control-session.ts",
+      "apps/zoen/src/agents/use-agent-control.ts",
+      "apps/zoen/src/core/agent-control-hook.test.ts",
+      "apps/zoen/src/core/agent-control-refresh.test.ts",
+      "crates/client-core/src/agent_control/tests.rs"
     ],
     "remaining": [
       "Qualificar retomada durável e provedores reais com resultado atribuído",

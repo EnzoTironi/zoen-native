@@ -31,23 +31,26 @@ export function useAgentControl(agent: string, enabled: boolean) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   useFocusEffect(
     useCallback(() => {
+      let alive = true;
       let foreground = AppState.currentState === 'active';
       const activate = () => {
+        if (!alive) return;
         const scope = enabled ? port.scope() : null;
         session.activate(foreground && accountScopeKey(scope) === key ? scope : null);
         if (foreground) void session.refresh();
       };
       activate();
       const owner = store.subscribe(() => {
-        if (accountScopeKey(port.scope()) !== key) session.retire();
+        if (alive && accountScopeKey(port.scope()) !== key) session.retire();
       });
       const canonical = store.subscribeCanonicalChanges(() => {
-        if (foreground) void session.refresh();
+        if (alive && foreground) void session.refresh();
       });
       const cleanup = store.registerSessionCleanup(async () => {
-        session.retire();
+        if (alive) session.retire();
       });
       const app = AppState.addEventListener('change', (next) => {
+        if (!alive) return;
         const active = next === 'active';
         if (active === foreground) return;
         foreground = active;
@@ -55,6 +58,7 @@ export function useAgentControl(agent: string, enabled: boolean) {
         else session.suspend();
       });
       return () => {
+        alive = false;
         owner();
         canonical();
         cleanup();

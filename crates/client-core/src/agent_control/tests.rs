@@ -348,3 +348,91 @@ async fn lifecycle_cli_alias_repeated_pause_uses_a_fresh_confirmed_cas() -> Test
     c.stop_sync();
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn exhausted_revision_refuses_before_persisting_intent_or_dispatching_and_remains_readable(
+) -> TestResult {
+    let dir = Directory::new()?;
+    let mut r = relay().await;
+    let (c, _) = owner(dir.path(), &r.url);
+    online(&c).await;
+    for action in [AgentControl::Pause, AgentControl::Revoke] {
+        let c2 = c.clone();
+        let task = tokio::spawn(async move {
+            c2.agent_control_change(target(&c2), &i64::MAX.to_string(), action)
+                .await
+        });
+        answer(
+            call(&mut r.calls).await,
+            control_record("active", i64::MAX as u64, "", ""),
+        )?;
+        assert!(task.await?.is_err());
+        assert!(r.calls.try_recv().is_err());
+    }
+    let read = control(&c, "agent_control_read", AgentControl::Pause);
+    answer(
+        call(&mut r.calls).await,
+        control_record("active", i64::MAX as u64, "", ""),
+    )?;
+    let dto: AgentControlDto = serde_json::from_str(&read.await??)?;
+    assert_eq!(dto.revision, i64::MAX.to_string());
+    assert_eq!(dto.pending, None);
+    c.stop_sync();
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn last_legal_revision_confirms_exactly_and_reconciles_without_unreadable_intent(
+) -> TestResult {
+    let dir = Directory::new()?;
+    let mut r = relay().await;
+    let (c, _) = owner(dir.path(), &r.url);
+    online(&c).await;
+    let c2 = c.clone();
+    let task = tokio::spawn(async move {
+        c2.agent_control_change(
+            target(&c2),
+            &(i64::MAX - 1).to_string(),
+            AgentControl::Pause,
+        )
+        .await
+    });
+    answer(
+        call(&mut r.calls).await,
+        control_record("active", (i64::MAX - 1) as u64, "", ""),
+    )?;
+    let dispatched = call(&mut r.calls).await;
+    let operation = match &dispatched.op {
+        AgentRequest::ControlReviewed {
+            operation,
+            action: protocol::AgentAction::Pause,
+            revision,
+            ..
+        } if *revision == (i64::MAX - 1) as u64 => operation.clone(),
+        other => return Err(format!("unexpected {other:?}").into()),
+    };
+    dispatched
+        .response
+        .send(Ok(Reply::AgentControl(control_record(
+            "paused",
+            i64::MAX as u64,
+            &operation,
+            &target(&c).device,
+        ))))
+        .map_err(|_| "response dropped")?;
+    let confirmed = task.await??;
+    assert_eq!(confirmed.outcome, crate::AgentControlOutcome::Confirmed);
+    assert_eq!(confirmed.pending, None);
+    assert_eq!(confirmed.revision, i64::MAX.to_string());
+    let read = control(&c, "agent_control_read", AgentControl::Pause);
+    answer(
+        call(&mut r.calls).await,
+        control_record("paused", i64::MAX as u64, &operation, &target(&c).device),
+    )?;
+    let observed: AgentControlDto = serde_json::from_str(&read.await??)?;
+    assert_eq!(observed.pending, None);
+    assert_eq!(observed.outcome, crate::AgentControlOutcome::Observed);
+    assert!(r.calls.try_recv().is_err());
+    c.stop_sync();
+    Ok(())
+}

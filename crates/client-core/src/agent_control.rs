@@ -195,7 +195,10 @@ impl Client {
             return self.control_observation(&scope, self.control_record(&scope).await?);
         }
         let current = self.control_record(&scope).await?;
-        if observed != current.revision.to_string() || current.status == "revoked" {
+        if observed != current.revision.to_string()
+            || current.status == "revoked"
+            || current.revision == i64::MAX as u64
+        {
             return Err(changed());
         }
         let mut nonce = [0_u8; 32];

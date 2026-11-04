@@ -1,3 +1,4 @@
+import { agentControlRevision, agentControlRevisionMax } from './agent-control-revision.ts';
 import { accountScope, accountScopeKey, type AccountScope } from '../core/account-scope.ts';
 import type { ClientStore } from '../core/store.ts';
 import type { AgentControlPort } from './agent-control-session.ts';
@@ -34,12 +35,14 @@ export function createAgentControlPort(store: ClientStore): AgentControlPort {
       if (
         !status ||
         !['Active', 'Paused', 'Revoked'].includes(status.status) ||
-        !/^[1-9][0-9]*$/.test(status.revision) ||
+        agentControlRevision(status.revision) === null ||
         !['Observed', 'Unknown', 'Confirmed', 'Superseded'].includes(status.outcome) ||
         (status.pending !== null && !['Pause', 'Resume', 'Revoke'].includes(status.pending)) ||
         (status.pending !== null) !== (status.outcome === 'Unknown') ||
         (status.operation_id !== null && !/^[0-9a-f]{64}$/i.test(status.operation_id)) ||
-        (status.pending !== null && status.operation_id === null)
+        (status.pending !== null &&
+          (status.operation_id === null ||
+            agentControlRevision(status.revision) === agentControlRevisionMax))
       )
         throw new Error('The agent status is unavailable.');
       return status;

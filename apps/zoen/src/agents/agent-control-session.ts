@@ -1,3 +1,4 @@
+import { agentControlRevision, agentControlRevisionMax } from './agent-control-revision.ts';
 import type { AccountScope } from '../core/account-scope.ts';
 import { accountScopeKey } from '../core/account-scope.ts';
 import type { AgentStatus } from '../core/generated/AgentStatus.ts';
@@ -57,6 +58,7 @@ export class AgentControlSession {
   private revision: string | null = null;
   private operationId: string | null = null;
   private readGeneration = 0;
+  private readFlight: { generation: number; again: boolean; promise: Promise<void> } | null = null;
   private active = false;
   private state: AgentControlState = emptyAgentControl;
   private readonly listeners = new Set<() => void>();
@@ -89,6 +91,7 @@ export class AgentControlSession {
       scope && accountScopeKey(scope) === accountScopeKey(this.scope) ? this.state.pending : null;
     ++this.generation;
     ++this.readGeneration;
+    this.readFlight = null;
     this.operationId = null;
     this.revision = null;
     this.scope = scope ? Object.freeze({ ...scope }) : null;
@@ -100,6 +103,7 @@ export class AgentControlSession {
   suspend() {
     ++this.generation;
     ++this.readGeneration;
+    this.readFlight = null;
     this.active = false;
     this.publish({ phase: 'inactive', status: null, busy: false });
   }
@@ -110,33 +114,51 @@ export class AgentControlSession {
     if (this.state.busy || (observed && observed !== this.state)) return;
     await this.readStatus();
   }
-  private async readStatus() {
-    if (!this.current() || !this.scope) return;
-    const scope = this.scope;
-    const generation = this.generation;
-    const read = ++this.readGeneration;
-    this.publish({ phase: 'loading' });
-    try {
-      const result = await this.port.read(this.agent, scope);
-      if (!this.current(generation) || read !== this.readGeneration) return;
-      ++this.observation;
-      // Core reopens the durable intent and reconciles the exact relay revision.
-      // Matching status alone cannot prove which request won. Reads never resend.
-      this.revision = result.revision;
-      this.operationId = result.operation_id;
-      this.publish({
-        phase: 'ready',
-        status: result.status,
-        pending: result.pending,
-      });
-    } catch {
-      if (this.current(generation) && read === this.readGeneration)
-        this.publish({ phase: 'failed', status: null });
+  private readStatus(): Promise<void> {
+    if (!this.current() || !this.scope) return Promise.resolve();
+    if (this.readFlight?.generation === this.generation) {
+      this.readFlight.again = true;
+      if (this.state.phase !== 'loading') this.publish({ phase: 'loading' });
+      return this.readFlight.promise;
     }
+    const flight = { generation: this.generation, again: false, promise: Promise.resolve() };
+    this.readFlight = flight;
+    // Install the shared flight before publishing loading or calling the port.
+    flight.promise = Promise.resolve().then(async () => {
+      try {
+        do {
+          flight.again = false;
+          if (!this.current(flight.generation) || !this.scope) return;
+          const scope = this.scope;
+          const read = ++this.readGeneration;
+          if (this.state.phase !== 'loading') this.publish({ phase: 'loading' });
+          try {
+            const result = await this.port.read(this.agent, scope);
+            if (!this.current(flight.generation) || read !== this.readGeneration) return;
+            if (flight.again) continue;
+            ++this.observation;
+            // A canonical read reconciles the durable intent; it never resends.
+            this.revision = result.revision;
+            this.operationId = result.operation_id;
+            this.publish({ phase: 'ready', status: result.status, pending: result.pending });
+          } catch {
+            if (!this.current(flight.generation) || read !== this.readGeneration) return;
+            if (!flight.again) this.publish({ phase: 'failed', status: null });
+          }
+        } while (flight.again && this.current(flight.generation));
+      } finally {
+        if (this.readFlight === flight) this.readFlight = null;
+      }
+    });
+    this.publish({ phase: 'loading' });
+    return flight.promise;
   }
   ticket(): AgentControlTicket | null {
     const status = this.state.status;
-    return this.current() &&
+    const revision = agentControlRevision(this.revision);
+    return revision !== null &&
+      revision < agentControlRevisionMax &&
+      this.current() &&
       this.state.phase === 'ready' &&
       !this.state.busy &&
       !this.state.pending &&
