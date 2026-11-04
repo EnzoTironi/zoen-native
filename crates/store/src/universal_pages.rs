@@ -4,6 +4,25 @@ use crate::{Result, SearchRow, Store, StoreError};
 use rusqlite::params;
 
 impl Store {
+    pub fn reset_search_media(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS search_media (
+                 space TEXT NOT NULL, message TEXT NOT NULL,
+                 PRIMARY KEY(space, message)
+             ) WITHOUT ROWID;
+             DELETE FROM search_media;",
+        )?;
+        Ok(())
+    }
+
+    pub fn index_search_media(&self, space: &str, message: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO search_media(space, message) VALUES (?1, ?2)",
+            params![space, message],
+        )?;
+        Ok(())
+    }
+
     pub fn universal_search_page(
         &self,
         query: &str,
@@ -35,7 +54,19 @@ impl Store {
         if terms.is_empty() {
             return Ok(Vec::new());
         }
-        let mut statement = self.conn.prepare_cached(
+        let media_clause = if kinds == ["media"] {
+            "AND EXISTS (SELECT 1 FROM search_media m
+                         WHERE m.space = search.space AND m.message = search.ref_id)"
+        } else {
+            ""
+        };
+        let message_kind = ["message".to_owned()];
+        let kinds = if kinds == ["media"] {
+            &message_kind[..]
+        } else {
+            kinds
+        };
+        let sql = format!(
             "SELECT kind, ref_id, space, author, at_ms, title,
                     snippet(search, 6, '[[', ']]', '…', 10),
                     snippet(search, 5, '[[', ']]', '…', 8)
@@ -44,10 +75,12 @@ impl Store {
                AND (space = '' OR space IN (SELECT value FROM json_each(?3)))
                AND (?6 IS NULL OR CAST(at_ms AS INTEGER) >= ?6)
                AND (?7 IS NULL OR CAST(at_ms AS INTEGER) < ?7)
+             {media_clause}
              ORDER BY bm25(search, 0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 1.0),
                       CAST(at_ms AS INTEGER) DESC, kind ASC, space ASC, ref_id ASC
              LIMIT ?4 OFFSET ?5",
-        )?;
+        );
+        let mut statement = self.conn.prepare_cached(&sql)?;
         let rows = statement.query_map(
             params![
                 terms.join(" "),

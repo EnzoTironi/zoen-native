@@ -31,6 +31,11 @@ const searchFilters = [
   { label: 'chat.people', kinds: ['person', 'agent'] },
 ] satisfies { label: 'chat.all' | 'chat.searchMessagesFilter' | 'chat.people'; kinds: string[] }[];
 
+const nativeSearchFilters = [
+  ...searchFilters,
+  { label: 'chat.searchMediaFilter' as const, kinds: ['media'] },
+];
+
 const searchPeriods = [
   { label: 'chat.searchAnyTime', days: 0 },
   { label: 'chat.searchLastWeek', days: 7 },
@@ -86,14 +91,17 @@ function SearchBody({
     days: 0,
     period: undefined as SearchPageInput['period'],
   });
-  const supportsPeriod = process.env.EXPO_OS !== 'web' && store.getSnapshot().mode === 'account';
+  const supportsNativeFilters =
+    process.env.EXPO_OS !== 'web' && store.getSnapshot().mode === 'account';
+  const filters = supportsNativeFilters ? nativeSearchFilters : searchFilters;
+  const filterIndex = filter.index < filters.length ? filter.index : 0;
   const { search, state: results } = useSearchResults(
     store,
     scope,
     space,
     filter.query,
-    searchFilters[filter.index].kinds,
-    supportsPeriod ? filter.period : undefined,
+    filters[filterIndex].kinds,
+    supportsNativeFilters ? filter.period : undefined,
   );
   const query = results.query;
   const actions = useMemo(
@@ -217,16 +225,16 @@ function SearchBody({
       />
       {scope && !space ? (
         <SearchFilterRow
-          options={searchFilters.map(({ label }) => t(label))}
-          selected={filter.index}
+          options={filters.map(({ label }) => t(label))}
+          selected={filterIndex}
           onSelect={(index) => {
-            if (filter.index === index || !search.isCurrent()) return;
+            if (filterIndex === index || !search.isCurrent()) return;
             search.suspend();
             setFilter({ ...filter, index, query });
           }}
         />
       ) : null}
-      {scope && !space && supportsPeriod ? (
+      {scope && !space && supportsNativeFilters ? (
         <SearchFilterRow
           options={searchPeriods.map(({ label }) => t(label))}
           selected={searchPeriods.findIndex(({ days }) => days === filter.days)}

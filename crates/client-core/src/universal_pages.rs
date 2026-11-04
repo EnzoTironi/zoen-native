@@ -57,15 +57,18 @@ impl Engine {
                 range.start < 0 || range.start >= range.end || range.end > 8_640_000_000_000_000
             })
             || kinds.len() > ALL.len()
-            || kinds.iter().any(|kind| !ALL.contains(&kind.as_str()))
+            || (kinds != ["media"] && kinds.iter().any(|kind| !ALL.contains(&kind.as_str())))
         {
             return Err(invalid());
         }
-        let wanted: Vec<String> = ALL
-            .iter()
-            .filter(|kind| kinds.is_empty() || kinds.iter().any(|want| want == **kind))
-            .map(|kind| (*kind).into())
-            .collect();
+        let wanted: Vec<String> = if kinds == ["media"] {
+            kinds.to_vec()
+        } else {
+            ALL.iter()
+                .filter(|kind| kinds.is_empty() || kinds.iter().any(|want| want == **kind))
+                .map(|kind| (*kind).into())
+                .collect()
+        };
         let mut spaces: Vec<String> = self
             .state
             .spaces
