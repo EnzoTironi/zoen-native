@@ -152,6 +152,7 @@ pub(crate) struct Entry {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct MessageMarks {
     pub text_revision: Option<String>,
+    pub(crate) media_edit: Option<Box<MediaEditMarks>>,
     pub edited: bool,
     pub deleted: bool,
     pub forwarded: bool,
@@ -161,7 +162,40 @@ pub(crate) struct MessageMarks {
     pub reactions: Vec<(IdentityId, String)>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct MediaEditMarks {
+    replacement: types::MediaReplacement,
+    receipts: HashMap<String, String>,
+}
+
 impl MessageMarks {
+    pub(crate) fn replacement(&self) -> Option<&types::MediaReplacement> {
+        self.media_edit.as_ref().map(|edit| &edit.replacement)
+    }
+    pub(crate) fn media_edit_receipt(&self, id: &str) -> Option<&str> {
+        self.media_edit
+            .as_ref()?
+            .receipts
+            .get(id)
+            .map(String::as_str)
+    }
+    pub(crate) fn record_media_edit(
+        &mut self,
+        id: &str,
+        revision: &str,
+        replacement: types::MediaReplacement,
+    ) {
+        if let Some(edit) = &mut self.media_edit {
+            edit.replacement = replacement;
+            edit.receipts.insert(id.into(), revision.into());
+        } else {
+            self.media_edit = Some(Box::new(MediaEditMarks {
+                replacement,
+                receipts: HashMap::from([(id.into(), revision.into())]),
+            }));
+        }
+    }
+
     /// Folds one annotation from `by` over a message written by `author`. Returns the new
     /// text for an edit. Only the author edits or deletes; a deleted message stays deleted.
     pub(crate) fn apply(
@@ -183,6 +217,7 @@ impl MessageMarks {
                 self.edited = true;
                 return Some(text.trim().to_string());
             }
+            A::ReplaceMedia { .. } => return None,
             A::Delete => {
                 self.deleted = true;
                 self.reactions.clear();

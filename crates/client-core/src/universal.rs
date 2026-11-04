@@ -150,20 +150,12 @@ impl Engine {
             return None;
         }
         let body = match &entry.body {
-            EntryBody::Message {
-                text,
-                attaches,
-                marks,
-                ..
-            } => {
+            EntryBody::Message { text, marks, .. } => {
                 if marks.deleted {
                     return None;
                 }
                 let mut body = searchable_text(text);
-                if let Some(voice) = attaches
-                    .as_deref()
-                    .and_then(|item| self.voice_of(&entry.space, item))
-                {
+                if let Some(voice) = self.entry_voice(entry) {
                     body.push('\n');
                     body.push_str(&voice.transcript);
                 }
@@ -189,6 +181,13 @@ impl Engine {
         };
         if marks.deleted || !self.visible_message(entry) || self.state.is_recovery_item(id) {
             return None;
+        }
+        if let Some(replacement) = marks.replacement() {
+            return self
+                .space_projections
+                .get(&entry.space)?
+                .replacement_file(&entry.space, &entry.author, replacement)
+                .map(|file| file.name.as_str());
         }
         let item = self
             .state

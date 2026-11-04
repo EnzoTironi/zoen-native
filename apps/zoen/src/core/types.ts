@@ -97,7 +97,9 @@ export type CoreEvent =
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
 import type { InboxFoldersResult } from './generated/InboxFoldersResult';
+import type { MessageMediaEditResult } from './generated/MessageMediaEditResult';
 type Results = {
+  replace_message_media: MessageMediaEditResult;
   inbox_folders: InboxFoldersResult;
   call_wake_consent: boolean;
   chat_layout: ChatLayoutResult;

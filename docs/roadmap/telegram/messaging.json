@@ -128,36 +128,6 @@
     ]
   },
   {
-    "id": "TG-messaging-replace-sent-media",
-    "scope": "active",
-    "implementation": "missing",
-    "acceptance": "pending",
-    "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
-    ],
-    "gap": "Trocar mídia já enviada preservando identidade, autorização e recuperação da mensagem.",
-    "issues": [
-      172,
-      173
-    ]
-  },
-  {
-    "id": "TG-messaging-add-media-after-sending",
-    "scope": "active",
-    "implementation": "missing",
-    "acceptance": "pending",
-    "evidence": [
-      "apps/zoen/src/components/use-message-actions.tsx",
-      "apps/zoen/src/core/generated/TimelineEntry.ts"
-    ],
-    "gap": "Adicionar anexo durante edição sem criar envio duplicado ou perder o texto.",
-    "issues": [
-      172,
-      173
-    ]
-  },
-  {
     "id": "TG-messaging-edit-timestamps",
     "scope": "active",
     "implementation": "present",

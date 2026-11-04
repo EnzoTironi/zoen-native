@@ -261,6 +261,7 @@ impl Client {
             UniversalSearch(input) => {
                 encode(&self.universal_search(input.query, input.kinds, input.limit.min(100))?)
             }
+            Command::ReplaceMessageMedia { input } => encode(&self.replace_message_media(input)?),
             Command::InboxFolders { input } => encode(&self.lock().inbox_folders(&input)?),
             command @ (SetChatPrefs(..)
             | SetChatMuted(..)

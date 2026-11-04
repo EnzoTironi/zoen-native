@@ -15,6 +15,10 @@ pub enum Annotation {
     Edit {
         text: String,
     },
+    /// Author-owned replacement of one message's attachment, pinned to immutable file bytes.
+    ReplaceMedia {
+        edit: MediaChange,
+    },
     /// Delete for everyone (author only). Final: later edits are ignored.
     Delete,
     /// One reaction per person per message (WhatsApp): a new one replaces the old.
@@ -28,6 +32,27 @@ impl Annotation {
     /// Whether only the message's author may write this.
     #[must_use]
     pub fn author_only(&self) -> bool {
-        matches!(self, Annotation::Edit { .. } | Annotation::Delete)
+        matches!(
+            self,
+            Annotation::Edit { .. } | Annotation::ReplaceMedia { .. } | Annotation::Delete
+        )
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct MediaReplacement {
+    pub item_id: String,
+    pub version: u32,
+    pub sha256: String,
+}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct MediaChange {
+    pub mutation_id: String,
+    pub expected_revision: String,
+    pub text: String,
+    pub replacement: MediaReplacement,
 }

@@ -40,7 +40,7 @@ impl Engine {
             self.logs.get(&scope.space_id).and_then(|log| {
                 log.events().iter().rev().find(|event| {
                     event.author == entry.author
-                        && matches!(&event.body, EventBody::MessageAnnotated { target, note: Annotation::Edit { .. } } if target == entry.id())
+                        && matches!(&event.body, EventBody::MessageAnnotated { target, note: Annotation::Edit { .. } | Annotation::ReplaceMedia { .. } } if target == entry.id())
                         && marks.text_revision.as_deref() == Some(event_log::content_hash_of(event).as_str())
                 }).map(|event| event.at_ms)
             })

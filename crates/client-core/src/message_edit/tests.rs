@@ -325,3 +325,5 @@ fn a_received_message_never_becomes_an_owned_edit_even_if_its_text_already_match
     assert_eq!(counts(&client)?, before);
     Ok(())
 }
+
+mod media;

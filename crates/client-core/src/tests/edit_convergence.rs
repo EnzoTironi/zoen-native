@@ -304,3 +304,5 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
     }
     Ok(())
 }
+
+mod media;

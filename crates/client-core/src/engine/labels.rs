@@ -149,6 +149,7 @@ pub(crate) fn event_label(b: &EventBody) -> String {
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
         EventBody::MessagesDeletedForSelf { .. } => t("Exclusão privada", "Private deletion"),
         EventBody::MessageAnnotated { note, .. } => match note {
+            types::Annotation::ReplaceMedia { .. } => t("Mídia editada", "Media edited"),
             types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),
             types::Annotation::Delete => t("Mensagem apagada", "Message deleted"),
             types::Annotation::React { .. } | types::Annotation::Unreact => t("Reação", "Reaction"),

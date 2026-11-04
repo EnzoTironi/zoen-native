@@ -55,7 +55,8 @@ impl Engine {
         let media = marks.media.as_ref().map(types::MessageMedia::without_group);
         let voice = self.entry_voice(source);
         let original_text = text.clone();
-        let caption_file = attaches.as_ref().is_some_and(|item| self.state.items.get(item).is_some_and(|item| matches!(&item.current().content, ItemContent::File(file) if !file.is_voice())));
+        let replacement_version = marks.replacement().map(|replacement| replacement.version);
+        let caption_file = marks.replacement().is_some() || attaches.as_ref().is_some_and(|item| self.state.items.get(item).is_some_and(|item| matches!(&item.current().content, ItemContent::File(file) if !file.is_voice())));
         let (text, attaches) = (
             if options.hide_caption && caption_file {
                 String::new()
@@ -66,11 +67,15 @@ impl Engine {
         );
         // Resolve the canonical entry, including old Android markers. Its current
         // audio and metadata are copied; source item/reply/thread ids never travel.
-        if from_space != to_space || (options.hide_author && voice.is_some()) {
+        if from_space != to_space
+            || (options.hide_author && voice.is_some())
+            || replacement_version.is_some()
+        {
             if let Some(voice) = voice {
                 return self.forward_file_message(crate::files::ForwardFileInput {
                     from_space,
                     item_id: &voice.item_id,
+                    version: None,
                     to_space,
                     caption: "",
                     voice: Some(&voice),
@@ -79,7 +84,7 @@ impl Engine {
                     forwarded,
                 });
             }
-            if original_text.starts_with("⟦voice:") {
+            if replacement_version.is_none() && original_text.starts_with("⟦voice:") {
                 return Err(CoreError::Invalid {
                     reason: t(
                         "esta mensagem de voz não está mais disponível",
@@ -88,13 +93,15 @@ impl Engine {
                 });
             }
             if let Some(item) = attaches.as_deref() {
-                if self.state.items.get(item).is_some_and(|item| item.space==from_space && matches!(&item.current().content,ItemContent::App(app) if app.app=="excalidraw")) {
+                if replacement_version.is_none() && self.state.items.get(item).is_some_and(|item| item.space==from_space && matches!(&item.current().content,ItemContent::App(app) if app.app=="excalidraw")) {
                     return self.forward_app_document(from_space,item,to_space,&text,forwarded,forwarded_author);
                 }
-                if !self.state.items.get(item).is_some_and(|item| {
-                    item.space == from_space
-                        && matches!(&item.current().content, ItemContent::File(_))
-                }) {
+                if replacement_version.is_none()
+                    && !self.state.items.get(item).is_some_and(|item| {
+                        item.space == from_space
+                            && matches!(&item.current().content, ItemContent::File(_))
+                    })
+                {
                     return Err(CoreError::Invalid {
                         reason: t(
                             "este item ainda não pode ser encaminhado a outra conversa",
@@ -105,6 +112,7 @@ impl Engine {
                 return self.forward_file_message(crate::files::ForwardFileInput {
                     from_space,
                     item_id: item,
+                    version: replacement_version,
                     to_space,
                     caption: &text,
                     voice: None,

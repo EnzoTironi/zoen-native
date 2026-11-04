@@ -527,5 +527,41 @@
       170
     ],
     "recommendation": "Priorizar transferências retomáveis e qualidade explícita dentro dos limites medidos; casting e vantagens pagas são referências adicionais."
+  },
+  {
+    "id": "TG-messaging-replace-sent-media",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/message_media_edit.rs",
+      "crates/client-core/src/message_media_edit/projection.rs",
+      "crates/protocol/src/message_media_edit.rs",
+      "crates/client-core/src/message_edit/tests/media.rs",
+      "crates/client-core/src/tests/edit_convergence/media.rs"
+    ],
+    "gap": "Contrato core implementado: edição assinada por mensagem, arquivo/versão/hash fixados, revisão, autorização, retry e replay concorrente. Falta concluir o journal de edição e a integração real com o seletor/compositor antes do aceite da jornada no iPhone.",
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "TG-messaging-add-media-after-sending",
+    "scope": "active",
+    "implementation": "partial",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/message_media_edit.rs",
+      "crates/client-core/src/message_media_edit/projection.rs",
+      "crates/protocol/src/message_media_edit.rs",
+      "crates/client-core/src/message_edit/tests/media.rs",
+      "crates/client-core/src/tests/edit_convergence/media.rs"
+    ],
+    "gap": "Contrato core implementado: edição assinada por mensagem, arquivo/versão/hash fixados, revisão, autorização, retry e replay concorrente. Falta concluir o journal de edição e a integração real com o seletor/compositor antes do aceite da jornada no iPhone.",
+    "issues": [
+      172,
+      173
+    ]
   }
 ]

@@ -507,3 +507,5 @@ mod tests {
     }
 }
 pub mod provider_auth;
+
+pub mod message_media_edit;

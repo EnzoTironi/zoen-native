@@ -289,6 +289,9 @@ pub(super) enum Command {
     SetChatPrefs(super::chat_preferences_dispatch::ChatPrefsInput),
     SetChatMute(super::chat_preferences_dispatch::ChatMuteInput),
     SetChatMuted(super::chat_preferences_dispatch::ChatMutedInput),
+    ReplaceMessageMedia {
+        input: protocol::message_media_edit::MessageMediaEdit,
+    },
     InboxFolders {
         input: crate::inbox_folders::InboxFoldersInput,
     },
