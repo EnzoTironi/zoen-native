@@ -55,8 +55,11 @@ test('late rejection cannot replace a newer attempt; current failure remains ret
   actions.blur();
   actions.focus();
   const next = deferred<void>();
+  let reads = 0;
   const current = actions.run(
-    () => next.promise,
+    async () => {
+      if (++reads === 1) await next.promise;
+    },
     () => {},
     'failed',
   );
@@ -66,12 +69,32 @@ test('late rejection cannot replace a newer attempt; current failure remains ret
   next.reject(new Error('current failure'));
   await current;
   assert.deepEqual(actions.getSnapshot(), { pending: false, error: 'current failure' });
-  actions.clearError();
-  assert.equal(actions.getSnapshot().error, null);
+  await actions.retry();
+  assert.equal(reads, 2);
+  await actions.retry();
+  assert.equal(reads, 2);
+  assert.deepEqual(actions.getSnapshot(), { pending: false, error: null });
+});
+
+test('access loss retires a failed read even when access is restored', async () => {
+  let current = true;
+  let reads = 0;
+  const actions = new GlobalSearchActions(() => current);
+  actions.focus();
   await actions.run(
-    async () => {},
+    async () => {
+      reads++;
+      throw new Error('failed');
+    },
     () => {},
     'failed',
   );
+  current = false;
+  actions.refresh();
+  current = true;
+  await actions.retry();
+  actions.focus();
+  await actions.retry();
+  assert.equal(reads, 1);
   assert.deepEqual(actions.getSnapshot(), { pending: false, error: null });
 });
