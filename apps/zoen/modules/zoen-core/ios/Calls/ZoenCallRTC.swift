@@ -10,6 +10,7 @@ final class ZoenCallRTC: NSObject {
   let changed: @MainActor (String) -> Void
   let failed: @MainActor () -> Void
   let remoteVideo: @MainActor (RTCVideoTrack?) -> Void
+  let localVideo: @MainActor (RTCVideoTrack?) -> Void
   private let factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
   private var peer: RTCPeerConnection?
   private var microphone: RTCAudioTrack?
@@ -28,10 +29,13 @@ final class ZoenCallRTC: NSObject {
   private var cameraAllowed = false
   private var intent: ZoenCallMediaIntent
   private var cameraStarted = false
+  private var cameraPosition: AVCaptureDevice.Position = .front
 
   init(port: ZoenCallPort, intent: ZoenCallMediaIntent, changed: @escaping @MainActor (String) -> Void,
-       failed: @escaping @MainActor () -> Void, remoteVideo: @escaping @MainActor (RTCVideoTrack?) -> Void) {
+       failed: @escaping @MainActor () -> Void, remoteVideo: @escaping @MainActor (RTCVideoTrack?) -> Void,
+       localVideo: @escaping @MainActor (RTCVideoTrack?) -> Void) {
     self.intent = intent; self.port = port; self.changed = changed; self.failed = failed; self.remoteVideo = remoteVideo
+    self.localVideo = localVideo
     super.init()
   }
 
@@ -218,8 +222,25 @@ final class ZoenCallRTC: NSObject {
     intent.cameraEnabled = value
     cameraTrack?.isEnabled = intent.cameraLive(allowed: cameraAllowed, started: cameraStarted, live: live)
     guard didStart else { return }
-    if !value { Task { await stopCamera() }; return }
-    enqueue { rtc in try await rtc.startCamera() }
+    if !value { localVideo(nil) }
+    enqueue { rtc in
+      if rtc.intent.cameraEnabled { try await rtc.startCamera() }
+      else { await rtc.stopCamera() }
+    }
+  }
+  var localPreview: RTCVideoTrack? {
+    intent.cameraLive(allowed: cameraAllowed, started: cameraStarted, live: live) ? cameraTrack : nil
+  }
+  func switchCamera() {
+    enqueue { rtc in
+      guard rtc.localPreview != nil else { return }
+      let next: AVCaptureDevice.Position = rtc.cameraPosition == .front ? .back : .front
+      guard RTCCameraVideoCapturer.captureDevices().contains(where: { $0.position == next }) else { return }
+      _ = try await rtc.current()
+      await rtc.stopCamera()
+      rtc.cameraPosition = next
+      try await rtc.startCamera()
+    }
   }
   func setMuted(_ value: Bool) { intent.muted = value; updateAudio() }
   func setSpeaker(_ value: Bool) throws {
@@ -229,6 +250,7 @@ final class ZoenCallRTC: NSObject {
 
   private func stopCamera() async {
     cameraTrack?.isEnabled = false
+    localVideo(nil)
     guard cameraStarted, let camera else { return }
     cameraStarted = false
     await withCheckedContinuation { continuation in camera.stopCapture { continuation.resume() } }
@@ -251,8 +273,10 @@ final class ZoenCallRTC: NSObject {
       cameraAllowed = await AVCaptureDevice.requestAccess(for: .video)
       _ = try await current()
     }
+    _ = try await current()
     guard cameraAllowed, intent.cameraEnabled else { return }
-    guard let camera, let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == .front }) ?? RTCCameraVideoCapturer.captureDevices().first,
+    let devices = RTCCameraVideoCapturer.captureDevices()
+    guard let camera, let device = devices.first(where: { $0.position == cameraPosition }) ?? devices.first,
           let format = RTCCameraVideoCapturer.supportedFormats(for: device).filter({ CMVideoFormatDescriptionGetDimensions($0.formatDescription).width <= 1280 }).max(by: { CMVideoFormatDescriptionGetDimensions($0.formatDescription).width < CMVideoFormatDescriptionGetDimensions($1.formatDescription).width }) else { return }
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       camera.startCapture(with: device, format: format, fps: 30) { error in
@@ -261,7 +285,9 @@ final class ZoenCallRTC: NSObject {
     }
     _ = try await current()
     cameraStarted = true
+    cameraPosition = device.position
     cameraTrack?.isEnabled = intent.cameraLive(allowed: cameraAllowed, started: cameraStarted, live: live)
+    localVideo(localPreview)
     if !intent.cameraEnabled { await stopCamera() }
   }
 
@@ -269,6 +295,7 @@ final class ZoenCallRTC: NSObject {
     guard live else { return }
     live = false; tail?.cancel(); recoveryDeadline?.cancel(); recoveryDeadline = nil
     microphone?.isEnabled = false; cameraTrack?.isEnabled = false
+    localVideo(nil)
     RTCAudioSession.sharedInstance().isAudioEnabled = false
     peer?.delegate = nil; peer?.close(); peer = nil
     if let camera { await withCheckedContinuation { continuation in camera.stopCapture { continuation.resume() } } }

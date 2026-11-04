@@ -110,7 +110,8 @@ final class ZoenCallCoordinator: NSObject {
       if rtc == nil {
         let rtc = ZoenCallRTC(port: port, intent: mediaIntent, changed: { [weak self] phase in self?.phase(phase) },
           failed: { [weak self] in Task { await self?.stop(writeEnd: true, reason: .failed) } },
-          remoteVideo: { [weak self] track in self?.screen?.showVideo(track) })
+          remoteVideo: { [weak self] track in self?.screen?.showVideo(track) },
+          localVideo: { [weak self] track in self?.screen?.showLocalVideo(track) })
         self.rtc = rtc
         rtc.start()
         if let audio { rtc.audioActivated(audio) }
@@ -127,6 +128,8 @@ final class ZoenCallCoordinator: NSObject {
     let view = screen ?? ZoenCallViewController(name: name, video: call.video, locale: port.locale)
     view.end = { [weak self] in Task { await self?.requestEnd() } }
     view.camera = { [weak self] value in self?.mediaIntent.cameraEnabled = value; self?.rtc?.setCameraEnabled(value) }
+    view.switchCamera = { [weak self] in self?.rtc?.switchCamera() }
+    view.showLocalVideo(rtc?.localPreview)
     view.mute = { [weak self] value in self?.requestMute(value) }
     view.speaker = { [weak self] value in self?.mediaIntent.speaker = value; try? self?.rtc?.setSpeaker(value) }
     view.minimize = { [weak self] in self?.minimize() }
