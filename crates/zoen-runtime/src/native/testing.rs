@@ -1,7 +1,9 @@
 //! Explicit fixture custody, not a production key or enrollment constructor.
 pub(crate) use super::image_tasks::seed_association_fixture;
 pub(crate) use super::image_tasks::testing as image_tasks;
+mod dispatch;
 use super::*;
+pub(crate) use dispatch::dispatch_retained_reply;
 pub(crate) use runs::output::testing as output;
 
 pub(crate) fn custody(

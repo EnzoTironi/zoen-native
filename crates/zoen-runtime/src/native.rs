@@ -26,6 +26,7 @@ pub(crate) use runs::{
     ReplyStep,
 };
 pub(crate) use shared::{recover_shared_native, shared_commitments, shared_intent};
+pub(crate) use storage::bounded_rows;
 
 use std::collections::BTreeMap;
 

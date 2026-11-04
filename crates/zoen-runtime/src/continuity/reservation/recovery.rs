@@ -28,9 +28,13 @@ impl ManagedRuntime {
             if actual != expected || (fdb_cp != prepared.previous && fdb_cp != prepared.next) {
                 return Err(RuntimeError::RestoreUnreconciled);
             }
-            match &intent.claim_nonce {
-                Some(nonce) => Finance::observe_claim(&mut sql, &intent.binding, nonce).await?,
-                None => Finance::observe_reservation(&mut sql, &intent.binding).await?,
+            if let Some(nonce) = &intent.witness_nonce {
+                Finance::observe_witness(&mut sql, &intent.binding, nonce).await?;
+            } else {
+                match &intent.claim_nonce {
+                    Some(nonce) => Finance::observe_claim(&mut sql, &intent.binding, nonce).await?,
+                    None => Finance::observe_reservation(&mut sql, &intent.binding).await?,
+                }
             }
             if fdb_cp == prepared.previous {
                 self.write_fdb(runtime, &tx, prepared).await?;
@@ -53,6 +57,9 @@ impl ManagedRuntime {
                 || fdb_cp != prepared.previous
                 || projected(&actual, &intent)? != expected
             {
+                return Err(RuntimeError::RestoreUnreconciled);
+            }
+            if intent.witness_nonce.is_some() {
                 return Err(RuntimeError::RestoreUnreconciled);
             }
             // No original financial commit exists: derive fresh facts and real

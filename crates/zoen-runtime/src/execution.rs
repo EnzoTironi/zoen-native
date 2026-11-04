@@ -1,3 +1,4 @@
+mod admission;
 mod evidence;
 #[cfg(test)]
 mod testing;
@@ -51,6 +52,13 @@ impl FreshAdmission {
     ) {
         (self.attempt, self.nonce, self.checkpoint)
     }
+}
+// Planning data only: no consume/permit constructor; the caller still owns an
+// uncommitted FDB transaction. Never deserialized or cloned.
+pub(crate) struct StagedAdmission {
+    pub(crate) attempt: String,
+    pub(crate) nonce: String,
+    pub(crate) checkpoint: Option<crate::managed_images::DispatchCheckpoint>,
 }
 pub(crate) struct PreDispatchClosure {
     binding: Binding,
@@ -286,62 +294,6 @@ impl Execution {
         trx.set(&key, &sealed);
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         Ok(())
-    }
-    pub async fn admit_once(
-        &self,
-        step: &VerifiedStep,
-        claim: FreshClaim,
-        binding: &Binding,
-        custody: &Custody,
-        runtime: &crate::RuntimeAuthority,
-    ) -> Result<FreshAdmission, RuntimeError> {
-        runtime.step_continuity(step)?;
-        if binding.context != step.request().context {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let (attempt, nonce, digest, checkpoint) = claim.consume();
-        if attempt != binding.context.attempt_id || digest != binding.digest()? {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let trx = self.transaction().await?;
-        self.scope(&trx, step, custody, false).await?;
-        let prepared = trx
-            .get(&self.attempt(&attempt, "prepared"), false)
-            .await?
-            .ok_or(RuntimeError::Denied)?;
-        let prior: Binding = custody.open(&format!("prepared/{attempt}"), None, &prepared)?;
-        if prior != *binding {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        if trx
-            .get(&self.attempt(&attempt, "closed"), false)
-            .await?
-            .is_some()
-            || trx
-                .get(&self.attempt(&attempt, "admitted"), false)
-                .await?
-                .is_some()
-        {
-            return Err(RuntimeError::Denied);
-        }
-        // The unique SQL nonce is evidence of the consumed claim, never a read API.
-        trx.set(&self.attempt(&attempt, "admitted"), nonce.as_bytes());
-        if let Some(checkpoint) = &checkpoint {
-            checkpoint.write_fdb(self, &trx).await?;
-        }
-        #[cfg(test)]
-        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 22 {
-            runtime.native_cut_entered.notify_one();
-            runtime.native_cut_resume.notified().await;
-        }
-        runtime.step_continuity(step)?;
-        trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
-        runtime.step_continuity(step)?;
-        Ok(FreshAdmission {
-            attempt,
-            nonce,
-            checkpoint,
-        })
     }
     #[cfg(test)]
     pub async fn close_before_dispatch(

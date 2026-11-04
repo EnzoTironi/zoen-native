@@ -274,10 +274,18 @@ impl Finance {
     ) -> Result<DirectoryGuard, RuntimeError> {
         let mut tx = self.begin().await?;
         Self::require_unmanaged_policy(&mut tx).await?;
-        Self::directory(&mut tx, b).await?;
-        let balance = Self::lock_period(&mut tx, b, true).await?;
-        Self::not_closed(&mut tx, b).await?;
-        let policy = Self::policy(&mut tx, b).await?;
+        let valid_until_ms = Self::guard_deadline_in(&mut tx, b, step).await?;
+        Ok(DirectoryGuard { tx, valid_until_ms })
+    }
+    pub(crate) async fn guard_deadline_in(
+        tx: &mut Transaction<'_, Postgres>,
+        b: &Binding,
+        step: &crate::VerifiedStep,
+    ) -> Result<i64, RuntimeError> {
+        Self::directory(tx, b).await?;
+        let balance = Self::lock_period(tx, b, true).await?;
+        Self::not_closed(tx, b).await?;
+        let policy = Self::policy(tx, b).await?;
         if balance
             .held_units
             .checked_add(balance.spent_units)
@@ -291,9 +299,9 @@ impl Finance {
         if let Some(native_deadline) = step.grant_deadline() {
             valid_until_ms = valid_until_ms.min(native_deadline);
         }
-        if Self::clock(&mut tx).await? >= valid_until_ms {
+        if Self::clock(tx).await? >= valid_until_ms {
             return Err(RuntimeError::Denied);
         }
-        Ok(DirectoryGuard { tx, valid_until_ms })
+        Ok(valid_until_ms)
     }
 }

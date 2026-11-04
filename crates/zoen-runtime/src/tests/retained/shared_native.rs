@@ -2,6 +2,7 @@
 mod cancellation;
 mod claims;
 mod discovery;
+mod dispatch;
 mod reservation;
 use super::*;
 use relay_admission::managed_images::AnchorReader;
@@ -141,5 +142,6 @@ pub(in crate::tests) async fn run() -> TestResult {
     Box::pin(cancellation::run()).await?;
     Box::pin(reservation::run()).await?;
     Box::pin(claims::run()).await?;
+    Box::pin(dispatch::run()).await?;
     Ok(())
 }

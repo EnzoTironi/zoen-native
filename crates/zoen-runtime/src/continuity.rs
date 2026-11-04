@@ -1,6 +1,7 @@
 //! Shared independent continuity, retaining the existing SQL financial
 //! authority. No constructor here opens paid dispatch, output or refund gates.
 #![deny(clippy::all, clippy::perf, clippy::unwrap_used, clippy::expect_used)]
+pub(crate) mod dispatch;
 mod policy;
 mod recovery;
 mod reservation;
@@ -111,6 +112,11 @@ pub(crate) async fn inventory(
         }
     }
     for (subject, value) in crate::native::shared_commitments(runtime, fdb).await? {
+        if result.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
+    for (subject, value) in dispatch::commitments(runtime, fdb).await? {
         if result.insert(subject, value).is_some() {
             return Err(RuntimeError::InvalidBinding);
         }
