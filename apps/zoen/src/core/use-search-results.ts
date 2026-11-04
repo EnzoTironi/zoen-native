@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore } from 'rea
 import { useFocusEffect } from 'expo-router';
 import { homeOwnerFor, homeSpacesFor } from '../home/access';
 import { ConversationSearch, conversationQueryFits } from './conversation-search';
+import type { SearchPageInput } from './generated/SearchPageInput';
 import type { ClientStore } from './store';
 
 export function searchScope(store: ClientStore, space?: string) {
@@ -28,6 +29,7 @@ export function useSearchResults(
   space?: string,
   initial = '',
   kinds = allKinds,
+  period?: SearchPageInput['period'],
 ) {
   const search = useMemo(
     () =>
@@ -54,6 +56,7 @@ export function useSearchResults(
                 op: 'universal_search_page',
                 query,
                 kinds,
+                ...(period ? { period } : {}),
                 cursor,
                 limit: 30,
                 expected_identity_id: account.identity_id,
@@ -72,7 +75,7 @@ export function useSearchResults(
         },
         initial,
       ),
-    [store, scope, space, initial, kinds],
+    [store, scope, space, initial, kinds, period],
   );
   const state = useSyncExternalStore(search.subscribe, search.getSnapshot, search.getSnapshot);
   useLayoutEffect(() => {

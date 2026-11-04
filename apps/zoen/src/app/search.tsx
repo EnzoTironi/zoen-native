@@ -18,6 +18,7 @@ import { homeOwnerFor, homeSpacesFor } from '../home/access';
 import { GlobalSearchActions } from '../core/global-search-actions';
 import { searchScope, useSearchResults } from '../core/use-search-results';
 import { useClient } from '../core/provider';
+import type { SearchPageInput } from '../core/generated/SearchPageInput';
 import type { UniversalHit } from '../core/generated/UniversalHit';
 import { useTheme } from '../theme';
 import { EmptyState, Loading, NativeButton } from '../components/primitives';
@@ -29,6 +30,22 @@ const searchFilters = [
   { label: 'chat.searchMessagesFilter', kinds: ['message'] },
   { label: 'chat.people', kinds: ['person', 'agent'] },
 ] satisfies { label: 'chat.all' | 'chat.searchMessagesFilter' | 'chat.people'; kinds: string[] }[];
+
+const searchPeriods = [
+  { label: 'chat.searchAnyTime', days: 0 },
+  { label: 'chat.searchLastWeek', days: 7 },
+  { label: 'chat.searchLastMonth', days: 30 },
+] as const;
+
+function recentPeriod(days: number): SearchPageInput['period'] {
+  if (!days) return undefined;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  start.setDate(start.getDate() - days + 1);
+  end.setDate(end.getDate() + 1);
+  return { start_ms: start.getTime(), end_ms: end.getTime() };
+}
 
 export default function Search() {
   const params = useLocalSearchParams<{ space?: string; query?: string }>();
@@ -63,13 +80,20 @@ function SearchBody({
   const insets = useSafeAreaInsets();
   const { store } = useClient();
   const { colors } = useTheme();
-  const [filter, setFilter] = useState({ index: 0, query: initial });
+  const [filter, setFilter] = useState({
+    index: 0,
+    query: initial,
+    days: 0,
+    period: undefined as SearchPageInput['period'],
+  });
+  const supportsPeriod = process.env.EXPO_OS !== 'web' && store.getSnapshot().mode === 'account';
   const { search, state: results } = useSearchResults(
     store,
     scope,
     space,
     filter.query,
     searchFilters[filter.index].kinds,
+    supportsPeriod ? filter.period : undefined,
   );
   const query = results.query;
   const actions = useMemo(
@@ -192,30 +216,27 @@ function SearchBody({
         }}
       />
       {scope && !space ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginHorizontal: 20 }}>
-          {searchFilters.map(({ label }, index) => (
-            <Pressable
-              key={label}
-              accessibilityLabel={t(label)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: filter.index === index }}
-              onPress={() => {
-                if (filter.index === index || !search.isCurrent()) return;
-                search.suspend();
-                setFilter({ index, query });
-              }}
-              style={{
-                minHeight: 44,
-                justifyContent: 'center',
-                paddingHorizontal: 14,
-                borderRadius: 22,
-                backgroundColor: filter.index === index ? colors.muted : 'transparent',
-              }}
-            >
-              <Text style={{ color: colors.text }}>{t(label)}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <SearchFilterRow
+          options={searchFilters.map(({ label }) => t(label))}
+          selected={filter.index}
+          onSelect={(index) => {
+            if (filter.index === index || !search.isCurrent()) return;
+            search.suspend();
+            setFilter({ ...filter, index, query });
+          }}
+        />
+      ) : null}
+      {scope && !space && supportsPeriod ? (
+        <SearchFilterRow
+          options={searchPeriods.map(({ label }) => t(label))}
+          selected={searchPeriods.findIndex(({ days }) => days === filter.days)}
+          onSelect={(index) => {
+            const { days } = searchPeriods[index];
+            if (filter.days === days || !search.isCurrent()) return;
+            search.suspend();
+            setFilter({ ...filter, days, query, period: recentPeriod(days) });
+          }}
+        />
       ) : null}
       <FlashList
         testID="global-search-results"
@@ -306,5 +327,39 @@ function SearchBody({
         }
       />
     </KeyboardAvoidingView>
+  );
+}
+
+function SearchFilterRow({
+  options,
+  selected,
+  onSelect,
+}: {
+  options: string[];
+  selected: number;
+  onSelect: (index: number) => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginHorizontal: 20 }}>
+      {options.map((label, index) => (
+        <Pressable
+          key={label}
+          accessibilityLabel={label}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selected === index }}
+          onPress={() => onSelect(index)}
+          style={{
+            minHeight: 44,
+            justifyContent: 'center',
+            paddingHorizontal: 14,
+            borderRadius: 22,
+            backgroundColor: selected === index ? colors.muted : 'transparent',
+          }}
+        >
+          <Text style={{ color: colors.text }}>{label}</Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }

@@ -34,9 +34,10 @@ impl Engine {
         kinds: &[String],
         cursor: Option<&str>,
         limit: u32,
-        identity: &str,
-        device: &str,
+        owner: (&str, &str),
+        period: Option<std::ops::Range<i64>>,
     ) -> R<UniversalSearchPage> {
+        let (identity, device) = owner;
         if !self.is_unlocked()
             || self.me.as_deref() != Some(identity)
             || !self
@@ -52,6 +53,9 @@ impl Engine {
         if !(1..=100).contains(&limit)
             || query.len() > 512
             || query.contains('\0')
+            || period.as_ref().is_some_and(|range| {
+                range.start < 0 || range.start >= range.end || range.end > 8_640_000_000_000_000
+            })
             || kinds.len() > ALL.len()
             || kinds.iter().any(|kind| !ALL.contains(&kind.as_str()))
         {
@@ -74,10 +78,13 @@ impl Engine {
             self.reindex()?;
         }
         let generation = self.store.search_generation()?;
-        let binding = hex::encode(Sha256::digest(
-            serde_json::to_vec(&(1_u8, query, &wanted, identity, device, &spaces, generation))
-                .map_err(|_| invalid())?,
-        ));
+        let scope = (1_u8, query, &wanted, identity, device, &spaces, generation);
+        let bytes = match &period {
+            Some(range) => serde_json::to_vec(&(scope, range)),
+            None => serde_json::to_vec(&scope),
+        }
+        .map_err(|_| invalid())?;
+        let binding = hex::encode(Sha256::digest(bytes));
         let offset = cursor
             .map(|value| {
                 if value.len() > 4096 {
@@ -93,7 +100,7 @@ impl Engine {
             .unwrap_or_default();
         let mut rows = self
             .store
-            .universal_search_page(query, &wanted, &spaces, offset, limit)?;
+            .universal_search_page_in_range(query, &wanted, &spaces, offset, limit, period)?;
         let more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
         let next_cursor = if more {
@@ -155,8 +162,23 @@ impl Client {
             &kinds,
             cursor.as_deref(),
             limit,
-            &expected_identity_id,
-            &expected_device_id,
+            (&expected_identity_id, &expected_device_id),
+            None,
         )
+    }
+}
+
+impl Client {
+    pub(crate) fn universal_search_page_in_range(
+        &self,
+        query: &str,
+        kinds: &[String],
+        cursor: Option<&str>,
+        limit: u32,
+        owner: (&str, &str),
+        period: Option<std::ops::Range<i64>>,
+    ) -> Result<UniversalSearchPage, CoreError> {
+        self.lock()
+            .universal_page(query, kinds, cursor, limit, owner, period)
     }
 }

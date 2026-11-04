@@ -12,6 +12,18 @@ impl Store {
         offset: u32,
         limit: u32,
     ) -> Result<Vec<SearchRow>> {
+        self.universal_search_page_in_range(query, kinds, readable_spaces, offset, limit, None)
+    }
+
+    pub fn universal_search_page_in_range(
+        &self,
+        query: &str,
+        kinds: &[String],
+        readable_spaces: &[String],
+        offset: u32,
+        limit: u32,
+        range: Option<std::ops::Range<i64>>,
+    ) -> Result<Vec<SearchRow>> {
         if !(1..=100).contains(&limit) {
             return Err(StoreError::InvalidSearchLimit);
         }
@@ -30,6 +42,8 @@ impl Store {
              FROM search WHERE search MATCH ?1
                AND kind IN (SELECT value FROM json_each(?2))
                AND (space = '' OR space IN (SELECT value FROM json_each(?3)))
+               AND (?6 IS NULL OR CAST(at_ms AS INTEGER) >= ?6)
+               AND (?7 IS NULL OR CAST(at_ms AS INTEGER) < ?7)
              ORDER BY bm25(search, 0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 1.0),
                       CAST(at_ms AS INTEGER) DESC, kind ASC, space ASC, ref_id ASC
              LIMIT ?4 OFFSET ?5",
@@ -40,7 +54,9 @@ impl Store {
                 serde_json::to_string(kinds)?,
                 serde_json::to_string(readable_spaces)?,
                 limit + 1,
-                offset
+                offset,
+                range.as_ref().map(|range| range.start),
+                range.as_ref().map(|range| range.end),
             ],
             |row| {
                 Ok(SearchRow {

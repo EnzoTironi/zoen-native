@@ -252,3 +252,30 @@ async fn search_request_payload_extraction_preserves_flat_wire_and_errors() -> T
     assert!(after.pinned && after.archived && !after.muted);
     Ok(())
 }
+
+#[tokio::test]
+async fn global_search_command_binds_cursor_to_period() -> TestResult {
+    let (core, account, space) = fixture()?;
+    core.send_message(space.clone(), "needle first".into())?;
+    core.send_message(space, "needle second".into())?;
+    let mut request = serde_json::json!({
+        "op": "universal_search_page", "query": "needle", "kinds": ["message"],
+        "cursor": null, "limit": 1, "expected_identity_id": account.identity_id,
+        "expected_device_id": account.device_id,
+        "period": {"start_ms": 0, "end_ms": 8_640_000_000_000_000_i64}
+    });
+    let first: serde_json::Value =
+        serde_json::from_str(&core.client_request(request.to_string()).await?)?;
+    assert!(first["next_cursor"].is_string());
+    request["cursor"] = first["next_cursor"].clone();
+    let next: serde_json::Value =
+        serde_json::from_str(&core.client_request(request.to_string()).await?)?;
+    assert_eq!(next["hits"].as_array().ok_or("hits missing")?.len(), 1);
+    assert_ne!(first["hits"][0]["ref_id"], next["hits"][0]["ref_id"]);
+    request["period"]["start_ms"] = 1.into();
+    assert!(core.client_request(request.to_string()).await.is_err());
+    request["cursor"] = serde_json::Value::Null;
+    request["period"] = serde_json::json!({"start_ms": 20, "end_ms": 10});
+    assert!(core.client_request(request.to_string()).await.is_err());
+    Ok(())
+}
