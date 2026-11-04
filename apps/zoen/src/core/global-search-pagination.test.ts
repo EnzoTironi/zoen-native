@@ -191,7 +191,10 @@ test('a result on the second page resolves its exact canonical thread and keeps 
       await f.pending.promise;
     });
     assert.deepEqual(normalized(f.routes), [
-      { pathname: '/thread/[space]/[root]', params: { space: 'chat', root: 'thread-root' } },
+      {
+        pathname: '/thread/[space]/[root]',
+        params: { space: 'chat', root: 'thread-root', jump: 'message-30' },
+      },
     ]);
     await f.root.act(() => f.focus(false));
     await f.root.act(() => f.focus(true));
