@@ -328,6 +328,7 @@ pub struct Engine {
     pub(crate) net: crate::sync::NetState,
     /// Open pages: Loro documents rebuilt from the log (see `pages.rs`).
     pub(crate) pages: crate::pages::PageCache,
+    pub(crate) inbox_folder_cache: Option<crate::inbox_folders::FolderCache>,
 }
 
 pub(crate) type R<T> = Result<T, CoreError>;

@@ -2,13 +2,17 @@
   {
     "id": "TG-inbox-chat-folders",
     "scope": "active",
-    "implementation": "partial",
+    "implementation": "present",
     "acceptance": "scoped",
     "evidence": [
-      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
-      "apps/zoen/src/app/space/[id].tsx"
+      "crates/client-core/src/inbox_folders.rs",
+      "crates/types/src/inbox.rs",
+      "apps/zoen/src/inbox/folder-settings.tsx",
+      "apps/zoen/src/inbox/folders.ts",
+      "apps/zoen/src/core/inbox-folder-settings.test.ts",
+      "crates/client-core/src/tests/chat_muting/folders.rs"
     ],
-    "gap": "Criar abas filtradas pelo usuário; categorias fixas atuais não equivalem a pastas personalizadas.",
+    "gap": "Pastas pessoais, regras, ordem e pasta inicial persistidas no log Personal assinado, com CAS/retry e projeção sobre conversas autorizadas. Aceite visual no iPhone pendente; transporte do log Personal entre aparelhos permanece uma limitação separada, sem promessa de pastas compartilhadas.",
     "issues": [
       172
     ]
@@ -16,13 +20,17 @@
   {
     "id": "TG-inbox-default-folder",
     "scope": "active",
-    "implementation": "missing",
-    "acceptance": "pending",
+    "implementation": "present",
+    "acceptance": "scoped",
     "evidence": [
-      "apps/zoen/src/app/(tabs)/(chats)/chats.tsx",
-      "apps/zoen/src/app/space/[id].tsx"
+      "crates/client-core/src/inbox_folders.rs",
+      "crates/types/src/inbox.rs",
+      "apps/zoen/src/inbox/folder-settings.tsx",
+      "apps/zoen/src/inbox/folders.ts",
+      "apps/zoen/src/core/inbox-folder-settings.test.ts",
+      "crates/client-core/src/tests/chat_muting/folders.rs"
     ],
-    "gap": "Escolher pasta inicial e recuperá-la por conta; filtro atual inicia em all local.",
+    "gap": "Pastas pessoais, regras, ordem e pasta inicial persistidas no log Personal assinado, com CAS/retry e projeção sobre conversas autorizadas. Aceite visual no iPhone pendente; transporte do log Personal entre aparelhos permanece uma limitação separada, sem promessa de pastas compartilhadas.",
     "issues": [
       172
     ]

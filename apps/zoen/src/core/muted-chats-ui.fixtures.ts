@@ -1,3 +1,4 @@
+import { inboxActions } from '../i18n/catalogs/inbox-actions.ts';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
@@ -65,9 +66,10 @@ export async function settle() {
   for (let n = 0; n < 30; ++n) await Promise.resolve();
 }
 export async function mutedUi(locale: 'en' | 'pt-BR' = 'en', platform = 'ios') {
-  const localization = createLocalization({ notifications, common, settings, chat, ownerPolicy }, [
-    locale,
-  ]);
+  const localization = createLocalization(
+    { inboxActions, notifications, common, settings, chat, ownerPolicy },
+    [locale],
+  );
   const snapshot = { ...mutedSnapshot(), clock_ms: '1800000000000' },
     driver = new Driver();
   driver.opening = async () => structuredClone(snapshot);

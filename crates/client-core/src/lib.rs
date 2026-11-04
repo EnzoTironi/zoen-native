@@ -93,6 +93,7 @@ pub use recent_attachments::{
 };
 pub mod chat_layout;
 mod chat_mute;
+pub mod inbox_folders;
 pub use universal_pages::UniversalSearchPage;
 mod message_info;
 pub use message_info::{MessageInfo, MessageInfoScope};

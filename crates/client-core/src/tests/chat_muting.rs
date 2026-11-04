@@ -226,3 +226,5 @@ async fn expired_mute_is_absent_from_the_canonical_directory_and_unmute_preserve
 
 mod layout;
 mod timed;
+
+mod folders;

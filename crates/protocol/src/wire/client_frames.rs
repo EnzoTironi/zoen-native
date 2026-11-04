@@ -189,14 +189,18 @@ fn request_to(op: &Op) -> pb_req::Op {
             space: space.clone(),
             peer: peer.clone(),
         }),
-        Op::RuntimeBinding(r) => pb_req::Op::RuntimeBinding(PbRuntimeBindingRequest {
-            namespace: r.namespace.clone(),
-            nonce: r.nonce.clone(),
-            managed: r.managed.as_ref().map(|checkpoint| PbManagedCheckpoint {
-                generation: checkpoint.generation,
-                sequence: checkpoint.sequence,
-                digest: checkpoint.digest.clone(),
-            }),
+        Op::RuntimeBinding(r) => pb_req::Op::RuntimeBinding(runtime_binding_to(r)),
+    }
+}
+
+fn runtime_binding_to(r: &crate::runtime_binding::Request) -> PbRuntimeBindingRequest {
+    PbRuntimeBindingRequest {
+        namespace: r.namespace.clone(),
+        nonce: r.nonce.clone(),
+        managed: r.managed.as_ref().map(|checkpoint| PbManagedCheckpoint {
+            generation: checkpoint.generation,
+            sequence: checkpoint.sequence,
+            digest: checkpoint.digest.clone(),
         }),
     }
 }

@@ -74,6 +74,11 @@ pub enum EventBody {
     },
     /// Private, monotonic removal from the author's local view. Valid only in
     /// that identity's Personal log; it never changes the source conversation.
+    InboxFoldersSet {
+        configuration: crate::InboxFolders,
+        operation_id: String,
+        previous_revision: String,
+    },
     MessagesDeletedForSelf {
         space: SpaceId,
         messages: Vec<String>,
