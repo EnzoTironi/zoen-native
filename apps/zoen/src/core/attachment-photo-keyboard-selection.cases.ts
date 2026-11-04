@@ -137,7 +137,7 @@ test('Photos More sends only an admitted file intent with exact ordered IDs and 
   assert.deepEqual(f.copies, [['ph://b', 'ph://a']]);
   assert.equal(f.submission()?.caption, 'Final file caption 🪁');
   assert.equal(f.submission()?.options?.presentation, 'file');
-  assert.equal(f.submission()?.options?.grouping, 'separate');
+  assert.equal(f.submission()?.options?.grouping, 'grouped');
   assert.deepEqual(Array.from(f.submission()?.captions ?? []), ['Final file caption 🪁', '']);
   assert.equal(f.picked(), undefined, 'The actual close barrier still owns handoff');
   f.close(tree);
