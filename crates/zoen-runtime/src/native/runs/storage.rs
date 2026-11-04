@@ -1,3 +1,4 @@
+mod discovery;
 use foundationdb::{RangeOption, Transaction};
 use zoen_relay::log::fdb::RuntimeSource;
 
@@ -55,97 +56,16 @@ impl Execution {
         let scope = batch.scope(self, &staged, device_fence)?;
         admission.check(&scope)?;
         let trx = self.transaction().await?;
-        let source = self.reply_source()?;
-        if source.cell() != batch.source {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let head = source
-            .head_in(&trx, &batch.space)
-            .await
-            .map_err(|_| RuntimeError::Denied)?
-            .ok_or(RuntimeError::Denied)?;
-        if head.seq() != batch.head.seq || head.hash() != batch.head.hash {
-            return Err(RuntimeError::Denied);
-        }
         self.native_activation(&trx, &staged, device_fence).await?;
-        let principal = &staged.root.context.principal;
-        let mut runs = Vec::new();
-        let mut triggers = std::collections::BTreeSet::new();
-        for candidate in &batch.runs {
-            if !digest(&candidate.trigger) || !triggers.insert(&candidate.trigger) {
-                return Err(RuntimeError::InvalidBinding);
-            }
-            let key = self.reply_trigger(&principal.agent, &batch.space, &candidate.trigger);
-            if let Some(prior) = trx.get(&key, false).await? {
-                let run = std::str::from_utf8(&prior).map_err(|_| RuntimeError::InvalidBinding)?;
-                if !id(run) {
-                    return Err(RuntimeError::InvalidBinding);
-                }
-                let (record, _) = self.reply_in(&trx, run, custody).await?;
-                if record.request.context.agent != principal.agent
-                    || record.request.context.owner != principal.owner
-                    || record.intent.space() != batch.space
-                    || record.intent.trigger() != candidate.trigger
-                {
-                    return Err(RuntimeError::InvalidBinding);
-                }
-                runs.push(record.locator);
-                continue;
-            }
-            let record: RunRecord = custody.open(
-                &format!("native-run/1/{}", candidate.locator.run),
-                None,
-                &candidate.record,
-            )?;
-            record.validate(&candidate.locator.run, source.cell())?;
-            let frozen: Binding = custody.open(
-                &format!("prepared/{}", candidate.locator.attempt),
-                None,
-                &candidate.binding,
-            )?;
-            let wake: Wake = custody.open(
-                &format!("native-wake/1/{}", candidate.locator.wake),
-                None,
-                &candidate.wake,
-            )?;
-            if record.locator != candidate.locator
-                || record.original != staged.root
-                || record.head != batch.head
-                || record.intent.space() != batch.space
-                || record.intent.trigger() != candidate.trigger
-                || frozen != record.binding
-                || wake.locator != candidate.locator
-                || wake.record_digest != hash(&candidate.record)
-            {
-                return Err(RuntimeError::InvalidBinding);
-            }
-            let record_key = self.run(&candidate.locator.run, "record/1");
-            let prepared_key = self.attempt(&candidate.locator.attempt, "prepared");
-            let wake_key = self.reply_wake(&candidate.locator.wake);
-            let reference_key = self
-                .native_references(&staged.root)
-                .pack(&(candidate.locator.run.as_str(),));
-            for key in [&record_key, &prepared_key, &wake_key, &reference_key] {
-                if trx.get(key, false).await?.is_some() {
-                    return Err(RuntimeError::InvalidBinding);
-                }
-            }
-            for part in ["closed", "admitted"] {
-                if trx
-                    .get(&self.attempt(&candidate.locator.attempt, part), false)
-                    .await?
-                    .is_some()
-                {
-                    return Err(RuntimeError::InvalidBinding);
-                }
-            }
-            trx.set(&record_key, &candidate.record);
-            trx.set(&prepared_key, &candidate.binding);
-            trx.set(&wake_key, &candidate.wake);
-            trx.set(&reference_key, staged.root.manifest_digest.as_bytes());
-            trx.set(&key, candidate.locator.run.as_bytes());
-            runs.push(candidate.locator.clone());
-        }
+        let effects = self
+            .reply_effects_in(
+                &trx,
+                &staged.root,
+                &batch,
+                custody,
+                DiscoveryMode::Untracked,
+            )
+            .await?;
         #[cfg(test)]
         if batch.cut == 16 {
             return Err(RuntimeError::Unavailable);
@@ -156,7 +76,7 @@ impl Execution {
         if batch.cut == 17 {
             return Err(RuntimeError::Unavailable);
         }
-        Ok((staged.root, runs))
+        Ok((staged.root, effects.runs))
     }
 
     pub(super) async fn acquire_reply(

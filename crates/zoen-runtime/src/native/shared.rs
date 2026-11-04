@@ -1,9 +1,12 @@
 //! Native capsule/cursor commitments share the existing owner-policy anchor.
 //! These maintenance operations grant no model, output or refund authority.
+mod discovery;
 mod recovery;
 use super::*;
 use crate::continuity::{inventory, ManagedRuntime};
+use crate::native::runs::Batch;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use discovery::Discovery;
 use foundationdb::{RangeOption, Transaction};
 pub(crate) use recovery::recover_shared_native;
 use relay_admission::managed_images::{Prepared, Recovery, SubjectUpdate};
@@ -26,6 +29,8 @@ struct Intent {
     previous: Option<Root>,
     target: Root,
     source: Option<SharedSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    discovery: Option<Discovery>,
 }
 impl Intent {
     fn subject(&self) -> Result<String, RuntimeError> {
@@ -44,6 +49,17 @@ impl Intent {
             return Err(RuntimeError::EvidenceTooLarge);
         }
         Ok(encoded)
+    }
+    fn updates(&self) -> Result<Vec<SubjectUpdate>, RuntimeError> {
+        let mut updates = vec![SubjectUpdate {
+            subject: self.subject()?,
+            previous: self.previous.as_ref().map(root_digest).transpose()?,
+            next: root_digest(&self.target)?,
+        }];
+        if let Some(discovery) = &self.discovery {
+            updates.push(discovery.update(&self.target)?);
+        }
+        Ok(updates)
     }
     fn staged(&self) -> storage::Staged {
         storage::Staged {
@@ -67,6 +83,9 @@ impl Intent {
                 ))
                 .map_err(|_| RuntimeError::InvalidBinding)?,
             );
+        }
+        if self.discovery.is_some() {
+            scope.effects = self.effect()?;
         }
         Ok(scope)
     }
@@ -135,6 +154,11 @@ pub(crate) async fn shared_commitments(
             return Err(RuntimeError::InvalidBinding);
         }
     }
+    for (subject, value) in discovery::commitments(runtime, trx).await? {
+        if commitments.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
     Ok(commitments)
 }
 impl RuntimeAuthority {
@@ -151,6 +175,10 @@ impl RuntimeAuthority {
         Ok(())
     }
 }
+enum NativeEffect {
+    Maintenance(Option<SharedSource>),
+    Discovery(Batch),
+}
 impl NativeCustody {
     pub(super) async fn activate_maintenance(
         &self,
@@ -160,14 +188,66 @@ impl NativeCustody {
         fence: &crate::execution::Fence,
         source: Option<SharedSource>,
     ) -> Result<Root, RuntimeError> {
-        let intent = Intent {
+        self.activate_native(
+            runtime,
+            credential,
+            staged,
+            fence,
+            NativeEffect::Maintenance(source),
+        )
+        .await
+        .map(|(root, _)| root)
+    }
+    pub(super) async fn activate_discovery(
+        &self,
+        runtime: &RuntimeAuthority,
+        credential: &Credential,
+        staged: storage::Staged,
+        fence: &crate::execution::Fence,
+        batch: Batch,
+    ) -> Result<(Root, Vec<crate::ReplyRun>), RuntimeError> {
+        batch.scope(&runtime.execution, &staged, fence)?;
+        self.activate_native(
+            runtime,
+            credential,
+            staged,
+            fence,
+            NativeEffect::Discovery(batch),
+        )
+        .await
+    }
+    async fn activate_native(
+        &self,
+        runtime: &RuntimeAuthority,
+        credential: &Credential,
+        staged: storage::Staged,
+        fence: &crate::execution::Fence,
+        effect: NativeEffect,
+    ) -> Result<(Root, Vec<crate::ReplyRun>), RuntimeError> {
+        let (source, batch) = match effect {
+            NativeEffect::Maintenance(source) => (source, None),
+            NativeEffect::Discovery(batch) => (
+                Some(SharedSource {
+                    cell: batch.source.clone(),
+                    space: batch.space.clone(),
+                    expected: batch.head.clone(),
+                    through: batch.through.clone(),
+                }),
+                Some(batch),
+            ),
+        };
+        let mut intent = Intent {
             format: 1,
             previous: staged.previous.clone(),
             target: staged.root.clone(),
             source,
+            discovery: None,
         };
-        let scope = intent.scope(runtime, fence)?;
         let Some(shared) = &runtime.runtime_continuity else {
+            if batch.is_some() {
+                return Err(RuntimeError::CoreAuthorityUnavailable);
+            }
+            let scope = intent.scope(runtime, fence)?;
             let admission = runtime
                 .finance
                 .native_directory(
@@ -187,7 +267,7 @@ impl NativeCustody {
                 .await?;
             admission.consume(&scope)?;
             tx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
-            return Ok(staged.root);
+            return Ok((staged.root, Vec::new()));
         };
         let mut managed = shared.lock().await;
         Box::pin(managed.reconcile(runtime)).await?;
@@ -225,6 +305,20 @@ impl NativeCustody {
         {
             return Err(RuntimeError::RestoreUnreconciled);
         }
+        if let Some(batch) = batch {
+            let discovery = Discovery::retain(runtime, &staged.root, batch).await?;
+            discovery.require_capacity(runtime, &tx).await?;
+            intent.discovery = Some(discovery);
+        }
+        let scope = intent.scope(runtime, fence)?;
+        let updates = intent.updates()?;
+        if updates
+            .iter()
+            .skip(1)
+            .any(|update| before.contains_key(&update.subject))
+        {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
         let sealed = intent.seal(runtime)?;
         let prepared = managed
             .anchor
@@ -233,11 +327,7 @@ impl NativeCustody {
                 &previous,
                 &previous,
                 false,
-                &[SubjectUpdate {
-                    subject: subject.clone(),
-                    previous: before.get(&subject).cloned(),
-                    next: root_digest(&intent.target)?,
-                }],
+                &updates,
                 Some(&sealed),
             )
             .map_err(crate::managed_images::error)?;
@@ -274,6 +364,14 @@ impl NativeCustody {
             .execution
             .native_activation(&tx, &staged, fence)
             .await?;
+        let runs = if let Some(discovery) = &intent.discovery {
+            discovery
+                .apply(runtime, &tx, &staged.root, true)
+                .await?
+                .runs
+        } else {
+            Vec::new()
+        };
         managed.write_fdb(runtime, &tx, &prepared).await?;
         tx.clear(
             &runtime
@@ -287,7 +385,7 @@ impl NativeCustody {
             return Err(RuntimeError::Unavailable);
         }
         Box::pin(managed.reconcile(runtime)).await?;
-        Ok(staged.root)
+        Ok((staged.root, runs))
     }
 }
 async fn verify_source(

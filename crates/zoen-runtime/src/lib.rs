@@ -348,10 +348,6 @@ impl RuntimeAuthority {
         device: &str,
         space: &str,
     ) -> Result<ReplySync, RuntimeError> {
-        if self.runtime_continuity.is_some() {
-            return Err(RuntimeError::CoreAuthorityUnavailable);
-        }
-
         if !id(agent) || !id(device) || !id(space) {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -378,6 +374,7 @@ impl RuntimeAuthority {
     /// Durable scheduling locators, not execution capabilities. A lost wake
     /// reply cannot create another run or another paid attempt.
     pub async fn pending_reply_runs(&self, limit: u16) -> Result<Vec<ReplyRun>, RuntimeError> {
+        self.check_shared_runtime().await?;
         self.execution
             .pending_reply_runs(limit, &self.custody)
             .await

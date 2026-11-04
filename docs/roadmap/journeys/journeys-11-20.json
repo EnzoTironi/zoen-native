@@ -77,7 +77,10 @@
       "crates/zoen-runtime/src/native/shared.rs",
       "crates/zoen-runtime/src/native/shared/recovery.rs",
       "crates/zoen-runtime/src/tests/shared_native_setup.rs",
-      "crates/zoen-runtime/src/tests/retained/shared_native.rs"
+      "crates/zoen-runtime/src/tests/retained/shared_native.rs",
+      "crates/zoen-runtime/src/native/shared/discovery.rs",
+      "crates/zoen-runtime/src/native/runs/storage/discovery.rs",
+      "crates/zoen-runtime/src/tests/retained/shared_native/discovery.rs"
     ],
     "remaining": [
       "Qualificar retomada durável e provedores reais com resultado atribuído",

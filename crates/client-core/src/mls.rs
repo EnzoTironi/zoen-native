@@ -51,19 +51,9 @@ use crate::i18n::t;
 use crate::net::tracing_like;
 
 fn claim_operation(clock: KeyPackageClaimClock) -> R<String> {
-    // Event ULIDs intentionally clamp to this device's wall clock. Consumptive
-    // claim receipts instead use an exact relay sample and independent entropy.
-    let mut random = [0u8; 16];
-    getrandom::getrandom(&mut random).map_err(storage)?;
-    let mut value = ((clock.milliseconds() as u128) << 80)
-        | (u128::from_be_bytes(random) & ((1u128 << 80) - 1));
-    let alphabet = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-    let mut encoded = [0u8; 26];
-    for c in encoded.iter_mut().rev() {
-        *c = alphabet[(value & 31) as usize];
-        value >>= 5;
-    }
-    String::from_utf8(encoded.to_vec()).map_err(storage)
+    let mut entropy = [0u8; 10];
+    getrandom::getrandom(&mut entropy).map_err(storage)?;
+    Ok(clock.operation_with_entropy(entropy))
 }
 use crate::sync::Ingest;
 use crate::CoreError;

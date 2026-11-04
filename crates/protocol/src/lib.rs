@@ -25,6 +25,7 @@
 pub mod agent_control;
 mod envelope;
 mod frames;
+mod key_package_clock;
 pub use envelope::{valid_invite_code, Envelope, Sequenced};
 pub use frames::{
     retry_hint, slow_down, AgentAction, AgentRequest, AgentStateRecord, AgreementKeyRecord,

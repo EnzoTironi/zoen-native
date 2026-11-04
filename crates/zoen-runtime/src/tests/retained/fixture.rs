@@ -140,9 +140,13 @@ impl Fixture {
                     .publish_native_key_packages(&actor.identity, device)
                     .await?;
             }
-            let operation = types::new_ulid(
+            let clock = protocol::KeyPackageClaimClock::from_server_ms(
                 zoen_relay::key_package_claims::clock_ms(&world.runtime.finance.pool).await?,
-            )?;
+            )
+            .ok_or("actual key-package claim clock")?;
+            let mut entropy = [0u8; 10];
+            getrandom::getrandom(&mut entropy)?;
+            let operation = clock.operation_with_entropy(entropy);
             let claimed = zoen_relay::key_package_claims::claim(
                 &world.runtime.finance.pool,
                 &world.owner.identity,

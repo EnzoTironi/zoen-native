@@ -88,7 +88,7 @@ struct Wake {
     record_digest: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct PreparedRun {
     trigger: String,
     locator: ReplyRun,
@@ -97,11 +97,12 @@ struct PreparedRun {
     wake: Vec<u8>,
 }
 
-#[derive(Serialize)]
-struct Batch {
-    source: String,
-    space: String,
-    head: Seen,
+#[derive(Serialize, Deserialize)]
+pub(in crate::native) struct Batch {
+    pub(in crate::native) source: String,
+    pub(in crate::native) space: String,
+    pub(in crate::native) head: Seen,
+    pub(in crate::native) through: Seen,
     runs: Vec<PreparedRun>,
     #[cfg(test)]
     #[serde(skip)]
@@ -109,7 +110,7 @@ struct Batch {
 }
 
 impl Batch {
-    fn scope(
+    pub(in crate::native) fn scope(
         &self,
         execution: &Execution,
         staged: &super::storage::Staged,
@@ -126,6 +127,18 @@ impl Batch {
         scope.effects = hash(&bytes);
         Ok(scope)
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::native) enum DiscoveryMode {
+    Untracked,
+    Current,
+    Recovery,
+}
+
+pub(in crate::native) struct ReplyEffects {
+    pub(in crate::native) runs: Vec<ReplyRun>,
+    pub(in crate::native) checks: Vec<(Vec<u8>, String)>,
 }
 
 struct LoadedReply {
@@ -215,6 +228,7 @@ impl NativeCustody {
         device: &str,
         space: &str,
     ) -> Result<ReplySync, RuntimeError> {
+        runtime.check_shared_runtime().await?;
         let credential = self.credential(agent, device)?;
         let principal = credential.principal();
         runtime.execution.reply_source()?;
@@ -323,11 +337,16 @@ impl NativeCustody {
             &core.image().map_err(native_error)?,
         )?;
         let target = next.root.clone();
+        let through = core
+            .retained_head(space)
+            .map_err(native_error)?
+            .ok_or(RuntimeError::Denied)?;
         drop(core);
         let mut effects = Batch {
             source: source.cell().into(),
             space: space.into(),
             head,
+            through,
             runs: Vec::new(),
             #[cfg(test)]
             cut: runtime.fault.load(std::sync::atomic::Ordering::SeqCst),
@@ -422,6 +441,21 @@ impl NativeCustody {
             .execution
             .stage_native(principal, Some(previous), fence, next)
             .await?;
+        if runtime.runtime_continuity.is_some() {
+            let (root, runs) = self
+                .activate_discovery(runtime, credential, staged, fence, effects)
+                .await?;
+            return Ok(ReplySync {
+                native: NativeInspection {
+                    generation: root.context.generation,
+                    image_bytes: root.context.image_bytes,
+                },
+                caught_up,
+                scanned,
+                discovery_complete,
+                runs,
+            });
+        }
         let scope = effects.scope(&runtime.execution, &staged, fence)?;
         #[cfg(test)]
         let scope = if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 18 {

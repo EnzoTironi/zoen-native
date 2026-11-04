@@ -75,7 +75,7 @@ impl Execution {
         }
         Ok(root)
     }
-    pub(super) fn evidence_payload_size(root: &[u8]) -> Result<usize, RuntimeError> {
+    pub(crate) fn evidence_payload_size(root: &[u8]) -> Result<usize, RuntimeError> {
         if root.len() > crate::custody::MAX_SEALED {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -105,6 +105,25 @@ impl Execution {
         digest: &str,
         root: &[u8],
     ) -> Result<Vec<u8>, RuntimeError> {
+        self.read_evidence_chunks(None, attempt, digest, root).await
+    }
+    pub(crate) async fn read_evidence_payload_in(
+        &self,
+        trx: &foundationdb::Transaction,
+        attempt: &str,
+        digest: &str,
+        root: &[u8],
+    ) -> Result<Vec<u8>, RuntimeError> {
+        self.read_evidence_chunks(Some(trx), attempt, digest, root)
+            .await
+    }
+    async fn read_evidence_chunks(
+        &self,
+        transaction: Option<&foundationdb::Transaction>,
+        attempt: &str,
+        digest: &str,
+        root: &[u8],
+    ) -> Result<Vec<u8>, RuntimeError> {
         Self::evidence_payload_size(root)?;
         if !root.starts_with(PREFIX) {
             if root.len() > crate::custody::MAX_SEALED {
@@ -129,7 +148,14 @@ impl Execution {
                 manifest.sha256.as_str(),
                 index as i64,
             ));
-            let trx = self.transaction().await?;
+            let fresh;
+            let trx = match transaction {
+                Some(trx) => trx,
+                None => {
+                    fresh = self.transaction().await?;
+                    &fresh
+                }
+            };
             let chunk = trx
                 .get(&key, false)
                 .await?

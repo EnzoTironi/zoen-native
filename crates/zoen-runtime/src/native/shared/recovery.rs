@@ -20,15 +20,10 @@ pub(crate) async fn recover_shared_native(
     let intent: Intent = runtime
         .custody
         .open("runtime-native-maintenance/1", None, &bytes)?;
-    let [update] = prepared.subject_updates.as_slice() else {
-        return Err(RuntimeError::InvalidBinding);
-    };
     if intent.format != 1
         || prepared.retirement
         || prepared.effect_digest != intent.effect()?
-        || update.subject != intent.subject()?
-        || update.previous != intent.previous.as_ref().map(root_digest).transpose()?
-        || update.next != root_digest(&intent.target)?
+        || prepared.subject_updates != intent.updates()?
     {
         return Err(RuntimeError::RestoreUnreconciled);
     }
@@ -80,12 +75,14 @@ pub(crate) async fn recover_shared_native(
         return Ok(());
     }
     let mut prior = expected.clone();
-    match &update.previous {
-        Some(value) => {
-            prior.insert(update.subject.clone(), value.clone());
-        }
-        None => {
-            prior.remove(&update.subject);
+    for update in &prepared.subject_updates {
+        match &update.previous {
+            Some(value) => {
+                prior.insert(update.subject.clone(), value.clone());
+            }
+            None => {
+                prior.remove(&update.subject);
+            }
         }
     }
     if (sql_cp != prepared.previous && sql_cp != prepared.next)
@@ -151,6 +148,9 @@ pub(crate) async fn recover_shared_native(
             .execution
             .native_activation(&tx, &staged, &fence)
             .await?;
+        if let Some(discovery) = &intent.discovery {
+            discovery.apply(runtime, &tx, &intent.target, false).await?;
+        }
         managed.write_fdb(runtime, &tx, prepared).await?;
         tx.clear(&pin);
         admission.consume(&scope)?;
