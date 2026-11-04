@@ -41,7 +41,7 @@
       "apps/zoen/src/core/conversation-search.ts",
       "apps/zoen/src/core/global-search-pagination.test.ts"
     ],
-    "gap": "Busca global filtra Mensagens e Pessoas pelo tipo canônico. Ao trocar, preserva a consulta e reinicia o cursor, descartando páginas antigas em trânsito. Contas nativas também filtram por 7 ou 30 dias do calendário local, com o intervalo aplicado antes do limite e vinculado ao cursor. Faltam mídia, intervalo personalizado e aceite no iPhone.",
+    "gap": "Busca global filtra Mensagens e Pessoas pelo tipo canônico. Ao trocar, preserva a consulta e reinicia o cursor, descartando páginas antigas em trânsito. Contas nativas também filtram por 7 ou 30 dias do calendário local, com o intervalo aplicado antes do limite e vinculado ao cursor. O filtro Mídia lista anexos autorizados com ou sem texto, antes da paginação. Faltam categorias de mídia, intervalo personalizado e aceite no iPhone.",
     "issues": [
       172
     ]
