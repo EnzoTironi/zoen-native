@@ -279,11 +279,8 @@ async fn the_daily_budget_stops_heavy_tiers_and_resets_the_next_day() {
 
 /// Real code in gVisor: what the approved Python tool gets in P0.
 #[tokio::test]
+#[cfg_attr(not(target_os = "linux"), ignore = "gVisor requires Linux")]
 async fn approved_code_runs_isolated_in_gvisor() {
-    if !cfg!(target_os = "linux") {
-        eprintln!("gVisor runs on Linux only; skipped on this OS");
-        return;
-    }
     let work = tempfile::tempdir().unwrap();
     let provider = GvisorProvider::from_env(work.path().to_path_buf())
         .expect("run `eval \"$(scripts/gvisor.sh env)\"` after `scripts/gvisor.sh up`");
