@@ -42,6 +42,7 @@ const searchFilters: {
 const nativeSearchFilters = [
   ...searchFilters,
   { label: 'chat.searchMediaFilter' as const, kinds: ['media'] },
+  { label: 'chat.searchLinks' as const, kinds: ['link'] },
 ];
 
 const mediaFilters = [
@@ -117,7 +118,7 @@ function SearchBody({
   const filters = supportsNativeFilters
     ? space
       ? nativeSearchFilters.filter(
-          (item) => item.kinds.includes('message') || item.kinds.includes('media'),
+          (item) => !item.kinds.includes('person') && item.kinds.length > 0,
         )
       : nativeSearchFilters
     : searchFilters;
@@ -288,6 +289,7 @@ function SearchBody({
       />
       {scope && (!space || supportsNativeFilters) ? (
         <SearchFilterRow
+          horizontal
           options={filters.map(({ label }) => t(label))}
           selected={filterIndex}
           onSelect={(index) => {

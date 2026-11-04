@@ -105,12 +105,16 @@ impl Store {
             .map(|word| format!("\"{word}\"*"))
             .collect();
         let media = SearchMediaKind::from_filter(kinds);
+        let links = kinds == ["link"];
         let browse = query.trim().is_empty()
-            && (media.is_some() || filters.author.is_some() || filters.space.is_some());
+            && (links || media.is_some() || filters.author.is_some() || filters.space.is_some());
         if terms.is_empty() && !browse {
             return Ok(Vec::new());
         }
-        let media_clause = if media.is_some() {
+        let media_clause = if links {
+            "AND EXISTS (SELECT 1 FROM search_links l
+                         WHERE l.space = search.space AND l.message = search.ref_id)"
+        } else if media.is_some() {
             "AND EXISTS (SELECT 1 FROM search_media m
                          WHERE m.space = search.space AND m.message = search.ref_id
                            AND (?10 IS NULL OR m.category = ?10))"
@@ -118,7 +122,7 @@ impl Store {
             ""
         };
         let message_kind = ["message".to_owned()];
-        let kinds = if media.is_some() {
+        let kinds = if links || media.is_some() {
             &message_kind[..]
         } else {
             kinds

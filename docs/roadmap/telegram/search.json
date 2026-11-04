@@ -45,9 +45,13 @@
       "crates/client-core/src/tests/search_media_categories.rs",
       "apps/zoen/src/components/search-period-filter.ios.tsx",
       "apps/zoen/src/core/search-date-range.test.ts",
-      "apps/zoen/src/core/global-search-refinements.test.ts"
+      "apps/zoen/src/core/global-search-refinements.test.ts",
+      "crates/client-core/src/search_links.rs",
+      "crates/store/src/search_links_tests.rs",
+      "crates/client-core/src/tests/search_link_categories.rs",
+      "apps/zoen/src/core/global-search-links.test.ts"
     ],
-    "gap": "Conta nativa iOS filtra autor/conversa, fotos, vídeos, áudio, voz e arquivos antes da paginação, com cursor vinculado ao filtro e à geração. Intervalo personalizado inclui ambos os dias no calendário local, incluindo DST; Pessoas não herdam datas de mensagens. Restam categoria Links, calendário próprio Telegram, suporte posterior Web/Android e aceite manual iPhone por Enzo.",
+    "gap": "Conta nativa iOS filtra autor/conversa, fotos, vídeos, áudio, voz, arquivos e Links antes da paginação, com cursor vinculado ao filtro e à geração. Intervalo personalizado inclui ambos os dias no calendário local, incluindo DST; Pessoas não herdam datas de mensagens. Links inclui destinos HTTP(S) em Markdown e texto atual, sem código, e-mail, nomes de anexos ou URLs somente de imagens. Restam apresentação dedicada de links, calendário próprio Telegram, suporte posterior Web/Android e aceite manual iPhone por Enzo.",
     "issues": [
       172
     ]

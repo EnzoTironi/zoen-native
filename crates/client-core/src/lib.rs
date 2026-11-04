@@ -84,6 +84,7 @@ pub use media_playback::{MediaPlaybackBookmark, MediaPlaybackPosition, MediaPlay
 mod media;
 mod media_drafts;
 mod recent_attachments;
+mod search_links;
 mod search_media;
 mod universal_pages;
 pub use media_drafts::{

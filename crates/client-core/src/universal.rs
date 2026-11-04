@@ -176,6 +176,7 @@ impl Engine {
         st.index_clear()?;
         st.recent_attachments_reset()?;
         st.reset_search_media()?;
+        st.reset_search_links()?;
         let me = self.me.clone().unwrap_or_default();
         for id in &self.identity_order {
             if *id == me {
@@ -234,7 +235,14 @@ impl Engine {
                     st.index_search_media_kind(&s.id, e.id(), self.search_media_kind(e, file))?;
                 }
                 let attachment = file.map(|file| file.name.as_str());
-                let body = match (self.searchable_entry_text(e), attachment) {
+                let text = self.searchable_entry_text(e);
+                if text
+                    .as_deref()
+                    .is_some_and(crate::search_links::contains_web_link)
+                {
+                    st.index_search_links(&s.id, e.id())?;
+                }
+                let body = match (text, attachment) {
                     (Some(caption), Some(name)) => Some(format!("{caption}\n{name}")),
                     (caption @ Some(_), None) => caption,
                     (None, name) => name.map(str::to_owned),

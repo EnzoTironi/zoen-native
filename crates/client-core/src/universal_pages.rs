@@ -50,6 +50,7 @@ impl Engine {
             });
         }
         let media = store::SearchMediaKind::from_filter(kinds);
+        let links = kinds == ["link"];
         const ALL: [&str; 6] = ["agent", "app", "item", "message", "person", "space"];
         if !(1..=100).contains(&limit)
             || query.len() > 512
@@ -58,7 +59,7 @@ impl Engine {
                 range.start < 0 || range.start >= range.end || range.end > 8_640_000_000_000_000
             })
             || kinds.len() > ALL.len()
-            || (media.is_none() && kinds.iter().any(|kind| !ALL.contains(&kind.as_str())))
+            || (!links && media.is_none() && kinds.iter().any(|kind| !ALL.contains(&kind.as_str())))
         {
             return Err(invalid());
         }
@@ -73,7 +74,7 @@ impl Engine {
         {
             return Err(invalid());
         }
-        let wanted: Vec<String> = if media.is_some() {
+        let wanted: Vec<String> = if links || media.is_some() {
             kinds.to_vec()
         } else {
             ALL.iter()

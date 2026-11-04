@@ -14,6 +14,9 @@ mod image;
 mod profiles;
 mod recent_attachments;
 mod search;
+mod search_links;
+#[cfg(test)]
+mod search_links_tests;
 mod search_media;
 #[cfg(test)]
 mod search_media_tests;
