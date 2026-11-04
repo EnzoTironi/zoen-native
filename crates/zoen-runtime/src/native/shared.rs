@@ -159,6 +159,11 @@ pub(crate) async fn shared_commitments(
             return Err(RuntimeError::InvalidBinding);
         }
     }
+    for (subject, value) in super::cancel_commitments(runtime, trx).await? {
+        if commitments.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
     Ok(commitments)
 }
 impl RuntimeAuthority {

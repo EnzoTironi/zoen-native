@@ -399,6 +399,10 @@ impl RuntimeAuthority {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
+        if self.runtime_continuity.is_some() {
+            self.request_shared_reply_cancel(run).await?;
+            return Ok(ModelCancellation::Requested);
+        }
         self.continuity()?;
         self.execution
             .request_reply_cancel(run, &self.custody, self)

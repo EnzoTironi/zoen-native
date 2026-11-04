@@ -8,6 +8,12 @@ impl ManagedRuntime {
         runtime: &RuntimeAuthority,
     ) -> Result<(), RuntimeError> {
         if let Some(prepared) = self.anchor.pending().map_err(error)? {
+            if crate::native::cancel_intent(&prepared) {
+                return Box::pin(crate::native::recover_shared_cancel(
+                    runtime, self, &prepared,
+                ))
+                .await;
+            }
             if crate::native::shared_intent(&prepared) {
                 return Box::pin(crate::native::recover_shared_native(
                     runtime, self, &prepared,

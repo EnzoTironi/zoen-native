@@ -4,6 +4,7 @@ mod cancellation;
 mod loading;
 pub(crate) mod output;
 mod storage;
+pub(crate) use cancellation::{cancel_commitments, cancel_intent, recover_shared_cancel};
 pub(crate) use cancellation::{CleanupAcquisition, CleanupStep};
 #[cfg(test)]
 pub(super) mod testing;

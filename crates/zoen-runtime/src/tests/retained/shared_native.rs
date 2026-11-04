@@ -1,4 +1,5 @@
 //! Shared actual policies/native capsules, source cursors and cold failure cuts.
+mod cancellation;
 mod discovery;
 use super::*;
 use relay_admission::managed_images::AnchorReader;
@@ -135,5 +136,6 @@ pub(in crate::tests) async fn run() -> TestResult {
         println!("shared native maintenance fault {fault}: original bootstrap/MLS packages/source cursor share policy anchor, cold exact recovery, valid old native root rejected despite unchanged detector pair, zero provider/financial claims PASS");
     }
     Box::pin(discovery::run()).await?;
+    Box::pin(cancellation::run()).await?;
     Ok(())
 }

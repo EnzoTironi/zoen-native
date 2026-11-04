@@ -21,7 +21,10 @@ mod storage;
 #[cfg(test)]
 pub(crate) use runs::output::FreshOutputNamespace;
 pub(crate) use runs::output::{associate_capture, ReplyOutputScope};
-pub(crate) use runs::{CleanupAcquisition, CleanupStep, ReplyStep};
+pub(crate) use runs::{
+    cancel_commitments, cancel_intent, recover_shared_cancel, CleanupAcquisition, CleanupStep,
+    ReplyStep,
+};
 pub(crate) use shared::{recover_shared_native, shared_commitments, shared_intent};
 
 use std::collections::BTreeMap;

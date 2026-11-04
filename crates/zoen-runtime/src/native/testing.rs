@@ -491,3 +491,17 @@ pub(crate) async fn qualify_output(
 ) -> Result<impl NativeOutputAuthority, RuntimeError> {
     ManagedNativeOutput::qualify(runtime, target).await
 }
+
+/// A real retained loader/paired lease for cancellation race tests. No fixture
+/// financial capability or continuity qualification is installed here.
+pub(crate) async fn retained_reply_holder(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<ReplyStep, RuntimeError> {
+    runtime
+        .native
+        .as_ref()
+        .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+        .verified_reply(runtime, run)
+        .await
+}
