@@ -19,7 +19,6 @@ export function projectMediaAlbums(
   const hidden = new Set<string>();
   for (const album of mediaAlbums(spaceId, entries)) {
     if (
-      album.presentation !== 'media' ||
       album.entries.some(
         (entry) =>
           entry.id === revealId ||

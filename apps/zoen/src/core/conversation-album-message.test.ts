@@ -256,3 +256,22 @@ test('a generic or large member retains every ordinary canonical row and a stale
   assert.equal(f.writes(), before);
   assert.ok(f.render(changed).props.albumContent);
 });
+
+test('file albums keep every document and caption independently interactive without a photo mosaic', () => {
+  const f = fixture();
+  const value = { ...album(), presentation: 'file' as const };
+  const tree = f.render(value);
+  assert.equal(tree.props.albumContent.delivery, 'Sent');
+  assert.equal(f.geometryInputs.length, 0);
+  const rows = tree.props.albumContent.media.props.children;
+  assert.equal(rows.length, 2);
+  for (const [index, row] of rows.entries()) {
+    const [file, caption] = row.props.children;
+    assert.strictEqual(file.props.entry, value.entries[index]);
+    assert.equal(file.props.albumPart.fileOnly, true);
+    assert.strictEqual(caption.props.entry, value.entries[index]);
+    assert.equal(caption.props.albumPart.captionOnly, true);
+    assert.strictEqual(file.props.onMenu, f.callbacks.onMenu);
+    assert.strictEqual(file.props.onReply, f.callbacks.onReply);
+  }
+});

@@ -547,3 +547,17 @@ test('compiled message, file/album captions and Agent App faces reach the same r
     f.close();
   }
 });
+
+test('a grouped file keeps its canonical media and action target without duplicating its caption', () => {
+  const file = entry('Caption belongs to its own row');
+  const face = renderFace(file, { albumPart: { fileOnly: true } });
+  const media = elements(face.tree).find((node) => node.type === 'MessageMedia')!;
+  assert.strictEqual(media.props.entry, file);
+  assert.equal(media.props.tile, undefined);
+  assert.equal(
+    elements(face.tree).some((node) => node.type === 'MessageMarkdown'),
+    false,
+  );
+  media.props.onActions();
+  assert.deepEqual(face.calls, [{ mode: 'actions', entry: file }]);
+});

@@ -46,13 +46,13 @@
   {
     "id": "TG-photos-file-albums",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
       "docs/product/telegram-ios-media-albums.md",
       "apps/zoen/src/media/attachment-photo-options.ts"
     ],
-    "gap": "Agrupar documentos como álbum com seleção, legenda e ações coerentes; hoje voltam a linhas individuais.",
+    "gap": "Seleção múltipla nova de documentos é salva como grupo assinado de arquivos. A conversa projeta o álbum com documentos/legendas e ações individuais, ordem assinada e recibo agregado conservador. Qualificar envio/recepção e interação no iPhone.",
     "issues": [
       172
     ]
