@@ -54,7 +54,8 @@ test('CallKit presentation revalidates canonical contact policy after actor and 
   const begin = source('Calls/ZoenCallCoordinator.swift')
     .split('  func begin(outgoing: Bool) async throws {')[1]!
     .split('  private func watchCanonicalLease()')[0]!;
-  before(begin, 'port.presentationRecord()', 'ZoenCallSystem.shared.install(self)');
+  before(begin, 'port.presentationRecord()', 'ZoenCallSystem.shared.install(self, adoptingWake:');
+  before(begin, 'port.presentationRecord()', 'provider.reportCall(with: id, updated: update)');
   before(begin, 'port.presentationRecord()', 'provider.reportNewIncomingCall');
   const outgoing = begin.split('try await port.prepareAudio()')[1]!;
   before(outgoing, 'port.presentationRecord()', 'controller.request(');
@@ -85,5 +86,20 @@ test('failure before system installation projects terminal presentation and clea
   assert.match(
     begin,
     /catch \{ await coordinator\.stop\(writeEnd: true, reason: \.failed\); throw error \}/,
+  );
+});
+
+test('opening and foreground adoption qualify source changes before refreshing native calls', () => {
+  const adoption = source('ZoenSession+ForegroundAdoption.swift');
+  assert.match(
+    session,
+    /sessionSourceChanged\(spaces, engine: engine, expected: openingGeneration\)/,
+  );
+  assert.match(adoption, /sessionSourceChanged\(spaces, engine: core, expected: expected\)/);
+  const refresh = adoption.slice(adoption.indexOf('  func sessionSourceChanged('));
+  before(
+    refresh,
+    'guard core === engine, generation == expected',
+    'await callCanonicalChanges(spaces)',
   );
 });
