@@ -1,3 +1,5 @@
+import { searchLaunches } from '../core/search-launch';
+import { sendChatMessage } from '../core/send-chat-message';
 import { useReplyDestinationFocus } from '../core/use-reply-destination-focus';
 import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
@@ -39,10 +41,11 @@ import { useTheme } from '../theme';
 
 const revealQaEnabled = process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA === '1';
 export function useChatController() {
-  const { id, jump, compose } = useLocalSearchParams<{
+  const { id, jump, compose, searchTicket } = useLocalSearchParams<{
     id: string;
     jump?: string;
     compose?: string;
+    searchTicket?: string;
   }>();
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors } = useTheme();
@@ -334,6 +337,13 @@ export function useChatController() {
       focused.current = true;
       initialEnd.focus();
       store.selectSpace(id);
+      const launch = searchLaunches.read(searchTicket, store);
+      if (launch?.space === id && search.openQuery(launch.query)) {
+        searchLaunches.release(searchTicket);
+        initialEnd.cancel();
+        store.setTyping(id, false);
+        input.current?.focus();
+      }
       return () => {
         focused.current = false;
         initialEnd.blur();
@@ -341,7 +351,7 @@ export function useChatController() {
         store.setTyping(id, false);
         store.selectSpace(null);
       };
-    }, [id, store, initialEnd, searchReveal]),
+    }, [id, store, initialEnd, searchReveal, search, searchTicket]),
   );
   const reveal = useCallback(
     async (messageId: string, keepActivityVisible = true, current?: () => boolean) => {
@@ -481,30 +491,17 @@ export function useChatController() {
     }, [last, manuallyUnread, id, store]),
   );
 
-  async function send() {
-    if (search.getSnapshot().active || sendRef.current?.scope === scope) return;
-    const attempt = normalDraft.capture();
-    if (!attempt) return;
-    if (!attempt.text.trim() && !(attempt.editingId && editing?.isCaption)) return;
-    const token = { scope };
-    sendRef.current = token;
-    store.setTyping(id, false);
-    setPending(scope);
-    try {
-      if (attempt.editingId) await normalDraft.sendEdit(attempt);
-      else await normalDraft.send();
-    } catch (reason) {
-      if (sendRef.current === token && normalDraft.isCurrent(attempt))
-        void inform(
-          t(attempt.editingId ? 'chat.editCouldNotBeSaved' : 'chat.theReplyCouldNotBeSent'),
-          reason instanceof Error ? reason.message : t('chat.tryAgain'),
-        );
-    } finally {
-      if (sendRef.current === token) {
-        sendRef.current = null;
-        setPending(null);
-      }
-    }
+  function send() {
+    return sendChatMessage({
+      draft: normalDraft,
+      scope,
+      blocked: search.getSnapshot().active,
+      allowEmptyCaption: editing?.isCaption === true,
+      flight: sendRef,
+      setPending,
+      typing: () => store.setTyping(id, false),
+      inform,
+    });
   }
 
   const actions = useMessageActions({

@@ -39,9 +39,15 @@
     "evidence": [
       "apps/zoen/src/app/search.tsx",
       "apps/zoen/src/core/conversation-search.ts",
-      "apps/zoen/src/core/global-search-pagination.test.ts"
+      "apps/zoen/src/core/global-search-pagination.test.ts",
+      "crates/store/src/search_media.rs",
+      "crates/client-core/src/search_media.rs",
+      "crates/client-core/src/tests/search_media_categories.rs",
+      "apps/zoen/src/components/search-period-filter.ios.tsx",
+      "apps/zoen/src/core/search-date-range.test.ts",
+      "apps/zoen/src/core/global-search-refinements.test.ts"
     ],
-    "gap": "Busca global filtra Mensagens e Pessoas pelo tipo canônico. Ao trocar, preserva a consulta e reinicia o cursor, descartando páginas antigas em trânsito. Contas nativas também filtram por 7 ou 30 dias do calendário local, com o intervalo aplicado antes do limite e vinculado ao cursor. O filtro Mídia lista anexos autorizados com ou sem texto, antes da paginação. Faltam categorias de mídia, intervalo personalizado e aceite no iPhone.",
+    "gap": "Conta nativa iOS filtra autor/conversa, fotos, vídeos, áudio, voz e arquivos antes da paginação, com cursor vinculado ao filtro e à geração. Intervalo personalizado inclui ambos os dias no calendário local, incluindo DST; Pessoas não herdam datas de mensagens. Restam categoria Links, calendário próprio Telegram, suporte posterior Web/Android e aceite manual iPhone por Enzo.",
     "issues": [
       172
     ]
@@ -132,7 +138,7 @@
   {
     "id": "TG-search-chat-scoped-hashtags",
     "scope": "active",
-    "implementation": "partial",
+    "implementation": "present",
     "acceptance": "scoped",
     "evidence": [
       "apps/zoen/src/core/message-hashtag.ts",
@@ -141,9 +147,13 @@
       "apps/zoen/src/core/message-hashtag-native.test.ts",
       "crates/store/src/hashtags.rs",
       "crates/store/src/hashtag_tests.rs",
-      "crates/client-core/src/tests/message_search/hashtag_cases.rs"
+      "crates/client-core/src/tests/message_search/hashtag_cases.rs",
+      "apps/zoen/src/components/thread-hashtag-provider.tsx",
+      "apps/zoen/src/core/search-launch.ts",
+      "apps/zoen/src/core/chat-search-handoff.test.ts",
+      "apps/zoen/src/core/thread-hashtag-navigation.test.ts"
     ],
-    "gap": "Toque em hashtag na conversa iOS usa a busca existente, sem alterar o rascunho; o AST preserva texto/offsets e ignora código/links. A busca canônica exige entidade exata NFC/case-insensitive antes da paginação e revalida o escopo. Restam aceite manual por Enzo, toque contextual nas threads e suporte posterior Web/Android; não implementa descoberta pública de hashtags.",
+    "gap": "Conta iOS abre hashtags da conversa e de threads na busca do próprio compositor da conversa, por ticket temporário sem consulta na URL; rascunho, texto, offsets, sessão e associação são preservados. A busca contextual canônica exige entidade exata NFC/case-insensitive antes da paginação. Restam aceite manual por Enzo e plataformas posteriores; descoberta pública/global de hashtags não está implementada.",
     "issues": [
       172
     ]

@@ -1,3 +1,4 @@
+import { ThreadHashtagProvider } from '../../../components/thread-hashtag-provider';
 import { homeSpacesFor } from '../../../home/access';
 import { t } from '../../../i18n/index.ts';
 import { QuoteLayoutTransition } from '../../../components/quote-layout-transition';
@@ -135,224 +136,231 @@ export default function Thread() {
     }
   }
   return (
-    <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
-      <Stack.Screen
-        options={{
-          title: selection.active ? String(selection.count) : t('chat.replies'),
-          headerBackVisible: !selection.active,
-          headerTitle: selection.active
-            ? () => <MessageSelectionHeader count={selection.count} onCancel={selection.cancel} />
-            : undefined,
-          headerLeft: selection.active && process.env.EXPO_OS !== 'ios' ? () => null : undefined,
-          headerRight:
-            selection.active && process.env.EXPO_OS !== 'ios'
-              ? () => <MessageSelectionCancel onCancel={selection.cancel} />
+    <ThreadHashtagProvider space={space}>
+      <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
+        <Stack.Screen
+          options={{
+            title: selection.active ? String(selection.count) : t('chat.replies'),
+            headerBackVisible: !selection.active,
+            headerTitle: selection.active
+              ? () => <MessageSelectionHeader count={selection.count} onCancel={selection.cancel} />
               : undefined,
-          unstable_headerLeftItems:
-            selection.active && process.env.EXPO_OS === 'ios' ? () => [] : undefined,
-          unstable_headerRightItems:
-            selection.active && process.env.EXPO_OS === 'ios'
-              ? () => [{ type: 'button', label: t('chat.cancel'), onPress: selection.cancel }]
-              : undefined,
-          scrollEdgeEffects: { top: 'automatic', bottom: 'hidden' },
-        }}
-      />
-      <ConversationViewport
-        composer={
-          <>
-            {failure || error || notice || (jump && entries && jumpIndex < 0) ? (
-              <Text
-                accessibilityRole="alert"
-                selectable
-                style={{ color: colors.danger, padding: 16 }}
-              >
-                {failure ?? error ?? notice ?? t('chat.messageUnavailable')}
-              </Text>
-            ) : null}
-            {selection.active ? (
-              <MessageSelectionToolbar
-                count={selection.count}
-                onCopy={selection.copy}
-                onForward={selection.forward}
-                canCopy={selection.canCopy}
-                canForward={selection.canForward}
-                canDelete={selection.canDelete}
-                onDelete={selection.remove}
-                pending={selection.pending}
-              />
-            ) : (
-              <MessageComposer
-                context={
-                  normalDraft.replyTo || editing
-                    ? {
-                        entry: editing ? undefined : (reply ?? undefined),
-                        edit: editing
-                          ? {
-                              id: editing.id,
-                              revision: editing.text_revision,
-                              text: normalDraft.messageDraft.editBaseText,
-                            }
-                          : undefined,
-                        quote: editing ? undefined : normalDraft.replyQuote,
-                        replyIntent: editing ? undefined : normalDraft.replyIntent,
-                        onCancelCaptured: normalDraft.cancelMediaReply,
-                        onCancel: () => updateDraft({ type: 'cancel' }),
-                      }
-                    : undefined
-                }
-                threadRootId={root}
-                spaceId={space}
-                inputRef={input}
-                replyTo={normalDraft.replyTo ?? root}
-                thread
-                editing={Boolean(editing)}
-                allowEmptyEdit={Boolean(editing?.isCaption)}
-                value={editing ? editDraft : draft}
-                draft={
-                  editing
-                    ? undefined
-                    : {
-                        ready: normalDraft.ready,
-                        error: Boolean(normalDraft.error),
-                        rejected: normalDraft.rejected,
-                        onRetry: normalDraft.retry,
-                      }
-                }
-                sending={busy}
-                onChangeText={(text) => {
-                  updateDraft({ type: 'text', value: text });
-                  store.setTyping(space, !editing && Boolean(text.trim()));
-                }}
-                onBlur={() => {
-                  store.setTyping(space, false);
-                  normalDraft.flush();
-                }}
-                onSend={() => {
-                  void send();
-                }}
-                onMediaSent={normalDraft.mediaAccepted}
-              />
-            )}
-          </>
-        }
-      >
-        {(composerSpacer, ScrollComponent) =>
-          error && !entries ? (
-            <EmptyState title={t('chat.theRepliesCouldNotBeOpened')} detail={error}>
-              <NativeButton label={t('chat.tryAgain2')} onPress={retry} />
-            </EmptyState>
-          ) : !entries ? (
-            <Loading />
-          ) : (
-            <QuoteLayoutTransition key={`${owner}:${space}:${root}:${jump ?? ''}`} list={list}>
-              {(active, commit, cancel, reading) => (
-                <FlashList
-                  style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
-                  ref={list}
-                  testID="conversation-timeline"
-                  renderScrollComponent={ScrollComponent}
-                  CellRendererComponent={
-                    process.env.EXPO_OS === 'ios' ? QuoteMotionView : undefined
-                  }
-                  onCommitLayoutEffect={commit}
-                  onScrollBeginDrag={cancel}
-                  extraData={selection.ids}
-                  data={rows}
-                  initialScrollIndex={jumpIndex >= 0 ? jumpIndex : undefined}
-                  keyExtractor={(row) => row.key}
-                  keyboardDismissMode="interactive"
-                  keyboardShouldPersistTaps="handled"
-                  contentInsetAdjustmentBehavior="never"
-                  ListFooterComponent={composerSpacer}
-                  contentContainerStyle={{
-                    paddingHorizontal: 16,
-                    paddingTop: Math.max(0, headerHeight - timelineTopInset) + 8,
-                    paddingBottom: 12,
-                  }}
-                  maintainVisibleContentPosition={{
-                    disabled: active,
-                    startRenderingFromBottom: false,
-                    autoscrollToBottomThreshold: jump || reading ? undefined : 0.15,
-                  }}
-                  renderItem={({ item: { entry, activity, album }, index }) => (
-                    <QuoteMotionView>
-                      <ConversationMessage
-                        selection={
-                          selection.active
+            headerLeft: selection.active && process.env.EXPO_OS !== 'ios' ? () => null : undefined,
+            headerRight:
+              selection.active && process.env.EXPO_OS !== 'ios'
+                ? () => <MessageSelectionCancel onCancel={selection.cancel} />
+                : undefined,
+            unstable_headerLeftItems:
+              selection.active && process.env.EXPO_OS === 'ios' ? () => [] : undefined,
+            unstable_headerRightItems:
+              selection.active && process.env.EXPO_OS === 'ios'
+                ? () => [{ type: 'button', label: t('chat.cancel'), onPress: selection.cancel }]
+                : undefined,
+            scrollEdgeEffects: { top: 'automatic', bottom: 'hidden' },
+          }}
+        />
+        <ConversationViewport
+          composer={
+            <>
+              {failure || error || notice || (jump && entries && jumpIndex < 0) ? (
+                <Text
+                  accessibilityRole="alert"
+                  selectable
+                  style={{ color: colors.danger, padding: 16 }}
+                >
+                  {failure ?? error ?? notice ?? t('chat.messageUnavailable')}
+                </Text>
+              ) : null}
+              {selection.active ? (
+                <MessageSelectionToolbar
+                  count={selection.count}
+                  onCopy={selection.copy}
+                  onForward={selection.forward}
+                  canCopy={selection.canCopy}
+                  canForward={selection.canForward}
+                  canDelete={selection.canDelete}
+                  onDelete={selection.remove}
+                  pending={selection.pending}
+                />
+              ) : (
+                <MessageComposer
+                  context={
+                    normalDraft.replyTo || editing
+                      ? {
+                          entry: editing ? undefined : (reply ?? undefined),
+                          edit: editing
                             ? {
-                                selected: selection.ids.has(entry.id),
-                                disabled: selection.limitReached && !selection.ids.has(entry.id),
-                                onToggle: selection.toggle,
+                                id: editing.id,
+                                revision: editing.text_revision,
+                                text: normalDraft.messageDraft.editBaseText,
                               }
-                            : undefined
+                            : undefined,
+                          quote: editing ? undefined : normalDraft.replyQuote,
+                          replyIntent: editing ? undefined : normalDraft.replyIntent,
+                          onCancelCaptured: normalDraft.cancelMediaReply,
+                          onCancel: () => updateDraft({ type: 'cancel' }),
                         }
-                        disabled={selection.active}
-                        spaceId={space}
-                        entry={entry}
-                        highlighted={Boolean(
-                          jump &&
-                          (entry.id === jump || album?.entries.some((child) => child.id === jump)),
-                        )}
-                        activity={activity}
-                        album={album}
-                        previous={index > 1 ? rows[index - 1]?.entry : undefined}
-                        next={index > 0 ? rows[index + 1]?.entry : undefined}
-                        groupChat={groupChat}
-                        item={items.find((item) => item.id === messageCard(entry)?.item_id)}
-                        reactionPending={actions.busy}
-                        onReply={actions.reply}
-                        onThread={actions.thread}
-                        onAuthor={actions.profile}
-                        onMenu={actions.open}
-                        onReact={(message, emoji) => {
-                          void actions.react(message, emoji);
-                        }}
-                        onQuote={(messageId, sourceSpace) => {
-                          if (sourceSpace) {
-                            if (homeSpacesFor(store.getSnapshot()).has(sourceSpace))
-                              router.push({
-                                pathname: '/chat/[id]',
-                                params: { id: sourceSpace, jump: messageId },
-                              });
-                            return;
-                          }
-                          const target = rows.findIndex(
-                            (row) =>
-                              row.entry.id === messageId ||
-                              row.album?.entries.some((entry) => entry.id === messageId),
-                          );
-                          if (target >= 0)
-                            void list.current
-                              ?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 })
-                              .catch(() => {});
-                          else
-                            router.push({
-                              pathname: '/chat/[id]',
-                              params: { id: space, jump: messageId },
-                            });
-                        }}
-                      />
-                      {index === 0 ? (
-                        <Text
-                          style={{
-                            color: colors.secondary,
-                            fontSize: 12,
-                            textAlign: 'center',
-                            paddingVertical: 18,
-                          }}
-                        >
-                          {t('chat.originalMessage')}
-                        </Text>
-                      ) : null}
-                    </QuoteMotionView>
-                  )}
+                      : undefined
+                  }
+                  threadRootId={root}
+                  spaceId={space}
+                  inputRef={input}
+                  replyTo={normalDraft.replyTo ?? root}
+                  thread
+                  editing={Boolean(editing)}
+                  allowEmptyEdit={Boolean(editing?.isCaption)}
+                  value={editing ? editDraft : draft}
+                  draft={
+                    editing
+                      ? undefined
+                      : {
+                          ready: normalDraft.ready,
+                          error: Boolean(normalDraft.error),
+                          rejected: normalDraft.rejected,
+                          onRetry: normalDraft.retry,
+                        }
+                  }
+                  sending={busy}
+                  onChangeText={(text) => {
+                    updateDraft({ type: 'text', value: text });
+                    store.setTyping(space, !editing && Boolean(text.trim()));
+                  }}
+                  onBlur={() => {
+                    store.setTyping(space, false);
+                    normalDraft.flush();
+                  }}
+                  onSend={() => {
+                    void send();
+                  }}
+                  onMediaSent={normalDraft.mediaAccepted}
                 />
               )}
-            </QuoteLayoutTransition>
-          )
-        }
-      </ConversationViewport>
-      {actions.panel}
-    </ConversationContainer>
+            </>
+          }
+        >
+          {(composerSpacer, ScrollComponent) =>
+            error && !entries ? (
+              <EmptyState title={t('chat.theRepliesCouldNotBeOpened')} detail={error}>
+                <NativeButton label={t('chat.tryAgain2')} onPress={retry} />
+              </EmptyState>
+            ) : !entries ? (
+              <Loading />
+            ) : (
+              <QuoteLayoutTransition key={`${owner}:${space}:${root}:${jump ?? ''}`} list={list}>
+                {(active, commit, cancel, reading) => (
+                  <FlashList
+                    style={{ flex: 1, marginTop: timelineTopInset, overflow: 'hidden' }}
+                    ref={list}
+                    testID="conversation-timeline"
+                    renderScrollComponent={ScrollComponent}
+                    CellRendererComponent={
+                      process.env.EXPO_OS === 'ios' ? QuoteMotionView : undefined
+                    }
+                    onCommitLayoutEffect={commit}
+                    onScrollBeginDrag={cancel}
+                    extraData={selection.ids}
+                    data={rows}
+                    initialScrollIndex={jumpIndex >= 0 ? jumpIndex : undefined}
+                    keyExtractor={(row) => row.key}
+                    keyboardDismissMode="interactive"
+                    keyboardShouldPersistTaps="handled"
+                    contentInsetAdjustmentBehavior="never"
+                    ListFooterComponent={composerSpacer}
+                    contentContainerStyle={{
+                      paddingHorizontal: 16,
+                      paddingTop: Math.max(0, headerHeight - timelineTopInset) + 8,
+                      paddingBottom: 12,
+                    }}
+                    maintainVisibleContentPosition={{
+                      disabled: active,
+                      startRenderingFromBottom: false,
+                      autoscrollToBottomThreshold: jump || reading ? undefined : 0.15,
+                    }}
+                    renderItem={({ item: { entry, activity, album }, index }) => (
+                      <QuoteMotionView>
+                        <ConversationMessage
+                          selection={
+                            selection.active
+                              ? {
+                                  selected: selection.ids.has(entry.id),
+                                  disabled: selection.limitReached && !selection.ids.has(entry.id),
+                                  onToggle: selection.toggle,
+                                }
+                              : undefined
+                          }
+                          disabled={selection.active}
+                          spaceId={space}
+                          entry={entry}
+                          highlighted={Boolean(
+                            jump &&
+                            (entry.id === jump ||
+                              album?.entries.some((child) => child.id === jump)),
+                          )}
+                          activity={activity}
+                          album={album}
+                          previous={index > 1 ? rows[index - 1]?.entry : undefined}
+                          next={index > 0 ? rows[index + 1]?.entry : undefined}
+                          groupChat={groupChat}
+                          item={items.find((item) => item.id === messageCard(entry)?.item_id)}
+                          reactionPending={actions.busy}
+                          onReply={actions.reply}
+                          onThread={actions.thread}
+                          onAuthor={actions.profile}
+                          onMenu={actions.open}
+                          onReact={(message, emoji) => {
+                            void actions.react(message, emoji);
+                          }}
+                          onQuote={(messageId, sourceSpace) => {
+                            if (sourceSpace) {
+                              if (homeSpacesFor(store.getSnapshot()).has(sourceSpace))
+                                router.push({
+                                  pathname: '/chat/[id]',
+                                  params: { id: sourceSpace, jump: messageId },
+                                });
+                              return;
+                            }
+                            const target = rows.findIndex(
+                              (row) =>
+                                row.entry.id === messageId ||
+                                row.album?.entries.some((entry) => entry.id === messageId),
+                            );
+                            if (target >= 0)
+                              void list.current
+                                ?.scrollToIndex({
+                                  index: target,
+                                  animated: true,
+                                  viewPosition: 0.5,
+                                })
+                                .catch(() => {});
+                            else
+                              router.push({
+                                pathname: '/chat/[id]',
+                                params: { id: space, jump: messageId },
+                              });
+                          }}
+                        />
+                        {index === 0 ? (
+                          <Text
+                            style={{
+                              color: colors.secondary,
+                              fontSize: 12,
+                              textAlign: 'center',
+                              paddingVertical: 18,
+                            }}
+                          >
+                            {t('chat.originalMessage')}
+                          </Text>
+                        ) : null}
+                      </QuoteMotionView>
+                    )}
+                  />
+                )}
+              </QuoteLayoutTransition>
+            )
+          }
+        </ConversationViewport>
+        {actions.panel}
+      </ConversationContainer>
+    </ThreadHashtagProvider>
   );
 }

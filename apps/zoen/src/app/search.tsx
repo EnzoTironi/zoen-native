@@ -1,3 +1,5 @@
+import { SearchFilterRow } from '../components/search-filter-row';
+import { SearchPeriodFilter } from '../components/search-period-filter';
 import { SearchIdentityFilters } from '../components/search-identity-filters';
 import { searchIdentityOptions } from '../core/search-identity-options';
 import { t } from '../i18n/index.ts';
@@ -28,17 +30,28 @@ import { EmptyState, Loading, NativeButton } from '../components/primitives';
 
 const plain = (text: string) => text.replace(/\[\[|\]\]/g, '');
 
-const searchFilters = [
+const searchFilters: {
+  label: 'chat.all' | 'chat.searchMessagesFilter' | 'chat.people';
+  kinds: string[];
+}[] = [
   { label: 'chat.all', kinds: [] },
   { label: 'chat.searchMessagesFilter', kinds: ['message'] },
   { label: 'chat.people', kinds: ['person', 'agent'] },
-] satisfies { label: 'chat.all' | 'chat.searchMessagesFilter' | 'chat.people'; kinds: string[] }[];
+];
 
 const nativeSearchFilters = [
   ...searchFilters,
   { label: 'chat.searchMediaFilter' as const, kinds: ['media'] },
 ];
 
+const mediaFilters = [
+  { label: 'chat.searchAllMedia' as const, kinds: ['media'] },
+  { label: 'chat.searchPhotos' as const, kinds: ['media:photo'] },
+  { label: 'chat.searchVideos' as const, kinds: ['media:video'] },
+  { label: 'chat.searchAudio' as const, kinds: ['media:audio'] },
+  { label: 'chat.searchVoice' as const, kinds: ['media:voice'] },
+  { label: 'chat.searchFiles' as const, kinds: ['media:file'] },
+];
 const searchPeriods = [
   { label: 'chat.searchAnyTime', days: 0 },
   { label: 'chat.searchLastWeek', days: 7 },
@@ -58,7 +71,9 @@ function recentPeriod(days: number): SearchPageInput['period'] {
 export default function Search() {
   const params = useLocalSearchParams<{ space?: string; query?: string }>();
   const { store } = useClient();
-  const scope = searchScope(store, params.space);
+  const space = params.space;
+  const initial = params.query;
+  const scope = searchScope(store, space);
   const owner = JSON.stringify([
     store.sessionEpoch,
     homeOwnerFor(store.getSnapshot()),
@@ -67,9 +82,9 @@ export default function Search() {
   const [initialOwner] = useState(owner);
   return (
     <SearchBody
-      key={JSON.stringify([owner, params.space, Boolean(scope), params.query])}
-      space={params.space}
-      initial={scope && owner === initialOwner ? params.query : undefined}
+      key={JSON.stringify([owner, space, Boolean(scope), initial])}
+      space={space}
+      initial={scope && owner === initialOwner ? initial : undefined}
       scope={scope}
     />
   );
@@ -90,6 +105,7 @@ function SearchBody({
   const { colors } = useTheme();
   const [filter, setFilter] = useState({
     index: 0,
+    media: 0,
     query: initial,
     days: 0,
     period: undefined as SearchPageInput['period'],
@@ -98,15 +114,25 @@ function SearchBody({
   });
   const supportsNativeFilters =
     process.env.EXPO_OS !== 'web' && store.getSnapshot().mode === 'account';
-  const filters = supportsNativeFilters ? nativeSearchFilters : searchFilters;
+  const filters = supportsNativeFilters
+    ? space
+      ? nativeSearchFilters.filter(
+          (item) => item.kinds.includes('message') || item.kinds.includes('media'),
+        )
+      : nativeSearchFilters
+    : searchFilters;
   const filterIndex = filter.index < filters.length ? filter.index : 0;
+  const isMedia = filters[filterIndex].kinds.includes('media');
+  const isPeople = filters[filterIndex].kinds.includes('person');
   const { search, state: results } = useSearchResults(
     store,
     scope,
     space,
     filter.query,
-    filters[filterIndex].kinds,
-    supportsNativeFilters ? filter.period : undefined,
+    isMedia && supportsNativeFilters
+      ? mediaFilters[filter.media].kinds
+      : filters[filterIndex].kinds,
+    supportsNativeFilters && !isPeople ? filter.period : undefined,
     supportsNativeFilters ? filter.messages : undefined,
   );
   const query = results.query;
@@ -260,7 +286,7 @@ function SearchBody({
           fontSize: 17,
         }}
       />
-      {scope && !space ? (
+      {scope && (!space || supportsNativeFilters) ? (
         <SearchFilterRow
           options={filters.map(({ label }) => t(label))}
           selected={filterIndex}
@@ -268,12 +294,43 @@ function SearchBody({
             if (filterIndex === index || results !== search.getSnapshot() || !search.isCurrent())
               return;
             search.suspend();
-            setFilter({ ...filter, index, query, ...(index === 2 ? { messages: undefined } : {}) });
+            setFilter({
+              ...filter,
+              index,
+              query,
+              ...(filters[index].kinds.includes('person') ? { messages: undefined } : {}),
+            });
           }}
         />
       ) : null}
-      {scope && !space && supportsNativeFilters ? (
+      {scope && supportsNativeFilters && isMedia ? (
         <SearchFilterRow
+          horizontal
+          options={mediaFilters.map(({ label }) => t(label))}
+          selected={filter.media}
+          onSelect={(media) => {
+            if (filter.media === media || results !== search.getSnapshot() || !search.isCurrent())
+              return;
+            search.suspend();
+            setFilter({ ...filter, query, media });
+          }}
+        />
+      ) : null}
+      {scope && supportsNativeFilters && !isPeople ? (
+        <SearchFilterRow
+          horizontal
+          trailing={
+            <SearchPeriodFilter
+              value={filter.period ?? undefined}
+              selected={filter.days === -1}
+              isCurrent={() => results === search.getSnapshot() && search.isCurrent()}
+              onChange={(period) => {
+                if (results !== search.getSnapshot() || !search.isCurrent()) return;
+                search.suspend();
+                setFilter({ ...filter, query, period, days: -1 });
+              }}
+            />
+          }
           options={searchPeriods.map(({ label }) => t(label))}
           selected={searchPeriods.findIndex(({ days }) => days === filter.days)}
           onSelect={(index) => {
@@ -285,7 +342,7 @@ function SearchBody({
           }}
         />
       ) : null}
-      {scope && supportsNativeFilters && filterIndex !== 2 ? (
+      {scope && supportsNativeFilters && !isPeople ? (
         <SearchIdentityFilters
           value={filter.messages}
           labels={filter.labels}
@@ -385,39 +442,5 @@ function SearchBody({
         }
       />
     </KeyboardAvoidingView>
-  );
-}
-
-function SearchFilterRow({
-  options,
-  selected,
-  onSelect,
-}: {
-  options: string[];
-  selected: number;
-  onSelect: (index: number) => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginHorizontal: 20 }}>
-      {options.map((label, index) => (
-        <Pressable
-          key={label}
-          accessibilityLabel={label}
-          accessibilityRole="button"
-          accessibilityState={{ selected: selected === index }}
-          onPress={() => onSelect(index)}
-          style={{
-            minHeight: 44,
-            justifyContent: 'center',
-            paddingHorizontal: 14,
-            borderRadius: 22,
-            backgroundColor: selected === index ? colors.muted : 'transparent',
-          }}
-        >
-          <Text style={{ color: colors.text }}>{label}</Text>
-        </Pressable>
-      ))}
-    </View>
   );
 }

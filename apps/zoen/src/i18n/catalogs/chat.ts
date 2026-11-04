@@ -1,3 +1,4 @@
+import { searchRefinements } from './search-refinements.ts';
 import { forwarding } from './forwarding.ts';
 import { defineFeature } from '../catalog.ts';
 import { quoteCollapse } from './quote-collapse.ts';
@@ -8,6 +9,7 @@ export const chat = defineFeature(
   {
     ...messageSelection.en,
     ...dateNavigation.en,
+    ...searchRefinements.en,
     ...forwarding.en,
     ...quoteCollapse.en,
     selectText: 'Select text',
@@ -146,10 +148,6 @@ export const chat = defineFeature(
     search: 'Search',
     messagesInThisChat: 'Messages in this chat',
     searchMessagesFilter: 'Messages',
-    searchMediaFilter: 'Media',
-    searchAnyTime: 'Any time',
-    searchLastWeek: 'Last 7 days',
-    searchLastMonth: 'Last 30 days',
     peopleMessagesPages: 'People, messages, pages…',
     findWhatStayedInTheConversation: 'Find what stayed in the conversation',
     searchUsesTheHistoryAvailableOnThisDevice: 'Search uses the history available on this device.',
@@ -236,6 +234,7 @@ export const chat = defineFeature(
   {
     ...messageSelection['pt-BR'],
     ...dateNavigation['pt-BR'],
+    ...searchRefinements['pt-BR'],
     ...forwarding['pt-BR'],
     ...quoteCollapse['pt-BR'],
     selectText: 'Selecionar texto',
@@ -374,10 +373,6 @@ export const chat = defineFeature(
     search: 'Buscar',
     messagesInThisChat: 'Mensagens desta conversa',
     searchMessagesFilter: 'Mensagens',
-    searchMediaFilter: 'Mídia',
-    searchAnyTime: 'Qualquer data',
-    searchLastWeek: 'Últimos 7 dias',
-    searchLastMonth: 'Últimos 30 dias',
     peopleMessagesPages: 'Pessoas, mensagens, páginas…',
     findWhatStayedInTheConversation: 'Encontre o que ficou na conversa',
     searchUsesTheHistoryAvailableOnThisDevice:

@@ -1,6 +1,6 @@
 //! One globally ordered page of the existing FTS projection. The Core binds
 //! offsets to its committed generation and current access before calling this.
-use crate::{Result, SearchRow, Store, StoreError};
+use crate::{Result, SearchMediaKind, SearchRow, Store, StoreError};
 use rusqlite::params;
 
 /// Filters are applied to canonical indexed rows before ranking and pagination.
@@ -17,18 +17,39 @@ impl Store {
     pub fn reset_search_media(&self) -> Result<()> {
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS search_media (
-                 space TEXT NOT NULL, message TEXT NOT NULL,
+                 space TEXT NOT NULL, message TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'file',
                  PRIMARY KEY(space, message)
              ) WITHOUT ROWID;
-             DELETE FROM search_media;",
+",
         )?;
+        let has_category: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('search_media') WHERE name = 'category')", [], |row| row.get(0),
+        )?;
+        if !has_category {
+            self.conn.execute_batch(
+                "ALTER TABLE search_media ADD COLUMN category TEXT NOT NULL DEFAULT 'file';",
+            )?;
+        }
+        self.conn.execute("DELETE FROM search_media", [])?;
         Ok(())
     }
 
     pub fn index_search_media(&self, space: &str, message: &str) -> Result<()> {
+        self.index_search_media_kind(space, message, SearchMediaKind::File)?;
+        Ok(())
+    }
+
+    pub fn index_search_media_kind(
+        &self,
+        space: &str,
+        message: &str,
+        kind: SearchMediaKind,
+    ) -> Result<()> {
+        let category = kind.category().ok_or(StoreError::InvalidSearchKind)?;
         self.conn.execute(
-            "INSERT OR IGNORE INTO search_media(space, message) VALUES (?1, ?2)",
-            params![space, message],
+            "INSERT INTO search_media(space, message, category) VALUES (?1, ?2, ?3)
+                ON CONFLICT(space, message) DO UPDATE SET category = excluded.category",
+            params![space, message, category],
         )?;
         Ok(())
     }
@@ -83,19 +104,21 @@ impl Store {
             .filter(|word| !word.is_empty())
             .map(|word| format!("\"{word}\"*"))
             .collect();
+        let media = SearchMediaKind::from_filter(kinds);
         let browse = query.trim().is_empty()
-            && (kinds == ["media"] || filters.author.is_some() || filters.space.is_some());
+            && (media.is_some() || filters.author.is_some() || filters.space.is_some());
         if terms.is_empty() && !browse {
             return Ok(Vec::new());
         }
-        let media_clause = if kinds == ["media"] {
+        let media_clause = if media.is_some() {
             "AND EXISTS (SELECT 1 FROM search_media m
-                         WHERE m.space = search.space AND m.message = search.ref_id)"
+                         WHERE m.space = search.space AND m.message = search.ref_id
+                           AND (?10 IS NULL OR m.category = ?10))"
         } else {
             ""
         };
         let message_kind = ["message".to_owned()];
-        let kinds = if kinds == ["media"] {
+        let kinds = if media.is_some() {
             &message_kind[..]
         } else {
             kinds
@@ -125,6 +148,7 @@ impl Store {
                AND (?7 IS NULL OR CAST(at_ms AS INTEGER) < ?7)
                AND (?8 IS NULL OR (kind = 'message' AND space = ?8))
                AND (?9 IS NULL OR (kind = 'message' AND author = ?9))
+               AND (?10 IS NULL OR kind = 'message')
              {media_clause}
              ORDER BY {rank},
                       CAST(at_ms AS INTEGER) DESC, kind ASC, space ASC, ref_id ASC
@@ -147,6 +171,7 @@ impl Store {
                 filters.period.as_ref().map(|range| range.end),
                 filters.space,
                 filters.author,
+                media.and_then(SearchMediaKind::category),
             ],
             |row| {
                 Ok(SearchRow {

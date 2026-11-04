@@ -14,6 +14,10 @@ mod image;
 mod profiles;
 mod recent_attachments;
 mod search;
+mod search_media;
+#[cfg(test)]
+mod search_media_tests;
+pub use search_media::SearchMediaKind;
 mod universal_pages;
 pub use recent_attachments::RecentAttachmentIndexRow;
 pub use universal_pages::SearchPageFilters;
@@ -44,6 +48,8 @@ pub enum StoreError {
     MediaTooLarge,
     #[error("search page limit must be between 1 and 100")]
     InvalidSearchLimit,
+    #[error("invalid media search category")]
+    InvalidSearchKind,
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;

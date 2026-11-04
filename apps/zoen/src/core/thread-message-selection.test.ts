@@ -155,6 +155,8 @@ function fixture(
         return { EmptyState: 'Empty', Loading: 'Loading', NativeButton: 'Button' };
       if (name.endsWith('/theme')) return { useTheme: () => ({ colors: {} }) };
       if (name.endsWith('/home/provider')) return { useHome: () => ({ allItems: [] }) };
+      if (name.endsWith('/thread-hashtag-provider'))
+        return { ThreadHashtagProvider: 'ThreadHashtagProvider' };
       if (name.endsWith('/message-composer')) return { MessageComposer: 'Composer' };
       if (name.endsWith('/use-message-selection'))
         return {

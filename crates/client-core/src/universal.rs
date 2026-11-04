@@ -170,36 +170,6 @@ impl Engine {
         (!body.trim().is_empty()).then_some(body)
     }
 
-    fn searchable_attachment_name<'a>(&'a self, entry: &Entry) -> Option<&'a str> {
-        let EntryBody::Message {
-            attaches: Some(id),
-            marks,
-            ..
-        } = &entry.body
-        else {
-            return None;
-        };
-        if marks.deleted || !self.visible_message(entry) || self.state.is_recovery_item(id) {
-            return None;
-        }
-        if let Some(replacement) = marks.replacement() {
-            return self
-                .space_projections
-                .get(&entry.space)?
-                .replacement_file(&entry.space, &entry.author, replacement)
-                .map(|file| file.name.as_str());
-        }
-        let item = self
-            .state
-            .items
-            .get(id)
-            .filter(|item| item.space == entry.space)?;
-        let ItemContent::File(file) = &item.current().content else {
-            return None;
-        };
-        Some(&file.name)
-    }
-
     fn fill_index(&self) -> R<()> {
         self.check_private_message_view()?;
         let st = &self.store;
@@ -259,10 +229,11 @@ impl Engine {
                         &file.name,
                     )?;
                 }
-                let attachment = self.searchable_attachment_name(e);
-                if attachment.is_some() {
-                    st.index_search_media(&s.id, e.id())?;
+                let file = self.searchable_attachment_file(e);
+                if let Some(file) = file {
+                    st.index_search_media_kind(&s.id, e.id(), self.search_media_kind(e, file))?;
                 }
+                let attachment = file.map(|file| file.name.as_str());
                 let body = match (self.searchable_entry_text(e), attachment) {
                     (Some(caption), Some(name)) => Some(format!("{caption}\n{name}")),
                     (caption @ Some(_), None) => caption,

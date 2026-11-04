@@ -14,6 +14,7 @@ mod media_recipients;
 mod message_search;
 mod peer_receipts;
 mod profile_photos;
+mod search_media_categories;
 mod trust_baseline;
 mod universal_pages;
 mod universal_search_filters;

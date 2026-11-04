@@ -27,6 +27,7 @@ const ports = new Set([
   '../theme',
   '../components/primitives',
   '../components/search-identity-filters',
+  '../components/search-period-filter',
 ]);
 const compiled = await build({
   entryPoints: [fileURLToPath(new URL('../app/search.tsx', import.meta.url))],
@@ -63,6 +64,7 @@ export async function fixture(
   initialResults?: any,
   platform = 'ios',
   canonicalStore = false,
+  params: { space?: string; ticket?: string } = {},
 ) {
   const root = createReactTestRoot();
   const state: any = {
@@ -85,6 +87,7 @@ export async function fixture(
     avoiding: any,
     dismissals = 0;
   let identities: any;
+  let period: any;
   const routes: any[] = [],
     reads: any[] = [],
     queries: any[] = [];
@@ -180,13 +183,14 @@ export async function fixture(
         return {
           Stack: { Screen: () => null },
           router: { push: (route: any) => routes.push(route) },
-          useLocalSearchParams: () => ({ query }),
+          useLocalSearchParams: () => ({ query, ...params }),
           useFocusEffect,
         };
       if (name === 'expo-router/react-navigation') return { useHeaderHeight: () => 88 };
       if (name === 'react-native')
         return {
           View: Container,
+          ScrollView: Container,
           Text: () => null,
           Pressable: (props: { accessibilityLabel?: string; onPress: () => void }) => {
             if (props.accessibilityLabel) filters.set(props.accessibilityLabel, props.onPress);
@@ -223,6 +227,13 @@ export async function fixture(
       if (name === '../theme') return { useTheme: () => ({ colors: {} }) };
       if (name === '../i18n/index.ts') return { t: (key: string) => key };
       if (name === '../profile/profile-avatar') return { ProfileAvatar: () => null };
+      if (name === '../components/search-period-filter')
+        return {
+          SearchPeriodFilter: (props: any) => {
+            period = props;
+            return null;
+          },
+        };
       if (name === '../components/search-identity-filters')
         return {
           SearchIdentityFilters: (props: any) => {
@@ -258,6 +269,9 @@ export async function fixture(
     },
     EmptyState,
     Loading,
+    get period() {
+      return period;
+    },
     get identities() {
       return identities;
     },

@@ -37,7 +37,7 @@ export function useSearchResults(
       new ConversationSearch(
         {
           allowsEmptyQuery:
-            (!space && kinds.includes('media')) ||
+            kinds.some((kind) => kind === 'media' || kind.startsWith('media:')) ||
             Boolean(messages?.author_id || messages?.space_id),
           current: () => scope !== null && searchScope(store, space) === scope,
           fitsQuery: (query) =>
