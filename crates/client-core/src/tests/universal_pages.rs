@@ -313,3 +313,44 @@ fn global_media_filter_returns_attachment_messages_and_excludes_deleted_rows() -
     assert!(search()?.hits.is_empty());
     Ok(())
 }
+
+#[tokio::test]
+async fn global_media_browsing_paginates_without_a_search_term() -> TestResult {
+    let (core, account, space) = fixture()?;
+    let mut attachments = std::collections::BTreeSet::new();
+    for index in 0..2 {
+        attachments.insert(
+            core.send_file_message(
+                space.clone(),
+                format!("file-{index}.pdf"),
+                "application/pdf".into(),
+                vec![7; 64],
+                None,
+                None,
+                false,
+                format!("browse-{index}"),
+            )?
+            .id,
+        );
+    }
+    core.send_message(space, "plain text".into())?;
+    let mut request = serde_json::json!({
+        "op": "universal_search_page", "query": "", "kinds": ["media"],
+        "cursor": null, "limit": 1, "expected_identity_id": account.identity_id,
+        "expected_device_id": account.device_id
+    });
+    let first: serde_json::Value =
+        serde_json::from_str(&core.client_request(request.to_string()).await?)?;
+    assert!(first["next_cursor"].is_string());
+    request["cursor"] = first["next_cursor"].clone();
+    let second: serde_json::Value =
+        serde_json::from_str(&core.client_request(request.to_string()).await?)?;
+    assert!(second["next_cursor"].is_null());
+    for result in [first, second] {
+        assert_eq!(result["hits"].as_array().ok_or("hits missing")?.len(), 1);
+        assert_eq!(result["hits"][0]["kind"], "message");
+        assert!(attachments.remove(result["hits"][0]["ref_id"].as_str().ok_or("missing id")?));
+    }
+    assert!(attachments.is_empty());
+    Ok(())
+}
