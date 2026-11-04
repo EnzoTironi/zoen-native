@@ -19,7 +19,8 @@ use zoen_models::{Admission, AdmissionError, DispatchAuthority, DispatchRequest,
 struct QuotaState {
     // Metadata digest only: no prompt, model response or provider credential.
     seen: BTreeMap<String, [u8; 32]>,
-    used: BTreeMap<(String, u64), u32>,
+    day: u64,
+    used: BTreeMap<String, u32>,
 }
 
 /// Admits a frozen chat attempt once, within its owner's process-local UTC cap.
@@ -68,13 +69,23 @@ impl CheapTierAuthority {
             .map_err(|_| AdmissionError::Unavailable)?
             .as_secs()
             / 86_400;
-        let key = (r.context.owner.clone(), day);
-        let used = state.used.get(&key).copied().unwrap_or_default();
+        if day < state.day {
+            return Err(AdmissionError::Unavailable);
+        }
+        if day > state.day {
+            state.day = day;
+            state.used.clear();
+        }
+        let used = state
+            .used
+            .get(&r.context.owner)
+            .copied()
+            .unwrap_or_default();
         if used >= self.daily_cap {
             return Err(AdmissionError::Denied);
         }
         let next = used.checked_add(1).ok_or(AdmissionError::Unavailable)?;
-        state.used.insert(key, next);
+        state.used.insert(r.context.owner.clone(), next);
         // Only a fresh admitted attempt becomes known. Refusal is not dispatch evidence.
         state.seen.insert(r.context.attempt_id.clone(), binding);
         Ok(Admission::Fresh)
