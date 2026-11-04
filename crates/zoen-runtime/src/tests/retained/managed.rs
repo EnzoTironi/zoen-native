@@ -75,6 +75,7 @@ async fn fixture() -> std::result::Result<(Fixture, Arc<Vault>), Box<dyn std::er
             space: new_id("managed-ingress")?,
             head: None,
             managed_directory: None,
+            shared_directory: None,
         },
         vault,
     ))

@@ -16,11 +16,13 @@ pub use image_tasks::{
     ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection, ImageReviewIntent,
     ImageReviewProgress,
 };
+mod shared;
 mod storage;
 #[cfg(test)]
 pub(crate) use runs::output::FreshOutputNamespace;
 pub(crate) use runs::output::{associate_capture, ReplyOutputScope};
 pub(crate) use runs::{CleanupAcquisition, CleanupStep, ReplyStep};
+pub(crate) use shared::{recover_shared_native, shared_commitments, shared_intent};
 
 use std::collections::BTreeMap;
 
@@ -337,6 +339,7 @@ impl NativeCustody {
         agent: &str,
         device: &str,
     ) -> Result<NativeInspection, RuntimeError> {
+        runtime.check_shared_runtime().await?;
         let credential = self.credential(agent, device)?;
         let principal = credential.principal();
         // Check real enrollment before acquiring a lease or staging any state.
@@ -398,6 +401,15 @@ impl NativeCustody {
             .execution
             .stage_native(principal, Some(previous), fence, next)
             .await?;
+        if runtime.runtime_continuity.is_some() {
+            let root = self
+                .activate_maintenance(runtime, credential, staged, fence, None)
+                .await?;
+            return Ok(NativeInspection {
+                generation: root.context.generation,
+                image_bytes: root.context.image_bytes,
+            });
+        }
         let guard = runtime
             .finance
             .native_directory(

@@ -315,6 +315,7 @@ impl RuntimeAuthority {
         if !id(agent) || !id(device) {
             return Err(RuntimeError::InvalidBinding);
         }
+        self.check_shared_runtime().await?;
         self.native
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?
@@ -347,6 +348,10 @@ impl RuntimeAuthority {
         device: &str,
         space: &str,
     ) -> Result<ReplySync, RuntimeError> {
+        if self.runtime_continuity.is_some() {
+            return Err(RuntimeError::CoreAuthorityUnavailable);
+        }
+
         if !id(agent) || !id(device) || !id(space) {
             return Err(RuntimeError::InvalidBinding);
         }

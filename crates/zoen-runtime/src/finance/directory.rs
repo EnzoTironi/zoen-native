@@ -225,6 +225,7 @@ impl Finance {
             agent: agent.id.clone(),
             device: device.into(),
             certificate_digest: crate::hash(certificate.as_bytes()),
+            shared_native_checkpoint: false,
             #[cfg(test)]
             ack_cut: NativeAckCut::Normal,
         })

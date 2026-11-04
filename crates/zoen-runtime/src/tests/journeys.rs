@@ -8,6 +8,8 @@ pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>>
 }
 
 async fn native() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(shared_native_setup::run()).await?;
+    Box::pin(retained::shared_native::run()).await?;
     Box::pin(retained::output::managed::run()).await?;
     Box::pin(retained::output::delivery::run()).await?;
     owner_policy_controls::run().await?;

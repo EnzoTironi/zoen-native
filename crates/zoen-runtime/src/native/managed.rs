@@ -181,6 +181,7 @@ impl NativeCustody {
         agent: &str,
         device: &str,
     ) -> Result<NativeInspection, RuntimeError> {
+        runtime.check_shared_runtime().await?;
         let credential = self.credential(agent, device)?;
         let principal = credential.principal();
         runtime
@@ -242,21 +243,8 @@ impl NativeCustody {
             .execution
             .stage_native(principal, None, fence, candidate)
             .await?;
-        let guard = runtime
-            .finance
-            .native_directory(
-                &credential.agent,
-                &credential.owner,
-                &principal.device,
-                &credential.certificate,
-            )
-            .await?;
-        let admission = guard
-            .authorize(staged.scope(&runtime.execution, fence))
-            .await?;
-        let root = runtime
-            .execution
-            .activate_native(staged, fence, admission)
+        let root = self
+            .activate_maintenance(runtime, credential, staged, fence, None)
             .await?;
         Ok(NativeInspection {
             generation: root.context.generation,

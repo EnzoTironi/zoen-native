@@ -16,8 +16,8 @@ use sqlx::{types::Json, Postgres, Transaction};
 use std::collections::BTreeMap;
 
 pub(crate) struct ManagedRuntime {
-    anchor: AnchorWriter,
-    deployment: RuntimeDeployment,
+    pub(crate) anchor: AnchorWriter,
+    pub(crate) deployment: RuntimeDeployment,
 }
 
 #[cfg(test)]
@@ -66,7 +66,7 @@ fn key(execution: &crate::execution::Execution) -> Vec<u8> {
     execution.root.pack(&("managed-images/checkpoint/1",))
 }
 
-fn history(execution: &crate::execution::Execution, sequence: u64) -> Vec<u8> {
+pub(crate) fn history(execution: &crate::execution::Execution, sequence: u64) -> Vec<u8> {
     execution.root.pack(&("managed-images/effect/1", sequence))
 }
 
@@ -74,7 +74,7 @@ fn error(error: relay_admission::managed_images::AnchorError) -> RuntimeError {
     crate::managed_images::error(error)
 }
 
-async fn inventory(
+async fn policy_inventory(
     tx: &mut Transaction<'_, Postgres>,
 ) -> Result<BTreeMap<String, String>, RuntimeError> {
     let rows: Vec<(String,i64,i64,String,Json<SignedOwnerPolicy>)> = sqlx::query_as("SELECT DISTINCT ON(owner,period_start) owner,period_start,version,digest,signed FROM runtime_policies ORDER BY owner,period_start,version DESC LIMIT 513")
@@ -96,4 +96,21 @@ async fn inventory(
         }
     }
     Ok(subjects)
+}
+
+pub(crate) async fn inventory(
+    runtime: &RuntimeAuthority,
+    sql: &mut Transaction<'_, Postgres>,
+    fdb: &foundationdb::Transaction,
+) -> Result<BTreeMap<String, String>, RuntimeError> {
+    let mut result = policy_inventory(sql).await?;
+    for (subject, value) in crate::native::shared_commitments(runtime, fdb).await? {
+        if result.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
+    if result.len() > 512 {
+        return Err(RuntimeError::EvidenceTooLarge);
+    }
+    Ok(result)
 }

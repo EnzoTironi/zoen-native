@@ -60,3 +60,30 @@ impl NativeDirectoryGuard {
         Ok(self.tx)
     }
 }
+
+impl NativeDirectoryGuard {
+    pub(crate) async fn shared_native_checkpoint(
+        mut self,
+        managed: &crate::continuity::ManagedRuntime,
+        prepared: &relay_admission::managed_images::Prepared,
+        scope: &crate::native::ActivationScope,
+        recovery: bool,
+    ) -> Result<Self, RuntimeError> {
+        if !scope.matches_directory(
+            &self.owner,
+            &self.agent,
+            &self.device,
+            &self.certificate_digest,
+        ) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let observed = managed.sql_checkpoint(&mut self.tx).await?;
+        if observed == prepared.previous {
+            managed.write_sql(&mut self.tx, prepared).await?;
+        } else if !recovery || observed != prepared.next {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        self.shared_native_checkpoint = true;
+        Ok(self)
+    }
+}

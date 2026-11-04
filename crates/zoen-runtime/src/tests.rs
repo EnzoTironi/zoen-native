@@ -12,6 +12,7 @@ mod managed_images;
 mod owner_policy_controls;
 mod policy_replay;
 mod retained;
+mod shared_native_setup;
 mod shared_policy_continuity;
 mod stores;
 mod vault;

@@ -3,10 +3,18 @@
 use super::*;
 
 impl ManagedRuntime {
-    pub(super) async fn reconcile(
+    pub(crate) async fn reconcile(
         &mut self,
         runtime: &RuntimeAuthority,
     ) -> Result<(), RuntimeError> {
+        if let Some(prepared) = self.anchor.pending().map_err(error)? {
+            if crate::native::shared_intent(&prepared) {
+                return Box::pin(crate::native::recover_shared_native(
+                    runtime, self, &prepared,
+                ))
+                .await;
+            }
+        }
         let mut tx = runtime.finance.continuity_transaction().await?;
         if Finance::policy_scope(&mut tx).await? != Some(3) {
             return Err(RuntimeError::RestoreUnreconciled);
@@ -14,7 +22,7 @@ impl ManagedRuntime {
         let sql = self.sql_checkpoint(&mut tx).await?;
         let fdb = runtime.execution.transaction().await?;
         let observed = self.fdb_checkpoint(runtime, &fdb).await?;
-        let actual = inventory(&mut tx).await?;
+        let actual = inventory(runtime, &mut tx, &fdb).await?;
         let Some(prepared) = self.anchor.pending().map_err(error)? else {
             if self.anchor.reconcile(&sql, &observed).map_err(error)? != Recovery::Clean
                 || actual != self.anchor.reader().subject_commitments().map_err(error)?
@@ -73,7 +81,7 @@ impl ManagedRuntime {
         // Fresh signature/device/expiry/version checks, still using the exact
         // original policy and the original SQL transaction implementation.
         Finance::install_continuous_policy_in(&mut tx, signed).await?;
-        if inventory(&mut tx).await? != expected {
+        if inventory(runtime, &mut tx, &fdb).await? != expected {
             return Err(RuntimeError::RestoreUnreconciled);
         }
         if observed == prepared.previous {

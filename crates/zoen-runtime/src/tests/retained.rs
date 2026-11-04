@@ -16,6 +16,7 @@ const ORIGINAL: &str = "PRIVATE-RETAINED-NATIVE-ORIGINAL-7c0";
 const LATER: &str = "PRIVATE-RETAINED-NATIVE-LATER-89a";
 
 mod fixture;
+pub(super) mod shared_native;
 use fixture::Fixture;
 
 pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {

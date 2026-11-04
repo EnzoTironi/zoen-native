@@ -59,6 +59,7 @@ pub(crate) struct NativeDirectoryGuard {
     agent: String,
     device: String,
     certificate_digest: String,
+    shared_native_checkpoint: bool,
     #[cfg(test)]
     ack_cut: NativeAckCut,
 }
@@ -227,6 +228,9 @@ impl NativeDirectoryGuard {
             &self.certificate_digest,
         ) {
             return Err(RuntimeError::InvalidBinding);
+        }
+        if Finance::policy_scope(&mut self.tx).await? == Some(3) && !self.shared_native_checkpoint {
+            return Err(RuntimeError::RestoreUnreconciled);
         }
         // Query and ACK latency consume the window. A dead/idle-terminated
         // connection fails before any FDB activation can start.
