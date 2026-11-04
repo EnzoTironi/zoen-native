@@ -45,6 +45,15 @@ impl State {
         {
             return false;
         }
+        self.message_replacement_target_valid(space, author, target, edit)
+    }
+    pub(crate) fn message_replacement_target_valid(
+        &self,
+        space: &str,
+        author: &str,
+        target: &str,
+        edit: &types::MediaChange,
+    ) -> bool {
         let Some(source) = self
             .spaces
             .get(space)

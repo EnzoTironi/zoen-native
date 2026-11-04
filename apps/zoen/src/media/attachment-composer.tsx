@@ -78,7 +78,9 @@ async function discard(uri: string) {
     if (uri.startsWith('blob:')) URL.revokeObjectURL(uri);
   } else discardCacheCopy(uri);
 }
+export type MediaEditTarget = Readonly<{ id: string; revision: string; text: string }>;
 export type AttachmentComposerOptions = MediaReplyOptions & {
+  mediaEdit?: MediaEditTarget;
   spaceId: string;
   replyTo: string | null;
   threadRootId?: string | null;
@@ -96,9 +98,13 @@ export function useAttachmentComposer(options: AttachmentComposerOptions) {
   const channel = useMemo(
     () =>
       durable && client.phase === 'ready' && client.snapshot
-        ? client.store.mediaDrafts.channel(options.spaceId, options.threadRootId ?? null)
+        ? client.store.mediaDrafts.channel(
+            options.spaceId,
+            options.threadRootId ?? null,
+            options.mediaEdit?.id,
+          )
         : null,
-    [client, durable, options.spaceId, options.threadRootId],
+    [client, durable, options.spaceId, options.threadRootId, options.mediaEdit?.id],
   );
   const saved = useDurableAttachmentComposer(options, channel);
   const temporary = useVolatileAttachmentComposer({

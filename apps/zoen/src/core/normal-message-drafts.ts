@@ -1,3 +1,4 @@
+import { withEmptyDraftRecord } from './normal-message-draft-admission.ts';
 import type { MessageDraftEdit } from './generated/MessageDraftEdit';
 import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { ReplySelection } from './generated/ReplySelection';
@@ -341,33 +342,7 @@ export class NormalMessageDrafts {
     return this.enqueue(async () => {
       const record = this.record(scope);
       this.requireOpen(record);
-      if (
-        record.intent ||
-        record.failedSave ||
-        record.state.sending ||
-        record.state.saving ||
-        record.state.error ||
-        record.state.edit ||
-        record.persisted.edit ||
-        record.state.text ||
-        record.state.replyTo ||
-        record.persisted.text ||
-        record.persisted.reply_to
-      )
-        throw new NormalDraftFailure('conflict');
-      const textRevision = record.state.textRevision,
-        replyRevision = record.state.replyRevision;
-      const revision = record.persisted.revision;
-      const current = () =>
-        !this.retirement &&
-        !record.intent &&
-        record.state.textRevision === textRevision &&
-        record.state.replyRevision === replyRevision &&
-        record.persisted.revision === revision &&
-        !record.state.edit &&
-        !record.state.text &&
-        !record.state.replyTo;
-      return work(revision, current);
+      return withEmptyDraftRecord(record, () => Boolean(this.retirement), work);
     });
   }
 
@@ -377,9 +352,24 @@ export class NormalMessageDrafts {
   sendEdit(scope: NormalDraftScope): Promise<DraftMessageReference> {
     return this.startSend(scope, 'edit');
   }
+  /** Consume the exact receipt committed with a replacement; never republish its old caption. */
+  acceptMediaEdit(
+    scope: NormalDraftScope,
+    expectedRevision: string,
+  ): Promise<DraftMessageReference> {
+    const record = this.record(scope);
+    if (
+      record.state.persistedRevision !== expectedRevision ||
+      !this.isPersisted(scope) ||
+      record.intent
+    )
+      return Promise.reject(new NormalDraftFailure('conflict'));
+    return this.startSend(scope, 'edit', expectedRevision);
+  }
   private startSend(
     scope: NormalDraftScope,
     mode: SendIntent['kind'],
+    acceptedRevision: string | null = null,
   ): Promise<DraftMessageReference> {
     const record = this.record(scope);
     try {
@@ -397,7 +387,7 @@ export class NormalMessageDrafts {
         editContextRevision: record.state.editContextRevision,
         textRevision: record.state.textRevision,
         replyRevision: record.state.replyRevision,
-        persistedRevision: null,
+        persistedRevision: acceptedRevision,
         work: null,
       };
       record.intent = intent;

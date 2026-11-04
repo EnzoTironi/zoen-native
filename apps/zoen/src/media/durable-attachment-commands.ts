@@ -12,8 +12,10 @@ import type { MediaDraftAttachments } from './media-draft-types';
 import { mediaPlayback } from './playback-owner';
 import { sameMediaReply } from './media-reply';
 import { mediaAcceptedIntent } from './media-acceptance';
+import { prepareMediaReplacement } from './media-replacement-send';
 
 const sameAttachmentSelection = (value: MediaDraftAttachments, observed: MediaDraftAttachments) =>
+  value.edit_revision === observed.edit_revision &&
   value.reply_to === observed.reply_to &&
   sameMediaReply(value, observed) &&
   (value.options?.presentation ?? 'media') === (observed.options?.presentation ?? 'media') &&
@@ -369,11 +371,14 @@ export async function send(
       )
         return;
     }
+    const completeEdit = await prepareMediaReplacement(context);
+    if (!current() || runtime.approval !== presentation || presentation?.closing) return;
     const result = await sensitiveCacheWork.run(() => channel.send());
     const accepted = mediaAcceptedIntent(result.draft);
     if (result.entries.length || accepted?.messages.length) {
       retireApproval();
-      if (!runtime.closed && store.mediaDrafts.isCurrent(channel)) sent?.(accepted?.reply);
+      if (completeEdit) await completeEdit();
+      else if (!runtime.closed && store.mediaDrafts.isCurrent(channel)) sent?.(accepted?.reply);
       void store.refresh().catch(() => {});
     }
   } catch (reason) {

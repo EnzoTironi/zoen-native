@@ -64,6 +64,8 @@ export function contentValue(input: unknown): {
   if (raw.kind === 'attachments') {
     const hasOptions = Object.hasOwn(raw, 'options');
     const hasGallery = Object.hasOwn(raw, 'gallery');
+    const hasEdit = Object.hasOwn(raw, 'edit_revision');
+    const hasNormal = Object.hasOwn(raw, 'normal_revision');
     keys(raw, [
       'kind',
       'reply_to',
@@ -71,6 +73,8 @@ export function contentValue(input: unknown): {
       ...replyKeys,
       ...(hasOptions ? ['options'] : []),
       ...(hasGallery ? ['gallery'] : []),
+      ...(hasEdit ? ['edit_revision'] : []),
+      ...(hasNormal ? ['normal_revision'] : []),
     ]);
     if (!Array.isArray(raw.items) || !raw.items.length || raw.items.length > 10) invalid();
     const items = raw.items.map((item: unknown) => {
@@ -96,8 +100,30 @@ export function contentValue(input: unknown): {
       if (value.presentation !== 'media' || value.grouping !== 'separate')
         options = { presentation: value.presentation, grouping: value.grouping };
     }
+    if (
+      hasEdit &&
+      (typeof raw.edit_revision !== 'string' ||
+        !raw.edit_revision ||
+        !target(raw.edit_revision) ||
+        items.length !== 1 ||
+        raw.reply_to !== null ||
+        replyKeys.length ||
+        options ||
+        hasGallery)
+    )
+      invalid();
+    if (
+      hasNormal &&
+      (!hasEdit ||
+        typeof raw.normal_revision !== 'string' ||
+        !raw.normal_revision ||
+        !target(raw.normal_revision))
+    )
+      invalid();
     content = {
       kind: 'attachments',
+      ...(hasEdit ? { edit_revision: raw.edit_revision as string } : {}),
+      ...(hasNormal ? { normal_revision: raw.normal_revision as string } : {}),
       reply_to: raw.reply_to,
       ...reply,
       items,

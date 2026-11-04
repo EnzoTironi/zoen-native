@@ -10,7 +10,7 @@ impl Engine {
     pub(super) fn media_draft_scope(&self, scope: &MediaDraftScope) -> R<Storage> {
         self.validate_private_draft_scope(&scope.normal())?;
         let author = self.author_for(&scope.expected_identity_id)?;
-        let aad = serde_json::to_vec(&(
+        let mut aad = serde_json::to_vec(&(
             "zoen.media.draft.record.v1",
             &scope.expected_identity_id,
             &scope.expected_device_id,
@@ -18,6 +18,13 @@ impl Engine {
             &scope.thread_root_id,
         ))
         .map_err(|_| storage_error())?;
+        if let Some(message) = &scope.edit_message_id {
+            if !super::target_id(message) {
+                return Err(invalid());
+            }
+            aad = serde_json::to_vec(&("zoen.media.edit.draft.record.v1", &aad, message))
+                .map_err(|_| storage_error())?;
+        }
         let mut key = Zeroizing::new([0u8; 32]);
         Hkdf::<Sha256>::new(Some(DOMAIN), &author.key.secret())
             .expand(b"local media draft encryption", &mut *key)

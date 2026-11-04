@@ -14,6 +14,7 @@ pub(super) fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_
         engine: f.engine.clone(),
         vault: f.vault.clone(),
         scope: MediaDraftScope {
+            edit_message_id: None,
             space_id: other_space.clone(),
             ..f.scope.clone()
         },

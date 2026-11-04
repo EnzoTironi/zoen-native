@@ -46,7 +46,12 @@ export function useDurableAttachmentController(
     channel?.getSnapshot ?? emptySnapshot,
   );
   const routesAvailable =
-    state?.phase === 'ready' && !state.frozen && !state.sending && !state.saving && !state.content;
+    !options.mediaEdit &&
+    state?.phase === 'ready' &&
+    !state.frozen &&
+    !state.sending &&
+    !state.saving &&
+    !state.content;
   const routes = useMemo(
     () =>
       channel && routesAvailable

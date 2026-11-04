@@ -40,6 +40,7 @@ impl Engine {
             return Err(invalid());
         }
         let content: Option<Content> = serde_json::from_str(json).map_err(|_| invalid())?;
+        super::media_edit::validate_scope_content(scope, &content)?;
         let refs = references(&content)?;
         let input_limit = if matches!(&content, Some(Content::Voice { .. })) {
             2 * MAX_ASSET_BYTES

@@ -78,6 +78,7 @@ fn terminal_upload_rolls_back_outbox_and_blob_together(
     }
     let account = sender.account().unwrap();
     let scope = MediaDraftScope {
+        edit_message_id: None,
         expected_identity_id: account.identity_id,
         expected_device_id: account.device_id,
         space_id: space.clone(),

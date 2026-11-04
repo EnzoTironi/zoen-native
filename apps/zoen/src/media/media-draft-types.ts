@@ -7,6 +7,7 @@ export type MediaDraftScope = Readonly<{
   expected_device_id: string;
   space_id: string;
   thread_root_id: string | null;
+  edit_message_id?: string | null;
 }>;
 export type MediaDraftAsset = Readonly<{
   id: string;
@@ -39,6 +40,8 @@ export type MediaDraftGallery = Readonly<{
 export type MediaDraftAttachments = MediaReplyFields &
   Readonly<{
     kind: 'attachments';
+    edit_revision?: string;
+    normal_revision?: string;
     reply_to: string | null;
     items: readonly MediaDraftAttachment[];
     /** Private picker recovery; the referenced bytes belong to the same Rust journal. */

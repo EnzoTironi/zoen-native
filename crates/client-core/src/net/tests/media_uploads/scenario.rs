@@ -38,6 +38,7 @@ pub(super) async fn terminal_upload(
     }
     let account = sender.account().unwrap();
     let scope = MediaDraftScope {
+        edit_message_id: None,
         expected_identity_id: account.identity_id,
         expected_device_id: account.device_id,
         space_id: space.clone(),

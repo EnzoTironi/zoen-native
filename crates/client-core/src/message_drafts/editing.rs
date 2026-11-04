@@ -36,6 +36,33 @@ fn rejected(error: CoreError) -> CoreError {
     }
 }
 impl Engine {
+    /// Part of the media publication transaction; later/private work is never cleared by guessing.
+    pub(crate) fn complete_message_media_edit(
+        &self,
+        scope: &DraftScope,
+        expected: &str,
+        input: &protocol::message_media_edit::MessageMediaEdit,
+    ) -> R<()> {
+        let storage = self.draft_storage_scope(scope)?;
+        let mut record = self.load_message_draft(scope, &storage)?;
+        if record.draft.revision != expected
+            || !record.draft.edit.as_ref().is_some_and(|edit| {
+                edit.message_id == input.message_id
+                    && edit.source_revision == input.edit.expected_revision
+            })
+        {
+            return Ok(());
+        }
+        record.draft.revision = types::new_id("draft")?;
+        record.draft.edit = None;
+        record.last_accepted_edit = Some(Receipt {
+            input_revision: expected.into(),
+            message_id: input.message_id.clone(),
+            text_revision: self.draft_source_revision(&scope.space_id, &input.message_id),
+        });
+        self.persist_message_draft(&storage, &record)
+    }
+
     pub(super) fn validate_edit_shape(edit: Option<&MessageDraftEdit>) -> R<()> {
         if edit.is_some_and(|e| {
             !valid_id(&e.message_id)

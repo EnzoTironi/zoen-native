@@ -531,16 +531,22 @@
   {
     "id": "TG-messaging-replace-sent-media",
     "scope": "active",
-    "implementation": "partial",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
       "crates/client-core/src/message_media_edit.rs",
       "crates/client-core/src/message_media_edit/projection.rs",
       "crates/protocol/src/message_media_edit.rs",
       "crates/client-core/src/message_edit/tests/media.rs",
-      "crates/client-core/src/tests/edit_convergence/media.rs"
+      "crates/client-core/src/tests/edit_convergence/media.rs",
+      "crates/client-core/src/media_drafts/media_edit.rs",
+      "crates/client-core/src/media_drafts/tests/media_edit_cases.rs",
+      "apps/zoen/src/media/media-replacement-pick.ts",
+      "apps/zoen/src/media/media-replacement-send.ts",
+      "apps/zoen/src/core/media-replacement-picker.test.ts",
+      "apps/zoen/src/core/media-replacement-send.test.ts"
     ],
-    "gap": "Contrato core implementado: edição assinada por mensagem, arquivo/versão/hash fixados, revisão, autorização, retry e replay concorrente. Falta concluir o journal de edição e a integração real com o seletor/compositor antes do aceite da jornada no iPhone.",
+    "gap": "Seletor/revisão existentes e journal criptografado por mensagem integrados. Publicação e conclusão do editor são atômicas; testes cobrem recuperação, rollback, retry e preservação de rascunhos posteriores. Aceite visual/de uso no iPhone adiado para Enzo; não é prova de paridade pixel perfect.",
     "issues": [
       172,
       173
@@ -549,16 +555,22 @@
   {
     "id": "TG-messaging-add-media-after-sending",
     "scope": "active",
-    "implementation": "partial",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
       "crates/client-core/src/message_media_edit.rs",
       "crates/client-core/src/message_media_edit/projection.rs",
       "crates/protocol/src/message_media_edit.rs",
       "crates/client-core/src/message_edit/tests/media.rs",
-      "crates/client-core/src/tests/edit_convergence/media.rs"
+      "crates/client-core/src/tests/edit_convergence/media.rs",
+      "crates/client-core/src/media_drafts/media_edit.rs",
+      "crates/client-core/src/media_drafts/tests/media_edit_cases.rs",
+      "apps/zoen/src/media/media-replacement-pick.ts",
+      "apps/zoen/src/media/media-replacement-send.ts",
+      "apps/zoen/src/core/media-replacement-picker.test.ts",
+      "apps/zoen/src/core/media-replacement-send.test.ts"
     ],
-    "gap": "Contrato core implementado: edição assinada por mensagem, arquivo/versão/hash fixados, revisão, autorização, retry e replay concorrente. Falta concluir o journal de edição e a integração real com o seletor/compositor antes do aceite da jornada no iPhone.",
+    "gap": "Seletor/revisão existentes e journal criptografado por mensagem integrados. Publicação e conclusão do editor são atômicas; testes cobrem recuperação, rollback, retry e preservação de rascunhos posteriores. Aceite visual/de uso no iPhone adiado para Enzo; não é prova de paridade pixel perfect.",
     "issues": [
       172,
       173

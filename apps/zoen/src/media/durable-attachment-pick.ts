@@ -1,3 +1,4 @@
+import { pickMediaReplacement } from './media-replacement-pick';
 import { randomUUID } from 'expo-crypto';
 import { AttachmentGalleryJournal } from './attachment-gallery-journal';
 import {
@@ -33,6 +34,7 @@ export async function pick(
     Pick<DurableAttachmentActions, 'failure' | 'openApproval' | 'edit' | 'send'>,
   kind: AttachmentPickKind,
 ) {
+  if (context.admission.current.mediaEdit) return pickMediaReplacement(context, kind);
   const {
     channel,
     current,

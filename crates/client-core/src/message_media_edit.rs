@@ -61,6 +61,24 @@ impl Engine {
         }
     }
 
+    pub(crate) fn validate_media_edit_target(&self, input: &MessageMediaEdit) -> R<()> {
+        self.replacement_source(input)?;
+        if !self
+            .space_projections
+            .get(&input.space_id)
+            .is_some_and(|state| {
+                state.message_replacement_target_valid(
+                    &input.space_id,
+                    &input.expected_identity_id,
+                    &input.message_id,
+                    &input.edit,
+                )
+            })
+        {
+            return Err(changed());
+        }
+        Ok(())
+    }
     fn replacement_source(&self, input: &MessageMediaEdit) -> R<&Entry> {
         self.native_surface_owner(&input.expected_identity_id, &input.expected_device_id)?;
         self.check_private_message_view()?;

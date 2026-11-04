@@ -149,11 +149,13 @@ export function MessageComposer({
     review,
     files,
     reply: mediaReply,
+    cancelEditMedia,
   }: {
     attachment: ReactNode;
     voice: ReactNode;
     review?: ReactNode;
     files?: AttachmentComposerField;
+    cancelEditMedia?: () => Promise<boolean>;
     reply?: ReactNode;
   }) {
     const fieldText = files ? files.value : value;
@@ -342,15 +344,24 @@ export function MessageComposer({
           />
         ) : mediaReply !== undefined ? (
           mediaReply
-        ) : !files && context ? (
+        ) : (editing || !files) && context ? (
           <ComposerReplyContext
             entry={context.entry}
+            edit={context.edit}
             quote={context.quote}
             shared={context.shared}
             spaceId={spaceId}
             threadRootId={threadRootId}
             editing={editing}
-            onCancel={context.onCancel}
+            onCancel={
+              cancelEditMedia
+                ? () => {
+                    void cancelEditMedia().then((cleared) => {
+                      if (cleared) context.onCancel();
+                    });
+                  }
+                : context.onCancel
+            }
           />
         ) : null}
         {search ? (
@@ -498,22 +509,34 @@ export function MessageComposer({
             replyIntent={context?.replyIntent}
             threadRootId={threadRootId ?? null}
             thread={thread}
-            disabled={sending || editing || Boolean(search) || draft?.ready === false}
+            disabled={
+              sending ||
+              (editing && !(context?.edit?.revision && mediaReplyAvailable)) ||
+              Boolean(search) ||
+              draft?.ready === false
+            }
+            mediaEdit={
+              editing && context?.edit?.revision && mediaReplyAvailable
+                ? { id: context.edit.id, revision: context.edit.revision, text: value }
+                : undefined
+            }
             suspended={
               suspended ||
               Boolean(search) ||
               (!mediaReplyAvailable && Boolean(context?.quote || context?.shared))
             }
-            onSent={onMediaSent}
+            onSent={editing ? undefined : onMediaSent}
             onReplyAccepted={onMediaSent}
             onReplyCancelled={context?.onCancelCaptured}
-            renderControls={({ attachment, voice, review, files, reply }) =>
+            renderControls={({ attachment, voice, review, files, reply, cancelEditMedia }) =>
               controls({
-                attachment: editing ? null : attachment,
+                attachment:
+                  editing && !(context?.edit?.revision && mediaReplyAvailable) ? null : attachment,
                 // Keep the same gesture owner mounted while editing hides its slot.
                 voice,
                 review,
-                files: editing || search ? undefined : files,
+                files: search ? undefined : files,
+                cancelEditMedia,
                 reply,
               })
             }

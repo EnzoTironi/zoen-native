@@ -11,6 +11,9 @@ impl Engine {
         scope: &MediaDraftScope,
         expected: &str,
     ) -> R<MediaDraftSendResult> {
+        if scope.edit_message_id.is_some() {
+            return self.send_media_edit_draft(scope, expected);
+        }
         let storage = self.media_draft_scope(scope)?;
         let mut record = self.load_media_draft(&storage)?;
         if !intent_id(expected) {
@@ -173,6 +176,7 @@ impl Engine {
                     input_revision: expected.into(),
                     messages: entries.iter().map(|entry| entry.id.clone()).collect(),
                     reply: Some(reply.accepted()),
+                    media_edit: None,
                 }),
                 save_receipts: record.save_receipts.clone(),
             };

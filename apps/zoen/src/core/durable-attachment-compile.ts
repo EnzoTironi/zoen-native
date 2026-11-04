@@ -23,7 +23,7 @@ export const compiled = await build({
         builder.onResolve(
           {
             filter:
-              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review)|attachment-gallery-journal|poll-draft-review)$/,
+              /^\.\/(?:use-durable-attachment-(?:controller)|durable-attachment-(?:types|view|pick|commands|contract|review)|attachment-gallery-journal|media-replacement-(?:pick|send)|poll-draft-review)$/,
           },
           ({ path }) => ({
             path: fileURLToPath(

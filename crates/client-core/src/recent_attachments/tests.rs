@@ -45,6 +45,7 @@ fn fixture() -> std::result::Result<Fixture, Box<dyn std::error::Error>> {
         core,
         source,
         scope: MediaDraftScope {
+            edit_message_id: None,
             expected_identity_id: account.identity_id,
             expected_device_id: account.device_id,
             space_id: destination,

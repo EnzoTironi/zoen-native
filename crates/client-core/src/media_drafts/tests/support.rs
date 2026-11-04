@@ -21,6 +21,7 @@ pub(super) fn fixture(path: &str) -> Fixture {
         engine,
         vault,
         scope: MediaDraftScope {
+            edit_message_id: None,
             expected_identity_id: account.identity_id,
             expected_device_id: account.device_id,
             space_id: space,
