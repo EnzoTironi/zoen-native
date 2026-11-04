@@ -56,6 +56,7 @@ struct ZoenPushSnapshot: Decodable, Sendable {
   struct Account: Decodable, Sendable {
     let identity_id: String
     let device_id: String
+    let relay_url: String
     let unlocked: Bool
     let setup_pending: Bool
   }
@@ -85,7 +86,8 @@ struct ZoenPushSnapshot: Decodable, Sendable {
   func hasFetchedEvents(since before: ZoenPushSnapshot) -> Bool {
     guard let account, account.unlocked, !account.setup_pending, connection.synced,
           before.account?.identity_id == account.identity_id,
-          before.account?.device_id == account.device_id else { return false }
+          before.account?.device_id == account.device_id,
+          before.account?.relay_url == account.relay_url else { return false }
     let previous = Dictionary(before.conversations.map { ($0.id, $0.event_count) }, uniquingKeysWith: { _, new in new })
     return conversations.contains { chat in
       guard let count = Self.eventCount(chat.event_count) else { return false }
@@ -102,7 +104,8 @@ struct ZoenPushSnapshot: Decodable, Sendable {
   func notes(since before: ZoenPushSnapshot) -> [ZoenPushNote] {
     guard let account, account.unlocked, !account.setup_pending, connection.synced,
           before.account?.identity_id == account.identity_id,
-          before.account?.device_id == account.device_id else { return [] }
+          before.account?.device_id == account.device_id,
+          before.account?.relay_url == account.relay_url else { return [] }
     let previous = Dictionary(before.conversations.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
     return conversations.compactMap { chat in
       let prior = previous[chat.id]

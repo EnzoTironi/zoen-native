@@ -3,6 +3,7 @@
     "account": {
       "identity_id": "identity-synthetic",
       "device_id": "device-synthetic",
+      "relay_url": "https://relay.example",
       "unlocked": true,
       "setup_pending": false
     },
@@ -35,6 +36,7 @@
     "account": {
       "identity_id": "identity-synthetic",
       "device_id": "device-synthetic",
+      "relay_url": "https://relay.example",
       "unlocked": true,
       "setup_pending": false
     },
