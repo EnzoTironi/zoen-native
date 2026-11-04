@@ -60,7 +60,6 @@ export default function Thread() {
   const { allItems: items } = useHome();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<ConversationTimelineRow>>(null);
-  const sending = useRef<{ scope: string } | null>(null);
   useFocusEffect(useCallback(() => () => store.setTyping(space, false), [space, store]));
   const {
     data: entries,
@@ -84,10 +83,13 @@ export default function Thread() {
   const normalDraft = useMessageDraft(space, root);
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
-  const sendScope = JSON.stringify([owner, space, root]);
-  const [pendingSend, setPendingSend] = useState<{ scope: string } | null>(null);
+  const sendScope = useMemo(() => ({ owner, space, root }), [owner, space, root]);
+  const sending = useRef<{ scope: typeof sendScope } | null>(null);
+  const [pendingSend, setPendingSend] = useState<{ scope: typeof sendScope } | null>(null);
   const busy = pendingSend?.scope === sendScope;
-  const [sendFailure, setFailure] = useState<{ scope: string; message: string } | null>(null);
+  const [sendFailure, setFailure] = useState<{ scope: typeof sendScope; message: string } | null>(
+    null,
+  );
   const failure = sendFailure?.scope === sendScope ? sendFailure.message : null;
   const actions = useMessageActions({
     spaceId: space,

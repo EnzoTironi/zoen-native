@@ -78,6 +78,7 @@ function fixture(
     copy: () => calls.push('copy'),
     forward: () => calls.push('forward'),
   };
+  let routeRoot = 'root-message';
   let hookArgs: unknown[] = [];
   let actionArgs: { disabled: boolean; onSelect: (entry: TimelineEntry) => void } | undefined;
   const actions = {
@@ -107,7 +108,7 @@ function fixture(
           router: { push: (route: unknown) => routes.push(JSON.parse(JSON.stringify(route))) },
           Stack: { Screen: 'Screen' },
           useFocusEffect: host.useFocusEffect,
-          useLocalSearchParams: () => ({ space: 'space', root: 'root-message', jump }),
+          useLocalSearchParams: () => ({ space: 'space', root: routeRoot, jump }),
         };
       if (name === 'expo-router/react-navigation') return { useHeaderHeight: () => 44 };
       if (name === 'react-native-safe-area-context')
@@ -211,6 +212,9 @@ function fixture(
     hookArgs,
     actionArgs,
     render,
+    setRoot: (root: string) => {
+      routeRoot = root;
+    },
     reopen: () => {
       sessionEpoch++;
     },
@@ -383,4 +387,16 @@ test('an old send rejection cannot replace the current session’s alert', async
   pending[0]!();
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+});
+
+test('returning to a thread does not revive an alert from its earlier route scope', async () => {
+  const f = fixture(false);
+  const composer = () => find(f.render(), 'Viewport')!.props.composer;
+  (find(composer(), 'Composer')!.props.onSend as () => void)();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  f.setRoot('another-root');
+  assert.doesNotMatch(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  f.setRoot('root-message');
+  assert.doesNotMatch(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
 });
