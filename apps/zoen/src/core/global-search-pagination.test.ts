@@ -150,9 +150,8 @@ test('stale cursor exposes failure and explicit retry restarts the same query at
     });
     await f.root.act(() => more(f).onPress());
     assert.equal(f.list.data.length, 30);
-    assert.equal(more(f).disabled, true);
-    assert.ok(f.list.ListHeaderComponent);
-    await f.root.act(() => f.list.ListHeaderComponent.props.children[1].props.onPress());
+    assert.equal(f.list.ListHeaderComponent, null);
+    await f.root.act(() => f.list.ListFooterComponent.props.children[1].props.onPress());
     assert.equal(f.queries.at(-1).cursor, null);
     assert.equal(f.queries.at(-1).query, 'needle');
     assert.deepEqual(
