@@ -15,6 +15,7 @@ use types::Seen;
 pub(super) enum ImageActivationEffect {
     Review { key: Vec<u8> },
     Output { run: String },
+    ReplyOutput { run: String },
 }
 
 impl ImageActivationEffect {
@@ -22,6 +23,7 @@ impl ImageActivationEffect {
         match self {
             Self::Review { key } => key.clone(),
             Self::Output { run } => runtime.execution.run(run, "image-output/1"),
+            Self::ReplyOutput { run } => runtime.execution.run(run, "native-publication/1"),
         }
     }
 }
@@ -289,6 +291,20 @@ impl RuntimeAuthority {
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?
             .open_image(&credential.principal(), image)?;
+        if let ImageActivationEffect::ReplyOutput { run } = &intent.effect {
+            runs::output::recover_activation_reference(
+                self,
+                &transaction,
+                runs::output::ActivationPublication {
+                    run,
+                    bytes: &record,
+                    envelope: &env,
+                    target: &staged.root,
+                    checkpoint: &intent.prepared.next,
+                },
+            )
+            .await?;
+        }
         let mut scope = staged.scope(&self.execution, fence);
         scope.effects = intent.record.clone();
         let admission = self

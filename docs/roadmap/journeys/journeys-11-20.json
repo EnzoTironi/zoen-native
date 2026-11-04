@@ -61,7 +61,9 @@
       "crates/client-core/src/agent_control/tests.rs",
       "crates/zoen-runtime/src/native/output_scope.rs",
       "crates/zoen-runtime/src/tests/retained/output/authority.rs",
-      "crates/zoen-runtime/src/tests/retained/image_tasks/delivery/binding/genesis.rs"
+      "crates/zoen-runtime/src/tests/retained/image_tasks/delivery/binding/genesis.rs",
+      "crates/zoen-runtime/src/native/runs/output/recovery.rs",
+      "crates/zoen-runtime/src/tests/retained/output/managed.rs"
     ],
     "remaining": [
       "Qualificar retomada durável e provedores reais com resultado atribuído",

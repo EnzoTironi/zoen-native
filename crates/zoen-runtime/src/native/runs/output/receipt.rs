@@ -139,6 +139,8 @@ impl NativeCustody {
                 .reply_in(&trx, run, &runtime.custody)
                 .await
         )?;
+        let principal = &record.original.context.principal;
+        capability.check_device(&principal.agent, &principal.device)?;
         let capture = receipt_stage!(
             "retained_capture",
             runtime
@@ -160,6 +162,7 @@ impl NativeCustody {
                 .await
         )?
         .ok_or(RuntimeError::Denied)?;
+        publication.value.checkpoint_context(runtime)?;
         let receipt = receipt_stage!(
             "prior_receipt",
             runtime
@@ -206,6 +209,8 @@ impl NativeCustody {
         capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyReceiptProgress, RuntimeError> {
         runtime.continuity()?;
+        capability.check_context(runtime)?;
+        runtime.check_image_checkpoint().await?;
         let loaded = receipt_stage!(
             "load_historical_receipt",
             self.load_receipt(runtime, run, capability).await

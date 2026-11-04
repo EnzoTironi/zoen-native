@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use foundationdb::Transaction;
 use native::NativeOutputAuthority;
 
-struct RefusedOutput;
+pub(super) struct RefusedOutput;
 #[async_trait]
 impl NativeOutputAuthority for RefusedOutput {
     async fn check_in(

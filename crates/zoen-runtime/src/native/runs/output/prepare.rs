@@ -1,4 +1,5 @@
 use super::*;
+use crate::native::image_activation::{ImageActivationEffect, ImageActivationRecord};
 
 pub(super) struct PreparedOutput<'a> {
     pub(super) loaded: &'a LoadedReply,
@@ -41,12 +42,16 @@ impl NativeCustody {
         capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyOutputInspection, RuntimeError> {
         runtime.continuity()?;
+        capability.check_context(runtime)?;
+        runtime.check_image_checkpoint().await?;
         let trx = runtime.execution.transaction().await?;
         capability.check_in(&runtime.execution, &trx).await?;
         let (record, original) = runtime
             .execution
             .reply_in(&trx, run, &runtime.custody)
             .await?;
+        let principal = &record.original.context.principal;
+        capability.check_device(&principal.agent, &principal.device)?;
         let retained = runtime
             .execution
             .output_capture_in(&trx, &record, &original, &runtime.custody)
@@ -62,6 +67,7 @@ impl NativeCustody {
             )
             .await?
         {
+            publication.value.checkpoint_context(runtime)?;
             // Observation after an uncertain ACK does not sign or reseal again.
             return Ok(publication.value.inspection());
         }
@@ -118,6 +124,9 @@ impl NativeCustody {
         if prepared.facts().frontier() != loaded.facts.frontier() {
             return Err(RuntimeError::Denied);
         }
+        let transition = runtime
+            .begin_image_publish_checkpoint(prepared.envelope())
+            .await?;
         let image = self.seal_image(principal, Some(&loaded.current), prepared.image())?;
         let staged = runtime
             .execution
@@ -132,6 +141,7 @@ impl NativeCustody {
             &runtime.custody,
             &format!("native-publication/1/{}", loaded.record.locator.run),
             PublicationRecord {
+                checkpoint: transition.as_ref().map(|value| value.checkpoint()),
                 format: 1,
                 run: loaded.record.locator.run.clone(),
                 original: loaded.record_digest.clone(),
@@ -179,6 +189,46 @@ impl NativeCustody {
             .await
             .map_err(|_| RuntimeError::Unavailable)??;
         }
+        if let Some(transition) = &transition {
+            let transaction = runtime.execution.transaction().await?;
+            capability
+                .check_in(&runtime.execution, &transaction)
+                .await?;
+            runtime
+                .execution
+                .verify_reply_in(
+                    &transaction,
+                    &loaded.record,
+                    &loaded.record_digest,
+                    &loaded.current,
+                    output.prepared.facts(),
+                    &loaded.fences,
+                    &runtime.custody,
+                )
+                .await?;
+            runtime
+                .retain_image_activation(
+                    &transaction,
+                    transition.annotation(),
+                    &output.staged,
+                    &loaded.fences.device,
+                    ImageActivationRecord {
+                        effect: ImageActivationEffect::ReplyOutput {
+                            run: loaded.record.locator.run.clone(),
+                        },
+                        prior: None,
+                        bytes: &output.publication.bytes,
+                        envelope: output.prepared.envelope(),
+                        head: scope.frontier.clone(),
+                        expires: scope.expires_at_ms(),
+                    },
+                )
+                .await?;
+            transaction
+                .commit()
+                .await
+                .map_err(|_| RuntimeError::Unavailable)?;
+        }
         let guard = runtime
             .finance
             .native_directory(
@@ -199,16 +249,34 @@ impl NativeCustody {
             ),
             _ => guard,
         };
-        let admission = guard.authorize_output(scope).await?;
+        let admission = guard
+            .image_checkpoint(transition.as_ref().map(|value| value.annotation()))
+            .await?
+            .authorize_output(scope)
+            .await?;
+        #[cfg(test)]
+        if transition.is_some() && runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 67 {
+            return Err(RuntimeError::Unavailable);
+        }
         #[cfg(test)]
         if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 41 {
             runtime.native_cut_entered.notify_one();
             runtime.native_cut_resume.notified().await;
         }
         runtime.continuity()?;
-        runtime
+        let inspection = runtime
             .execution
-            .activate_output(capability, output, admission, runtime)
-            .await
+            .activate_output(
+                capability,
+                output,
+                admission,
+                transition.as_ref().map(|value| value.annotation()),
+                runtime,
+            )
+            .await?;
+        if let Some(transition) = transition {
+            transition.finish(runtime).await?;
+        }
+        Ok(inspection)
     }
 }

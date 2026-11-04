@@ -35,6 +35,8 @@ impl Execution {
         }
         let trx = self.transaction().await?;
         capability.check_in(self, &trx).await?;
+        let principal = &loaded.record.original.context.principal;
+        capability.check_device(&principal.agent, &principal.device)?;
         self.reply_original_scope(&trx, record, &loaded.record_digest)
             .await?;
         self.reply_binding_in(&trx, record, custody).await?;
@@ -221,6 +223,7 @@ impl Execution {
         capability: &dyn NativeOutputAuthority,
         output: prepare::PreparedOutput<'_>,
         admission: crate::finance::ReplyOutputAdmission,
+        checkpoint: Option<&crate::managed_images::PublishCheckpoint>,
         runtime: &RuntimeAuthority,
     ) -> Result<ReplyOutputInspection, RuntimeError> {
         let scope = output.scope(self)?;
@@ -253,6 +256,9 @@ impl Execution {
             return Err(RuntimeError::InvalidBinding);
         }
         let p = &output.publication.value;
+        if p.checkpoint.as_ref() != checkpoint.map(|value| &value.prepared().next) {
+            return Err(RuntimeError::InvalidBinding);
+        }
         p.validate(
             &loaded.record,
             &loaded.record_digest,
@@ -293,6 +299,10 @@ impl Execution {
         #[cfg(test)]
         if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 42 {
             return Err(RuntimeError::Unavailable);
+        }
+        if let Some(checkpoint) = checkpoint {
+            checkpoint.write_fdb(self, &trx).await?;
+            runtime.clear_image_activation(&trx, checkpoint);
         }
         admission.consume(&scope)?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;

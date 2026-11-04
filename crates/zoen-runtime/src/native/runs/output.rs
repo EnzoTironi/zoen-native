@@ -1,5 +1,7 @@
 //! Original output associations. Retained metadata grants no live permission.
 mod prepare;
+mod recovery;
+pub(in crate::native) use recovery::{recover_activation_reference, ActivationPublication};
 mod receipt;
 mod storage;
 #[cfg(test)]
@@ -164,6 +166,8 @@ impl RetainedCapture {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PublicationRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint: Option<relay_admission::managed_images::Checkpoint>,
     format: u8,
     run: String,
     original: String,
@@ -179,6 +183,13 @@ struct PublicationRecord {
 }
 
 impl PublicationRecord {
+    fn checkpoint_context(&self, runtime: &RuntimeAuthority) -> Result<(), RuntimeError> {
+        if runtime.managed_images.is_some() != self.checkpoint.is_some() {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        Ok(())
+    }
+
     fn validate(
         &self,
         record: &RunRecord,
@@ -190,6 +201,11 @@ impl PublicationRecord {
             .context
             .validate(principal, record.original.context.key_version)?;
         if self.format != 1
+            || self.checkpoint.as_ref().is_some_and(|checkpoint| {
+                checkpoint.generation == 0
+                    || checkpoint.sequence == 0
+                    || !digest(&checkpoint.digest)
+            })
             || self.run != record.locator.run
             || self.original != original
             || self.binding != record.binding.digest()?

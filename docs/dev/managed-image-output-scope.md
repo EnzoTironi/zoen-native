@@ -46,6 +46,15 @@ expiry, directory, exact specification and budget remain independently required.
 General reply output, `run_model` continuity and absence-based refund boundaries
 remain closed. The constructor never creates a financial claim or fixture.
 
+Text activation now reuses the same retained activation intent and paired
+SQL/FDB/external-anchor publication checkpoint. Its sealed record optionally
+carries that checkpoint; unmanaged historical records keep their original shape.
+A managed context refuses an uncheckpointed record instead of downgrading to the
+legacy path. Recovery validates the original paid capture, run, envelope and
+native root before restoring its reference. Current output context is checked
+before automatic checkpoint maintenance. This is exercised with explicit native
+fixture continuity; it does not open production paid chat or text transport.
+
 Scope lifetime retains the OS generation lock; stopping the host/dropping its
 last scope releases it before retirement can complete. Actual relay effects
 also retain their own guard/linear publication permit through commit. Runtime
