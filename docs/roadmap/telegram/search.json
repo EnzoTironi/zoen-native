@@ -22,9 +22,11 @@
     "evidence": [
       "apps/zoen/src/app/search.tsx",
       "apps/zoen/src/core/conversation-search.ts",
-      "apps/zoen/src/core/chat-search-react.test.ts"
+      "apps/zoen/src/core/use-search-results.ts",
+      "apps/zoen/src/core/global-search-pagination.test.ts",
+      "apps/zoen/src/core/global-search-canonical.test.ts"
     ],
-    "gap": "Fechar busca global paginada em todo histórico disponível e salto ao contexto correto; tela global limita primeira consulta a 30.",
+    "gap": "Conta nativa pagina o histórico local autorizado em lotes de 30, com cursor vinculado à sessão e renovação quando o índice muda. Web e demonstração nativa continuam limitados à primeira consulta. Falta aceite no iPhone da paginação e do salto ao contexto correto.",
     "issues": [
       172
     ]

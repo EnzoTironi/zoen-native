@@ -142,6 +142,7 @@ export const chat = defineFeature(
     searchQueryTooLong: 'Use a shorter search (up to 512 UTF-8 bytes).',
     search: 'Search',
     messagesInThisChat: 'Messages in this chat',
+    searchMessagesFilter: 'Messages',
     peopleMessagesPages: 'People, messages, pages…',
     findWhatStayedInTheConversation: 'Find what stayed in the conversation',
     searchUsesTheHistoryAvailableOnThisDevice: 'Search uses the history available on this device.',
@@ -362,6 +363,7 @@ export const chat = defineFeature(
     searchQueryTooLong: 'Use uma busca mais curta (até 512 bytes em UTF-8).',
     search: 'Buscar',
     messagesInThisChat: 'Mensagens desta conversa',
+    searchMessagesFilter: 'Mensagens',
     peopleMessagesPages: 'Pessoas, mensagens, páginas…',
     findWhatStayedInTheConversation: 'Encontre o que ficou na conversa',
     searchUsesTheHistoryAvailableOnThisDevice:

@@ -238,3 +238,20 @@ test('browser keeps its prior long-query semantics rather than inheriting the na
     await f.root.close();
   }
 });
+
+test('changing result kind keeps the query and restarts pagination without the old cursor', async () => {
+  const f = await fixture('needle', 'account', first());
+  try {
+    f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
+    const select = f.filters.get('chat.searchMessagesFilter');
+    assert.ok(select);
+    await f.root.act(select);
+    await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
+    assert.equal(f.input.value, 'needle');
+    assert.deepEqual(normalized(f.queries[1].kinds), ['message']);
+    assert.equal(f.queries[1].cursor, null);
+    assert.equal(f.list.data.length, 1);
+  } finally {
+    await f.root.close();
+  }
+});
