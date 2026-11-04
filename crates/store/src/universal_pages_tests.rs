@@ -80,3 +80,30 @@ fn universal_period_is_half_open_and_applies_before_pagination() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn browsing_media_without_text_orders_authorized_messages_before_limiting() -> Result<()> {
+    let store = Store::in_memory()?;
+    store.reset_search_media()?;
+    for (id, space, at, media) in [
+        ("latest-text", "visible", 30, false),
+        ("private-media", "hidden", 29, true),
+        ("visible-media", "visible", 20, true),
+        ("older-media", "visible", 10, true),
+    ] {
+        store.index_put("message", id, space, "", at, "", id)?;
+        if media {
+            store.index_search_media(space, id)?;
+        }
+    }
+    let kinds = ["media".into()];
+    let spaces = ["visible".into()];
+    let hits = store.universal_search_page("", &kinds, &spaces, 0, 1)?;
+    assert_eq!(
+        hits.iter()
+            .map(|hit| hit.ref_id.as_str())
+            .collect::<Vec<_>>(),
+        ["visible-media", "older-media"]
+    );
+    Ok(())
+}

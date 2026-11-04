@@ -51,7 +51,8 @@ impl Store {
             .filter(|word| !word.is_empty())
             .map(|word| format!("\"{word}\"*"))
             .collect();
-        if terms.is_empty() {
+        let browse = query.trim().is_empty() && kinds == ["media"];
+        if terms.is_empty() && !browse {
             return Ok(Vec::new());
         }
         let media_clause = if kinds == ["media"] {
@@ -66,17 +67,26 @@ impl Store {
         } else {
             kinds
         };
+        let (body, title, matching, rank) = if browse {
+            ("body", "title", "1", "0.0")
+        } else {
+            (
+                "snippet(search, 6, '[[', ']]', '…', 10)",
+                "snippet(search, 5, '[[', ']]', '…', 8)",
+                "search MATCH ?1",
+                "bm25(search, 0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 1.0)",
+            )
+        };
         let sql = format!(
             "SELECT kind, ref_id, space, author, at_ms, title,
-                    snippet(search, 6, '[[', ']]', '…', 10),
-                    snippet(search, 5, '[[', ']]', '…', 8)
-             FROM search WHERE search MATCH ?1
+                    {body}, {title}
+             FROM search WHERE {matching}
                AND kind IN (SELECT value FROM json_each(?2))
                AND (space = '' OR space IN (SELECT value FROM json_each(?3)))
                AND (?6 IS NULL OR CAST(at_ms AS INTEGER) >= ?6)
                AND (?7 IS NULL OR CAST(at_ms AS INTEGER) < ?7)
              {media_clause}
-             ORDER BY bm25(search, 0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 1.0),
+             ORDER BY {rank},
                       CAST(at_ms AS INTEGER) DESC, kind ASC, space ASC, ref_id ASC
              LIMIT ?4 OFFSET ?5",
         );
