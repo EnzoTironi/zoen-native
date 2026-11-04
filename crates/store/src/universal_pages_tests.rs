@@ -91,7 +91,12 @@ fn browsing_media_without_text_orders_authorized_messages_before_limiting() -> R
         ("visible-media", "visible", 20, true),
         ("older-media", "visible", 10, true),
     ] {
-        store.index_put("message", id, space, "", at, "", id)?;
+        let body = if id == "visible-media" {
+            "🎬".repeat(300)
+        } else {
+            id.to_owned()
+        };
+        store.index_put("message", id, space, "", at, "", &body)?;
         if media {
             store.index_search_media(space, id)?;
         }
@@ -105,5 +110,7 @@ fn browsing_media_without_text_orders_authorized_messages_before_limiting() -> R
             .collect::<Vec<_>>(),
         ["visible-media", "older-media"]
     );
+    assert_eq!(hits[0].snippet, format!("{}…", "🎬".repeat(240)));
+    assert_eq!(hits[1].snippet, "older-media");
     Ok(())
 }

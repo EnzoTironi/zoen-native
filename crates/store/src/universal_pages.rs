@@ -3,6 +3,8 @@
 use crate::{Result, SearchRow, Store, StoreError};
 use rusqlite::params;
 
+const MEDIA_PREVIEW_CHARS: u32 = 240;
+
 impl Store {
     pub fn reset_search_media(&self) -> Result<()> {
         self.conn.execute_batch(
@@ -68,7 +70,12 @@ impl Store {
             kinds
         };
         let (body, title, matching, rank) = if browse {
-            ("body", "title", "1", "0.0")
+            (
+                "substr(body, 1, ?1) || CASE WHEN length(body) > ?1 THEN '…' ELSE '' END",
+                "title",
+                "1",
+                "0.0",
+            )
         } else {
             (
                 "snippet(search, 6, '[[', ']]', '…', 10)",
@@ -91,9 +98,14 @@ impl Store {
              LIMIT ?4 OFFSET ?5",
         );
         let mut statement = self.conn.prepare_cached(&sql)?;
+        let match_or_preview = if browse {
+            rusqlite::types::Value::from(i64::from(MEDIA_PREVIEW_CHARS))
+        } else {
+            rusqlite::types::Value::from(terms.join(" "))
+        };
         let rows = statement.query_map(
             params![
-                terms.join(" "),
+                match_or_preview,
                 serde_json::to_string(kinds)?,
                 serde_json::to_string(readable_spaces)?,
                 limit + 1,
