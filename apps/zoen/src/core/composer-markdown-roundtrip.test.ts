@@ -279,6 +279,21 @@ test(
       assert.equal(unicodeCode.markdown, '**😀`a`**`b`c');
       assert.equal(run(unicodeCode.markdown).plain, '😀abc');
       assert.deepEqual(unicodeCode.selection, [2, 2]);
+      const spoiler = run('😀 segredo', {
+        toggles: [{ type: 5, start: 3, length: 7 }],
+        selection: [3, 7],
+      });
+      assert.equal(spoiler.markdown, '😀 ||segredo||');
+      assert.equal(run(spoiler.markdown).plain, '😀 segredo');
+      assert.deepEqual(run(spoiler.markdown).types, spoiler.types);
+      assert.equal(
+        run('😀 segredo', {
+          toggles: [{ type: 5, start: 3, length: 7 }],
+          selection: [3, 7],
+          undo: true,
+        }).markdown,
+        '😀 segredo',
+      );
       const crossedEmphasis = run('abcde', {
         toggles: [
           { type: 0, start: 0, length: 3 },
