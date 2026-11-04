@@ -264,9 +264,11 @@ impl Engine {
                 if attachment.is_some() {
                     st.index_search_media(&s.id, e.id())?;
                 }
-                let body = self
-                    .searchable_entry_text(e)
-                    .or_else(|| attachment.map(str::to_owned));
+                let body = match (self.searchable_entry_text(e), attachment) {
+                    (Some(caption), Some(name)) => Some(format!("{caption}\n{name}")),
+                    (caption @ Some(_), None) => caption,
+                    (None, name) => name.map(str::to_owned),
+                };
                 let Some(body) = body else {
                     continue;
                 };
