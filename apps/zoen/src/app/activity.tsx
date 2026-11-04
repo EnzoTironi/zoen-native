@@ -5,6 +5,7 @@ import { Stack, router } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
+import { messageDestination } from '../core/message-link';
 import { messageText, money } from '../core/presentation';
 import { useTheme } from '../theme';
 import { EmptyState, Loading, NativeButton, Surface } from '../components/primitives';
@@ -176,19 +177,7 @@ function ActivityContent() {
               <Pressable
                 key={`${mention.space_id}:${mention.entry.id}`}
                 accessibilityRole="button"
-                onPress={() =>
-                  router.push(
-                    mention.entry.in_thread
-                      ? {
-                          pathname: '/thread/[space]/[root]',
-                          params: { space: mention.space_id, root: mention.entry.in_thread },
-                        }
-                      : {
-                          pathname: '/chat/[id]',
-                          params: { id: mention.space_id, jump: mention.entry.id },
-                        },
-                  )
-                }
+                onPress={() => router.push(messageDestination(mention.space_id, mention.entry))}
                 style={{ padding: 20, gap: 8, backgroundColor: 'transparent', borderRadius: 20 }}
               >
                 <Text style={{ color: colors.accent, fontWeight: '600' }}>
