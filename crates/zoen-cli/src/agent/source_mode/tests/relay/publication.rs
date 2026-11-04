@@ -27,3 +27,12 @@ pub(super) fn sequence(
     log.push(event.clone());
     Ok(event)
 }
+
+pub(super) fn reject(env: &Envelope) -> protocol::ServerFrame {
+    protocol::ServerFrame::Rejected {
+        space: env.space().into(),
+        client_id: env.client_id().into(),
+        reason: "permission denied".into(),
+        permanent: true,
+    }
+}

@@ -324,10 +324,11 @@ impl Run {
                     .is_some_and(|reply| reply.id == self.bound.id)
         }) {
             self.check(e)?;
-            return Ok(matches!(
-                reply.delivery,
-                Delivery::Sent | Delivery::Delivered | Delivery::Read
-            ));
+            return match reply.delivery {
+                Delivery::Failed => Err("agent_host_source_reply_failed".into()),
+                Delivery::Local | Delivery::Sending => Ok(false),
+                Delivery::Sent | Delivery::Delivered | Delivery::Read => Ok(true),
+            };
         }
         let head = self.head(e)?;
         if head.is_none() && timeline[index].seq <= self.completed_through {
