@@ -503,7 +503,7 @@ pub async fn device_linked(
     .is_some())
 }
 
-/// Unlinks one of `identity`'s devices and drops its key packages. `false` if it isn't
+/// Unlinks one of `identity`'s devices and drops its key packages and push tokens. `false` if it isn't
 /// theirs (or already unlinked).
 pub async fn revoke_device(
     tx: &mut Transaction<'_, Postgres>,
@@ -522,8 +522,16 @@ pub async fn revoke_device(
         .bind(device)
         .execute(&mut **tx)
         .await?;
+    sqlx::query("DELETE FROM push_tokens WHERE identity = $1 AND device = $2")
+        .bind(identity)
+        .bind(device)
+        .execute(&mut **tx)
+        .await?;
     Ok(r.rows_affected() == 1)
 }
 
 mod push;
-pub use push::{drop_push_token, push_targets, set_push_token, voip_push_targets};
+pub use push::{
+    claim_voip_wake, drop_push_token, get_voip_consent, push_targets, set_push_token,
+    set_voip_consent, voip_push_targets, voip_registration_current,
+};

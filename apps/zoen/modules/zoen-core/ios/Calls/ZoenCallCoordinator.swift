@@ -7,7 +7,8 @@ import UIKit
 /// Core decisions survive process death; this object and its handles do not.
 @MainActor
 final class ZoenCallCoordinator: NSObject {
-  let id = UUID()
+  let id: UUID
+  private let adoptsWake: Bool
   let port: ZoenCallPort
   private let provider: CXProvider
   private let controller = CXCallController()
@@ -26,7 +27,9 @@ final class ZoenCallCoordinator: NSObject {
   private let name: String
   private let status: @MainActor (String) -> Void
 
-  init(port: ZoenCallPort, record: ZoenCallRecord, name: String, status: @escaping @MainActor (String) -> Void) {
+  init(port: ZoenCallPort, record: ZoenCallRecord, name: String, wakeID: UUID? = nil, status: @escaping @MainActor (String) -> Void) {
+    id = wakeID ?? UUID()
+    adoptsWake = wakeID != nil
     self.port = port; self.call = record; self.name = name; self.status = status
     currentPhase = record.caller == port.scope.identity ? "calling" : "incoming"
     provider = ZoenCallSystem.shared.provider
@@ -35,7 +38,7 @@ final class ZoenCallCoordinator: NSObject {
 
   func begin(outgoing: Bool) async throws {
     call = try await port.presentationRecord()
-    guard !retired, !call.terminal, ZoenCallSystem.shared.install(self) else { throw ZoenCallFailure.retired }
+    guard !retired, !call.terminal, ZoenCallSystem.shared.install(self, adoptingWake: adoptsWake) else { throw ZoenCallFailure.retired }
     installed = true
     currentPhase = outgoing ? "calling" : "incoming"
     status(currentPhase)
@@ -57,7 +60,11 @@ final class ZoenCallCoordinator: NSObject {
       update.localizedCallerName = name
       update.hasVideo = call.video
       update.supportsDTMF = false; update.supportsGrouping = false; update.supportsUngrouping = false
-      try await provider.reportNewIncomingCall(with: id, update: update)
+      if adoptsWake {
+        provider.reportCall(with: id, updated: update)
+      } else {
+        try await provider.reportNewIncomingCall(with: id, update: update)
+      }
     }
     let remaining = max(0, call.expiresAtMs - Int64(Date().timeIntervalSince1970 * 1000))
     deadline = Task { [weak self] in

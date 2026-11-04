@@ -131,7 +131,13 @@ function SearchBody({
   );
   const opening = operation.pending;
   useEffect(() => {
-    if (!results.active || results.loading || results.completed || results.error || !query.trim())
+    if (
+      !results.active ||
+      results.loading ||
+      results.completed ||
+      results.error ||
+      (!query.trim() && !search.allowsEmptyQuery)
+    )
       return;
     const timer = setTimeout(() => void search.search(), 200);
     return () => clearTimeout(timer);
@@ -183,7 +189,7 @@ function SearchBody({
   }
   const empty = !scope ? (
     <EmptyState title={t('chat.chatUnavailable')} />
-  ) : !query.trim() ? (
+  ) : !query.trim() && !search.allowsEmptyQuery ? (
     <EmptyState
       title={t('chat.findWhatStayedInTheConversation')}
       detail={t('chat.searchUsesTheHistoryAvailableOnThisDevice')}

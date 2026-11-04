@@ -6,6 +6,14 @@ import UIKit
 /// alternate account or payload-selected route. CNG registers this subscriber.
 @MainActor
 public final class ZoenPushDelegate: ExpoAppDelegateSubscriber {
+  public func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    ZoenVoipRegistry.shared.start()
+    return false
+  }
+
   public func applicationDidBecomeActive(_ application: UIApplication) {
     Task { await ZoenNativePushSessions.gate.becameActive() }
   }

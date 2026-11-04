@@ -243,6 +243,18 @@ fn cold_orphan_is_retired_by_normal_signed_hangup_before_a_new_invite() {
 
 #[test]
 fn role_revocation_retires_media_and_refuses_future_call_admission() {
+    assert_access_loss_retires_call(|identity| EventBody::MemberAdded {
+        identity,
+        role: Role::Reader,
+    });
+}
+
+#[test]
+fn member_removal_retires_media_and_refuses_future_call_admission() {
+    assert_access_loss_retires_call(|identity| EventBody::MemberRemoved { identity });
+}
+
+fn assert_access_loss_retires_call(change: impl FnOnce(String) -> EventBody) {
     let (mut f, call) = accepted().unwrap();
     let offer = signal(
         &f,
@@ -260,15 +272,8 @@ fn role_revocation_retires_media_and_refuses_future_call_admission() {
         },
     )
     .unwrap();
-    f.push(
-        f.caller.clone(),
-        350,
-        EventBody::MemberAdded {
-            identity: f.callee.identity.clone(),
-            role: Role::Reader,
-        },
-    )
-    .unwrap();
+    f.push(f.caller.clone(), 350, change(f.callee.identity.clone()))
+        .unwrap();
     assert!(f.record().terminal());
     assert!(f.engine.state.spaces["sp_calls"].call_transport.is_empty());
     assert!(!f

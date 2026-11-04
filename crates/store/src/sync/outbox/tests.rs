@@ -229,8 +229,8 @@ fn disk_reopen_and_vacuum_into_keep_named_order(
 }
 
 #[test]
-fn late_retry_preserves_terminal_outbox_refusal()
--> std::result::Result<(), Box<dyn std::error::Error>> {
+fn late_retry_preserves_terminal_outbox_refusal(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let directory = std::env::temp_dir().join(types::new_id("outbox-refusal")?);
     std::fs::create_dir(&directory)?;
     let path = directory.join("outbox.sqlite");

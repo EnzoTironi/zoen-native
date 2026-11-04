@@ -299,23 +299,25 @@ test('FCM rotations remain serialized, denied permission removes the token, and 
   const writes: string[] = [];
   let current = true;
   let finish: () => void = () => {};
+  const started = Promise.withResolvers<void>();
   const ports: PushPorts = {
     current: () => current,
     permission: async () => 'allowed',
     token: async () => token,
     register: async (_, value) => {
       writes.push(value);
-      if (writes.length === 1)
+      if (writes.length === 1) {
+        started.resolve();
         await new Promise<void>((resolve) => {
           finish = resolve;
         });
+      }
       return { kind: 'acknowledged' };
     },
   };
   const coordinator = new PushCoordinator(ports, fcm);
   const first = coordinator.foreground();
-  await Promise.resolve();
-  await Promise.resolve();
+  await started.promise;
   const rotate = coordinator.receivedToken('Rotated:Token_XYZ');
   assert.deepEqual(writes, [token]);
   finish();

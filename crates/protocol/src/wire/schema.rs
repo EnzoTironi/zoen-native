@@ -1,5 +1,8 @@
+#[path = "client_request_schema.rs"]
+mod client_request_schema;
 use super::read_time_schema::PbReadTime;
 use super::Message;
+pub(super) use client_request_schema::{PbHello, PbPushToken, PbVoipConsent, PbVoipWake};
 
 #[derive(Clone, PartialEq, Message)]
 pub struct PbClientFrame {
@@ -33,34 +36,12 @@ pub mod pb_client_frame {
 pub struct PbEmpty {}
 
 #[derive(Clone, PartialEq, Message)]
-pub struct PbPushToken {
-    #[prost(string, tag = "1")]
-    pub platform: String,
-    #[prost(string, tag = "2")]
-    pub token: String,
-}
-
-#[derive(Clone, PartialEq, Message)]
-pub struct PbHello {
-    #[prost(uint32, tag = "1")]
-    pub protocol: u32,
-    #[prost(string, repeated, tag = "2")]
-    pub capabilities: Vec<String>,
-    #[prost(string, tag = "3")]
-    pub identity: String,
-    #[prost(string, tag = "4")]
-    pub device: String,
-    #[prost(string, tag = "5")]
-    pub cert: String,
-}
-
-#[derive(Clone, PartialEq, Message)]
 pub struct PbReq {
     #[prost(uint64, tag = "1")]
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -69,7 +50,7 @@ pub mod pb_req {
     use super::{
         PbAgentReq, PbAgreementKey, PbCallTurnRequest, PbClaimKeyPackages, PbCreateInvite,
         PbDeviceMessage, PbEmpty, PbIds, PbLinkBox, PbLookup, PbProfile, PbPublishKeyPackages,
-        PbPushToken, PbRuntimeBindingRequest, PbSealedProfile,
+        PbPushToken, PbRuntimeBindingRequest, PbSealedProfile, PbVoipConsent, PbVoipWake,
     };
 
     #[derive(Clone, PartialEq, prost::Oneof)]
@@ -122,6 +103,12 @@ pub mod pb_req {
         CompleteRead(crate::complete_reads::Request),
         #[prost(message, tag = "25")]
         EnsureSavedMessages(crate::saved_messages::Genesis),
+        #[prost(message, tag = "26")]
+        SetVoipConsent(PbVoipConsent),
+        #[prost(message, tag = "27")]
+        RequestVoipWake(PbVoipWake),
+        #[prost(message, tag = "28")]
+        GetVoipConsent(PbCallTurnRequest),
     }
 }
 
@@ -527,7 +514,7 @@ pub struct PbRes {
     pub id: u64,
     #[prost(
         oneof = "pb_res::R",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19"
     )]
     pub r: Option<pb_res::R>,
 }
@@ -575,6 +562,8 @@ pub mod pb_res {
         AgentControl(crate::agent_control::Record),
         #[prost(message, tag = "18")]
         SavedMessages(crate::saved_messages::Receipt),
+        #[prost(bool, tag = "19")]
+        VoipConsent(bool),
     }
 }
 

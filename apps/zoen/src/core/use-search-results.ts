@@ -35,6 +35,7 @@ export function useSearchResults(
     () =>
       new ConversationSearch(
         {
+          allowsEmptyQuery: !space && kinds.includes('media'),
           current: () => scope !== null && searchScope(store, space) === scope,
           fitsQuery: (query) =>
             process.env.EXPO_OS === 'web' ||

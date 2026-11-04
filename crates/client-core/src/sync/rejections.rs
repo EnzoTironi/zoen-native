@@ -1,8 +1,8 @@
 //! Publication refusals and exact dependent media intents.
 
 use super::{
-    ConfirmedMediaDependencies, CoreError, Engine, Event, EventBody, HashSet, ItemContent,
-    ItemKind, R, RejectionOutcome, same_media_group,
+    same_media_group, ConfirmedMediaDependencies, CoreError, Engine, Event, EventBody, HashSet,
+    ItemContent, ItemKind, RejectionOutcome, R,
 };
 
 impl Engine {

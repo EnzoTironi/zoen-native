@@ -13,6 +13,7 @@ export type ConversationSearchState = Readonly<{
 }>;
 export type ConversationSearchSource = {
   current(): boolean;
+  allowsEmptyQuery?: boolean;
   fitsQuery?(query: string): boolean;
   search(query: string, cursor: string | null): Promise<MessageSearchPage>;
 };
@@ -116,13 +117,22 @@ export class ConversationSearch {
       error: null,
     });
   }
+  get allowsEmptyQuery() {
+    return this.source.allowsEmptyQuery ?? false;
+  }
   fitsQuery(query: string) {
     return this.source.fitsQuery?.(query) ?? conversationQueryFits(query);
   }
   async search() {
     const query = this.state.query.trim();
     const generation = ++this.generation;
-    if (!this.state.active || !query || !this.fitsQuery(query) || !this.source.current()) return;
+    if (
+      !this.state.active ||
+      (!query && !this.allowsEmptyQuery) ||
+      !this.fitsQuery(query) ||
+      !this.source.current()
+    )
+      return;
     this.dirty = false;
     this.submitted = true;
     this.firstPage = null;
@@ -167,7 +177,7 @@ export class ConversationSearch {
       return;
     }
     const query = this.state.query.trim();
-    if (!query || !this.fitsQuery(query)) return;
+    if ((!query && !this.allowsEmptyQuery) || !this.fitsQuery(query)) return;
     this.publish({ loading: true, error: null });
     try {
       const page = await this.source.search(query, null);

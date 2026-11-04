@@ -294,3 +294,19 @@ test('native media search restarts the query with the canonical media filter', a
     await f.root.close();
   }
 });
+
+test('native media browsing requests attachments without text', async () => {
+  const f = await fixture('', 'account');
+  try {
+    f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
+    const select = f.filters.get('chat.searchMediaFilter');
+    assert.ok(select);
+    await f.root.act(select);
+    await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
+    assert.equal(f.queries[0].query, '');
+    assert.deepEqual(normalized(f.queries[0].kinds), ['media']);
+    assert.equal(f.list.data[0].ref_id, 'message-55');
+  } finally {
+    await f.root.close();
+  }
+});

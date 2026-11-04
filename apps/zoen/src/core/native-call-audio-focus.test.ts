@@ -35,8 +35,6 @@ test(
           '-warnings-as-errors',
           '-j',
           '1',
-          '-module-cache-path',
-          join(directory, 'module-cache'),
           ...files,
           '-o',
           binary,

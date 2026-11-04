@@ -59,8 +59,6 @@ test(
             '6',
             '-strict-concurrency=complete',
             '-warnings-as-errors',
-            '-module-cache-path',
-            join(directory, 'module-cache'),
             '-sdk',
             sdk,
             source,

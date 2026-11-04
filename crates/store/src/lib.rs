@@ -403,6 +403,23 @@ impl Store {
         Ok(out)
     }
 
+    /// The hash column is uniquely indexed. Ambiguous prefixes fail closed.
+    pub fn event_by_hash_prefix(&self, prefix: &str) -> Result<Option<Event>> {
+        let upper = format!("{prefix}g");
+        let mut statement = self
+            .conn
+            .prepare_cached("SELECT json FROM events WHERE hash >= ?1 AND hash < ?2 LIMIT 2")?;
+        let mut rows = statement.query([prefix, upper.as_str()])?;
+        let Some(first) = rows.next()? else {
+            return Ok(None);
+        };
+        let json: String = first.get(0)?;
+        if rows.next()?.is_some() {
+            return Ok(None);
+        }
+        Ok(Some(serde_json::from_str(&json)?))
+    }
+
     pub fn event_count(&self) -> Result<u64> {
         Ok(self
             .conn
