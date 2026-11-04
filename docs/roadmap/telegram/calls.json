@@ -25,9 +25,11 @@
     "evidence": [
       "apps/zoen/src/calls/provider.ios.tsx",
       "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallRTC.swift",
+      "apps/zoen/modules/zoen-core/ios/Calls/ZoenCallViewController.swift",
+      "apps/zoen/src/core/native-call-retirement-order.test.ts",
       "docs/dev/ios-calls.md"
     ],
-    "gap": "Provar vídeo entre duas pontas, permissões, câmera, retorno ao chat e recuperação física; ampliar Android/Web depois do aceite iOS.",
+    "gap": "Prévia local e troca de câmera compiladas no Release arm64 do simulador. No iPhone, provar vídeo entre duas pontas, permissões, câmera, retorno ao chat e recuperação; ampliar Android/Web depois do aceite iOS.",
     "issues": [
       178,
       266,
