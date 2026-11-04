@@ -274,7 +274,10 @@ function SearchBody({
                 label={t('chat.tryAgain2')}
                 disabled={!queryFits}
                 onPress={() => {
-                  actions.clearError();
+                  if (operation.error) {
+                    void actions.retry();
+                    return;
+                  }
                   if (results === search.getSnapshot() && search.isCurrent()) void search.search();
                 }}
               />

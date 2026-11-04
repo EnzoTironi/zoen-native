@@ -95,6 +95,11 @@ for (const message of [
         f.list.ListHeaderComponent.props.children[0].props.children,
         'chat.thisResultCouldNotBeOpened',
       );
+      const retries = f.retries;
+      await f.root.act(() => f.list.ListHeaderComponent.props.children[1].props.onPress());
+      assert.equal(f.reads.length, 2);
+      assert.equal(f.retries, retries);
+      assert.equal(f.dismissals, 0);
     } finally {
       await f.root.close();
     }
