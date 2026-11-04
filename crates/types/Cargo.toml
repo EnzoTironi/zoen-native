@@ -9,9 +9,14 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+client-types = ["dep:ts-rs"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 getrandom.workspace = true
 hex.workspace = true
 sha2.workspace = true
+
+ts-rs = { version = "12.0.1", optional = true }

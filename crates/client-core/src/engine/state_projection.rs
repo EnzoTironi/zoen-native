@@ -196,6 +196,7 @@ impl State {
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
             }
+            EventBody::InboxFoldersSet { .. } => {}
             EventBody::ChatPrefsSet { space, prefs, .. } => {
                 // Only my own Personal Space carries prefs; anywhere else they mean nothing.
                 let mine = self.spaces.get(&e.space).is_some_and(|s| {

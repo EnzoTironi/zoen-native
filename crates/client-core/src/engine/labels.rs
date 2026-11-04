@@ -145,6 +145,7 @@ pub(crate) fn event_label(b: &EventBody) -> String {
         EventBody::AppCurrentShared { .. } => t("App compartilhado", "App shared"),
         EventBody::CallTransportV1 { .. } => t("Conexão da chamada", "Call connection"),
         EventBody::CallV1 { .. } => t("Chamada", "Call"),
+        EventBody::InboxFoldersSet { .. } => t("Pastas de conversas", "Chat folders"),
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
         EventBody::MessagesDeletedForSelf { .. } => t("Exclusão privada", "Private deletion"),
         EventBody::MessageAnnotated { note, .. } => match note {

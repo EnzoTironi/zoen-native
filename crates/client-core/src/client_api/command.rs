@@ -282,6 +282,9 @@ pub(super) enum Command {
     SetChatPrefs(super::chat_preferences_dispatch::ChatPrefsInput),
     SetChatMute(super::chat_preferences_dispatch::ChatMuteInput),
     SetChatMuted(super::chat_preferences_dispatch::ChatMutedInput),
+    InboxFolders {
+        input: crate::inbox_folders::InboxFoldersInput,
+    },
     ChatLayout {
         input: crate::chat_layout::ChatLayoutInput,
     },

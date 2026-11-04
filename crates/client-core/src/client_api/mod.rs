@@ -46,6 +46,9 @@ struct Snapshot {
     me: Option<Persona>,
     connection: ConnectionDto,
     conversations: Vec<SpaceSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    inbox_folders: Option<crate::inbox_folders::InboxFoldersResult>,
     integrity_warnings: std::collections::BTreeMap<String, String>,
     has_unreadable_local_history: bool,
     requests: Vec<AgentRequestDto>,
@@ -100,6 +103,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::ForwardReview::export_all(&config)?;
     crate::ForwardBatchReview::export_all(&config)?;
     crate::chat_layout::ChatLayoutResult::export_all(&config)?;
+    crate::inbox_folders::InboxFoldersResult::export_all(&config)?;
     crate::MessageDraftDto::export_all(&config)?;
     crate::MessageDraftSendResult::export_all(&config)?;
     TimelinePage::export_all(&config)?;
@@ -326,7 +330,21 @@ impl Client {
         let conversations = self
             .lock()
             .spaces_at(clock.unwrap_or_else(crate::engine::now_ms));
+        let inbox_folders = self
+            .account()
+            .filter(|account| account.unlocked && !account.setup_pending)
+            .and_then(|account| {
+                self.lock()
+                    .inbox_folders(&crate::inbox_folders::InboxFoldersInput::Read {
+                        scope: crate::inbox_folders::InboxFoldersScope {
+                            expected_identity_id: account.identity_id,
+                            expected_device_id: account.device_id,
+                        },
+                    })
+                    .ok()
+            });
         Snapshot {
+            inbox_folders,
             clock_ms: clock.map(|n| n.to_string()),
             account: self.account(),
             me: self.me().ok(),

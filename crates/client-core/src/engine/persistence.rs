@@ -99,6 +99,7 @@ impl Engine {
             db_path: path.to_string(),
             logs: HashMap::new(),
             broken_spaces: HashMap::new(),
+            inbox_folder_cache: None,
             approval_replay_needed: false,
             space_order: Vec::new(),
             identities: HashMap::new(),

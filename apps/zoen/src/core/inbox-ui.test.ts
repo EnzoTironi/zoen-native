@@ -208,3 +208,61 @@ test('accessibility Archive and Undo use the canonical operation without opening
     await f.close();
   }
 });
+
+test('custom default folder is projected from canonical configuration; user tab survives refresh and resets on account change', async () => {
+  const f = await inboxUi();
+  try {
+    const second = { ...f.core.chat, id: 'second', title: 'Second chat' };
+    f.core.snapshot.conversations.push(second);
+    f.core.snapshot.inbox_folders = {
+      revision: 'folders-1',
+      applied_revision: null,
+      configuration: {
+        default_folder: 'folder:work',
+        folders: [
+          {
+            id: 'folder:work',
+            name: 'Work',
+            kinds: [],
+            include: [second.id],
+            exclude: [],
+            exclude_read: false,
+            exclude_muted: false,
+            exclude_archived: true,
+          },
+        ],
+      },
+    };
+    await f.act(() => f.store.refresh());
+    assert.equal(f.has('inbox-chat-second'), true);
+    assert.equal(f.has(`inbox-chat-${f.core.chat.id}`), false);
+    assert.equal(f.control('inbox-filter-folder:work').accessibilityState.selected, true);
+    await f.act(() => f.control('inbox-filter-all').onPress());
+    await f.act(() => f.store.refresh());
+    assert.equal(f.has(`inbox-chat-${f.core.chat.id}`), true);
+    assert.equal(f.control('inbox-filter-all').accessibilityState.selected, true);
+    await f.act(async () => {
+      if (f.core.snapshot.account) f.core.snapshot.account.identity_id = 'other';
+      await f.store.refresh();
+    });
+    assert.equal(f.control('inbox-filter-folder:work').accessibilityState.selected, true);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});
+
+test('folder editing opens from a tab long press or accessibility action without mutating a conversation', async () => {
+  const f = await inboxUi();
+  try {
+    const before = f.calls.filter((c) => c.op === 'chat_layout').length;
+    await f.act(() => f.control('inbox-filter-all').onLongPress());
+    await f.act(() =>
+      f.control('inbox-filter-all').onAccessibilityAction({ nativeEvent: { actionName: 'edit' } }),
+    );
+    assert.deepEqual(f.routes.slice(-2), ['/settings/chat-folders', '/settings/chat-folders']);
+    assert.equal(f.calls.filter((c) => c.op === 'chat_layout').length, before);
+  } finally {
+    await f.close();
+  }
+});

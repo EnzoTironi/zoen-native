@@ -2,6 +2,8 @@ import { t } from '../../../i18n/index.ts';
 import { Stack, router } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { useMemo, useState } from 'react';
+import { accountScope, accountScopeKey } from '../../../core/account-scope';
+import { folderTabs, matchesFolder } from '../../../inbox/folders';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useClient } from '../../../core/provider';
 import { useTheme } from '../../../theme';
@@ -14,37 +16,31 @@ import { useHome } from '../../../home/provider';
 import { MiniappRail } from '../../../miniapps/rail';
 import { AppCardEditControls } from '../../../miniapps/card-edit-controls';
 
-const filters = [
-  { id: 'all', label: t('chat.all') },
-  { id: 'unread', label: t('chat.unread') },
-  { id: 'Direct', label: t('chat.people') },
-  { id: 'Group', label: t('chat.groups') },
-  { id: 'Community', label: t('chat.communities') },
-  { id: 'archived', label: t('chat.archived') },
-] as const;
 export default function Chats() {
-  const { snapshot, store } = useClient();
+  const client = useClient();
+  const { snapshot, store } = client;
   const { presentation: p } = useTheme();
   const home = useHome();
   const inbox = useInboxActions();
   const { items } = home;
-  const [filter, setFilter] = useState<string>('all');
+  const owner = accountScopeKey(accountScope(store, client));
+  const configuration = snapshot?.inbox_folders?.configuration;
+  const filters = folderTabs(configuration);
+  const [selection, select] = useState({ owner, id: null as string | null });
+  const chosen = selection.owner === owner ? selection.id : null;
+  const preferred = configuration?.default_folder ?? 'all';
+  const filter = chosen && filters.some((item) => item.id === chosen) ? chosen : preferred;
+  const setFilter = (id: string) => select({ owner, id });
   const [cardPending, setCardPending] = useState(false);
   const conversations = useMemo(
     () =>
       (snapshot?.conversations ?? [])
-        .filter(
-          (chat) =>
-            (filter === 'archived' ? chat.archived : !chat.archived) &&
-            (filter === 'all' ||
-              filter === 'archived' ||
-              (filter === 'unread' ? chat.unread > 0 || chat.manual_unread : chat.kind === filter)),
-        )
+        .filter((chat) => matchesFolder(chat, filter, configuration))
         .sort(
           (a, b) =>
             Number(b.pinned) - Number(a.pinned) || Number(b.last_at_ms) - Number(a.last_at_ms),
         ),
-    [snapshot, filter],
+    [snapshot, filter, configuration],
   );
   return (
     <View style={{ flex: 1, backgroundColor: 'transparent' }}>
@@ -141,6 +137,12 @@ export default function Chats() {
                   accessibilityState={{ selected: filter === item.id }}
                   aria-pressed={process.env.EXPO_OS === 'web' ? filter === item.id : undefined}
                   onPress={() => setFilter(item.id)}
+                  onLongPress={() => router.push('/settings/chat-folders')}
+                  accessibilityActions={[{ name: 'edit', label: t('inboxActions.editFolders') }]}
+                  onAccessibilityAction={(event) => {
+                    if (event.nativeEvent.actionName === 'edit')
+                      router.push('/settings/chat-folders');
+                  }}
                   style={({ pressed }) => ({
                     minHeight: 44,
                     paddingHorizontal: 0,

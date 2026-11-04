@@ -96,7 +96,9 @@ export type CoreEvent =
   | { kind: 'presence'; identityId: string; online: boolean }
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
+import type { InboxFoldersResult } from './generated/InboxFoldersResult';
 type Results = {
+  inbox_folders: InboxFoldersResult;
   chat_layout: ChatLayoutResult;
   saved_messages: SpaceSummary;
   space_member_context: SpaceMemberContext;
