@@ -340,3 +340,4 @@ mod image_publication;
 mod ledger;
 mod owner_policy;
 mod settlement;
+pub(crate) mod snapshot;

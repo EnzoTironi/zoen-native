@@ -180,7 +180,9 @@ impl DispatchAuthority for Session<'_> {
                 self.runtime.native_cut_entered.notify_one();
                 self.runtime.native_cut_resume.notified().await;
             }
-            self.runtime.finance.reserve(&binding).await?;
+            self.runtime
+                .reserve_verified_budget(self.step, &binding)
+                .await?;
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 4 {
                 return Err(RuntimeError::Unavailable);

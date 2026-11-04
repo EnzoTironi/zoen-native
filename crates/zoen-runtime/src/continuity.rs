@@ -3,6 +3,7 @@
 #![deny(clippy::all, clippy::perf, clippy::unwrap_used, clippy::expect_used)]
 mod policy;
 mod recovery;
+mod reservation;
 mod setup;
 mod stores;
 use crate::{
@@ -104,6 +105,11 @@ pub(crate) async fn inventory(
     fdb: &foundationdb::Transaction,
 ) -> Result<BTreeMap<String, String>, RuntimeError> {
     let mut result = policy_inventory(sql).await?;
+    for (subject, value) in Finance::financial_inventory(sql).await? {
+        if result.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
     for (subject, value) in crate::native::shared_commitments(runtime, fdb).await? {
         if result.insert(subject, value).is_some() {
             return Err(RuntimeError::InvalidBinding);

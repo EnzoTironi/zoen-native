@@ -1,6 +1,7 @@
 //! Shared actual policies/native capsules, source cursors and cold failure cuts.
 mod cancellation;
 mod discovery;
+mod reservation;
 use super::*;
 use relay_admission::managed_images::AnchorReader;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -137,5 +138,6 @@ pub(in crate::tests) async fn run() -> TestResult {
     }
     Box::pin(discovery::run()).await?;
     Box::pin(cancellation::run()).await?;
+    Box::pin(reservation::run()).await?;
     Ok(())
 }

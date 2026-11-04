@@ -25,6 +25,7 @@ impl Finance {
         sealed: &[u8],
     ) -> Result<FinancialState, RuntimeError> {
         let mut tx = self.begin().await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
         let balance = Self::lock_period(&mut tx, b, false).await?;
         let exact: Option<i32> = sqlx::query_scalar("SELECT 1 FROM runtime_attempts a JOIN runtime_claims c USING (attempt) WHERE a.attempt=$1 AND a.binding_digest=$2")
             .bind(&b.context.attempt_id).bind(b.digest()?).fetch_optional(&mut *tx).await?;
@@ -87,6 +88,7 @@ impl Finance {
         continuity.continuity()?;
         let (b, digest) = proof.consume();
         let mut tx = self.begin().await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
         let balance = Self::lock_period(&mut tx, &b, false).await?;
         let exact: Option<String> =
             sqlx::query_scalar("SELECT binding_digest FROM runtime_attempts WHERE attempt=$1")
@@ -238,8 +240,11 @@ impl Finance {
         kind: &str,
         digest: &str,
     ) -> Result<(), RuntimeError> {
+        let mut tx = self.begin().await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
         sqlx::query("INSERT INTO runtime_financial_acks(attempt,kind,digest) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING")
-            .bind(attempt).bind(kind).bind(digest).execute(&self.pool).await?;
+            .bind(attempt).bind(kind).bind(digest).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(())
     }
     #[cfg(test)]

@@ -505,3 +505,26 @@ pub(crate) async fn retained_reply_holder(
         .verified_reply(runtime, run)
         .await
 }
+
+/// Exercise the normal reservation phase with actual native extraction; no
+/// fixture continuity Boolean, financial permit or provider call is installed.
+pub(crate) async fn reserve_retained_reply(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<crate::Binding, RuntimeError> {
+    let step = crate::VerifiedStep::Native(Box::new(retained_reply_holder(runtime, run).await?));
+    let result: Result<crate::Binding, RuntimeError> = async {
+        let dispatch = runtime
+            .gateway
+            .preflight(step.request())
+            .map_err(|_| RuntimeError::InvalidProfile)?;
+        let binding = step.binding(&dispatch, &runtime.price)?;
+        runtime.reserve_verified_budget(&step, &binding).await?;
+        Ok(binding)
+    }
+    .await;
+    let released = step.release(&runtime.execution).await;
+    let binding = result?;
+    released?;
+    Ok(binding)
+}

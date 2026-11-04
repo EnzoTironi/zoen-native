@@ -9,6 +9,7 @@
 use super::{
     Finance, NativeDirectoryGuard, Postgres, RuntimeError, SignedOwnerPolicy, Transaction,
 };
+use sqlx::types::Json;
 
 impl Finance {
     pub(crate) async fn continuity_transaction(
@@ -85,5 +86,41 @@ impl NativeDirectoryGuard {
         }
         self.shared_native_checkpoint = true;
         Ok(self)
+    }
+}
+
+impl Finance {
+    pub(crate) async fn check_reservation_deadline(
+        tx: &mut Transaction<'_, Postgres>,
+        binding: &crate::Binding,
+        deadline: Option<i64>,
+    ) -> Result<(), RuntimeError> {
+        if deadline.is_some_and(|value| value <= 0) {
+            return Err(RuntimeError::Denied);
+        }
+        Self::policy(tx, binding).await?;
+        let now = Self::clock(tx).await?;
+        if deadline.is_some_and(|value| now >= value) {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(())
+    }
+    pub(crate) async fn observe_reservation(
+        tx: &mut Transaction<'_, Postgres>,
+        binding: &crate::Binding,
+    ) -> Result<(), RuntimeError> {
+        let original: Option<(String, Json<crate::Binding>, i64)> = sqlx::query_as(
+            "SELECT binding_digest,binding,hold_units FROM runtime_attempts WHERE attempt=$1",
+        )
+        .bind(&binding.context.attempt_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let Some((digest, Json(actual), hold)) = original else {
+            return Err(RuntimeError::RestoreUnreconciled);
+        };
+        if actual != *binding || digest != binding.digest()? || hold != binding.hold_units {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        Ok(())
     }
 }

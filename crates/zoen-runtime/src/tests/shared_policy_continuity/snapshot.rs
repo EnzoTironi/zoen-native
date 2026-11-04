@@ -8,7 +8,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-pub(super) struct Snapshot {
+pub(in crate::tests) struct Snapshot {
     directory: PathBuf,
     dump: PathBuf,
 }
@@ -50,7 +50,7 @@ pub(in crate::tests) fn check_postgres_tools() -> Result<(), Box<dyn std::error:
 }
 
 impl Snapshot {
-    pub(super) fn capture(w: &World) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(in crate::tests) fn capture(w: &World) -> Result<Self, Box<dyn std::error::Error>> {
         let directory = std::env::temp_dir().join(types::new_id("policy-snapshot")?);
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
@@ -205,5 +205,40 @@ pub(super) async fn restored_policy_refuses(
     assert_eq!(reader(&current, &home.0).await?.checkpoint()?, *tip);
     drop(current);
     println!("shared policy backup: real pg_dump/pg_restore to a new owned database preserves immutable triggers; old SQL and counter-only repairs both refuse, current original remains usable PASS");
+    Ok(())
+}
+
+pub(in crate::tests) async fn restored_finance_refuses(
+    w: &World,
+    directory: &Path,
+    snapshot: &Snapshot,
+    tip: &relay_admission::managed_images::Checkpoint,
+) -> TestResult {
+    let restored = snapshot.restore(w).await?;
+    let pool = PgPool::connect(&restored.url).await?;
+    let old_attempts: i64 = sqlx::query_scalar("SELECT count(*) FROM runtime_attempts")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(old_attempts, 0);
+    let immutable: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='runtime_attempts'::regclass AND tgname='immutable_history' AND tgenabled='O')")
+        .fetch_one(&pool).await?;
+    assert!(
+        immutable,
+        "restore retains actual financial immutability triggers"
+    );
+    sqlx::query("UPDATE runtime_image_checkpoint SET generation=$1,sequence=$2,digest=$3 WHERE singleton AND profile=3")
+        .bind(i64::try_from(tip.generation)?).bind(i64::try_from(tip.sequence)?).bind(&tip.digest).execute(&pool).await?;
+    assert!(
+        matches!(
+            fresh_at(w, &restored.url)
+                .await?
+                .open_runtime_continuity(directory)
+                .await,
+            Err(RuntimeError::RestoreUnreconciled)
+        ),
+        "identical policies and advanced markers do not hide an actually older financial ledger"
+    );
+    pool.close().await;
+    restored.cleanup(w).await?;
     Ok(())
 }
