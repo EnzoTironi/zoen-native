@@ -6,6 +6,7 @@ import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
 import { parseZoenLink } from '../notifications/links';
 import { useTheme } from '../theme';
+import { homeSpacesFor } from '../home/access';
 import { Avatar, EmptyState, Loading, NativeButton } from '../components/primitives';
 
 export default function OpenLink() {
@@ -24,17 +25,20 @@ export default function OpenLink() {
     () => ({ store, identity, device, epoch, kind, target }),
     [store, identity, device, epoch, kind, target],
   );
-  const admission = useRef<{ scope: object; pending: boolean } | null>(null);
+  const admission = useRef<{ scope: object; pending: boolean; stop?: () => void } | null>(null);
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
+  const [awaitingMembership, setAwaitingMembership] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   useFocusEffect(
     useCallback(() => {
-      const lease = { scope, pending: false };
+      const lease: NonNullable<typeof admission.current> = { scope, pending: false };
       admission.current = lease;
       setBusy(false);
+      setAwaitingMembership(false);
       setFailure(null);
       return () => {
+        lease.stop?.();
         if (admission.current === lease) admission.current = null;
       };
     }, [scope]),
@@ -60,7 +64,7 @@ export default function OpenLink() {
         account?.device_id === device
       );
     }
-    if (!link || !lease || lease.pending || !current()) return;
+    if (!link || !lease || lease.pending || lease.stop || !current()) return;
     lease.pending = true;
     setBusy(true);
     setFailure(null);
@@ -71,7 +75,22 @@ export default function OpenLink() {
           : link.kind === 'agent'
             ? await store.request({ op: 'open_agent_link', target: link.target })
             : null;
-      if (space && current()) router.replace({ pathname: '/chat/[id]', params: { id: space } });
+      if (!space || !current()) return;
+      const navigate = () => router.replace({ pathname: '/chat/[id]', params: { id: space } });
+      if (link.kind !== 'invite' || preview?.kind === 'agent') {
+        navigate();
+        return;
+      }
+      const observe = () => {
+        if (!current() || !homeSpacesFor(store.getSnapshot()).has(space)) return;
+        lease.stop?.();
+        lease.stop = undefined;
+        setAwaitingMembership(false);
+        navigate();
+      };
+      setAwaitingMembership(true);
+      lease.stop = store.subscribe(observe);
+      observe();
     } catch (reason) {
       if (current())
         setFailure(reason instanceof Error ? reason.message : t('chat.thisInviteCouldNotBeOpened'));
@@ -123,13 +142,15 @@ export default function OpenLink() {
           ) : null}
           <NativeButton
             label={
-              busy
-                ? t('chat.opening')
-                : preview?.kind === 'agent' || link.kind === 'agent'
-                  ? t('chat.openChat')
-                  : t('chat.joinChat')
+              awaitingMembership
+                ? t('chat.waitingForInviteConfirmation')
+                : busy
+                  ? t('chat.opening')
+                  : preview?.kind === 'agent' || link.kind === 'agent'
+                    ? t('chat.openChat')
+                    : t('chat.joinChat')
             }
-            disabled={busy}
+            disabled={busy || awaitingMembership}
             onPress={() => {
               void open();
             }}

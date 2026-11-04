@@ -27,15 +27,21 @@ function button(node: Element | Element[]): Element | undefined {
   return node.type === 'Button' ? node : button(node.props.children);
 }
 
-test('invite admission rejects an old route callback and late navigation after session replacement', async () => {
+function fixture() {
   const host = hookHost();
   const routes: unknown[] = [];
+  const members = new Set<string>();
+  const listeners = new Set<() => void>();
   const joins: string[] = [];
   const pending = deferred<string>();
   const snapshot = { account: { identity_id: 'person', device_id: 'device' } };
   const store = {
     sessionEpoch: 1,
     getSnapshot: () => ({ snapshot }),
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     request: ({ code }: { code: string }) => {
       joins.push(code);
       return pending.promise;
@@ -70,6 +76,8 @@ test('invite admission rejects an old route callback and late navigation after s
           return {
             parseZoenLink: (url: string) => ({ kind: 'invite', code: url.split('/').at(-1) }),
           };
+        case '../home/access':
+          return { homeSpacesFor: () => members };
         case '../theme':
           return { useTheme: () => ({ colors: {} }) };
         case '../components/primitives':
@@ -81,18 +89,55 @@ test('invite admission rejects an old route callback and late navigation after s
       }
     },
   });
-  const render = () => button(host.render(() => module.exports.default()))!.props.onPress;
-  const old = render();
-  target = 'second';
-  const current = render();
+  return {
+    host,
+    routes,
+    joins,
+    pending,
+    store,
+    listeners,
+    render: () => button(host.render(() => module.exports.default()))!.props,
+    setTarget: (value: string) => {
+      target = value;
+    },
+    confirm: (space: string) => {
+      members.add(space);
+      for (const listener of listeners) listener();
+    },
+  };
+}
+
+test('invite admission rejects an old route callback and late navigation after session replacement', async () => {
+  const f = fixture();
+  const old = f.render().onPress;
+  f.setTarget('second');
+  const current = f.render().onPress;
   old();
-  assert.deepEqual(joins, []);
+  assert.deepEqual(f.joins, []);
   current();
   current();
-  assert.deepEqual(joins, ['second']);
-  store.sessionEpoch++;
-  pending.resolve('joined-space');
+  assert.deepEqual(f.joins, ['second']);
+  f.store.sessionEpoch++;
+  f.pending.resolve('joined-space');
   await tick();
-  assert.deepEqual(routes, []);
-  host.blur();
+  assert.deepEqual(f.routes, []);
+  f.host.blur();
+});
+
+test('queued group invite opens only after the exact membership appears', async () => {
+  const f = fixture();
+  f.render().onPress();
+  f.pending.resolve('joined-space');
+  await tick();
+  const waiting = f.render();
+  assert.equal(waiting.label, 'chat.waitingForInviteConfirmation');
+  assert.equal(waiting.disabled, true);
+  waiting.onPress();
+  assert.deepEqual(f.joins, ['first']);
+  f.confirm('other-space');
+  assert.equal(f.routes.length, 0);
+  f.confirm('joined-space');
+  assert.equal(f.routes.length, 1);
+  assert.equal(f.listeners.size, 0);
+  f.host.blur();
 });
