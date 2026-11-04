@@ -32,6 +32,7 @@ export function preparePackage(app: string, directory: string) {
     '031+semantic-projection-android-codegen',
     '034+composer-canonical-sizing',
     '035+composer-live-style',
+    '037+spoiler-summary',
   ].map((stage) => join(app, `patches/react-native-enriched-markdown+1.1.1+${stage}.patch`));
   const paths = new Set(
     patches.flatMap((patch) =>
@@ -121,6 +122,10 @@ export function preparePackage(app: string, directory: string) {
     () =>
       readFileSync(join(pkg, 'ios/input/EnrichedMarkdownTextInput.mm'), 'utf8').includes(
         'BOOL _needsFullStyleRefresh;',
+      ),
+    () =>
+      readFileSync(join(pkg, 'ios/utils/MarkdownASTSerializer.m'), 'utf8').includes(
+        'NSString *ENRMMessageSummaryText(',
       ),
   ];
   for (const [index, patch] of patches.entries())
