@@ -6,27 +6,7 @@ pub(crate) async fn recover_shared_native(
     managed: &mut ManagedRuntime,
     prepared: &Prepared,
 ) -> Result<(), RuntimeError> {
-    let encoded = prepared
-        .intent
-        .as_deref()
-        .and_then(|value| value.strip_prefix(PREFIX))
-        .ok_or(RuntimeError::RestoreUnreconciled)?;
-    if encoded.len() > 16_384 {
-        return Err(RuntimeError::EvidenceTooLarge);
-    }
-    let bytes = STANDARD
-        .decode(encoded)
-        .map_err(|_| RuntimeError::InvalidBinding)?;
-    let intent: Intent = runtime
-        .custody
-        .open("runtime-native-maintenance/1", None, &bytes)?;
-    if intent.format != 1
-        || prepared.retirement
-        || prepared.effect_digest != intent.effect()?
-        || prepared.subject_updates != intent.updates()?
-    {
-        return Err(RuntimeError::RestoreUnreconciled);
-    }
+    let intent = open_intent(&runtime.custody, prepared)?;
     let custody = runtime
         .native
         .as_ref()
@@ -62,7 +42,23 @@ pub(crate) async fn recover_shared_native(
         if capsule.root != intent.target {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        custody.open_image(principal, capsule)?;
+        let core = DeviceCore::restore(
+            custody.open_image(principal, capsule)?,
+            credential.unlocked()?,
+        )
+        .map_err(|_| RuntimeError::InvalidBinding)?;
+        if let Some(publication) = &intent.publication {
+            publication
+                .apply(
+                    runtime,
+                    &tx,
+                    &intent.target,
+                    publication.retained(&runtime.custody, &core)?,
+                    &managed.deployment.namespace,
+                    prepared,
+                )
+                .await?;
+        }
         sql.commit().await?;
         if managed
             .anchor
@@ -142,7 +138,13 @@ pub(crate) async fn recover_shared_native(
             .await?
             .shared_native_checkpoint(managed, prepared, &scope, true)
             .await?
-            .authorize(scope.clone())
+            .authorize_before(
+                scope.clone(),
+                intent
+                    .publication
+                    .as_ref()
+                    .and_then(|value| value.expires()),
+            )
             .await?;
         runtime
             .execution
@@ -151,7 +153,26 @@ pub(crate) async fn recover_shared_native(
         if let Some(discovery) = &intent.discovery {
             discovery.apply(runtime, &tx, &intent.target, false).await?;
         }
+        if let Some(publication) = &intent.publication {
+            publication
+                .apply(
+                    runtime,
+                    &tx,
+                    &intent.target,
+                    publication.retained(&runtime.custody, &core)?,
+                    &managed.deployment.namespace,
+                    prepared,
+                )
+                .await?;
+        }
         managed.write_fdb(runtime, &tx, prepared).await?;
+        if intent.publication.is_some() {
+            let mut sql = runtime.finance.continuity_transaction().await?;
+            if inventory(runtime, &mut sql, &tx).await? != expected {
+                return Err(RuntimeError::RestoreUnreconciled);
+            }
+            sql.commit().await?;
+        }
         tx.clear(&pin);
         admission.consume(&scope)?;
         tx.commit().await.map_err(|_| RuntimeError::Unavailable)?;

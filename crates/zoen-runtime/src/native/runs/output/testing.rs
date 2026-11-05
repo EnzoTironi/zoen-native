@@ -596,3 +596,49 @@ pub(crate) async fn retained_result(
         retained.text(&record)?.into(),
     ))
 }
+
+/// Read the actual cold native capsule, without an observer or output fixture.
+pub(crate) async fn retained_publication(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<protocol::Envelope, RuntimeError> {
+    let tx = runtime.execution.transaction().await?;
+    let (record, original) = runtime
+        .execution
+        .reply_in(&tx, run, &runtime.custody)
+        .await?;
+    let capture = runtime
+        .execution
+        .output_capture_in(&tx, &record, &original, &runtime.custody)
+        .await?;
+    let publication = runtime
+        .execution
+        .publication_in(
+            &tx,
+            &record,
+            &original,
+            &capture.association.digest,
+            &runtime.custody,
+        )
+        .await?
+        .ok_or(RuntimeError::Denied)?;
+    let principal = &record.original.context.principal;
+    let native = runtime
+        .native
+        .as_ref()
+        .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
+    let credential = native.credential(&principal.agent, &principal.device)?;
+    let capsule = runtime.execution.read_native(principal, None).await?;
+    let core = DeviceCore::restore(
+        native.open_image(principal, capsule)?,
+        credential.unlocked()?,
+    )
+    .map_err(native_error)?;
+    let retained = core
+        .retained_reply(&record.intent, &publication.value.client_id)
+        .map_err(native_error)?;
+    if !publication.value.matches_retained(&retained) {
+        return Err(RuntimeError::InvalidBinding);
+    }
+    Ok(retained.envelope().clone())
+}

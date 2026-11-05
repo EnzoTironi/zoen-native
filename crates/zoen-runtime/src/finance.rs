@@ -149,6 +149,9 @@ impl NativeDirectoryGuard {
         ) {
             return Err(RuntimeError::InvalidBinding);
         }
+        if Finance::policy_scope(&mut self.tx).await? == Some(3) && !self.shared_native_checkpoint {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
         let started = std::time::Instant::now();
         let clock = Finance::clock(&mut self.tx).await?;
         let remaining = match scope.expires_at_ms() {

@@ -121,14 +121,16 @@ impl RuntimeAuthority {
         }
         sqlx::query("INSERT INTO runtime_image_checkpoint(namespace,witness,agent,device,generation,sequence,digest,profile) VALUES($1,$2,NULL,NULL,1,0,$3,3) ON CONFLICT DO NOTHING")
             .bind(&deployment.namespace).bind(&deployment.witness).bind(&genesis.digest).execute(&mut *sql).await?;
-        let mut managed = ManagedRuntime { anchor, deployment };
+        let managed = ManagedRuntime { anchor, deployment };
         if managed.sql_checkpoint(&mut sql).await? != genesis {
             return Err(RuntimeError::RestoreUnreconciled);
         }
         fdb.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         sql.commit().await?;
-        managed.reconcile(&self).await?;
-        self.runtime_continuity = Some(Arc::new(tokio::sync::Mutex::new(managed)));
+        self.runtime_continuity = Some(Arc::new(super::RuntimeContinuity::new(managed)));
+        // This owned constructor publishes no Runtime before reconciliation.
+        // Its inventory needs the read-only view of the same anchor during open.
+        self.check_shared_runtime().await?;
         Ok(self)
     }
 
@@ -147,9 +149,11 @@ impl RuntimeAuthority {
         }
         let deployment = self.shared_deployment().await?;
         let anchor = AnchorWriter::open_runtime(directory, deployment.clone()).map_err(error)?;
-        let mut managed = ManagedRuntime { anchor, deployment };
-        managed.reconcile(&self).await?;
-        self.runtime_continuity = Some(Arc::new(tokio::sync::Mutex::new(managed)));
+        let managed = ManagedRuntime { anchor, deployment };
+        self.runtime_continuity = Some(Arc::new(super::RuntimeContinuity::new(managed)));
+        // This owned constructor publishes no Runtime before reconciliation.
+        // Its inventory needs the read-only view of the same anchor during open.
+        self.check_shared_runtime().await?;
         Ok(self)
     }
 }

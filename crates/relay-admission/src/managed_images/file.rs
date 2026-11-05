@@ -81,6 +81,26 @@ pub(super) fn sync_directory(path: &Path) -> Result<(), AnchorError> {
 }
 
 impl AnchorReader {
+    /// Read-only history matching an observed store state, including its exact
+    /// pending half-commit. Pending facts cannot grant a publication permit.
+    pub fn observed_transition(&self, observed: &Checkpoint) -> Result<Prepared, AnchorError> {
+        let state = self.state()?;
+        if let Some(prepared) = state.prepared {
+            if prepared.next == *observed {
+                return Ok(prepared);
+            }
+        }
+        if observed.sequence > state.committed.sequence
+            || observed.generation > state.committed.generation
+        {
+            return Err(AnchorError::Unreconciled);
+        }
+        // Archived facts remain readable after retirement. Publication still
+        // requires the separate live-generation guard/consumption APIs.
+        self.checkpoint_effect(observed)?
+            .ok_or(AnchorError::Unreconciled)
+    }
+
     /// Read-only domain from the trusted constructor. This does not migrate an
     /// anchor or attest current store state, principal authorization or effects.
     #[must_use]
