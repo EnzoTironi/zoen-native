@@ -17,6 +17,7 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/parser/MarkdownPars
 +  return result;
  }
 diff --git a/node_modules/react-native-enriched-markdown/ios/parser/ENRMHashtags.h b/node_modules/react-native-enriched-markdown/ios/parser/ENRMHashtags.h
+new file mode 100644
 --- /dev/null
 +++ b/node_modules/react-native-enriched-markdown/ios/parser/ENRMHashtags.h
 @@ -0,0 +1,74 @@
