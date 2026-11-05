@@ -525,6 +525,10 @@ impl RuntimeAuthority {
                 &sealed,
             ))
             .await?;
+            let _ = Box::pin(
+                self.associate_shared_capture(&capture.binding.context.attempt_id, &digest),
+            )
+            .await;
             return Ok((result, state));
         }
         // Output association refusal must not prevent either independent store

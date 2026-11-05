@@ -1,15 +1,14 @@
 use super::*;
+pub(in crate::continuity) struct CaptureInventory {
+    pub(in crate::continuity) commitments: BTreeMap<String, String>,
+    pub(in crate::continuity) associations: BTreeMap<String, String>,
+    pub(in crate::continuity) attempts: std::collections::BTreeSet<String>,
+    pub(in crate::continuity) bytes: usize,
+}
 pub(in crate::continuity) async fn commitments(
     runtime: &RuntimeAuthority,
     tx: &foundationdb::Transaction,
-) -> Result<
-    (
-        BTreeMap<String, String>,
-        std::collections::BTreeSet<String>,
-        usize,
-    ),
-    RuntimeError,
-> {
+) -> Result<CaptureInventory, RuntimeError> {
     let prefix = runtime
         .execution
         .root
@@ -26,6 +25,7 @@ pub(in crate::continuity) async fn commitments(
     }
     let mut result = BTreeMap::new();
     let mut total = 0usize;
+    let mut associations = BTreeMap::new();
     let mut attempts = std::collections::BTreeSet::new();
     for (key, bytes) in rows {
         let pointer: Pointer =
@@ -43,7 +43,19 @@ pub(in crate::continuity) async fn commitments(
         if total > crate::capture_codec::INVENTORY_MAXIMUM {
             return Err(RuntimeError::EvidenceTooLarge);
         }
-        pointer.verify(runtime, tx, &root).await?;
+        let (_, binding, nonce) = pointer.verify(runtime, tx, &root).await?;
+        if let Some(bytes) = runtime
+            .execution
+            .retained_capture_association_in(
+                tx,
+                &binding,
+                (&pointer.digest, &nonce),
+                &runtime.custody,
+            )
+            .await?
+        {
+            associations.insert(pointer.subject()?, crate::hash(&bytes));
+        }
         attempts.insert(pointer.attempt.clone());
         if result
             .insert(pointer.subject()?, crate::hash(&bytes))
@@ -52,5 +64,10 @@ pub(in crate::continuity) async fn commitments(
             return Err(RuntimeError::InvalidBinding);
         }
     }
-    Ok((result, attempts, total))
+    Ok(CaptureInventory {
+        commitments: result,
+        associations,
+        attempts,
+        bytes: total,
+    })
 }

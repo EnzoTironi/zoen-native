@@ -10,7 +10,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 pub(super) use inventory::commitments;
 pub(super) use record::capture_intent;
 use record::{Intent, Original, Pointer, Source};
-pub(super) use reference::reference;
+pub(super) use reference::{reference, pending_associations};
 use serde::{Deserialize, Serialize};
 
 async fn settle(
