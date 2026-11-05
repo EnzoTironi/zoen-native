@@ -121,10 +121,19 @@ pub(crate) async fn current_managed(
         return Err("managed namespace refused");
     }
     let requested = checkpoint(request)?;
-    let row: Option<(i64,i64,String)> = sqlx::query_as(
-        "SELECT generation,sequence,digest FROM runtime_image_checkpoint WHERE singleton AND namespace=$1 AND witness=$2 AND agent=$3 AND device=$4",
-    ).bind(&deployment.namespace).bind(&deployment.witness).bind(&deployment.agent)
-        .bind(&deployment.device).fetch_optional(&st.pool).await.map_err(|_| "managed stores unavailable")?;
+    // Select by the independently configured anchor's domain, never by a
+    // request flag or a permissive fallback to a different SQL profile.
+    let query = if let Some(runtime) = configured.anchor().runtime_deployment() {
+        sqlx::query_as("SELECT generation,sequence,digest FROM runtime_image_checkpoint WHERE singleton AND profile=3 AND namespace=$1 AND witness=$2 AND agent IS NULL AND device IS NULL")
+            .bind(&runtime.namespace).bind(&runtime.witness)
+    } else {
+        sqlx::query_as("SELECT generation,sequence,digest FROM runtime_image_checkpoint WHERE singleton AND profile=2 AND namespace=$1 AND witness=$2 AND agent=$3 AND device=$4")
+            .bind(&deployment.namespace).bind(&deployment.witness).bind(&deployment.agent).bind(&deployment.device)
+    };
+    let row: Option<(i64, i64, String)> = query
+        .fetch_optional(&st.pool)
+        .await
+        .map_err(|_| "managed stores unavailable")?;
     let (generation, sequence, digest) = row.ok_or("managed checkpoint missing")?;
     let sql = relay_admission::managed_images::Checkpoint {
         generation: u64::try_from(generation).map_err(|_| "invalid managed checkpoint")?,

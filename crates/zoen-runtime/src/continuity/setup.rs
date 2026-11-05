@@ -3,7 +3,7 @@ use foundationdb::RangeOption;
 use std::{path::Path, sync::Arc};
 
 impl RuntimeAuthority {
-    async fn shared_deployment(&self) -> Result<RuntimeDeployment, RuntimeError> {
+    pub(super) async fn shared_deployment(&self) -> Result<RuntimeDeployment, RuntimeError> {
         let (namespace, witness): (String, String) = sqlx::query_as(
             "SELECT namespace,witness FROM runtime_deployment_binding WHERE singleton",
         )

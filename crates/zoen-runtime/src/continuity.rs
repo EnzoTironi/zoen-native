@@ -8,7 +8,9 @@ pub(crate) mod dispatch;
 mod policy;
 mod recovery;
 mod reservation;
+mod scope;
 mod setup;
+pub(crate) use scope::SharedOutputAnchor;
 mod stores;
 use crate::{
     finance::{Finance, NativeDirectoryGuard},

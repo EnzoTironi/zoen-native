@@ -6,6 +6,7 @@ pub(in crate::tests) mod capture;
 mod claims;
 mod discovery;
 mod dispatch;
+pub(in crate::tests) mod output_route;
 mod reservation;
 use super::*;
 use relay_admission::managed_images::AnchorReader;

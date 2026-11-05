@@ -554,3 +554,10 @@ pub(crate) async fn claim_retained_reply(
     released?;
     Ok(claim)
 }
+
+pub(crate) async fn qualify_shared_output(
+    runtime: &RuntimeAuthority,
+    target: ImageDeliveryTarget,
+) -> Result<ManagedNativeOutput, RuntimeError> {
+    ManagedNativeOutput::qualify_shared(runtime, target).await
+}

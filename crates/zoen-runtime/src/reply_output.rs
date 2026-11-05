@@ -2,6 +2,17 @@
 use crate::*;
 
 impl RuntimeAuthority {
+    pub(crate) fn production_output_scope(
+        &self,
+    ) -> Result<&dyn native::NativeOutputAuthority, RuntimeError> {
+        // The typed route attests current pairing/relay binding. Per-run
+        // activation and full deployment continuity remain separate boundaries.
+        self.reply_output
+            .as_ref()
+            .map(|scope| scope as &dyn native::NativeOutputAuthority)
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)
+    }
+
     /// Closed until actual custody, continuity and old-writer barrier evidence
     /// can authorize this boundary. A locator never creates that evidence.
     pub async fn prepare_reply_output(
