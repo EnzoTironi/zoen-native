@@ -152,3 +152,24 @@ cache/held-lease refusal, private-copy survival and owned cancellation. Without
 explicit admission the real fixture is visibly skipped, which is not Android
 qualification. Source-only preparation and tests actually executed must be
 reported separately.
+
+## Managed local Rust cache
+
+Use `scripts/cargo-local.sh check`, `build`, `clippy` or `test` for ordinary local
+Rust work. The thin wrapper finds the existing rustup toolchain and runs
+[Mr Boxington](https://mr-boxington.jdx.dev/installation); it does not upgrade
+Rust, alter compilation flags or configure a remote service. Direct `cargo`
+commands do not automatically use this route.
+
+The current Mac configuration uses a shared 20 GiB collection budget, a 40 GiB
+free-space target, seven-day target retention and collection checks after builds
+at five-minute intervals. These are collection policies, not filesystem quotas:
+active/protected outputs can temporarily exceed the budget. macOS APFS clone
+restoration was verified with a fresh target and an actual cache hit. Configuration
+lives in the user's mbx settings, not in a machine-specific repository file.
+
+Keep explicit target paths required by the native artifact contracts and source
+guard. They are not automatically placed under mbx's managed-target collection;
+using a compiler cache does not replace the source-bound receipt or qualify an
+artifact. Do not create another external target per verification batch. Persistent
+QA environments, sources and evidence are not compiler-cache cleanup candidates.

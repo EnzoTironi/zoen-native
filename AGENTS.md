@@ -20,3 +20,9 @@ Use essa ordem para tomar decisões e executar mudanças. Mantenha um registro c
 
 Execute o driver local de QA sempre por `python3 scripts/qa-device.py <verb> ...`; `fill` e `type` são bloqueados no driver padrão. A alternativa privada exige a fonte exata qualificada e a configuração isolada documentada.
 Siga [o guia do driver iPhone](docs/dev/iphone-qa-driver.md); não contorne a guarda pelo driver bruto ou outra interface.
+
+# Builds locais
+
+Use `scripts/cargo-local.sh` para builds, checks, Clippy e testes Rust locais. O wrapper usa Mr Boxington para compartilhar artefatos e gerenciar targets, respeitando o toolchain fixado. Não crie outro `target` ou `CARGO_TARGET_DIR` por lote.
+
+Preserve os caminhos explícitos exigidos pelos contratos nativos e pelo source guard; nesses casos, não remova nem desvie suas verificações. Os limites de coleta do mbx cobrem somente seu armazenamento gerenciado. Não apague projetos, evidências ou dados persistentes para liberar espaço.
