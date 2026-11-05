@@ -173,3 +173,9 @@ guard. They are not automatically placed under mbx's managed-target collection;
 using a compiler cache does not replace the source-bound receipt or qualify an
 artifact. Do not create another external target per verification batch. Persistent
 QA environments, sources and evidence are not compiler-cache cleanup candidates.
+
+On macOS the system script interpreter strips inherited `DYLD_*` variables. The
+local wrapper restores the explicit `ZOEN_DYLD_LIBRARY_PATH` when provided, or
+the matching project `LIBRARY_PATH` when the runtime path is absent. This keeps
+FoundationDB test binaries loadable through mbx without replacing the selected
+native library or changing Rust compilation flags.
