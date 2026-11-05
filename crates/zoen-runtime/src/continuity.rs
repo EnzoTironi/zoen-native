@@ -133,14 +133,14 @@ pub(crate) async fn inventory(
     // Unrelated transitions cannot consume another in-flight call's capacity.
     let pending = admitted.difference(&captured).count();
     let reserved_bytes = pending
-        .checked_mul(crate::custody::MAX_SEALED)
+        .checked_mul(crate::capture_codec::MAXIMUM)
         .and_then(|value| value.checked_add(bytes))
         .ok_or(RuntimeError::EvidenceTooLarge)?;
     if result
         .len()
         .checked_add(pending)
         .is_none_or(|value| value > 512)
-        || reserved_bytes > 2 * 1024 * 1024
+        || reserved_bytes > crate::capture_codec::INVENTORY_MAXIMUM
     {
         return Err(RuntimeError::EvidenceTooLarge);
     }

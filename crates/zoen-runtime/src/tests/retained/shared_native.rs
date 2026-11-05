@@ -1,6 +1,6 @@
 //! Shared actual policies/native capsules, source cursors and cold failure cuts.
 mod cancellation;
-mod capture;
+pub(in crate::tests) mod capture;
 mod claims;
 mod discovery;
 mod dispatch;

@@ -11,8 +11,8 @@ pub(super) struct Pointer {
     binding_digest: String,
     nonce_digest: String,
 }
-pub(super) struct Original {
-    pub(super) capture: crate::Capture,
+pub(super) struct Original<'a> {
+    pub(super) capture: &'a crate::Capture,
     pub(super) sealed: Vec<u8>,
     pub(super) nonce: String,
 }
@@ -62,15 +62,18 @@ impl Pointer {
             .root
             .pack(&("evidence", self.attempt.as_str(), self.digest.as_str()))
     }
-    pub(super) async fn original(
+    /// Check the actual snapshot against the exact ciphertext commitment. The
+    /// independent subject authenticates this pointer; reading intact bytes
+    /// does not require decrypting every historical response under a DB lock.
+    pub(super) async fn verify(
         &self,
         runtime: &RuntimeAuthority,
         tx: &foundationdb::Transaction,
         root: &[u8],
-    ) -> Result<Original, RuntimeError> {
+    ) -> Result<(Vec<u8>, crate::Binding, String), RuntimeError> {
         if crate::hash(root) != self.root_digest
             || crate::execution::Execution::evidence_payload_size(root)?
-                > crate::custody::MAX_SEALED
+                > crate::capture_codec::MAXIMUM
         {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -81,19 +84,6 @@ impl Pointer {
         if crate::hash(&sealed) != self.sealed_digest {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        let capture: crate::Capture = runtime.custody.open(
-            &format!("evidence/{}", self.attempt),
-            Some(&self.digest),
-            &sealed,
-        )?;
-        if capture.binding.context.attempt_id != self.attempt
-            || capture.binding.digest()? != self.binding_digest
-            || capture.result.context != capture.binding.context
-            || capture.result.request_digest != capture.binding.request_digest
-        {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        capture.binding.price.chat()?.charge(&capture.result)?;
         let prepared = tx
             .get(&runtime.execution.attempt(&self.attempt, "prepared"), false)
             .await?
@@ -102,7 +92,7 @@ impl Pointer {
             runtime
                 .custody
                 .open(&format!("prepared/{}", self.attempt), None, &prepared)?;
-        if binding != capture.binding {
+        if binding.context.attempt_id != self.attempt || binding.digest()? != self.binding_digest {
             return Err(RuntimeError::InvalidBinding);
         }
         let admitted = tx
@@ -114,6 +104,25 @@ impl Pointer {
         }
         let nonce =
             String::from_utf8(admitted.to_vec()).map_err(|_| RuntimeError::InvalidBinding)?;
+        Ok((sealed, binding, nonce))
+    }
+    pub(super) async fn original<'a>(
+        &self,
+        runtime: &RuntimeAuthority,
+        tx: &foundationdb::Transaction,
+        root: &[u8],
+        verified: &'a crate::capture_codec::VerifiedCapture,
+    ) -> Result<Original<'a>, RuntimeError> {
+        let (sealed, binding, nonce) = self.verify(runtime, tx, root).await?;
+        let capture = verified.capture();
+        if capture.binding != binding
+            || capture.result.context != binding.context
+            || capture.result.request_digest != binding.request_digest
+            || !verified.matches(&self.digest, &self.sealed_digest)
+        {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        binding.price.chat()?.charge(&capture.result)?;
         Ok(Original {
             capture,
             sealed,
@@ -198,23 +207,5 @@ pub(in crate::continuity) fn capture_intent(prepared: &Prepared) -> bool {
         .is_some_and(|v| v.starts_with(PREFIX))
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Source {
-    pub(super) attempt: String,
-    pub(super) digest: String,
-    pub(super) sealed: Vec<u8>,
-}
-impl Source {
-    pub(super) fn bytes(&self) -> Result<Vec<u8>, RuntimeError> {
-        serde_json::to_vec(self).map_err(|_| RuntimeError::InvalidBinding)
-    }
-    pub(super) fn read(managed: &ManagedRuntime, key: &str) -> Result<Self, RuntimeError> {
-        let bytes = managed
-            .anchor
-            .reader()
-            .retained_original(key)
-            .map_err(error)?;
-        serde_json::from_slice(&bytes).map_err(|_| RuntimeError::InvalidBinding)
-    }
-}
+mod source;
+pub(super) use source::{Source, SOURCE_MAXIMUM};

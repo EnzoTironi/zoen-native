@@ -3,7 +3,7 @@
 use super::*;
 async fn observe(
     sql: &mut Transaction<'_, Postgres>,
-    original: &Original,
+    original: &Original<'_>,
     pointer: &Pointer,
 ) -> Result<(), RuntimeError> {
     Finance::observe_witness(sql, &original.capture.binding, &original.nonce).await?;
@@ -49,13 +49,25 @@ impl ManagedRuntime {
         if source.attempt != intent.pointer.attempt || source.digest != intent.pointer.digest {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        let root = source.sealed;
+        let verified = crate::capture_codec::authenticate(
+            &runtime.custody,
+            &source.attempt,
+            &source.digest,
+            &source.sealed,
+        )?;
+        let root = runtime
+            .execution
+            .evidence_payload(&source.attempt, &source.digest, &source.sealed)
+            .await?;
 
         let mut sql = runtime.finance.continuity_transaction().await?;
         let sql_cp = self.sql_checkpoint(&mut sql).await?;
         let tx = runtime.execution.transaction().await?;
         let fdb_cp = self.fdb_checkpoint(runtime, &tx).await?;
-        let original = intent.pointer.original(runtime, &tx, &root).await?;
+        let original = intent
+            .pointer
+            .original(runtime, &tx, &root, &verified)
+            .await?;
         if intent.financial.subject
             != crate::finance::snapshot::subject(
                 &original.capture.binding.context.owner,

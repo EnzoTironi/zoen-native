@@ -75,6 +75,22 @@ impl AnchorReader {
     /// # Errors
     /// Missing, oversized, non-private, non-regular or changed bytes refuse.
     pub fn retained_original(&self, key: &str) -> Result<Vec<u8>, AnchorError> {
+        self.retained_original_bounded(key, MAXIMUM)
+    }
+
+    /// Read a content-addressed original under an explicit host memory bound.
+    ///
+    /// # Errors
+    /// Refuses invalid bounds, changed bytes and the same storage failures as
+    /// `retained_original`; it never raises the default reader's bound.
+    pub fn retained_original_bounded(
+        &self,
+        key: &str,
+        maximum: usize,
+    ) -> Result<Vec<u8>, AnchorError> {
+        if maximum == 0 || maximum > 64 * 1024 * 1024 {
+            return Err(AnchorError::Invalid);
+        }
         self.state()?;
         if !digest(key) {
             return Err(AnchorError::Invalid);
@@ -86,14 +102,14 @@ impl AnchorReader {
         regular(&path)?;
         let file = fs::File::open(path).map_err(unavailable)?;
         let length = file.metadata().map_err(unavailable)?.len();
-        if length == 0 || length > u64::try_from(MAXIMUM).map_err(|_| AnchorError::Invalid)? {
+        if length == 0 || length > u64::try_from(maximum).map_err(|_| AnchorError::Invalid)? {
             return Err(AnchorError::Invalid);
         }
         let mut bytes = Vec::new();
-        file.take(u64::try_from(MAXIMUM + 1).map_err(|_| AnchorError::Invalid)?)
+        file.take(u64::try_from(maximum + 1).map_err(|_| AnchorError::Invalid)?)
             .read_to_end(&mut bytes)
             .map_err(unavailable)?;
-        if bytes.len() > MAXIMUM || event_log::sha256_hex(&bytes) != key {
+        if bytes.len() > maximum || event_log::sha256_hex(&bytes) != key {
             return Err(AnchorError::Unreconciled);
         }
         Ok(bytes)
@@ -107,14 +123,30 @@ impl AnchorWriter {
     /// Refuses quota, corruption and unknown write acknowledgements. Retry the
     /// same bytes; an existing exact original is synchronized, never replaced.
     pub fn retain_original(&mut self, bytes: &[u8]) -> Result<String, AnchorError> {
+        self.retain_bounded_original(bytes, MAXIMUM)
+    }
+
+    /// Retain a larger opaque original with the same atomic writer and a
+    /// caller-declared bound; the default API remains limited to 512 KiB.
+    ///
+    /// # Errors
+    /// Refuses invalid bounds, quota, corruption and unknown acknowledgements.
+    pub fn retain_bounded_original(
+        &mut self,
+        bytes: &[u8],
+        maximum: usize,
+    ) -> Result<String, AnchorError> {
+        if maximum == 0 || maximum > 64 * 1024 * 1024 {
+            return Err(AnchorError::Invalid);
+        }
         self.reader().state()?;
-        if bytes.is_empty() || bytes.len() > MAXIMUM {
+        if bytes.is_empty() || bytes.len() > maximum {
             return Err(AnchorError::Invalid);
         }
         let key = event_log::sha256_hex(bytes);
         let keys = self.reader().retained_originals()?;
         if keys.contains(&key) {
-            if self.reader().retained_original(&key)? != bytes {
+            if self.reader().retained_original_bounded(&key, maximum)? != bytes {
                 return Err(AnchorError::Unreconciled);
             }
             let directory = self

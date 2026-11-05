@@ -40,10 +40,10 @@ pub(in crate::continuity) async fn commitments(
         total = total
             .checked_add(crate::execution::Execution::evidence_payload_size(&root)?)
             .ok_or(RuntimeError::EvidenceTooLarge)?;
-        if total > 2 * 1024 * 1024 {
+        if total > crate::capture_codec::INVENTORY_MAXIMUM {
             return Err(RuntimeError::EvidenceTooLarge);
         }
-        pointer.original(runtime, tx, &root).await?;
+        pointer.verify(runtime, tx, &root).await?;
         attempts.insert(pointer.attempt.clone());
         if result
             .insert(pointer.subject()?, crate::hash(&bytes))

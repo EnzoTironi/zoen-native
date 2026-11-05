@@ -46,7 +46,7 @@ impl PriceProfile {
             || self.max_billable_input_tokens == 0
             || self.max_output_tokens == 0
             || !(1..=32768).contains(&self.max_request_bytes)
-            || !(1..=16384).contains(&self.max_response_bytes)
+            || !(1..=16_777_216).contains(&self.max_response_bytes)
         {
             return Err(RuntimeError::InvalidProfile);
         }

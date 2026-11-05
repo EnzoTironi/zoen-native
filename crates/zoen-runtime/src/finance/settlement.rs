@@ -214,13 +214,13 @@ impl Finance {
         for (attempt, kind, digest, length) in metadata {
             let length =
                 usize::try_from(length.unwrap_or(0)).map_err(|_| RuntimeError::InvalidBinding)?;
-            if length > 32 * 1024 * 1024 {
+            if length > crate::custody::MAX_PAYLOAD {
                 return Err(RuntimeError::EvidenceTooLarge);
             }
             let next = total
                 .checked_add(length)
                 .ok_or(RuntimeError::EvidenceTooLarge)?;
-            if next > 32 * 1024 * 1024 {
+            if next > crate::custody::MAX_PAYLOAD {
                 break;
             }
             let sealed: Option<Vec<u8>> = if length == 0 {

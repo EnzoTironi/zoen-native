@@ -27,9 +27,10 @@ impl RuntimeAuthority {
                 .map_err(error)?
             {
                 let source = Source::read(&managed, &key)?;
-                let capture: Capture = self.custody.open(
-                    &format!("evidence/{}", source.attempt),
-                    Some(&source.digest),
+                let capture = crate::capture_codec::open(
+                    &self.custody,
+                    &source.attempt,
+                    &source.digest,
                     &source.sealed,
                 )?;
                 if capture.binding.context.attempt_id != source.attempt {

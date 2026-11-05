@@ -4,7 +4,7 @@ mod inventory;
 mod record;
 mod recovery;
 use super::*;
-use crate::{Capture, FinancialState};
+use crate::FinancialState;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 pub(super) use inventory::commitments;
 pub(super) use record::capture_intent;
@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 
 async fn settle(
     sql: &mut Transaction<'_, Postgres>,
-    original: &Original,
+    original: &Original<'_>,
     pointer: &Pointer,
 ) -> Result<FinancialState, RuntimeError> {
-    let capture = &original.capture;
+    let capture = original.capture;
     Finance::observe_witness(sql, &capture.binding, &original.nonce).await?;
     let prior: Option<Vec<u8>> =
         sqlx::query_scalar("SELECT sealed FROM runtime_evidence WHERE attempt=$1 AND digest=$2")
@@ -44,9 +44,8 @@ impl RuntimeAuthority {
         digest: &str,
         sealed: &[u8],
     ) -> Result<FinancialState, RuntimeError> {
-        let capture: Capture =
-            self.custody
-                .open(&format!("evidence/{attempt}"), Some(digest), sealed)?;
+        let verified = crate::capture_codec::authenticate(&self.custody, attempt, digest, sealed)?;
+        let capture = verified.capture();
         if capture.binding.context.attempt_id != attempt
             || capture.result.context != capture.binding.context
             || capture.result.request_digest != capture.binding.request_digest
@@ -64,7 +63,10 @@ impl RuntimeAuthority {
             digest: digest.into(),
             sealed: sealed.to_vec(),
         };
-        let original_key = match managed.anchor.retain_original(&source.bytes()?) {
+        let original_key = match managed
+            .anchor
+            .retain_bounded_original(&source.bytes()?, record::SOURCE_MAXIMUM)
+        {
             Ok(key) => key,
             Err(failure) => {
                 // Preserve the existing independent FDB fallback if the host
@@ -82,6 +84,13 @@ impl RuntimeAuthority {
             return Err(RuntimeError::Unavailable);
         }
         Box::pin(managed.reconcile(self)).await?;
+        // Upload immutable chunks before acquiring the transaction read version.
+        // A snapshot predating those commits cannot verify its new payload.
+        let root = self
+            .execution
+            .evidence_payload(attempt, digest, sealed)
+            .await?;
+
         let mut sql = self.finance.continuity_transaction().await?;
         let previous = managed.sql_checkpoint(&mut sql).await?;
         let tx = self.execution.transaction().await?;
@@ -104,11 +113,8 @@ impl RuntimeAuthority {
                 .await?
                 .ok_or(RuntimeError::RestoreUnreconciled)?;
         Finance::observe_witness(&mut sql, &capture.binding, &nonce).await?;
-        // Chat evidence fits the existing bounded FDB value. The independent
-        // source above preserves it even if either store is currently offline.
-        let root = sealed.to_vec();
-        let pointer = Pointer::new(&capture, digest, sealed, &root, &nonce)?;
-        let original = pointer.original(self, &tx, &root).await?;
+        let pointer = Pointer::new(capture, digest, sealed, &root, &nonce)?;
+        let original = pointer.original(self, &tx, &root, &verified).await?;
         let existing = tx.get(&pointer.key(self), false).await?.is_some();
         let state = settle(&mut sql, &original, &pointer).await?;
         pointer.stage(self, &tx, &root).await?;

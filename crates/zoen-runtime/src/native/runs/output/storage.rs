@@ -21,18 +21,17 @@ impl Execution {
         {
             return Err(RuntimeError::InvalidBinding);
         }
-        let decoded: Capture = custody.open(
-            &format!("evidence/{}", record.locator.attempt),
-            Some(evidence),
-            sealed,
-        )?;
+        let decoded =
+            crate::capture_codec::open(custody, &record.locator.attempt, evidence, sealed)?;
         if decoded.binding != capture.binding
             || decoded.result != capture.result
-            || hash(&serde_json::to_vec(capture).map_err(|_| RuntimeError::InvalidBinding)?)
-                != evidence
+            || crate::capture_codec::digest(capture)? != evidence
         {
             return Err(RuntimeError::InvalidBinding);
         }
+        let payload = self
+            .evidence_payload(&record.locator.attempt, evidence, sealed)
+            .await?;
         let trx = self.transaction().await?;
         capability.check_in(self, &trx).await?;
         let principal = &loaded.record.original.context.principal;
@@ -81,21 +80,21 @@ impl Execution {
             .root
             .pack(&("evidence", record.locator.attempt.as_str(), evidence));
         if let Some(prior) = trx.get(&key, false).await? {
-            let prior: Capture = custody.open(
-                &format!("evidence/{}", record.locator.attempt),
-                Some(evidence),
-                &prior,
-            )?;
+            let original = self
+                .read_evidence_payload_in(&trx, &record.locator.attempt, evidence, &prior)
+                .await?;
+            let prior =
+                crate::capture_codec::open(custody, &record.locator.attempt, evidence, &original)?;
             if prior.binding != capture.binding || prior.result != capture.result {
                 return Err(RuntimeError::InvalidBinding);
             }
         } else {
-            trx.set(&key, sealed);
+            trx.set(&key, &payload);
             trx.set(
                 &self
                     .root
                     .pack(&("transfer", record.locator.attempt.as_str(), evidence)),
-                sealed,
+                &payload,
             );
         }
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
@@ -143,16 +142,24 @@ impl Execution {
             )
             .await?
             .ok_or(RuntimeError::Denied)?;
-        let capture: Capture = custody.open(
-            &format!("evidence/{}", record.locator.attempt),
-            Some(&association.value.evidence),
-            &bytes,
+        let sealed = self
+            .read_evidence_payload_in(
+                trx,
+                &record.locator.attempt,
+                &association.value.evidence,
+                &bytes,
+            )
+            .await?;
+        let capture = crate::capture_codec::open(
+            custody,
+            &record.locator.attempt,
+            &association.value.evidence,
+            &sealed,
         )?;
         if capture.binding != record.binding
             || capture.result.context != record.binding.context
             || capture.result.request_digest != record.binding.request_digest
-            || hash(&serde_json::to_vec(&capture).map_err(|_| RuntimeError::InvalidBinding)?)
-                != association.value.evidence
+            || crate::capture_codec::digest(&capture)? != association.value.evidence
         {
             return Err(RuntimeError::InvalidBinding);
         }

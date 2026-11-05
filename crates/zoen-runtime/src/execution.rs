@@ -426,7 +426,7 @@ impl Execution {
             let next = total
                 .checked_add(Self::evidence_payload_size(value.value())?)
                 .ok_or(RuntimeError::EvidenceTooLarge)?;
-            if next > 32 * 1024 * 1024 {
+            if next > crate::custody::MAX_PAYLOAD {
                 break;
             }
             total = next;

@@ -3,7 +3,7 @@
 use super::*;
 const PREFIX: &[u8] = b"ZOEN-EVIDENCE-CHUNKS/1\0";
 const CHUNK: usize = 64 * 1024;
-const MAXIMUM: usize = 32 * 1024 * 1024;
+const MAXIMUM: usize = crate::custody::MAX_PAYLOAD;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Manifest {
@@ -12,7 +12,7 @@ struct Manifest {
     chunks: Vec<String>,
 }
 impl Execution {
-    pub(super) async fn evidence_payload(
+    pub(crate) async fn evidence_payload(
         &self,
         attempt: &str,
         digest: &str,

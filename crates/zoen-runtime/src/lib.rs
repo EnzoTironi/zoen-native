@@ -4,6 +4,7 @@ mod admission;
 #[cfg(test)]
 use admission::FixtureStep;
 use admission::{Binding, Capture, Session, VerifiedStep};
+mod capture_codec;
 mod continuity;
 mod custody;
 mod execution;
@@ -98,7 +99,10 @@ impl From<sqlx::Error> for RuntimeError {
     }
 }
 impl From<foundationdb::FdbError> for RuntimeError {
-    fn from(_: foundationdb::FdbError) -> Self {
+    fn from(error: foundationdb::FdbError) -> Self {
+        #[cfg(test)]
+        eprintln!("runtime FDB failure category: {}", error.code());
+        let _ = error;
         Self::Unavailable
     }
 }
@@ -440,7 +444,7 @@ impl RuntimeAuthority {
             return Err(RuntimeError::InvalidBinding);
         }
         if self.runtime_continuity.is_some() {
-            return self.reconcile_shared_captures(limit).await;
+            return Box::pin(self.reconcile_shared_captures(limit)).await;
         }
         let mut report = ReconcileReport::default();
         for (attempt, digest, sealed) in self.execution.pending_evidence(limit).await? {
@@ -511,14 +515,16 @@ impl RuntimeAuthority {
             binding: admitted.binding,
             result: result.clone(),
         };
-        let (digest, sealed) = self.custody.seal(
-            &format!("evidence/{}", capture.binding.context.attempt_id),
-            &capture,
-        )?;
+        let (digest, sealed) = capture_codec::seal(&self.custody, &capture)?;
         if self.runtime_continuity.is_some() {
-            let state = self
-                .capture_shared(&capture.binding.context.attempt_id, &digest, &sealed)
-                .await?;
+            // Keep shared recovery's larger state machine out of the common
+            // completion future and its caller's poll stack.
+            let state = Box::pin(self.capture_shared(
+                &capture.binding.context.attempt_id,
+                &digest,
+                &sealed,
+            ))
+            .await?;
             return Ok((result, state));
         }
         // Output association refusal must not prevent either independent store

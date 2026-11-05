@@ -77,3 +77,35 @@ fn original_storage_refuses_links_wrong_names_and_oversized_sources() -> TestRes
     );
     Ok(())
 }
+
+#[test]
+fn explicit_large_original_bound_preserves_the_default_limit_and_checkpoint() -> TestResult {
+    let home = Home::new()?;
+    let mut writer = AnchorWriter::create(&home.0, deployment())?;
+    let checkpoint = writer.reader().checkpoint()?;
+    let bytes = vec![0xa7; 1024 * 1024];
+    assert!(writer.retain_original(&bytes).is_err());
+    let key = writer.retain_bounded_original(&bytes, 2 * 1024 * 1024)?;
+    assert!(writer.reader().retained_original(&key).is_err());
+    assert_eq!(
+        writer
+            .reader()
+            .retained_original_bounded(&key, 2 * 1024 * 1024)?,
+        bytes
+    );
+    assert!(writer
+        .retain_bounded_original(b"small", usize::MAX)
+        .is_err());
+    assert!(writer.reader().retained_original_bounded(&key, 0).is_err());
+    assert_eq!(writer.reader().checkpoint()?, checkpoint);
+    drop(writer);
+    let writer = AnchorWriter::open(&home.0, deployment())?;
+    assert_eq!(
+        writer
+            .reader()
+            .retained_original_bounded(&key, 2 * 1024 * 1024)?,
+        bytes
+    );
+    assert_eq!(writer.reader().checkpoint()?, checkpoint);
+    Ok(())
+}

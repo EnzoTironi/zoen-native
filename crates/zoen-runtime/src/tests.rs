@@ -40,6 +40,7 @@ struct World {
     config_namespace: String,
     db_url: String,
     relay_cell: Option<String>,
+    response_limit: usize,
 }
 impl World {
     async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
@@ -63,6 +64,20 @@ impl World {
         relay: bool,
         install_policy: bool,
     ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Self::build_with_response(workers, competing_namespaces, relay, install_policy, 16384).await
+    }
+    async fn without_policy_response(
+        response_limit: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::build_with_response(1, false, true, false, response_limit).await
+    }
+    async fn build_with_response(
+        workers: usize,
+        competing_namespaces: bool,
+        relay: bool,
+        install_policy: bool,
+        response_limit: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let admin = std::env::var("ZOEN_TEST_PG").expect("real Postgres fixture required");
         let database = format!("zoen_authority_{}", &Signer::generate()?.id()[..16]);
         let mut connection = PgConnection::connect(&admin).await.unwrap();
@@ -83,6 +98,11 @@ impl World {
                 namespace.clone()
             };
             let mut initial = config(&db_url, &candidate, &http.base);
+            initial.price.max_response_bytes = u64::try_from(response_limit)?;
+            initial.gateway.limits.max_response_bytes = response_limit;
+            if response_limit > 16384 {
+                initial.gateway.limits.timeout = Duration::from_secs(15);
+            }
             initial.relay_cell = relay.then(|| candidate.clone());
             openers.push(tokio::spawn(async move {
                 (candidate, RuntimeAuthority::open(initial).await)
@@ -159,6 +179,7 @@ impl World {
             config_namespace: namespace.clone(),
             db_url,
             relay_cell: relay.then(|| namespace.clone()),
+            response_limit,
         })
     }
     async fn step(
@@ -236,6 +257,11 @@ impl World {
     async fn reopen(&self) -> Arc<RuntimeAuthority> {
         let mut reopened_config = config(&self.db_url, &self.config_namespace, &self.http.base);
         reopened_config.relay_cell = self.relay_cell.clone();
+        reopened_config.price = self.runtime.price.clone();
+        reopened_config.gateway.limits.max_response_bytes = self.response_limit;
+        if self.response_limit > 16384 {
+            reopened_config.gateway.limits.timeout = Duration::from_secs(15);
+        }
         let runtime = Arc::new(RuntimeAuthority::open(reopened_config).await.unwrap());
         // Test continuity retained outside the two store snapshots. This proves
         // process reopening, not a production nonrollback restore witness.

@@ -38,11 +38,30 @@ impl Fixture {
         managed: bool,
         shared: bool,
     ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        let mut world = if shared {
+        let world = if shared {
             World::without_policy().await?
         } else {
             World::with_relay().await?
         };
+        Self::from_world(world, output, managed, shared).await
+    }
+    pub(super) async fn with_shared_response(
+        response_limit: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::from_world(
+            World::without_policy_response(response_limit).await?,
+            false,
+            false,
+            true,
+        )
+        .await
+    }
+    async fn from_world(
+        mut world: World,
+        output: bool,
+        managed: bool,
+        shared: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         if output {
             let capability = native::testing::output::provision(&world.runtime).await;
             Arc::get_mut(&mut world.runtime).unwrap().output_fixture = Some(capability);

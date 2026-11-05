@@ -112,7 +112,7 @@ impl RuntimeAuthority {
             &format!("evidence/{attempt}"),
             Some(digest),
             sealed,
-            capture::MAXIMUM,
+            capture::MAXIMUM.max(crate::capture_codec::MAXIMUM),
         )?;
         if plain.starts_with(capture::MAGIC) {
             let capture = capture::ImageCapture::decode(&plain)?;
@@ -124,12 +124,7 @@ impl RuntimeAuthority {
                 .settle_capture(&capture.task.binding, charge, digest, sealed)
                 .await
         } else {
-            // Legacy chat stays bounded by the original limit and JSON format.
-            if sealed.len() > custody::MAX_SEALED {
-                return Err(RuntimeError::InvalidBinding);
-            }
-            let capture: Capture =
-                serde_json::from_slice(&plain).map_err(|_| RuntimeError::InvalidBinding)?;
+            let capture = crate::capture_codec::decode(&plain)?;
             if capture.binding.context.attempt_id != attempt {
                 return Err(RuntimeError::InvalidBinding);
             }
