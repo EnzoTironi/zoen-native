@@ -123,6 +123,26 @@ fn request_to(op: &Op) -> pb_req::Op {
             platform: platform.clone(),
             token: token.clone(),
         }),
+        Op::RequestVoipWake { space, peer, seq } => {
+            pb_req::Op::RequestVoipWake(super::schema::PbVoipWake {
+                space: space.clone(),
+                peer: peer.clone(),
+                seq: *seq,
+            })
+        }
+        Op::GetVoipConsent { space, peer } => pb_req::Op::GetVoipConsent(PbCallTurnRequest {
+            space: space.clone(),
+            peer: peer.clone(),
+        }),
+        Op::SetVoipConsent {
+            space,
+            peer,
+            allowed,
+        } => pb_req::Op::SetVoipConsent(super::schema::PbVoipConsent {
+            space: space.clone(),
+            peer: peer.clone(),
+            allowed: *allowed,
+        }),
         Op::PublishAgreementKey { public, signed } => {
             pb_req::Op::PublishAgreementKey(PbAgreementKey {
                 identity: String::new(),
@@ -169,14 +189,29 @@ fn request_to(op: &Op) -> pb_req::Op {
             space: space.clone(),
             peer: peer.clone(),
         }),
-        Op::RuntimeBinding(r) => pb_req::Op::RuntimeBinding(PbRuntimeBindingRequest {
-            namespace: r.namespace.clone(),
-            nonce: r.nonce.clone(),
-            managed: r.managed.as_ref().map(|checkpoint| PbManagedCheckpoint {
-                generation: checkpoint.generation,
-                sequence: checkpoint.sequence,
-                digest: checkpoint.digest.clone(),
-            }),
+        Op::RuntimeBinding(r) => pb_req::Op::RuntimeBinding(runtime_binding_to(r)),
+    }
+}
+
+fn runtime_binding_to(r: &crate::runtime_binding::Request) -> PbRuntimeBindingRequest {
+    PbRuntimeBindingRequest {
+        namespace: r.namespace.clone(),
+        nonce: r.nonce.clone(),
+        managed: r.managed.as_ref().map(|checkpoint| PbManagedCheckpoint {
+            generation: checkpoint.generation,
+            sequence: checkpoint.sequence,
+            digest: checkpoint.digest.clone(),
+            source_fence: checkpoint
+                .source_fence
+                .as_ref()
+                .map(|fence| super::PbSourceFence {
+                    space: fence.space.clone(),
+                    sequence: fence.head.seq,
+                    hash: fence.head.hash.clone(),
+                    run: fence.run.clone(),
+                    attempt: fence.attempt.clone(),
+                    expires_at_ms: fence.expires_at_ms,
+                }),
         }),
     }
 }
@@ -205,6 +240,20 @@ fn request_from(op: pb_req::Op) -> Result<Op, DecodeError> {
         pb_req::Op::RegisterPush(p) => Op::RegisterPush {
             platform: p.platform,
             token: p.token,
+        },
+        pb_req::Op::RequestVoipWake(p) => Op::RequestVoipWake {
+            space: p.space,
+            peer: p.peer,
+            seq: p.seq,
+        },
+        pb_req::Op::GetVoipConsent(p) => Op::GetVoipConsent {
+            space: p.space,
+            peer: p.peer,
+        },
+        pb_req::Op::SetVoipConsent(p) => Op::SetVoipConsent {
+            space: p.space,
+            peer: p.peer,
+            allowed: p.allowed,
         },
         pb_req::Op::PublishAgreementKey(k) => Op::PublishAgreementKey {
             public: k.public,
@@ -265,6 +314,18 @@ fn runtime_binding_from(
                 generation: checkpoint.generation,
                 sequence: checkpoint.sequence,
                 digest: checkpoint.digest,
+                source_fence: checkpoint.source_fence.map(|fence| {
+                    crate::runtime_binding::SourceFence {
+                        space: fence.space,
+                        head: types::Seen {
+                            seq: fence.sequence,
+                            hash: fence.hash,
+                        },
+                        run: fence.run,
+                        attempt: fence.attempt,
+                        expires_at_ms: fence.expires_at_ms,
+                    }
+                }),
             }),
     };
     if !request.valid() {

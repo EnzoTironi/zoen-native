@@ -7,23 +7,24 @@ import FoundationModels
 #endif
 
 extension ZoenSession {
-  private func assistantMember(_ spaceId: String, core engine: Client) throws -> (String, String) {
+  private func assistantMember(_ spaceId: String, core engine: Client) throws -> (String, String, String?) {
     guard !erasing, !closing, !notificationOnly, self.core === engine,
           spaceId.utf8.count <= 256 else { throw ZoenAssistantFailure.closed }
     let space = try engine.space(spaceId: spaceId)
     guard let member = space.members.first(where: { $0.isMe }) else { throw ZoenAssistantFailure.closed }
     if let account = engine.account() {
       guard account.unlocked, !account.setupPending, account.identityId == member.id else { throw ZoenAssistantFailure.closed }
-      return (account.identityId, account.deviceId)
+      guard let membershipEvent = try engine.ownMembershipEvent(spaceId: spaceId) else { throw ZoenAssistantFailure.closed }
+      return (account.identityId, account.deviceId, membershipEvent)
     }
     guard mode == "demo" else { throw ZoenAssistantFailure.closed }
-    return (member.id, "demo")
+    return (member.id, "demo", nil)
   }
 
   private func assistantIsCurrent(_ lease: ZoenAssistantLease, core engine: Client) -> Bool {
     guard generation == lease.generation, mode == lease.mode, sessionLocale == lease.locale,
           let member = try? assistantMember(lease.spaceId, core: engine) else { return false }
-    return member.0 == lease.identity && member.1 == lease.device
+    return member.0 == lease.identity && member.1 == lease.device && member.2 == lease.membershipEvent
   }
 
   func openAssistant(spaceId: String, locale: String) throws -> String {
@@ -36,7 +37,7 @@ extension ZoenSession {
     let context = try ZoenAssistantModel.context(core: core, spaceId: spaceId)
     let id = UUID().uuidString
     assistants[id] = ZoenAssistantLease(generation: generation, mode: mode, identity: member.0,
-      device: member.1, spaceId: spaceId, locale: locale)
+      device: member.1, membershipEvent: member.2, spaceId: spaceId, locale: locale)
     return try ZoenMediaFiles.json(["available": true, "id": id,
       "contextMessages": context.messages, "limited": true])
   }
@@ -107,6 +108,7 @@ struct ZoenAssistantLease {
   let mode: String
   let identity: String
   let device: String
+  let membershipEvent: String?
   let spaceId: String
   let locale: String
   var turns: [Turn] = []

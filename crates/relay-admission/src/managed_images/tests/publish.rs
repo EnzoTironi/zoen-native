@@ -187,3 +187,123 @@ fn historical_commit_cannot_be_erased_by_observing_both_databases_before() -> Te
     ));
     Ok(())
 }
+
+#[test]
+fn committed_refusal_is_independent_terminal_metadata_never_another_permit() -> TestResult {
+    for reason in [
+        PublishRefusal::SourceChanged,
+        PublishRefusal::Expired,
+        PublishRefusal::Cancelled,
+        PublishRefusal::Closed,
+    ] {
+        let home = Home::new()?;
+        let (configured, envelope) = envelope("negative-original")?;
+        let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
+        let checkpoint = commit(
+            &mut writer,
+            &publish_digest(&configured.namespace, &envelope)?,
+        )?;
+        assert_eq!(
+            writer
+                .reader()
+                .publication_refusal(&checkpoint, &envelope)?,
+            None
+        );
+        let ConsumePublish::Fresh(permit) =
+            writer.reader().consume_publish(&checkpoint, &envelope)?
+        else {
+            return Err("missing first permit".into());
+        };
+        let original = permit.condition().clone();
+        assert_eq!(
+            writer
+                .reader()
+                .publication_refusal(&checkpoint, &envelope)?,
+            None
+        );
+        permit.record_committed_refusal(reason)?;
+        permit.record_committed_refusal(reason)?;
+        assert_eq!(
+            writer
+                .reader()
+                .publication_refusal(&checkpoint, &envelope)?,
+            Some(reason)
+        );
+        assert_eq!(
+            writer.reader().inspect_publish(&checkpoint, &envelope)?,
+            original
+        );
+        assert!(
+            permit.check(&envelope).is_err(),
+            "terminal refusal retires held permit"
+        );
+        let other = if reason == PublishRefusal::Closed {
+            PublishRefusal::Cancelled
+        } else {
+            PublishRefusal::Closed
+        };
+        assert!(permit.record_committed_refusal(other).is_err());
+        drop(permit);
+        drop(writer);
+        let reopened = AnchorWriter::open(&home.0, configured)?;
+        assert_eq!(
+            reopened
+                .reader()
+                .publication_refusal(&checkpoint, &envelope)?,
+            Some(reason)
+        );
+        assert!(
+            matches!(reopened.reader().consume_publish(&checkpoint, &envelope)?, ConsumePublish::Consumed(condition) if condition == original)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn refusal_write_and_sync_failures_never_recreate_a_consumed_effect() -> TestResult {
+    use super::super::faults::{self, Point};
+    for point in [Point::Write, Point::FileSync, Point::DirectorySync] {
+        let home = Home::new()?;
+        let (configured, envelope) = envelope("negative-fsync")?;
+        let mut writer = AnchorWriter::create(&home.0, configured.clone())?;
+        let checkpoint = commit(
+            &mut writer,
+            &publish_digest(&configured.namespace, &envelope)?,
+        )?;
+        let ConsumePublish::Fresh(permit) =
+            writer.reader().consume_publish(&checkpoint, &envelope)?
+        else {
+            return Err("missing first permit".into());
+        };
+        faults::fail(point);
+        assert_eq!(
+            permit.record_committed_refusal(PublishRefusal::Cancelled),
+            Err(AnchorError::Unavailable)
+        );
+        let observed = writer
+            .reader()
+            .publication_refusal(&checkpoint, &envelope)?;
+        assert_eq!(
+            observed,
+            if point == Point::DirectorySync {
+                Some(PublishRefusal::Cancelled)
+            } else {
+                None
+            }
+        );
+        assert!(matches!(
+            writer.reader().consume_publish(&checkpoint, &envelope)?,
+            ConsumePublish::Consumed(_)
+        ));
+        // The still-live original owner knows its prior transaction's result;
+        // retrying that terminal write does not retry a publication.
+        permit.record_committed_refusal(PublishRefusal::Cancelled)?;
+        assert_eq!(
+            writer
+                .reader()
+                .publication_refusal(&checkpoint, &envelope)?,
+            Some(PublishRefusal::Cancelled)
+        );
+    }
+    Ok(())
+}

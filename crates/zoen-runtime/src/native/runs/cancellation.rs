@@ -1,10 +1,12 @@
 //! A request to stop is distinct from a known fenced proof of non-dispatch.
+mod shared;
 use foundationdb::Transaction;
+pub(crate) use shared::{cancel_commitments, cancel_intent, recover_shared_cancel};
 
 use super::*;
 use crate::custody::Custody;
 
-#[derive(PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CancellationRequest {
     format: u8,

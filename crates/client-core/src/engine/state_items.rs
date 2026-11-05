@@ -139,7 +139,8 @@ impl State {
     /// author's album. Partial arrival is allowed, but membership is ordered and
     /// unique within the signed (space, author, album id) scope.
     pub(super) fn media_message_valid(&self, space: &str, author: &str, body: &EventBody) -> bool {
-        self.media_message_dependencies_valid(space, author, body)
+        self.message_replacement_valid(space, author, body)
+            && self.media_message_dependencies_valid(space, author, body)
             && (!matches!(body, EventBody::MessagePosted { media: Some(_), .. })
                 || self.writer(space, author))
     }
@@ -153,6 +154,15 @@ impl State {
         author: &str,
         body: &EventBody,
     ) -> bool {
+        if let EventBody::MessageAnnotated {
+            note: types::Annotation::ReplaceMedia { edit },
+            ..
+        } = body
+        {
+            return self
+                .replacement_file(space, author, &edit.replacement)
+                .is_some();
+        }
         let EventBody::MessagePosted {
             media,
             attaches,

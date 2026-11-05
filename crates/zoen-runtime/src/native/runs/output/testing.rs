@@ -505,3 +505,74 @@ pub(crate) async fn takeover(runtime: &RuntimeAuthority, run: &str) {
         .await
         .unwrap();
 }
+
+pub(crate) async fn checkpoint(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<Option<relay_admission::managed_images::Checkpoint>, RuntimeError> {
+    let transaction = runtime.execution.transaction().await?;
+    let (record, original) = runtime
+        .execution
+        .reply_in(&transaction, run, &runtime.custody)
+        .await?;
+    let capture = runtime
+        .execution
+        .output_capture_in(&transaction, &record, &original, &runtime.custody)
+        .await?;
+    let publication = runtime
+        .execution
+        .publication_in(
+            &transaction,
+            &record,
+            &original,
+            &capture.association.digest,
+            &runtime.custody,
+        )
+        .await?
+        .ok_or(RuntimeError::Denied)?;
+    Ok(publication.value.checkpoint)
+}
+
+pub(crate) async fn legacy_checkpoint_record(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<Vec<u8>, RuntimeError> {
+    let transaction = runtime.execution.transaction().await?;
+    let key = runtime.execution.run(run, "native-publication/1");
+    let original = transaction
+        .get(&key, false)
+        .await?
+        .ok_or(RuntimeError::Denied)?
+        .to_vec();
+    let mut publication: SealedRecord<PublicationRecord> = open_metadata(
+        &runtime.custody,
+        &format!("native-publication/1/{run}"),
+        &original,
+    )?;
+    publication.value.checkpoint = None;
+    let legacy = seal_metadata(
+        &runtime.custody,
+        &format!("native-publication/1/{run}"),
+        publication.value,
+    )?;
+    transaction.set(&key, &legacy.bytes);
+    transaction
+        .commit()
+        .await
+        .map_err(|_| RuntimeError::Unavailable)?;
+    Ok(original)
+}
+
+pub(crate) async fn restore_publication_record(
+    runtime: &RuntimeAuthority,
+    run: &str,
+    bytes: &[u8],
+) -> Result<(), RuntimeError> {
+    let transaction = runtime.execution.transaction().await?;
+    transaction.set(&runtime.execution.run(run, "native-publication/1"), bytes);
+    transaction
+        .commit()
+        .await
+        .map_err(|_| RuntimeError::Unavailable)?;
+    Ok(())
+}

@@ -1,6 +1,6 @@
-//! Provider transport only. No session RPC or generic event route invokes this.
-//! Receiver consent/block policy and authenticated call-purpose admission must
-//! be implemented before exposing a wake operation or advertising cold calls.
+//! Provider transport for wakes admitted by the authenticated session RPC.
+//! The caller checks receiver consent and resolves call-purpose registrations
+//! before dispatch. The receiver independently verifies the invitation.
 use super::*;
 
 impl Pusher {
@@ -41,7 +41,13 @@ impl Pusher {
         if protocol::push::validate_topic(&topic).is_err() {
             return Outcome::Failed("invalid VoIP topic".into());
         }
-        let result = async {
+        let Ok(_permit) = self.voip_slots.try_acquire() else {
+            return Outcome::Failed("VoIP transport overloaded".into());
+        };
+        let Ok(remaining_ms) = u64::try_from(expiration * 1000 - now_ms) else {
+            return Outcome::Failed("invalid VoIP wake deadline".into());
+        };
+        let request = async {
             let host = if target.platform == APNS_VOIP_SANDBOX {
                 "api.sandbox.push.apple.com"
             } else {
@@ -68,9 +74,12 @@ impl Pusher {
                 410 => Outcome::Gone,
                 status => Outcome::Failed(format!("apns voip {status}")),
             })
+        };
+        match tokio::time::timeout(Duration::from_millis(remaining_ms), request).await {
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(_)) => Outcome::Failed("VoIP provider unavailable".into()),
+            Err(_) => Outcome::Failed("VoIP provider deadline elapsed".into()),
         }
-        .await;
-        result.unwrap_or_else(|_| Outcome::Failed("VoIP provider unavailable".into()))
     }
 }
 

@@ -180,8 +180,8 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
 }
 
 #[tokio::test]
-async fn offline_message_recovers_after_lost_confirmation() {
-    let w = World::new("message_ack_loss").await;
+async fn offline_message_recovers_after_lost_confirmation_and_relay_restart() {
+    let mut w = World::new("message_ack_loss").await;
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
     w.zoen("ana", &["dm", "@bruno", "first"]);
@@ -225,6 +225,8 @@ async fn offline_message_recovers_after_lost_confirmation() {
     assert!(w
         .zoen("bruno", &["status", "--offline"])
         .contains("pending=1"));
+    w.stop_relay();
+    w.start_relay();
     assert!(w
         .zoen("bruno", &["sync", "--timeout", "30000"])
         .contains("pending=0"));

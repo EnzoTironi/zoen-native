@@ -109,7 +109,7 @@ pub(super) fn verify_position(
 async fn receipt_snapshot(
     runtime: &RuntimeAuthority,
     loaded: &LoadedReceipt,
-    capability: &FreshOutputNamespace,
+    capability: &dyn NativeOutputAuthority,
 ) -> Result<Transaction, RuntimeError> {
     let trx = receipt_stage!("transaction", runtime.execution.transaction().await)?;
     capability.check_in(&runtime.execution, &trx).await?;
@@ -128,7 +128,7 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         run: &str,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<LoadedReceipt, RuntimeError> {
         let trx = receipt_stage!("transaction", runtime.execution.transaction().await)?;
         capability.check_in(&runtime.execution, &trx).await?;
@@ -139,6 +139,8 @@ impl NativeCustody {
                 .reply_in(&trx, run, &runtime.custody)
                 .await
         )?;
+        let principal = &record.original.context.principal;
+        capability.check_device(&principal.agent, &principal.device)?;
         let capture = receipt_stage!(
             "retained_capture",
             runtime
@@ -160,6 +162,7 @@ impl NativeCustody {
                 .await
         )?
         .ok_or(RuntimeError::Denied)?;
+        publication.value.checkpoint_context(runtime)?;
         let receipt = receipt_stage!(
             "prior_receipt",
             runtime
@@ -203,9 +206,11 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         run: &str,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyReceiptProgress, RuntimeError> {
         runtime.continuity()?;
+        capability.check_context(runtime)?;
+        runtime.check_image_checkpoint().await?;
         let loaded = receipt_stage!(
             "load_historical_receipt",
             self.load_receipt(runtime, run, capability).await
@@ -226,7 +231,7 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         loaded: &LoadedReceipt,
-        capability: &FreshOutputNamespace,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyReceiptProgress, RuntimeError> {
         let principal = &loaded.record.original.context.principal;
         let credential = self.credential(&principal.agent, &principal.device)?;
@@ -243,6 +248,29 @@ impl NativeCustody {
         let mut core =
             DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
                 .map_err(native_error)?;
+        if loaded.publication.value.checkpoint.is_some() {
+            let retained = core
+                .retained_reply(&loaded.record.intent, &loaded.publication.value.client_id)
+                .map_err(native_error)?;
+            if !loaded.publication.value.matches_retained(&retained) {
+                return Err(RuntimeError::InvalidBinding);
+            }
+            if let Some(reason) = runtime
+                .reply_publication_refusal(
+                    retained.envelope(),
+                    loaded.publication.value.checkpoint.as_ref(),
+                )
+                .await?
+            {
+                if loaded.receipt.is_some() {
+                    return Err(RuntimeError::RestoreUnreconciled);
+                }
+                // This is positive independent terminal evidence, never inferred
+                // from absence in a relay log or a local pending projection.
+                drop(receipt_snapshot(runtime, loaded, capability).await?);
+                return Ok(ReplyReceiptProgress::Refused { reason });
+            }
+        }
         let source = runtime.execution.reply_source()?;
         if let Some(prior) = &loaded.receipt {
             #[cfg(test)]

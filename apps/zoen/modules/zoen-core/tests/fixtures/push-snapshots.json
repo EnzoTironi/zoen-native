@@ -3,6 +3,7 @@
     "account": {
       "identity_id": "identity-synthetic",
       "device_id": "device-synthetic",
+      "relay_url": "https://relay.example",
       "unlocked": true,
       "setup_pending": false
     },
@@ -17,7 +18,7 @@
         "muted": false,
         "archived": false,
         "unread": 2,
-        "event_count": "18446744073709551615",
+        "event_count": "18446744073709551614",
         "last_author": {
           "name": "Synthetic sender",
           "is_me": false
@@ -35,6 +36,7 @@
     "account": {
       "identity_id": "identity-synthetic",
       "device_id": "device-synthetic",
+      "relay_url": "https://relay.example",
       "unlocked": true,
       "setup_pending": false
     },

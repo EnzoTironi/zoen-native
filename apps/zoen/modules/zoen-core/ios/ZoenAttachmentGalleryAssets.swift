@@ -127,6 +127,7 @@ struct GalleryItem:Equatable {
   private var locationPreview:ZoenDraftLocationGallery?
   private var player:AVPlayer?
   private var playerLayer:AVPlayerLayer?
+  private let bookmark:ZoenMediaPlaybackBookmark?
   private let conversation:Bool
   private var reviewVideo:ZoenAttachmentGalleryVideo?
   private var playback:ZoenConversationVideoPlayback?
@@ -147,7 +148,8 @@ struct GalleryItem:Equatable {
     playback?.setActive(active);if !active{stop()};refreshVideoPresentation()
   }}
   var isZoomed:Bool{abs(zoom.zoomScale-1)>0.01}
-  init(item:GalleryItem,allowNetwork:Bool,conversation:Bool=false){
+  init(item:GalleryItem,allowNetwork:Bool,conversation:Bool=false,bookmark:ZoenMediaPlaybackBookmark?=nil){
+    self.bookmark=bookmark
     self.conversation=conversation
     super.init(item:item,targetPixels:2048,allowNetwork:allowNetwork)
     image.removeFromSuperview();zoom.addSubview(image);addSubview(zoom)
@@ -202,7 +204,7 @@ struct GalleryItem:Equatable {
     playerLayer?.removeFromSuperlayer();playerLayer=layer;layer.frame=bounds
     if conversation {
       playback?.retire();videoControls?.retire();videoControls?.removeFromSuperview()
-      let transport=ZoenConversationVideoPlayback(player:player)
+      let transport=ZoenConversationVideoPlayback(player:player,bookmark:bookmark)
       let controls=ZoenConversationVideoControls(playback:transport)
       playback=transport;videoControls=controls;addSubview(controls);controls.frame=bounds;bringSubviewToFront(play)
       transport.setActive(active);refreshVideoPresentation()

@@ -56,6 +56,7 @@ export type PhotoPickerSubmission = Readonly<{
 export type PhotoPickerAdmission = Readonly<{
   journal?: AttachmentGalleryJournal;
   sendAsFileAllowed: boolean;
+  caption?: string;
   existingOptions?: MediaDraftAttachmentOptions;
 }>;
 export type Request = {

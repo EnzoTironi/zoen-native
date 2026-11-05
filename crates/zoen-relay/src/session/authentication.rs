@@ -71,7 +71,10 @@ pub(super) async fn handshake(
         )
         .await;
     }
-    let capabilities = negotiate(&capabilities);
+    let mut capabilities = negotiate(&capabilities);
+    if !super::voip_wake::enabled(&st.push) {
+        capabilities.retain(|cap| cap != protocol::push::VOIP_WAKE_CAPABILITY);
+    }
     let complete_reads = capabilities
         .iter()
         .any(|c| c == protocol::complete_reads::CAPABILITY);

@@ -47,7 +47,7 @@ export class AttachmentPhotoSession {
   isPresented = (token: number) => this.isCurrent(token) && this.state.visible;
   isInteractive = (token: number) => this.isPresented(token) && !this.state.busy;
   remaining = () => (this.request && this.current(this.request) ? this.request.remaining : 0);
-  open(remaining: number, current: () => boolean, journal?: Request['journal']) {
+  open(remaining: number, current: () => boolean, journal?: Request['journal'], caption?: string) {
     if (this.request || !current() || remaining < 1) return Promise.resolve([]);
     return new Promise<AttachmentAsset[]>((resolve, reject) => {
       const request: Request = {
@@ -71,7 +71,11 @@ export class AttachmentPhotoSession {
       this.publish({
         token: ++this.sequence,
         visible: true,
-        ...(restored ? { selected: restored.selected, captions: restored.captions } : {}),
+        ...(restored
+          ? { selected: restored.selected, captions: restored.captions }
+          : caption !== undefined
+            ? { captions: { forced: caption, items: {} } }
+            : {}),
       });
       if (restored?.selected.length) request.needsReconciliation = true;
       this.journalSelection(false);

@@ -15,6 +15,7 @@ impl NativeCustody {
         device: &str,
         space: &str,
     ) -> Result<NativeSourceRefresh, RuntimeError> {
+        runtime.check_shared_runtime().await?;
         if !id(space) {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -95,38 +96,19 @@ impl NativeCustody {
                 .execution
                 .stage_native(&principal, Some(previous), &fence, next)
                 .await?;
-            let mut scope = staged.scope(&runtime.execution, &fence);
-            scope.effects = hash(
-                &serde_json::to_vec(&(source.cell(), space, &expected, &progress.through))
-                    .map_err(|_| RuntimeError::InvalidBinding)?,
-            );
-            let admission = runtime
-                .finance
-                .native_directory(
-                    &credential.agent,
-                    &credential.owner,
-                    device,
-                    &credential.certificate,
-                )
-                .await?
-                .authorize(scope.clone())
-                .await?;
-            admission.check(&scope)?;
-            let trx = runtime.execution.transaction().await?;
-            let actual = source
-                .head_in(&trx, space)
-                .await
-                .map_err(|_| RuntimeError::Denied)?
-                .ok_or(RuntimeError::Denied)?;
-            if actual.seq() != expected.seq || actual.hash() != expected.hash {
-                return Err(RuntimeError::Denied);
-            }
-            runtime
-                .execution
-                .native_activation(&trx, &staged, &fence)
-                .await?;
-            admission.consume(&scope)?;
-            trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
+            self.activate_maintenance(
+                runtime,
+                credential,
+                staged,
+                &fence,
+                Some(shared::SharedSource {
+                    cell: source.cell().into(),
+                    space: space.into(),
+                    expected,
+                    through: progress.through.clone(),
+                }),
+            )
+            .await?;
             Ok(progress)
         })
         .await;

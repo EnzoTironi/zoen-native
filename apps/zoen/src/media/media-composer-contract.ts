@@ -1,3 +1,4 @@
+import type { MediaEditTarget } from './attachment-composer';
 import type { AudioRecorder, RecorderState } from 'expo-audio';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { type ReactNode } from 'react';
@@ -23,6 +24,7 @@ export type VoiceCaptureContext = Readonly<{
   replyContext: MediaReplyFields;
 }>;
 export type MediaComposerOptions = MediaReplyOptions & {
+  mediaEdit?: MediaEditTarget;
   spaceId: string;
   replyTo?: string | null;
   thread?: boolean;
@@ -38,6 +40,7 @@ export type MediaComposerOptions = MediaReplyOptions & {
     review?: ReactNode;
     files?: AttachmentComposerField;
     reply?: ReactNode;
+    cancelEditMedia?: () => Promise<boolean>;
   }) => ReactNode;
 };
 /** Borrowed refs and immutable render values; the controller constructs and retains them. */

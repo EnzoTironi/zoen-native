@@ -227,3 +227,35 @@ async fn lookup_rechecks_real_owner_and_role_before_installing_any_profile() -> 
     }
     Ok(())
 }
+
+#[test]
+fn own_membership_event_changes_after_readmission() -> TestResult<()> {
+    let f = Fixture::new(SpaceKind::Group)?;
+    let original = f.client.own_membership_event(f.space.clone())?;
+    assert!(original.is_some());
+    f.ordered(EventBody::MessagePosted {
+        message: types::new_id("message")?,
+        text: "unrelated conversation".into(),
+        attaches: None,
+        media: None,
+        reply: None,
+        forwarded: false,
+        forwarded_author: None,
+    })?;
+    assert_eq!(f.client.own_membership_event(f.space.clone())?, original);
+    f.ordered(EventBody::MemberRemoved {
+        identity: f.identity.clone(),
+    })?;
+    assert!(matches!(
+        f.client.own_membership_event(f.space.clone()),
+        Ok(None) | Err(_)
+    ));
+    f.ordered(EventBody::MemberAdded {
+        identity: f.identity.clone(),
+        role: Role::Admin,
+    })?;
+    let restored = f.client.own_membership_event(f.space.clone())?;
+    assert!(restored.is_some());
+    assert_ne!(restored, original);
+    Ok(())
+}

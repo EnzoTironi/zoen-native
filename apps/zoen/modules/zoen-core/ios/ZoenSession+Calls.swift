@@ -10,16 +10,29 @@ extension ZoenSession {
     let lease: ZoenModuleSessionLease
   }
 
-  func bindCalls(lease: ZoenModuleSessionLease, changed: @escaping @Sendable (String) -> Void, audio: @escaping @Sendable (String) -> Void) async {
+  struct ResolvedCallWake: Decodable {
+    let spaceId: String
+    let call: ZoenCallRecord
+  }
+
+  func bindCalls(lease: ZoenModuleSessionLease, changed: @escaping @Sendable (String) -> Void, audio: @escaping @Sendable (String) -> Void, wake: (ResolvedCallWake, UUID)? = nil) async {
     guard lease.isLive, !closing, !erasing, mode == "account" else { return }
     if let borrow = callsBorrow, borrow.lease === lease, callBorrowIsCurrent(borrow) {
-      callsChanged = changed; callsAudioChanged = audio
+      if let wake {
+        try? await presentCall(borrow, space: wake.0.spaceId, call: wake.0.call, outgoing: false, wakeID: wake.1)
+      } else {
+        callsChanged = changed; callsAudioChanged = audio
+      }
       return
     }
     if callsBorrow != nil { await stopCallsForClose() }
     callsChanged = changed; callsAudioChanged = audio; callsModuleLease = lease
     guard let core, let account = core.account(), account.unlocked, !account.setupPending else { return }
     callsBorrow = CallBorrow(engine: core, generation: generation, identity: account.identityId, device: account.deviceId, lease: lease)
+    if let wake, let borrow = callsBorrow {
+      try? await presentCall(borrow, space: wake.0.spaceId, call: wake.0.call, outgoing: false, wakeID: wake.1)
+      return
+    }
     // Rebinding never resurrects media. The existing signed log retires this
     // device's abandoned resources before new invites are admitted.
     for space in core.spaces() {
@@ -167,14 +180,14 @@ extension ZoenSession {
     catch { try? await callAction(borrow, space: space, call: call, action: "cancel"); throw error }
   }
 
-  private func presentCall(_ borrow: CallBorrow, space: String, call: ZoenCallRecord, outgoing: Bool) async throws {
+  private func presentCall(_ borrow: CallBorrow, space: String, call: ZoenCallRecord, outgoing: Bool, wakeID: UUID? = nil) async throws {
     guard callCoordinator == nil, !callPresenting, callBorrowIsCurrent(borrow) else { throw SessionError.closed }
     let peerID = call.caller == borrow.identity ? call.callee : call.caller
     guard try !borrow.engine.blockedPeople().contains(peerID) else { throw SessionError.closed }
     callPresenting = true; defer { callPresenting = false }
     let name = (try? borrow.engine.getProfile(identityId: peerID).name) ?? "Call"
     let port = callPort(borrow, space: space, call: call)
-    let coordinator = await MainActor.run { ZoenCallCoordinator(port: port, record: call, name: name) { [weak self] state in
+    let coordinator = await MainActor.run { ZoenCallCoordinator(port: port, record: call, name: name, wakeID: wakeID) { [weak self] state in
       Task { await self?.callPresentationChanged(scope: port.scope, state: state) }
     }}
     guard callBorrowIsCurrent(borrow) else { await coordinator.stop(writeEnd: false); throw SessionError.closed }

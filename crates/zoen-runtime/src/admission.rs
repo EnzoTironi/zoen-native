@@ -180,58 +180,77 @@ impl DispatchAuthority for Session<'_> {
                 self.runtime.native_cut_entered.notify_one();
                 self.runtime.native_cut_resume.notified().await;
             }
-            self.runtime.finance.reserve(&binding).await?;
+            self.runtime
+                .reserve_verified_budget(self.step, &binding)
+                .await?;
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 4 {
                 return Err(RuntimeError::Unavailable);
             }
-            let Some(claim) = self.runtime.finance.claim(&binding).await? else {
+            let Some(claim) = self
+                .runtime
+                .claim_verified_budget(self.step, &binding)
+                .await?
+            else {
                 return Ok(Admission::AlreadyKnown);
             };
-            let checkpoint = if self.image.is_some() {
-                self.runtime
-                    .begin_image_dispatch_checkpoint(&binding, &claim)
-                    .await?
-            } else {
-                None
-            };
-            let claim =
-                claim.with_checkpoint(checkpoint.as_ref().map(|value| value.annotation()))?;
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 1 {
-                return Err(RuntimeError::Unavailable);
-            }
-            let guard = self.runtime.finance.guard(&binding, self.step).await?;
-            let admission = self
-                .runtime
-                .execution
-                .admit_once(
-                    self.step,
-                    claim,
-                    &binding,
-                    &self.runtime.custody,
-                    self.runtime,
+            let (permit, generation, nonce) = if self.runtime.runtime_continuity.is_some() {
+                let completed = self
+                    .runtime
+                    .dispatch_verified_budget(self.step, claim, &binding)
+                    .await?;
+                (
+                    completed.permit,
+                    Some(completed.generation),
+                    completed.nonce,
                 )
-                .await?;
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 2 {
-                return Err(RuntimeError::Unavailable);
-            }
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 3 {
-                guard.rollback().await?;
-                return Err(RuntimeError::Unavailable);
-            }
-            #[cfg(test)]
-            if self.runtime.fault.load(Ordering::SeqCst) == 24 {
-                self.runtime.native_cut_entered.notify_one();
-                self.runtime.native_cut_resume.notified().await;
-            }
-            let nonce = admission.nonce().to_string();
-            let permit = guard.finish(admission).await?;
-            let generation = match checkpoint {
-                Some(checkpoint) => Some(checkpoint.finish(self.runtime).await?),
-                None => None,
+            } else {
+                let checkpoint = if self.image.is_some() {
+                    self.runtime
+                        .begin_image_dispatch_checkpoint(&binding, &claim)
+                        .await?
+                } else {
+                    None
+                };
+                let claim =
+                    claim.with_checkpoint(checkpoint.as_ref().map(|value| value.annotation()))?;
+                #[cfg(test)]
+                if self.runtime.fault.load(Ordering::SeqCst) == 1 {
+                    return Err(RuntimeError::Unavailable);
+                }
+                let guard = self.runtime.finance.guard(&binding, self.step).await?;
+                let admission = self
+                    .runtime
+                    .execution
+                    .admit_once(
+                        self.step,
+                        claim,
+                        &binding,
+                        &self.runtime.custody,
+                        self.runtime,
+                    )
+                    .await?;
+                #[cfg(test)]
+                if self.runtime.fault.load(Ordering::SeqCst) == 2 {
+                    return Err(RuntimeError::Unavailable);
+                }
+                #[cfg(test)]
+                if self.runtime.fault.load(Ordering::SeqCst) == 3 {
+                    guard.rollback().await?;
+                    return Err(RuntimeError::Unavailable);
+                }
+                #[cfg(test)]
+                if self.runtime.fault.load(Ordering::SeqCst) == 24 {
+                    self.runtime.native_cut_entered.notify_one();
+                    self.runtime.native_cut_resume.notified().await;
+                }
+                let nonce = admission.nonce().to_string();
+                let permit = guard.finish(admission).await?;
+                let generation = match checkpoint {
+                    Some(checkpoint) => Some(checkpoint.finish(self.runtime).await?),
+                    None => None,
+                };
+                (permit, generation, nonce)
             };
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 23 {

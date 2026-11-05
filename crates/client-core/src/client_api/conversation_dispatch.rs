@@ -15,15 +15,15 @@ impl Client {
             AgentControlRetry, AgentDefinitionDismiss, AgentDefinitionPreview, AgentDefinitionRead,
             AgentDefinitionReconcile, AgentDefinitionUpdate, AgentEnrollmentApprove,
             AgentEnrollmentDismiss, AgentEnrollmentPreview, AgentEnrollmentStatus, AgentStatus,
-            AppCurrentShareContext, AppEditTargets, CallHistory, ChatLayout, ControlAgent,
-            CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite, DeleteMessage,
-            DeleteMessages, EditMessage, EncryptChat, FindAccountPolicyOptions,
+            AppCurrentShareContext, AppEditTargets, CallHistory, CallWakeConsent, ChatLayout,
+            ControlAgent, CreateAgentInvite, CreateCommunity, CreateGroup, CreateInvite,
+            DeleteMessage, DeleteMessages, EditMessage, EncryptChat, FindAccountPolicyOptions,
             FindMemberCandidates, FindOwnerPolicyOptions, FindOwnerPolicySubmission, FindPeople,
-            ForwardMessage, Forwarding, InviteCall, JoinInvite, LeaveSpace, MarkRead, Message,
-            MessageDateTarget, MessageDraft, NewMutationId, OpenAgentLink, OwnerPolicyOptions,
-            OwnerPolicyStatus, PageBlockMarkdown, PageParseMarkdown, PrepareOwnerPolicy,
-            PreviewInvite, ProviderSignIn, React, RecoverFailedMediaDraft, RemoveMember,
-            RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
+            ForwardMessage, Forwarding, InviteCall, InviteJoinStatus, JoinInvite,
+            JoinInviteTracked, LeaveSpace, MarkRead, Message, MessageDateTarget, MessageDraft,
+            NewMutationId, OpenAgentLink, OwnerPolicyOptions, OwnerPolicyStatus, PageBlockMarkdown,
+            PageParseMarkdown, PrepareOwnerPolicy, PreviewInvite, ProviderSignIn, React,
+            RemoveMember, RemoveMemberReviewed, RequestAccountPolicyOptions, RequestAppEdit,
             RequestOwnerPolicyOptions, RespondCall, ReviewOwnerPolicy, ReviewReplySelection,
             ReviewSharedReply, RevokeAgentInvite, SaveMessageDraft, SavedMessages, SendMessage,
             SendMessageDraft, SendMessageEditDraft, SetChatMute, SetChatMuted, SetChatPrefs,
@@ -32,6 +32,7 @@ impl Client {
             UniversalSearch, UniversalSearchPage,
         };
         match command {
+            Command::PrivateMedia(input) => input.execute(self),
             MessageDateTarget(input) => encode(&self.lock().message_date_target(&input)?),
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
             ShareAppCurrent {
@@ -109,6 +110,36 @@ impl Client {
             }
             PageBlockMarkdown { block } => encode(&crate::pages::editor_block_markdown(&block)?),
             CallHistory { space_id } => encode(&self.lock().call_history(&space_id)?),
+            CallWakeConsent {
+                expected_identity_id,
+                expected_device_id,
+                space_id,
+                peer_id,
+                allowed,
+            } => {
+                if let Some(allowed) = allowed {
+                    self.set_call_wake_consent(
+                        expected_identity_id,
+                        expected_device_id,
+                        space_id,
+                        peer_id,
+                        allowed,
+                    )
+                    .await?;
+                    encode(&allowed)
+                } else {
+                    encode(
+                        &self
+                            .get_call_wake_consent(
+                                expected_identity_id,
+                                expected_device_id,
+                                space_id,
+                                peer_id,
+                            )
+                            .await?,
+                    )
+                }
+            }
             InviteCall {
                 expected_identity_id,
                 expected_device_id,
@@ -154,20 +185,6 @@ impl Client {
             | SendMessageEditDraft { .. }
             | ReviewReplySelection { .. }
             | ReviewSharedReply { .. }) => self.dispatch_draft(command),
-            RecoverFailedMediaDraft {
-                scope,
-                message_id,
-                expected_revision,
-                expected_message_revision,
-            } => {
-                let draft = self.lock().recover_failed_media_draft(
-                    &scope,
-                    &message_id,
-                    &expected_revision,
-                    &expected_message_revision,
-                )?;
-                encode(&draft)
-            }
             command @ RequestAppEdit { .. } => self.request_app_edit_command(command),
             AppEditTargets { input } => encode(&self.lock().app_edit_targets(&input)?),
             SendMessage {
@@ -220,17 +237,12 @@ impl Client {
                     })?;
                 encode(&entry)
             }
-            UniversalSearchPage(input) => encode(&self.universal_search_page(
-                input.query,
-                input.kinds,
-                input.cursor,
-                input.limit,
-                input.expected_identity_id,
-                input.expected_device_id,
-            )?),
+            UniversalSearchPage(input) => input.execute(self),
             UniversalSearch(input) => {
                 encode(&self.universal_search(input.query, input.kinds, input.limit.min(100))?)
             }
+            Command::ReplaceMessageMedia { input } => encode(&self.replace_message_media(input)?),
+            Command::InboxFolders { input } => encode(&self.lock().inbox_folders(&input)?),
             command @ (SetChatPrefs(..)
             | SetChatMuted(..)
             | SetChatMute(..)
@@ -250,6 +262,11 @@ impl Client {
             CreateInvite { space_id } => encode(&self.create_invite(space_id).await?),
             PreviewInvite { code } => encode(&self.preview_invite(code).await?),
             JoinInvite { code } => encode(&self.join_invite(code).await?),
+            JoinInviteTracked { code } => encode(&self.join_invite_tracked(code).await?),
+            InviteJoinStatus {
+                space_id,
+                client_id,
+            } => encode(&self.lock().invite_join_status(&space_id, &client_id)?),
             command @ (AddMember { .. }
             | FindMemberCandidates { .. }
             | AddMemberReviewed { .. }

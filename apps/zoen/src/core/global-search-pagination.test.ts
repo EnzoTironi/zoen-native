@@ -150,9 +150,8 @@ test('stale cursor exposes failure and explicit retry restarts the same query at
     });
     await f.root.act(() => more(f).onPress());
     assert.equal(f.list.data.length, 30);
-    assert.equal(more(f).disabled, true);
-    assert.ok(f.list.ListHeaderComponent);
-    await f.root.act(() => f.list.ListHeaderComponent.props.children[1].props.onPress());
+    assert.equal(f.list.ListHeaderComponent, null);
+    await f.root.act(() => f.list.ListFooterComponent.props.children[1].props.onPress());
     assert.equal(f.queries.at(-1).cursor, null);
     assert.equal(f.queries.at(-1).query, 'needle');
     assert.deepEqual(
@@ -192,7 +191,10 @@ test('a result on the second page resolves its exact canonical thread and keeps 
       await f.pending.promise;
     });
     assert.deepEqual(normalized(f.routes), [
-      { pathname: '/thread/[space]/[root]', params: { space: 'chat', root: 'thread-root' } },
+      {
+        pathname: '/thread/[space]/[root]',
+        params: { space: 'chat', root: 'thread-root', jump: 'message-30' },
+      },
     ]);
     await f.root.act(() => f.focus(false));
     await f.root.act(() => f.focus(true));
@@ -234,6 +236,78 @@ test('browser keeps its prior long-query semantics rather than inheriting the na
     assert.equal(f.queries.length, 1);
     assert.equal(f.queries[0].query, query);
     assert.equal(f.list.data.length, 1);
+  } finally {
+    await f.root.close();
+  }
+});
+
+test('changing result kind keeps the query and restarts pagination without the old cursor', async () => {
+  const f = await fixture('needle', 'account', first());
+  try {
+    f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
+    const select = f.filters.get('chat.searchMessagesFilter');
+    assert.ok(select);
+    await f.root.act(select);
+    await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
+    assert.equal(f.input.value, 'needle');
+    assert.deepEqual(normalized(f.queries[1].kinds), ['message']);
+    assert.equal(f.queries[1].cursor, null);
+    assert.equal(f.list.data.length, 1);
+  } finally {
+    await f.root.close();
+  }
+});
+
+test('native global search sends the selected calendar period before requesting its first page', async () => {
+  const f = await fixture('needle', 'account', first());
+  try {
+    f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
+    const select = f.filters.get('chat.searchLastWeek');
+    assert.ok(select);
+    await f.root.act(select);
+    await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
+    const request = normalized(f.queries[1]);
+    assert.equal(request.query, 'needle');
+    assert.equal(request.cursor, null);
+    const start = new Date(request.period.start_ms);
+    const end = new Date(request.period.end_ms);
+    assert.equal(start.getHours(), 0);
+    start.setDate(start.getDate() + 7);
+    assert.equal(start.getTime(), end.getTime());
+    assert.equal(f.list.data.length, 1);
+  } finally {
+    await f.root.close();
+  }
+});
+
+test('native media search restarts the query with the canonical media filter', async () => {
+  const f = await fixture('needle', 'account', first());
+  try {
+    f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
+    const select = f.filters.get('chat.searchMediaFilter');
+    assert.ok(select);
+    await f.root.act(select);
+    await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
+    assert.equal(f.input.value, 'needle');
+    assert.deepEqual(normalized(f.queries[1].kinds), ['media']);
+    assert.equal(f.queries[1].cursor, null);
+    assert.equal(f.list.data[0].ref_id, 'message-55');
+  } finally {
+    await f.root.close();
+  }
+});
+
+test('native media browsing requests attachments without text', async () => {
+  const f = await fixture('', 'account');
+  try {
+    f.searchRead(async () => ({ hits: [hit(55)], next_cursor: null }));
+    const select = f.filters.get('chat.searchMediaFilter');
+    assert.ok(select);
+    await f.root.act(select);
+    await f.root.act(() => new Promise((resolve) => setTimeout(resolve, 220)));
+    assert.equal(f.queries[0].query, '');
+    assert.deepEqual(normalized(f.queries[0].kinds), ['media']);
+    assert.equal(f.list.data[0].ref_id, 'message-55');
   } finally {
     await f.root.close();
   }

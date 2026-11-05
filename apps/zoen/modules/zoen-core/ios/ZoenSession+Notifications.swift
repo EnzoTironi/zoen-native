@@ -17,19 +17,33 @@ extension ZoenSession {
     return NotificationBorrow(engine: engine, generation: generation, identityID: identityID, deviceID: deviceID)
   }
 
+  func registerVoipToken(platform: String, token: String, lease: ZoenModuleSessionLease) async throws {
+    guard let account = core?.account() else { throw SessionError.closed }
+    let borrow = try notificationBorrow(identityID: account.identityId, deviceID: account.deviceId, lease: lease)
+    let command = [
+      "op": "register_push", "expected_identity_id": borrow.identityID,
+      "expected_device_id": borrow.deviceID, "platform": platform, "token": token,
+    ]
+    let json = String(decoding: try JSONSerialization.data(withJSONObject: command), as: UTF8.self)
+    requests += 1
+    defer { retireRequest() }
+    _ = try await borrow.engine.clientRequest(request: json)
+    guard lease.isLive, generation == borrow.generation, core === borrow.engine else { throw SessionError.closed }
+  }
+
   func setNotificationForeground(_ active: Bool) { notificationActive = active }
 
   private func notificationIsCurrent(_ engine: Client, _ expected: UInt64, _ account: ZoenPushSnapshot.Account, _ lease: ZoenPushWakeLease) -> Bool {
     guard lease.isLive, !erasing, !closing, generation == expected, core === engine, mode == "account",
           let now = engine.account(), now.unlocked, now.registered, !now.setupPending else { return false }
-    return now.identityId == account.identity_id && now.deviceId == account.device_id
+    return now.identityId == account.identity_id && now.deviceId == account.device_id && now.relayUrl == account.relay_url
   }
 
   /// The deadline starts at OS callback admission, before the process transition queue.
   /// No identity creation, provider setup, history retry pump or alternative vault.
-  func notificationWake(cold: Bool, deadline: ContinuousClock.Instant, lease: ZoenPushWakeLease, expectedBorrow: NotificationBorrow? = nil) async throws -> ZoenPushResult {
+  func notificationWake(cold: Bool, deadline: ContinuousClock.Instant, lease: ZoenPushWakeLease, expectedBorrow: NotificationBorrow? = nil, voip: (payload: String, id: UUID)? = nil) async throws -> ZoenPushResult {
     guard lease.isLive else { throw CancellationError() }
-    notificationActive = false
+    if voip == nil { notificationActive = false }
     if cold {
       let root = ZoenDeviceErasure.accountRoot
       let database = root.appending(path: "client.sqlite")
@@ -63,6 +77,21 @@ extension ZoenSession {
     _ = try await engine.waitUntilSettled(timeoutMs: UInt64(milliseconds))
     try Task.checkCancellation()
     guard ContinuousClock.now < deadline, notificationIsCurrent(engine, expected, owner, lease) else { throw SessionError.closed }
+    if let voip {
+      guard let json = try engine.callWakeNativeState(identityId: owner.identity_id, deviceId: owner.device_id, payload: voip.payload) else {
+        return .noData
+      }
+      let wake = try zoenCallDecode(ResolvedCallWake.self, json)
+      if cold {
+        guard await ZoenNativePushSessions.gate.preserveWakeForCall(session: self, lease: lease) else { throw SessionError.closed }
+      }
+      guard ContinuousClock.now < deadline, notificationIsCurrent(engine, expected, owner, lease) else { throw SessionError.closed }
+      await bindCalls(lease: lease.parent, changed: { _ in }, audio: { _ in }, wake: (wake, voip.id))
+      guard ContinuousClock.now < deadline, notificationIsCurrent(engine, expected, owner, lease) else { throw SessionError.closed }
+      guard let scope = callsScope, scope.space == wake.spaceId,
+            scope.call == wake.call.callId, scope.invitation == wake.call.invitation else { return .noData }
+      return .newData
+    }
     if cold {
       // Background sync is best effort, not an urgent PushKit guarantee. Only an
       // authenticated canonical invitation may keep this sole cold Client alive.

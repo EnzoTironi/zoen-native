@@ -71,6 +71,55 @@ test('native details switches keep canonical flags, coalesce events and retire o
   await settle();
   assert.equal(f.requests.length, 1);
 });
+test('background-call preference uses the authenticated conversation and refreshes the relay value', async () => {
+  let reads = 0;
+  let refreshes = 0;
+  let allowed = false;
+  const scope = {
+    op: 'call_wake_consent',
+    expected_identity_id: 'me',
+    expected_device_id: 'device',
+    space_id: 'space',
+    peer_id: 'friend',
+  };
+  const f = fixture('space', {
+    'expo-router': { useLocalSearchParams: () => ({ id: 'space' }) },
+    'expo-constants': { expoConfig: { extra: { zoenVoipWakeEnabled: true } } },
+    '../../core/query': {
+      useCoreQuery(command: unknown) {
+        assert.deepEqual(JSON.parse(JSON.stringify(command)), { ...scope, allowed: null });
+        reads += 1;
+        return {
+          data: allowed,
+          loading: false,
+          retry: () => {
+            refreshes += 1;
+          },
+        };
+      },
+    },
+  });
+  Object.assign(f.state.snapshot.account, { registered: true, unlocked: true });
+  Object.assign(f.state.snapshot.conversations[0]!, {
+    kind: 'Direct',
+    counterpart: { id: 'friend', kind: 'Person' },
+  });
+  const initial = target(f.render(), 'details-preference-background-calls');
+  assert.equal(initial.props.value, false);
+  initial.props.onValueChange(true);
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.requests)), [{ ...scope, allowed: true }]);
+  assert.equal(refreshes, 1);
+  allowed = true;
+  const updated = target(f.render(), 'details-preference-background-calls');
+  assert.equal(updated.props.value, true);
+  assert.ok(reads > 1);
+  f.blur();
+  updated.props.onValueChange(false);
+  await settle();
+  assert.equal(f.requests.length, 1);
+});
+
 test('shared media projection uses exact authorized space/current descriptors independently of hidden Home shortcuts', () => {
   const photo = item('photo');
   const video = item('video', 'video/mp4');

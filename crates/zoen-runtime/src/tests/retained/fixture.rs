@@ -11,27 +11,57 @@ pub(super) struct Fixture {
     pub(super) space: String,
     pub(super) head: Option<Seen>,
     pub(super) managed_directory: Option<crate::tests::managed_images::Directory>,
+    pub(super) shared_directory: Option<crate::tests::managed_images::Directory>,
 }
 
 impl Fixture {
     pub(super) async fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Self::build(false, false).await
+        Self::build(false, false, false).await
     }
 
     pub(super) async fn with_output() -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Self::build(true, false).await
+        Self::build(true, false, false).await
     }
 
     pub(super) async fn with_managed_output(
     ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Self::build(true, true).await
+        Self::build(true, true, false).await
+    }
+
+    pub(super) async fn with_shared_runtime(
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Self::build(false, false, true).await
     }
 
     async fn build(
         output: bool,
         managed: bool,
+        shared: bool,
     ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        let mut world = World::with_relay().await?;
+        let world = if shared {
+            World::without_policy().await?
+        } else {
+            World::with_relay().await?
+        };
+        Self::from_world(world, output, managed, shared).await
+    }
+    pub(super) async fn with_shared_response(
+        response_limit: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::from_world(
+            World::without_policy_response(response_limit).await?,
+            false,
+            false,
+            true,
+        )
+        .await
+    }
+    async fn from_world(
+        mut world: World,
+        output: bool,
+        managed: bool,
+        shared: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         if output {
             let capability = native::testing::output::provision(&world.runtime).await;
             Arc::get_mut(&mut world.runtime).unwrap().output_fixture = Some(capability);
@@ -107,17 +137,70 @@ impl Fixture {
             )
             .await?;
         }
-        let first_package =
-            native::testing::provision_packages(&world.runtime, &actor.identity, &device)
-                .await
-                .remove(0);
-        let second_package = native::testing::provision_packages(
-            &world.runtime,
-            &second.identity,
-            second.device.as_deref().unwrap(),
-        )
-        .await
-        .remove(0);
+        let shared_directory = shared
+            .then(crate::tests::managed_images::Directory::new)
+            .transpose()?;
+        let (first_package, second_package) = if let Some(directory) = &shared_directory {
+            let runtime = Arc::try_unwrap(world.runtime)
+                .map_err(|_| "shared fixture runtime in use")?
+                .initialize_runtime_continuity(&directory.0)
+                .await?;
+            runtime.continuity.store(false, Ordering::SeqCst);
+            runtime.install_policy(world.signed.clone()).await?;
+            world.runtime = Arc::new(runtime);
+            for actor in [&actor, &second] {
+                let device = actor.device.as_deref().ok_or("fixture device")?;
+                world
+                    .runtime
+                    .initialize_native_device(&actor.identity, device)
+                    .await?;
+                world
+                    .runtime
+                    .publish_native_key_packages(&actor.identity, device)
+                    .await?;
+            }
+            let clock = protocol::KeyPackageClaimClock::from_server_ms(
+                zoen_relay::key_package_claims::clock_ms(&world.runtime.finance.pool).await?,
+            )
+            .ok_or("actual key-package claim clock")?;
+            let mut entropy = [0u8; 10];
+            getrandom::getrandom(&mut entropy)?;
+            let operation = clock.operation_with_entropy(entropy);
+            let claimed = zoen_relay::key_package_claims::claim(
+                &world.runtime.finance.pool,
+                &world.owner.identity,
+                world.owner.device.as_deref().ok_or("owner device")?,
+                &operation,
+                std::slice::from_ref(&agent.id),
+            )
+            .await?;
+            let first = claimed
+                .iter()
+                .find(|package| package.device == device)
+                .ok_or("first public package")?
+                .data
+                .clone();
+            let second = claimed
+                .iter()
+                .find(|package| Some(package.device.as_str()) == second.device.as_deref())
+                .ok_or("second public package")?
+                .data
+                .clone();
+            (first, second)
+        } else {
+            let first_package =
+                native::testing::provision_packages(&world.runtime, &actor.identity, &device)
+                    .await
+                    .remove(0);
+            let second_package = native::testing::provision_packages(
+                &world.runtime,
+                &second.identity,
+                second.device.as_deref().unwrap(),
+            )
+            .await
+            .remove(0);
+            (first_package, second_package)
+        };
         let log = Arc::new(
             FdbLog::open(
                 std::env::var("FDB_CLUSTER_FILE").ok().as_deref(),
@@ -150,6 +233,7 @@ impl Fixture {
             space: new_id("retained-direct")?,
             head: None,
             managed_directory,
+            shared_directory,
         };
         fixture
             .clear(EventBody::SpaceCreated {

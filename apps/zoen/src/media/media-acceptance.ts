@@ -15,7 +15,48 @@ export function mediaAcceptedIntent(
   if (value?.accepted_intent_json == null) return null;
   const receipt = object(JSON.parse(value.accepted_intent_json));
   const hasReply = Object.hasOwn(receipt, 'reply');
-  keys(receipt, ['input_revision', 'messages', ...(hasReply ? ['reply'] : [])]);
+  const hasEdit = Object.hasOwn(receipt, 'media_edit');
+  keys(receipt, [
+    'input_revision',
+    'messages',
+    ...(hasReply ? ['reply'] : []),
+    ...(hasEdit ? ['media_edit'] : []),
+  ]);
+  if (hasEdit) {
+    const edit = object(receipt.media_edit);
+    keys(edit, ['expected_identity_id', 'expected_device_id', 'space_id', 'message_id', 'edit']);
+    if (
+      ['expected_identity_id', 'expected_device_id', 'space_id', 'message_id'].some(
+        (key) => typeof edit[key] !== 'string' || !edit[key] || !target(edit[key]),
+      )
+    )
+      invalid();
+    const change = object(edit.edit);
+    keys(change, ['mutation_id', 'expected_revision', 'text', 'replacement']);
+    const replacement = object(change.replacement);
+    keys(replacement, ['item_id', 'version', 'sha256']);
+    if (
+      !id(change.mutation_id) ||
+      !target(change.expected_revision) ||
+      !change.expected_revision ||
+      typeof change.text !== 'string' ||
+      typeof replacement.item_id !== 'string' ||
+      !target(replacement.item_id) ||
+      !replacement.item_id ||
+      !Number.isSafeInteger(replacement.version) ||
+      (replacement.version as number) < 1 ||
+      typeof replacement.sha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(replacement.sha256)
+    )
+      invalid();
+    if (
+      !Array.isArray(receipt.messages) ||
+      receipt.messages.length !== 1 ||
+      receipt.messages[0] !== edit.message_id ||
+      receipt.reply != null
+    )
+      invalid();
+  }
   if (
     !id(receipt.input_revision) ||
     receipt.input_revision === '0' ||

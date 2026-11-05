@@ -1,6 +1,7 @@
 use super::*;
 use ring::rand::{SecureRandom, SystemRandom};
 use std::path::{Path, PathBuf};
+mod originals;
 mod publish;
 mod release;
 mod runtime;

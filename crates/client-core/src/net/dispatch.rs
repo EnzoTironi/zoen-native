@@ -24,6 +24,8 @@ pub(super) struct FrameContext<'a> {
     pub(super) opening: &'a mut Option<tokio::time::Instant>,
     pub(super) claim_clock: &'a mut Option<ClaimClockSample>,
     pub(super) clock_negotiated: bool,
+    pub(super) voip_wake: bool,
+    pub(super) next_id: &'a mut u64,
     pub(super) media_kick: &'a tokio::sync::Notify,
 }
 
@@ -48,6 +50,8 @@ pub(super) async fn dispatch_frame(
         claim_clock,
         clock_negotiated,
         media_kick,
+        voip_wake,
+        next_id,
     } = context;
     macro_rules! engine {
         ($work:expr) => {
@@ -61,12 +65,38 @@ pub(super) async fn dispatch_frame(
         ServerFrame::Event { ev } => {
             let space = ev.env.space().to_string();
             let client_id = ev.env.client_id().to_string();
-            let (r, advanced) = engine!(|engine| {
+            let sequence = ev.seq;
+            let (r, advanced, wake_peer) = engine!(|engine| {
                 let before = engine.next_seq(&space);
+                let invite = voip_wake
+                    .then(|| engine.store.outbox_active_event(&client_id).ok().flatten())
+                    .flatten()
+                    .and_then(|event| match event.body {
+                        types::EventBody::CallV1 {
+                            signal:
+                                types::calls::CallSignal::Invite {
+                                    call_id, callee, ..
+                                },
+                        } => Some((call_id, callee)),
+                        _ => None,
+                    });
                 let result = engine.ingest(ev);
+                let wake_peer = invite
+                    .filter(|(call_id, callee)| {
+                        result == Ingest::Confirmed
+                            && engine.assert_call_peer_allowed(callee).is_ok()
+                            && engine.call_history(&space).is_ok_and(|calls| {
+                                calls.iter().any(|call| {
+                                    &call.call_id == call_id
+                                        && call.invitation_confirmed
+                                        && call.ringing_at(crate::engine::now_ms())
+                                })
+                            })
+                    })
+                    .map(|(_, callee)| callee);
                 let advanced = matches!(&result, Ingest::Applied | Ingest::Confirmed)
                     && engine.next_seq(&space) > before;
-                (result, advanced)
+                (result, advanced, wake_peer)
             });
             if advanced && cursor_repair.progressed(tokio::time::Instant::now()) {
                 let _ = repair_deadline.send_replace(cursor_repair.abort_deadline());
@@ -78,6 +108,23 @@ pub(super) async fn dispatch_frame(
                     "publication confirmed tracked={tracked} in_flight={}",
                     sent.len()
                 ));
+            }
+            if let Some(peer) = wake_peer {
+                let id = *next_id;
+                *next_id += 1;
+                send(
+                    sink,
+                    &ClientFrame::Req {
+                        id,
+                        op: protocol::Op::RequestVoipWake {
+                            space: space.clone(),
+                            peer,
+                            seq: sequence,
+                        },
+                    },
+                )
+                .await
+                .map_err(Exit::Retry)?;
             }
             match r {
                 Ingest::Confirmed => {

@@ -137,3 +137,52 @@ fn blocking_live_peer_fences_negotiation_but_not_history_or_hangup() {
     assert!(ended.terminal());
     assert!(f.engine.state.spaces["sp_calls"].call_transport.is_empty());
 }
+
+#[test]
+fn voip_wake_resolves_only_the_exact_live_encrypted_invitation(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
+    let call = f.invite()?;
+    own(&mut f, false);
+    let identity = f.callee.identity.clone();
+    let device = f.callee.device.clone().ok_or("missing recipient device")?;
+    let mut event = f
+        .engine
+        .store
+        .events("sp_calls")?
+        .pop()
+        .ok_or("missing invite")?;
+    let now = 200;
+    let wake = protocol::push::CallWake::new(
+        event.hash[..32].into(),
+        event.at_ms + protocol::push::CALL_WAKE_WINDOW_MS,
+        now,
+    )?;
+    let payload = wake.encode(now)?;
+    assert!(f
+        .engine
+        .resolve_call_wake(&identity, &device, payload.as_bytes(), now)?
+        .is_none());
+    event.sealed_wire = Some("ab".repeat(32));
+    assert!(f.engine.store.replace_event(&event)?);
+    let resolved = f
+        .engine
+        .resolve_call_wake(&identity, &device, payload.as_bytes(), now)?
+        .ok_or("expected the committed invitation")?;
+    assert_eq!(resolved.0, "sp_calls");
+    assert_eq!(resolved.1.call_id, call.call_id);
+    assert!(f
+        .engine
+        .resolve_call_wake(&identity, "stale-device", payload.as_bytes(), now)
+        .is_err());
+    assert!(f
+        .engine
+        .resolve_call_wake(&identity, &device, payload.as_bytes(), 1_100)?
+        .is_none());
+    f.engine.store.block(&f.caller.identity, now)?;
+    assert!(f
+        .engine
+        .resolve_call_wake(&identity, &device, payload.as_bytes(), now)?
+        .is_none());
+    Ok(())
+}

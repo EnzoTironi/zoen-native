@@ -1,25 +1,54 @@
 use super::*;
-pub(super) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    // Independent fixture phases must not retain each other's debug-mode poll
-    // temporaries while their nested SQL/FDB/HTTP operations are executing.
-    Box::pin(native()).await?;
-    Box::pin(authority()).await?;
+use std::{future::Future, pin::Pin};
+type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
+type Journey = Pin<Box<dyn Future<Output = TestResult>>>;
+type Phase = fn() -> Journey;
+
+pub(super) async fn run() -> TestResult {
+    let phases: Vec<Phase> = match std::env::var("ZOEN_RUNTIME_TEST_COHORT") {
+        Ok(cohort) if cohort == "shared-capture" => {
+            vec![|| Box::pin(retained::shared_native::capture::run())]
+        }
+        Ok(cohort) if cohort == "shared-financial-ack" => {
+            vec![|| Box::pin(retained::shared_native::ack::run())]
+        }
+        Ok(cohort) if cohort == "native-text-delivery" => {
+            vec![|| Box::pin(retained::output::delivery::run())]
+        }
+        Ok(_) | Err(std::env::VarError::NotUnicode(_)) => {
+            return Err("unknown Runtime test cohort".into());
+        }
+        Err(std::env::VarError::NotPresent) => vec![
+            || Box::pin(shared_native_setup::run()),
+            || Box::pin(retained::shared_native::run()),
+            || Box::pin(retained::shared_native::ack::run()),
+            || Box::pin(retained::output::managed::run()),
+            || Box::pin(retained::output::delivery::run()),
+            || Box::pin(owner_policy_controls::run()),
+            || Box::pin(image_tasks::run()),
+            || Box::pin(managed_image_recovery::run()),
+            || Box::pin(managed_custody::run()),
+            || Box::pin(native_images()),
+            || Box::pin(retained::run()),
+            || Box::pin(retained::admission::run()),
+            || Box::pin(retained::output::run()),
+            || Box::pin(native_custody()),
+            || Box::pin(authority()),
+        ],
+    };
+    // Factories construct each future before polling it. The driver retains
+    // only one boxed phase, not the debug poll temporaries of every sibling.
+    for phase in phases {
+        phase().await?;
+    }
     Ok(())
 }
-
-async fn native() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    owner_policy_controls::run().await?;
-    Box::pin(image_tasks::run()).await?;
-    Box::pin(managed_image_recovery::run()).await?;
-    managed_custody::run().await?;
-    // Independent journeys are siblings: boxing their stored futures does not
-    // remove debug-mode poll temporaries from a nested caller's stack frame.
-    let reviewed_image = Box::pin(retained::image_tasks::review()).await?;
-    let prepared_image = Box::pin(retained::image_tasks::prepare(reviewed_image)).await?;
-    Box::pin(retained::image_tasks::deliver(prepared_image)).await?;
-    Box::pin(retained::run()).await?;
-    Box::pin(retained::admission::run()).await?;
-    Box::pin(retained::output::run()).await?;
+async fn native_images() -> TestResult {
+    let reviewed = Box::pin(retained::image_tasks::review()).await?;
+    let prepared = Box::pin(retained::image_tasks::prepare(reviewed)).await?;
+    Box::pin(retained::image_tasks::deliver(prepared)).await
+}
+async fn native_custody() -> TestResult {
     stores::native_device_custody().await?;
     println!("native custody journey: test-provisioned real directory, retained OpenMLS packages, cold restore and device revocation PASS");
     Ok(())

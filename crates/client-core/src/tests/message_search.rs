@@ -38,6 +38,7 @@ fn activity_search_uses_historical_note_not_current_mutable_file_title() {
 }
 
 // Complete cases keep their original annotated entrypoints above.
+mod hashtag_cases;
 mod historical_references_cases;
 mod scoped_paging_cases;
 mod support;

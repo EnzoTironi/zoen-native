@@ -13,6 +13,9 @@ import Foundation
     var failed = false
     var seekable: Bool { duration.isFinite && duration > 0 && !failed }
   }
+  private let bookmark: ZoenMediaPlaybackBookmark?
+  private var pendingResume: Double?
+  private var resumePlay = false
   let player: AVPlayer
   private(set) var state = State()
   var changed: ((State) -> Void)?
@@ -28,7 +31,8 @@ import Foundation
   private var scrubOrigin: Double = 0
   private var wasPlaying = false
 
-  init(player: AVPlayer) {
+  init(player: AVPlayer, bookmark: ZoenMediaPlaybackBookmark? = nil) {
+    self.bookmark = bookmark; pendingResume = bookmark?.resumeSeconds
     self.player = player
     guard let item = player.currentItem else { state.failed = true; return }
     itemObservation = item.observe(\.status, options: [.initial, .new]) { [weak self, weak item] _, _ in
@@ -43,7 +47,7 @@ import Foundation
         self.updateItem(item)
       }
     }
-    endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
+    endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
       object: item, queue: .main) { [weak self, weak item] _ in
       MainActor.assumeIsolated {
         guard let self, self.active, !self.retired, let item, self.player.currentItem === item else { return }
@@ -52,7 +56,7 @@ import Foundation
     }
   }
 
-  deinit {
+  isolated deinit {
     if let timeObserver { player.removeTimeObserver(timeObserver) }
     if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
   }
@@ -62,13 +66,20 @@ import Foundation
     let duration = item.duration.seconds
     state.duration = duration.isFinite && duration > 0 ? duration : 0
     if state.failed { player.pause(); state.playing = false }
-    publish()
+    applyResume(); publish()
+  }
+
+  private func applyResume() {
+    guard active, !retired, state.seekable, let target = pendingResume else { return }
+    pendingResume = nil; seek(to: target)
+    if resumePlay { resumePlay = false; play() }
   }
 
   func setActive(_ value: Bool) {
     guard !retired, active != value else { return }
     active = value
     if value {
+      applyResume()
       let expected = generation
       timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
         MainActor.assumeIsolated {
@@ -81,7 +92,7 @@ import Foundation
       generation = UUID(); player.pause(); player.currentItem?.cancelPendingSeeks()
       requestedSeek = nil; seekInFlight = false
       if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }
-      state.playing = false; state.scrubbing = false; wasPlaying = false
+      state.playing = false; state.scrubbing = false; wasPlaying = false; resumePlay = false
       publish()
     }
   }
@@ -89,16 +100,18 @@ import Foundation
   func toggle() { state.playing ? pause() : play() }
   func play() {
     guard active, !retired, !state.failed, !state.scrubbing else { return }
+    if pendingResume != nil { resumePlay = true; return }
     if state.seekable, state.position >= state.duration { seek(to: 0) }
     state.playing = true; player.play(); publish()
   }
   func pause() {
     guard !retired else { return }
-    player.pause(); state.playing = false; publish()
+    resumePlay = false; player.pause(); state.playing = false; publish()
   }
   func seek(by delta: Double) { seek(to: state.position + delta) }
   func seek(to seconds: Double) {
     guard active, !retired, state.seekable, seconds.isFinite else { return }
+    pendingResume = nil
     state.position = max(0, min(state.duration, seconds))
     requestedSeek = CMTime(seconds: state.position, preferredTimescale: 1_000_000_000)
     publish(); chaseSeek()
@@ -141,5 +154,8 @@ import Foundation
     if let endObserver { NotificationCenter.default.removeObserver(endObserver); self.endObserver = nil }
     changed = nil
   }
-  private func publish() { changed?(state) }
+  private func publish() {
+    if pendingResume == nil, !state.scrubbing, !state.failed { bookmark?.observe(seconds: state.position, duration: state.duration, playing: state.playing) }
+    changed?(state)
+  }
 }

@@ -1,3 +1,4 @@
+import AVFoundation
 import UIKit
 @preconcurrency import WebRTC
 
@@ -7,6 +8,7 @@ final class ZoenCallViewController: UIViewController {
   var mute: ((Bool) -> Void)?
   var speaker: ((Bool) -> Void)?
   var camera: ((Bool) -> Void)?
+  var switchCamera: (() -> Void)?
   var minimize: (() -> Void)?
   private let name: String
   private let video: Bool
@@ -14,6 +16,10 @@ final class ZoenCallViewController: UIViewController {
   private var cameraOn = true
   private let status = UILabel()
   private let remote = RTCMTLVideoView()
+  private let local = RTCMTLVideoView()
+  private weak var localTrack: RTCVideoTrack?
+  private var visible = false
+  private var switchCameraButton: UIButton?
   private weak var track: RTCVideoTrack?
   private var cameraButton: UIButton?
   private var speakerButton: UIButton?
@@ -40,6 +46,36 @@ final class ZoenCallViewController: UIViewController {
       UIImpactFeedbackGenerator(style: .light).impactOccurred(); self?.minimize?()
     }, for: .touchUpInside)
     view.addSubview(minimizeButton)
+    if video {
+      local.videoContentMode = .scaleAspectFill
+      local.translatesAutoresizingMaskIntoConstraints = false
+      local.layer.cornerRadius = 16
+      local.clipsToBounds = true
+      local.isAccessibilityElement = false
+      view.addSubview(local)
+      NSLayoutConstraint.activate([
+        local.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+        local.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+        local.widthAnchor.constraint(equalToConstant: 96),
+        local.heightAnchor.constraint(equalToConstant: 128),
+      ])
+      let positions = Set(RTCCameraVideoCapturer.captureDevices().map(\.position))
+      if positions.contains(.front), positions.contains(.back) {
+        let flip = button("camera.rotate", label: text("Alternar câmera", "Switch camera")) { [weak self] _ in
+          self?.switchCamera?()
+        }
+        flip.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(flip)
+        switchCameraButton = flip
+        NSLayoutConstraint.activate([
+          flip.centerXAnchor.constraint(equalTo: local.centerXAnchor),
+          flip.topAnchor.constraint(equalTo: local.bottomAnchor, constant: 4),
+          flip.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+          flip.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+        ])
+      }
+      updateLocalPreviewVisibility()
+    }
     NSLayoutConstraint.activate([
       remote.leadingAnchor.constraint(equalTo: view.leadingAnchor), remote.trailingAnchor.constraint(equalTo: view.trailingAnchor),
       remote.topAnchor.constraint(equalTo: view.topAnchor), remote.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -134,10 +170,30 @@ final class ZoenCallViewController: UIViewController {
   }
   func showVideo(_ video: RTCVideoTrack?) {
     track?.remove(remote); track = video
-    if isViewLoaded, view.window != nil { video?.add(remote) }
+    if visible { video?.add(remote) }
   }
-  override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); track?.remove(remote); track?.add(remote) }
-  override func viewWillDisappear(_ animated: Bool) { track?.remove(remote); super.viewWillDisappear(animated) }
+  func showLocalVideo(_ track: RTCVideoTrack?) {
+    localTrack?.remove(local)
+    localTrack = track
+    if visible { track?.add(local) }
+    updateLocalPreviewVisibility()
+  }
+  private func updateLocalPreviewVisibility() {
+    local.isHidden = localTrack == nil
+    switchCameraButton?.isHidden = localTrack == nil
+  }
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    visible = true
+    track?.add(remote)
+    localTrack?.add(local)
+  }
+  override func viewWillDisappear(_ animated: Bool) {
+    visible = false
+    track?.remove(remote)
+    localTrack?.remove(local)
+    super.viewWillDisappear(animated)
+  }
   func presentIfNeeded(completion: @escaping () -> Void) -> Bool {
     guard presentingViewController == nil, !isBeingDismissed,
           let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),

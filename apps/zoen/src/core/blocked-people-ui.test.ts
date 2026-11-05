@@ -1,3 +1,4 @@
+import { inboxActions } from '../i18n/catalogs/inbox-actions.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -70,7 +71,7 @@ const strings = (tree: unknown): string => {
     : '';
 };
 function fixture(locale: 'en' | 'pt-BR' = 'en') {
-  const localization = createLocalization({ settings, chat, ownerPolicy }, [locale]);
+  const localization = createLocalization({ inboxActions, settings, chat, ownerPolicy }, [locale]);
   const state: any = {
     phase: 'ready',
     erasePending: false,

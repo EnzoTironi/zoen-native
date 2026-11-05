@@ -81,7 +81,7 @@ fn copy_snapshot_tables(conn: &rusqlite::Connection) -> R<()> {
         .map_err(storage)?;
     }
     // These encrypted drafts belong to the old device even in retained snapshots.
-    conn.execute("DELETE FROM main.meta WHERE key LIKE 'message.draft.%' OR key LIKE 'media.draft.%' OR key LIKE 'file.edit.draft.%' OR key LIKE 'page.draft.%'", []).map_err(storage)?;
+    conn.execute("DELETE FROM main.meta WHERE key LIKE 'message.draft.%' OR key LIKE 'media.playback.%' OR key LIKE 'media.draft.%' OR key LIKE 'file.edit.draft.%' OR key LIKE 'page.draft.%'", []).map_err(storage)?;
     Ok(())
 }
 
@@ -242,7 +242,7 @@ impl Engine {
             c.execute_batch(
                 "DELETE FROM meta WHERE key = 'account' OR key = 'relay_name' OR key LIKE 'backup.%'
                     OR key LIKE 'mls.%' OR key LIKE 'invite:%' OR key LIKE 'message.draft.%'
-                    OR key LIKE 'media.draft.%' OR key LIKE 'file.edit.draft.%'
+                    OR key LIKE 'media.playback.%' OR key LIKE 'media.draft.%' OR key LIKE 'file.edit.draft.%'
                     OR key LIKE 'page.draft.%';
                  VACUUM;",
             )

@@ -8,6 +8,13 @@ function fixture() {
   const calls: string[] = [];
   const sent: unknown[] = [];
   let owner = 'owner';
+  let observed: unknown = {
+    status: 'Active',
+    revision: '1',
+    pending: null,
+    operation_id: null,
+    outcome: 'Observed',
+  };
   let beforeProfile: (() => void) | undefined;
   const store = {
     get sessionEpoch() {
@@ -35,13 +42,7 @@ function fixture() {
           beforeProfile?.();
           return { persona: { id: 'agent', kind: 'Agent', is_mine: true, owner_id: owner } };
         }
-        return {
-          status: 'Active',
-          revision: '1',
-          pending: null,
-          operation_id: null,
-          outcome: 'Observed',
-        };
+        return observed;
       },
     },
     request: async (command: { op: string }) => {
@@ -54,6 +55,9 @@ function fixture() {
     port,
     calls,
     sent,
+    setStatus: (value: unknown) => {
+      observed = value;
+    },
     changeOwner: () => {
       owner = 'other';
     },
@@ -136,4 +140,36 @@ test('a changed owner or account epoch prevents explicit retry dispatch', async 
     /session has changed/,
   );
   assert.deepEqual(retired.sent, []);
+});
+
+test('bridge refuses noncanonical and oversized revisions, including impossible pending at exhaustion', async () => {
+  const f = fixture();
+  const scope = f.port.scope()!;
+  for (const revision of ['0', '01', '9223372036854775808', '9'.repeat(10000), 1]) {
+    f.setStatus({
+      status: 'Active',
+      revision,
+      pending: null,
+      operation_id: null,
+      outcome: 'Observed',
+    });
+    await assert.rejects(f.port.read('agent', scope), /unavailable/);
+  }
+  f.setStatus({
+    status: 'Active',
+    revision: '9223372036854775807',
+    pending: 'Pause',
+    operation_id: 'd'.repeat(64),
+    outcome: 'Unknown',
+  });
+  await assert.rejects(f.port.read('agent', scope), /unavailable/);
+  f.setStatus({
+    status: 'Active',
+    revision: '9223372036854775807',
+    pending: null,
+    operation_id: null,
+    outcome: 'Observed',
+  });
+  assert.equal((await f.port.read('agent', scope)).revision, '9223372036854775807');
+  assert.deepEqual(f.sent, []);
 });

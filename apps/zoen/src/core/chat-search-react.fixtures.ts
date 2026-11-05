@@ -1,3 +1,5 @@
+import * as sendChat from './send-chat-message.ts';
+import * as searchLaunch from './search-launch.ts';
 import { messageCanInteract } from './message-presentation.ts';
 import * as deleteMessageAction from '../components/delete-message-action.ts';
 import assert from 'node:assert/strict';
@@ -41,6 +43,7 @@ export async function chatSearchReactFixture(qa = false) {
     driver = new Driver(),
     snapshot = draftSession();
   const id = snapshot.conversations[0]!.id;
+  let searchTicket: string | undefined;
   const calls: any[] = [];
   const restoreRecords: string[] = [];
   const pending = deferred<MessageSearchPage>();
@@ -101,7 +104,7 @@ export async function chatSearchReactFixture(qa = false) {
     'expo-router': {
       useFocusEffect: focus.exports.useFocusEffect,
       useIsFocused: () => true,
-      useLocalSearchParams: () => ({ id }),
+      useLocalSearchParams: () => ({ id, searchTicket }),
     },
     'expo-router/react-navigation': { useHeaderHeight: () => 64 },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 20 }) },
@@ -121,6 +124,8 @@ export async function chatSearchReactFixture(qa = false) {
     '../core/conversation-reveal': conversationReveal,
     '../core/conversation-reveal-content': conversationContent,
     '../core/conversation-search': conversationSearch,
+    '../core/send-chat-message': sendChat,
+    '../core/search-launch': searchLaunch,
     '../core/conversation-timeline': conversationTimeline,
     '../core/initial-timeline-end': initialEnd,
     '../core/live-activity': activity,
@@ -255,6 +260,12 @@ export async function chatSearchReactFixture(qa = false) {
     timeline: (read: typeof timeline) => {
       timeline = read;
     },
+    handoff: (query: string) => {
+      searchTicket = 'scoped-search-handoff';
+      if (!searchLaunch.searchLaunches.prepare(searchTicket, id, query, store))
+        throw Error('invalid search handoff');
+    },
+    draft: normalDraft,
     render: () => root.render(React.createElement(Surface)),
     async reopen(change?: 'relay') {
       await root.act(async () => {

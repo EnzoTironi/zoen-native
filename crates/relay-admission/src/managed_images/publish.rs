@@ -1,6 +1,9 @@
 //! A publication consumes independent effect history before any linear permit
 //! can enter the relay queue. Existing consumption is only an observation: the
 //! actual source may prove Accepted, but absence cannot authorize another send.
+mod refusal;
+pub use refusal::PublishRefusal;
+
 use super::file::{options, regular, sync_directory, unavailable};
 use super::{AnchorError, AnchorReader, Checkpoint, GenerationGuard};
 use protocol::{ClientFrame, Envelope};
@@ -24,7 +27,7 @@ pub struct PublishCondition {
     pub record_digest: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Record {
     schema: u8,
@@ -36,6 +39,8 @@ struct Record {
     checkpoint_record_digest: String,
     effect_digest: String,
     wire_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refusal: Option<PublishRefusal>,
 }
 
 pub enum ConsumePublish {
@@ -50,6 +55,7 @@ pub enum ConsumePublish {
 pub struct ManagedPublishPermit {
     reader: AnchorReader,
     condition: PublishCondition,
+    source_fence: Option<Box<protocol::runtime_binding::SourceFence>>,
     _generation: GenerationGuard,
 }
 
@@ -78,6 +84,9 @@ pub fn publish_digest(namespace: &str, envelope: &Envelope) -> Result<String, An
 
 impl Record {
     fn condition(&self) -> Result<PublishCondition, AnchorError> {
+        // Terminal metadata never changes the original consumed association.
+        let mut original = self.clone();
+        original.refusal = None;
         Ok(PublishCondition {
             namespace: self.namespace.clone(),
             source: self.source.clone(),
@@ -88,7 +97,7 @@ impl Record {
             effect_digest: self.effect_digest.clone(),
             wire_digest: self.wire_digest.clone(),
             record_digest: event_log::sha256_hex(
-                &serde_json::to_vec(self).map_err(|_| AnchorError::Invalid)?,
+                &serde_json::to_vec(&original).map_err(|_| AnchorError::Invalid)?,
             ),
         })
     }
@@ -155,6 +164,7 @@ impl AnchorReader {
             ),
             effect_digest,
             wire_digest: event_log::sha256_hex(&wire),
+            refusal: None,
         })
     }
 
@@ -232,6 +242,7 @@ impl AnchorReader {
         let permit = ManagedPublishPermit {
             reader: self.clone(),
             condition: record.condition()?,
+            source_fence: None,
             _generation: generation,
         };
         permit.check(envelope)?;
@@ -240,6 +251,20 @@ impl AnchorReader {
 }
 
 impl ManagedPublishPermit {
+    pub fn with_source_fence(
+        mut self,
+        fence: Option<protocol::runtime_binding::SourceFence>,
+    ) -> Result<Self, AnchorError> {
+        if fence.as_ref().is_some_and(|fence| !fence.valid()) {
+            return Err(AnchorError::Invalid);
+        }
+        self.source_fence = fence.map(Box::new);
+        Ok(self)
+    }
+    pub fn source_fence(&self) -> Option<&protocol::runtime_binding::SourceFence> {
+        self.source_fence.as_deref()
+    }
+
     pub fn condition(&self) -> &PublishCondition {
         &self.condition
     }
@@ -261,13 +286,15 @@ impl ManagedPublishPermit {
     /// absent consumption in the same transaction as the exact original append.
     pub fn check(&self, envelope: &Envelope) -> Result<(), AnchorError> {
         let state = self.reader.state()?;
-        if state.committed.generation != self.condition.checkpoint.generation
-            || publish_digest(&self.condition.namespace, envelope)? != self.condition.effect_digest
+        let record = self.reader.read_publish(&self.condition.effect_digest)?;
+        if record.refusal.is_some()
             || self
-                .reader
-                .read_publish(&self.condition.effect_digest)?
-                .condition()?
-                != self.condition
+                .source_fence
+                .as_ref()
+                .is_some_and(|fence| fence.space != envelope.space())
+            || state.committed.generation != self.condition.checkpoint.generation
+            || publish_digest(&self.condition.namespace, envelope)? != self.condition.effect_digest
+            || record.condition()? != self.condition
         {
             return Err(AnchorError::Unreconciled);
         }

@@ -7,12 +7,23 @@
 //! Seams para depois: SQLCipher (mesma API, `PRAGMA key`), FTS5 para busca local,
 //! App Group compartilhado com as extensões do iOS.
 
+#[cfg(test)]
+mod hashtag_tests;
+mod hashtags;
 mod image;
 mod profiles;
 mod recent_attachments;
 mod search;
+mod search_links;
+#[cfg(test)]
+mod search_links_tests;
+mod search_media;
+#[cfg(test)]
+mod search_media_tests;
+pub use search_media::SearchMediaKind;
 mod universal_pages;
 pub use recent_attachments::RecentAttachmentIndexRow;
+pub use universal_pages::SearchPageFilters;
 mod read_times;
 #[cfg(test)]
 mod search_tests;
@@ -40,6 +51,8 @@ pub enum StoreError {
     MediaTooLarge,
     #[error("search page limit must be between 1 and 100")]
     InvalidSearchLimit,
+    #[error("invalid media search category")]
+    InvalidSearchKind,
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
@@ -401,6 +414,23 @@ impl Store {
             out.push(serde_json::from_str(&json?)?);
         }
         Ok(out)
+    }
+
+    /// The hash column is uniquely indexed. Ambiguous prefixes fail closed.
+    pub fn event_by_hash_prefix(&self, prefix: &str) -> Result<Option<Event>> {
+        let upper = format!("{prefix}g");
+        let mut statement = self
+            .conn
+            .prepare_cached("SELECT json FROM events WHERE hash >= ?1 AND hash < ?2 LIMIT 2")?;
+        let mut rows = statement.query([prefix, upper.as_str()])?;
+        let Some(first) = rows.next()? else {
+            return Ok(None);
+        };
+        let json: String = first.get(0)?;
+        if rows.next()?.is_some() {
+            return Ok(None);
+        }
+        Ok(Some(serde_json::from_str(&json)?))
     }
 
     pub fn event_count(&self) -> Result<u64> {

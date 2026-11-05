@@ -84,6 +84,7 @@ async fn run_media_dependencies_ws(
     assert!(receiver.device().unwrap().has_group(&space));
     let account = sender.account().unwrap();
     let scope = MediaDraftScope {
+        edit_message_id: None,
         expected_identity_id: account.identity_id,
         expected_device_id: account.device_id,
         space_id: space.clone(),

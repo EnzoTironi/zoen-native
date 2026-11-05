@@ -94,6 +94,7 @@ export class MessageAudioSession {
       duration: state.durationSeconds,
       rate,
     });
+    this.port.resume?.remember(channel.source, this.positions.get(channel.key)!, !state.playing);
     while (this.positions.size > 128) {
       const evicted = [...this.positions.keys()].find(
         (key) => key !== this.active?.channel.key && key !== this.preparing?.channel.key,
@@ -274,6 +275,12 @@ export class MessageAudioSession {
           if (!current()) return;
           const version = await this.verified(channel.source, current);
           if (version === null || !current()) return;
+          if (this.port.resume) {
+            const restored = await this.port.resume.load(channel.source, version);
+            if (!current()) return;
+            if (restored && !this.positions.has(channel.key))
+              this.positions.set(channel.key, restored);
+          }
           file = await this.port.materialize(channel.source, version);
           if (!file) throw new Error('Audio is still arriving.');
           if (!current()) return;
@@ -490,6 +497,7 @@ export class MessageAudioSession {
     this.reconcile();
     while (this.work.size) await Promise.allSettled(this.work);
     await this.drainRetired();
+    await this.port.resume?.flush();
   }
   /** Effect replay may reactivate this pure owner only after its previous resources drain. */
   async activate() {

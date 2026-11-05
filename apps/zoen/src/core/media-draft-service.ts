@@ -16,7 +16,11 @@ export class MediaDraftService {
     this.store = store;
   }
 
-  channel(spaceId: string, threadRootId: string | null): MediaDraftChannel | null {
+  channel(
+    spaceId: string,
+    threadRootId: string | null,
+    editMessageId?: string,
+  ): MediaDraftChannel | null {
     if (this.store.isSessionRetiring) return null;
     const state = this.store.getSnapshot();
     const owner = homeOwnerFor(state);
@@ -34,6 +38,7 @@ export class MediaDraftService {
       expected_device_id: owner.deviceId,
       space_id: spaceId,
       thread_root_id: threadRootId,
+      ...(editMessageId ? { edit_message_id: editMessageId } : {}),
     };
     const scopeKey = JSON.stringify(scope);
     let channel = this.channels.get(scopeKey);

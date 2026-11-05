@@ -44,6 +44,7 @@ test('You retains Appearance, all settings and the actual Edit Profile entry aft
     [
       'settings-account-budget',
       'settings-appearance',
+      'settings-chat-folders',
       'settings-general',
       'settings-permissions',
       'settings-notifications',

@@ -1,6 +1,10 @@
 //! Private fresh-namespace output transactions, never production activation.
+mod authority;
 mod cold;
+pub(in crate::tests) mod delivery;
+pub(in crate::tests) mod managed;
 mod recovery;
+mod relay_fences;
 use super::*;
 pub(super) use cold::cold;
 use native::testing::output as proof;
@@ -288,6 +292,7 @@ async fn source_changes_before_final_output_and_receipt(
 }
 
 pub(in crate::tests) async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    Box::pin(authority::run()).await?;
     Box::pin(capture_substitutions_refuse()).await?;
     Box::pin(late_paid_capture_remains_independent()).await?;
     Box::pin(recovery::association_failure_does_not_block_incurred_evidence()).await?;

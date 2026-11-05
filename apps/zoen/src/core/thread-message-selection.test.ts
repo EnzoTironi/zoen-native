@@ -32,8 +32,16 @@ function find(value: unknown, type: string): Element | undefined {
   const element = value as Element;
   return element.type === type ? element : find(element.props?.children, type);
 }
-function fixture(active = true, jump?: string, individual = false) {
+function fixture(
+  active = true,
+  jump?: string,
+  individual = false,
+  send: () => Promise<void> = async () => {
+    throw new Error('original send failure');
+  },
+) {
   const host = hookHost();
+  let sessionEpoch = 1;
   const calls: string[] = [];
   const routes: unknown[] = [];
   const state = {
@@ -70,6 +78,7 @@ function fixture(active = true, jump?: string, individual = false) {
     copy: () => calls.push('copy'),
     forward: () => calls.push('forward'),
   };
+  let routeRoot = 'root-message';
   let hookArgs: unknown[] = [];
   let actionArgs: { disabled: boolean; onSelect: (entry: TimelineEntry) => void } | undefined;
   const actions = {
@@ -99,7 +108,7 @@ function fixture(active = true, jump?: string, individual = false) {
           router: { push: (route: unknown) => routes.push(JSON.parse(JSON.stringify(route))) },
           Stack: { Screen: 'Screen' },
           useFocusEffect: host.useFocusEffect,
-          useLocalSearchParams: () => ({ space: 'space', root: 'root-message', jump }),
+          useLocalSearchParams: () => ({ space: 'space', root: routeRoot, jump }),
         };
       if (name === 'expo-router/react-navigation') return { useHeaderHeight: () => 44 };
       if (name === 'react-native-safe-area-context')
@@ -112,7 +121,7 @@ function fixture(active = true, jump?: string, individual = false) {
       if (name.endsWith('/core/provider'))
         return {
           useClient: () => ({
-            store: { sessionEpoch: 1, setTyping() {}, getSnapshot: () => state },
+            store: { sessionEpoch, setTyping() {}, getSnapshot: () => state },
             snapshot: { conversations: [{ id: 'space', kind: 'Group' }] },
             mode: 'account',
           }),
@@ -137,13 +146,17 @@ function fixture(active = true, jump?: string, individual = false) {
           useMessageDraft: () => ({
             messageDraft: { text: 'draft', reply: null, editing: null, editText: '' },
             updateDraft() {},
-            capture: () => null,
+            capture: () => ({ text: 'draft' }),
+            isCurrent: () => true,
+            send,
           }),
         };
       if (name.endsWith('/primitives'))
         return { EmptyState: 'Empty', Loading: 'Loading', NativeButton: 'Button' };
       if (name.endsWith('/theme')) return { useTheme: () => ({ colors: {} }) };
       if (name.endsWith('/home/provider')) return { useHome: () => ({ allItems: [] }) };
+      if (name.endsWith('/thread-hashtag-provider'))
+        return { ThreadHashtagProvider: 'ThreadHashtagProvider' };
       if (name.endsWith('/message-composer')) return { MessageComposer: 'Composer' };
       if (name.endsWith('/use-message-selection'))
         return {
@@ -172,7 +185,8 @@ function fixture(active = true, jump?: string, individual = false) {
       throw new Error(name);
     },
   });
-  const tree = host.render(() => module.exports.default());
+  const render = () => host.render(() => module.exports.default());
+  const tree = render();
   const viewport = find(tree, 'Viewport')!;
   const content = (viewport.props.children as (spacer: unknown, scroll: unknown) => Element)(
     null,
@@ -188,7 +202,25 @@ function fixture(active = true, jump?: string, individual = false) {
   );
   const list = find(transitioned, 'FlashList');
   assert.ok(list, 'Thread viewport must retain its actual list');
-  return { calls, routes, state, entries, selection, tree, viewport, list, hookArgs, actionArgs };
+  return {
+    calls,
+    routes,
+    state,
+    entries,
+    selection,
+    tree,
+    viewport,
+    list,
+    hookArgs,
+    actionArgs,
+    render,
+    setRoot: (root: string) => {
+      routeRoot = root;
+    },
+    reopen: () => {
+      sessionEpoch++;
+    },
+  };
 }
 
 test('thread binds selection to its root and expands every original entry into toggle-only rows', () => {
@@ -300,4 +332,73 @@ test('message links reveal an album child and suppress automatic bottom followin
     find(missing.viewport.props.composer, 'Text')!.props.children,
     'chat.messageUnavailable',
   );
+});
+
+test('thread send failure is hidden after reopening the same account', async () => {
+  const f = fixture(false);
+  const composer = find(f.viewport.props.composer, 'Composer')!;
+  (composer.props.onSend as () => void)();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const failed = find(f.render(), 'Viewport')!;
+  assert.match(JSON.stringify(failed.props.composer), /chat.theReplyCouldNotBeSent/);
+  f.reopen();
+  const reopened = find(f.render(), 'Viewport')!;
+  assert.doesNotMatch(JSON.stringify(reopened.props.composer), /chat.theReplyCouldNotBeSent/);
+});
+
+test('finishing an old send keeps the reopened session’s send pending', async () => {
+  const pending: (() => void)[] = [];
+  const f = fixture(
+    false,
+    undefined,
+    false,
+    () => new Promise<void>((resolve) => pending.push(resolve)),
+  );
+  const composer = () => find(find(f.render(), 'Viewport')!.props.composer, 'Composer')!.props;
+  (composer().onSend as () => void)();
+  assert.equal(composer().sending, true);
+  f.reopen();
+  assert.equal(composer().sending, false);
+  (composer().onSend as () => void)();
+  assert.equal(pending.length, 2);
+  pending[0]!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(composer().sending, true);
+  pending[1]!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(composer().sending, false);
+});
+
+test('an old send rejection cannot replace the current session’s alert', async () => {
+  const pending: (() => void)[] = [];
+  const f = fixture(
+    false,
+    undefined,
+    false,
+    () =>
+      new Promise<void>((_resolve, reject) => pending.push(() => reject(new Error('send failed')))),
+  );
+  const composer = () => find(f.render(), 'Viewport')!.props.composer;
+  const send = () => (find(composer(), 'Composer')!.props.onSend as () => void)();
+  send();
+  f.reopen();
+  send();
+  pending[1]!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  pending[0]!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+});
+
+test('returning to a thread does not revive an alert from its earlier route scope', async () => {
+  const f = fixture(false);
+  const composer = () => find(f.render(), 'Viewport')!.props.composer;
+  (find(composer(), 'Composer')!.props.onSend as () => void)();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  f.setRoot('another-root');
+  assert.doesNotMatch(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  f.setRoot('root-message');
+  assert.doesNotMatch(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
 });

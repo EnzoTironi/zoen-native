@@ -57,3 +57,8 @@ pub use events::{
 mod tests;
 
 pub mod saved_messages;
+
+mod inbox;
+pub use inbox::{InboxFolder, InboxFolderKind, InboxFolders};
+
+pub use annotation::{MediaChange, MediaReplacement};

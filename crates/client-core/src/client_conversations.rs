@@ -9,6 +9,18 @@ impl Client {
         self.lock().space_summary(&space_id)
     }
 
+    /// Identifies the confirmed membership currently held by this client.
+    pub fn own_membership_event(&self, space_id: String) -> Result<Option<String>, CoreError> {
+        let engine = self.lock();
+        let space = engine.space_summary(&space_id)?;
+        Ok(space
+            .members
+            .iter()
+            .find(|member| member.is_me)
+            .and_then(|member| engine.membership_cut(&space_id, &member.id))
+            .map(|event| event.hash.clone()))
+    }
+
     pub fn member_roles(&self, space_id: String) -> Result<Vec<MemberRoleDto>, CoreError> {
         self.lock().member_roles(&space_id)
     }

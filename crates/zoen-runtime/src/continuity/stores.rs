@@ -2,7 +2,7 @@ use super::*;
 use foundationdb::Transaction as FdbTransaction;
 
 impl ManagedRuntime {
-    pub(super) async fn sql_checkpoint(
+    pub(crate) async fn sql_checkpoint(
         &self,
         tx: &mut Transaction<'_, Postgres>,
     ) -> Result<Checkpoint, RuntimeError> {
@@ -20,7 +20,7 @@ impl ManagedRuntime {
         })
     }
 
-    pub(super) async fn write_sql(
+    pub(crate) async fn write_sql(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         prepared: &Prepared,
@@ -38,7 +38,7 @@ impl ManagedRuntime {
         Ok(())
     }
 
-    pub(super) async fn fdb_checkpoint(
+    pub(crate) async fn fdb_checkpoint(
         &self,
         runtime: &RuntimeAuthority,
         tx: &FdbTransaction,
@@ -70,7 +70,7 @@ impl ManagedRuntime {
         serde_json::from_slice(&bytes).map_err(|_| RuntimeError::InvalidBinding)
     }
 
-    pub(super) async fn write_fdb(
+    pub(crate) async fn write_fdb(
         &self,
         runtime: &RuntimeAuthority,
         tx: &FdbTransaction,

@@ -111,6 +111,7 @@ export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
       ...config.extra,
       ...(environmentIosPush ? { zoenPush: pushInput } : {}),
       ...(androidPush ? { zoenPush: { ...pushInput, android: androidPush } } : {}),
+      zoenVoipWakeEnabled: iosPush !== null && process.env.ZOEN_IOS_VOIP_WAKE === '1',
       zoenRelayUrl: process.env.EXPO_PUBLIC_ZOEN_RELAY_URL?.trim() || providers.relayUrl,
       zoenAuth: {
         googleIosClientId,

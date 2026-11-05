@@ -10,7 +10,7 @@ import { contactVCard, sharedContact } from '../media/attachment-content.ts';
 // Real Apple Contacts/CryptoKit and production parser; no fake RFC parser.
 test(
   'actual vCard parser and native session boundary reject malformed, mismatched, revoked or retired source reads',
-  { skip: process.platform !== 'darwin', timeout: 90000 },
+  { skip: process.platform !== 'darwin', timeout: 180000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-contact-parser-'));
     try {
@@ -59,8 +59,6 @@ test(
             '6',
             '-strict-concurrency=complete',
             '-warnings-as-errors',
-            '-module-cache-path',
-            join(directory, 'module-cache'),
             '-sdk',
             sdk,
             source,
@@ -68,7 +66,7 @@ test(
             '-o',
             binary,
           ],
-          { encoding: 'utf8', timeout: 45000 },
+          { encoding: 'utf8', timeout: 120000 },
         );
         assert.match(
           execFileSync(binary, [], { encoding: 'utf8', timeout: 10000 }),

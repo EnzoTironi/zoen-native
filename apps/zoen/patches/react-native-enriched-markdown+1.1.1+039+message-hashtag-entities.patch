@@ -1,0 +1,97 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm b/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
+--- a/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
++++ b/node_modules/react-native-enriched-markdown/ios/parser/MarkdownParserBridge.mm
+@@ -1,4 +1,5 @@
+ #import "ENRMMarkdownParser.h"
++#import "ENRMHashtags.h"
+ #include "MD4CParser.hpp"
+ #import "MarkdownASTNode.h"
+ #include "MarkdownASTNode.hpp"
+@@ -173,5 +174,7 @@
+   auto cppAST = parser.parse(cppMarkdown, cppFlags, isGFM);
+ 
+   // Convert C++ AST to Objective-C AST
+-  return convertCppASTToObjC(cppAST);
++  MarkdownASTNode *result = convertCppASTToObjC(cppAST);
++  if (flags.hashtags) ENRMApplyHashtags(result);
++  return result;
+ }
+diff --git a/node_modules/react-native-enriched-markdown/ios/parser/ENRMHashtags.h b/node_modules/react-native-enriched-markdown/ios/parser/ENRMHashtags.h
+new file mode 100644
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/parser/ENRMHashtags.h
+@@ -0,0 +1,74 @@
++#import "MarkdownASTNode.h"
++#import <Foundation/Foundation.h>
++#import <dispatch/dispatch.h>
++
++// Entity admission runs on the parser's tree, before measurement and rendering.
++// Preserve source offsets and exact visible bytes; never rewrite Markdown input.
++static inline MarkdownASTNode *ENRMHashtagText(MarkdownASTNode *source, NSRange range)
++{
++  MarkdownASTNode *text = [[MarkdownASTNode alloc] initWithType:MarkdownNodeTypeText];
++  text.content = [source.content substringWithRange:range];
++  NSString *start = source.attributes[@"quoteStartUtf16"];
++  NSString *end = source.attributes[@"quoteEndUtf16"];
++  if (start && end && end.integerValue - start.integerValue == source.content.length) {
++    NSUInteger offset = start.integerValue + range.location;
++    text.attributes[@"quoteStartUtf16"] = [@(offset) stringValue];
++    text.attributes[@"quoteEndUtf16"] = [@(offset + range.length) stringValue];
++  }
++  return text;
++}
++
++static inline NSArray<MarkdownASTNode *> *ENRMHashtagParts(MarkdownASTNode *node)
++{
++  NSString *content = node.content;
++  if (content.length == 0 || [content rangeOfString:@"#"].location == NSNotFound) return @[node];
++  static NSRegularExpression *expression;
++  static dispatch_once_t once;
++  dispatch_once(&once, ^{
++    expression = [NSRegularExpression
++      regularExpressionWithPattern:@"(?:^|[\\s(\\[{<\"',;!?—–])(#[\\p{L}\\p{M}\\p{N}_]+)"
++      options:0 error:NULL];
++  });
++  NSArray<NSTextCheckingResult *> *matches = [expression matchesInString:content options:0
++      range:NSMakeRange(0, content.length)];
++  NSMutableArray<MarkdownASTNode *> *parts = [NSMutableArray new];
++  NSUInteger end = 0;
++  NSCharacterSet *lettersAndNumbers = [NSCharacterSet alphanumericCharacterSet];
++  for (NSTextCheckingResult *match in matches) {
++    NSRange range = [match rangeAtIndex:1];
++    NSString *tag = [content substringWithRange:range];
++    if ([tag rangeOfCharacterFromSet:lettersAndNumbers].location == NSNotFound) continue;
++    if (range.location > end) [parts addObject:ENRMHashtagText(node, NSMakeRange(end, range.location - end))];
++    MarkdownASTNode *link = [[MarkdownASTNode alloc] initWithType:MarkdownNodeTypeLink];
++    NSString *encoded = [tag stringByAddingPercentEncodingWithAllowedCharacters:
++        [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"]];
++    link.attributes[@"url"] = [@"zoen-hashtag:" stringByAppendingString:encoded];
++    [link addChild:ENRMHashtagText(node, range)];
++    [parts addObject:link];
++    end = NSMaxRange(range);
++  }
++  if (parts.count == 0) return @[node];
++  if (end < content.length) [parts addObject:ENRMHashtagText(node, NSMakeRange(end, content.length - end))];
++  return parts;
++}
++
++static inline void ENRMApplyHashtags(MarkdownASTNode *node)
++{
++  switch (node.type) {
++    case MarkdownNodeTypeLink:
++    case MarkdownNodeTypeCode:
++    case MarkdownNodeTypeCodeBlock:
++    case MarkdownNodeTypeImage:
++    case MarkdownNodeTypeVideo:
++    case MarkdownNodeTypeLatexMathInline:
++    case MarkdownNodeTypeLatexMathDisplay:
++      return;
++    default: break;
++  }
++  NSMutableArray<MarkdownASTNode *> *children = [NSMutableArray new];
++  for (MarkdownASTNode *child in node.children) {
++    if (child.type == MarkdownNodeTypeText) [children addObjectsFromArray:ENRMHashtagParts(child)];
++    else { ENRMApplyHashtags(child); [children addObject:child]; }
++  }
++  node.children = children;
++}

@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use zeroize::Zeroizing;
 
 mod gallery;
+mod media_edit;
 mod polls;
 mod recovery;
 mod replies;
@@ -35,6 +36,9 @@ pub struct MediaDraftScope {
     pub expected_device_id: String,
     pub space_id: String,
     pub thread_root_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub edit_message_id: Option<String>,
 }
 impl MediaDraftScope {
     pub(crate) fn normal(&self) -> DraftScope {
@@ -106,6 +110,10 @@ enum Content {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reply_intent: Option<String>,
         items: Vec<Attachment>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        edit_revision: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        normal_revision: Option<String>,
         #[serde(
             default,
             skip_serializing_if = "types::AttachmentSendOptions::is_default"
@@ -150,6 +158,8 @@ struct Receipt {
     messages: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reply: Option<replies::AcceptedReply>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    media_edit: Option<protocol::message_media_edit::MessageMediaEdit>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -266,8 +276,15 @@ fn references(content: &Option<Content>) -> R<Vec<&str>> {
             items,
             options,
             gallery,
+            edit_revision,
             ..
         } => {
+            if edit_revision
+                .as_deref()
+                .is_some_and(|revision| !target_id(revision))
+            {
+                return Err(invalid());
+            }
             if !options.validate_count(items.len()) {
                 return Err(invalid());
             }

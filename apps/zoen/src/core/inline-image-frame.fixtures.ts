@@ -58,6 +58,7 @@ export const compiled = await build({
       setup(builder) {
         builder.onResolve({ filter: /./ }, ({ path }) =>
           path === './inline-image-frame' ||
+          path === './media-playback-scope' ||
           path === './file-attachment-content' ||
           path === './inline-file-image' ||
           path === './observed-file' ||
@@ -121,7 +122,7 @@ runInNewContext(conversationCode, {
   require: (name: string) => {
     if (name === '../i18n/index.ts') return { t: (key: string) => key };
     assert.equal(name, './playback-owner');
-    return { mediaPlayback: { pauseAll() {} } };
+    return { mediaPlayback: { async pauseAllAndFlush() {}, async refreshCheckpoints() {} } };
   },
 });
 export type Element = { type: unknown; props: Record<string, unknown> };

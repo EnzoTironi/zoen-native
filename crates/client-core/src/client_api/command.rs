@@ -135,6 +135,13 @@ pub(super) enum Command {
     CallHistory {
         space_id: String,
     },
+    CallWakeConsent {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        peer_id: String,
+        allowed: Option<bool>,
+    },
     InviteCall {
         expected_identity_id: String,
         expected_device_id: String,
@@ -188,12 +195,6 @@ pub(super) enum Command {
         #[serde(flatten)]
         scope: DraftScope,
         expected_revision: String,
-    },
-    RecoverFailedMediaDraft {
-        scope: crate::MediaDraftScope,
-        message_id: String,
-        expected_revision: String,
-        expected_message_revision: String,
     },
     AppEditTargets {
         input: crate::app_edit_requests::AppEditTargetInput,
@@ -282,6 +283,12 @@ pub(super) enum Command {
     SetChatPrefs(super::chat_preferences_dispatch::ChatPrefsInput),
     SetChatMute(super::chat_preferences_dispatch::ChatMuteInput),
     SetChatMuted(super::chat_preferences_dispatch::ChatMutedInput),
+    ReplaceMessageMedia {
+        input: protocol::message_media_edit::MessageMediaEdit,
+    },
+    InboxFolders {
+        input: crate::inbox_folders::InboxFoldersInput,
+    },
     ChatLayout {
         input: crate::chat_layout::ChatLayoutInput,
     },
@@ -310,6 +317,13 @@ pub(super) enum Command {
     },
     JoinInvite {
         code: String,
+    },
+    JoinInviteTracked {
+        code: String,
+    },
+    InviteJoinStatus {
+        space_id: String,
+        client_id: String,
     },
     AddMember {
         space_id: String,
@@ -797,4 +811,6 @@ pub(super) enum Command {
     /// This domain retains the same flat op tags and strict field checks.
     #[serde(untagged)]
     Forwarding(super::forwarding_command::ForwardingCommand),
+    #[serde(untagged)]
+    PrivateMedia(super::private_media_command::PrivateMediaCommand),
 }

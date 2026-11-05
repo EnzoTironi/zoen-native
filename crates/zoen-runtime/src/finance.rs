@@ -59,6 +59,7 @@ pub(crate) struct NativeDirectoryGuard {
     agent: String,
     device: String,
     certificate_digest: String,
+    shared_native_checkpoint: bool,
     #[cfg(test)]
     ack_cut: NativeAckCut,
 }
@@ -228,6 +229,9 @@ impl NativeDirectoryGuard {
         ) {
             return Err(RuntimeError::InvalidBinding);
         }
+        if Finance::policy_scope(&mut self.tx).await? == Some(3) && !self.shared_native_checkpoint {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
         // Query and ACK latency consume the window. A dead/idle-terminated
         // connection fails before any FDB activation can start.
         let observed = std::time::Instant::now();
@@ -328,6 +332,7 @@ pub(crate) fn period(year: i32, month: u8) -> Result<(i64, i64), RuntimeError> {
         .ok_or(RuntimeError::InvalidPolicy)?;
     Ok((start.timestamp_millis(), end.timestamp_millis()))
 }
+mod claims;
 mod continuity;
 mod directory;
 mod image_checkpoint;
@@ -336,3 +341,4 @@ mod image_publication;
 mod ledger;
 mod owner_policy;
 mod settlement;
+pub(crate) mod snapshot;

@@ -6,6 +6,7 @@ use chacha20poly1305::{
 use serde::{de::DeserializeOwned, Serialize};
 use zeroize::Zeroizing;
 
+pub(crate) const MAX_PAYLOAD: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_SEALED: usize = 98_304;
 pub(crate) struct Custody {
     cipher: XChaCha20Poly1305,
@@ -45,7 +46,7 @@ impl Custody {
         plain: &[u8],
         maximum: usize,
     ) -> Result<(String, Vec<u8>), RuntimeError> {
-        if maximum > 32 * 1024 * 1024
+        if maximum > MAX_PAYLOAD
             || plain
                 .len()
                 .checked_add(40)
@@ -94,7 +95,7 @@ impl Custody {
         sealed: &[u8],
         maximum: usize,
     ) -> Result<Zeroizing<Vec<u8>>, RuntimeError> {
-        if maximum > 32 * 1024 * 1024 || !(40..=maximum).contains(&sealed.len()) {
+        if maximum > MAX_PAYLOAD || !(40..=maximum).contains(&sealed.len()) {
             return Err(RuntimeError::InvalidBinding);
         }
         let nonce: [u8; 24] = sealed[..24]

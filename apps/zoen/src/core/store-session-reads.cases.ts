@@ -183,3 +183,26 @@ test('a quote jump reads until its target and coalesces concurrent older-page re
     ['target', 'latest'],
   );
 });
+
+test('a retired search reveal does not request another history page', async () => {
+  const driver = new Driver();
+  const store = new ClientStore(driver);
+  await store.open('demo');
+  driver.operation = async () => ({ entries: [entry('latest')], before: 'latest', has_more: true });
+  await store.loadTimeline('chat');
+
+  const older = deferred<TimelinePage>();
+  let reads = 0;
+  let current = true;
+  driver.operation = async () => {
+    reads++;
+    return older.promise;
+  };
+  const reveal = store.revealMessage('chat', 'target', () => current);
+  assert.equal(reads, 1);
+  current = false;
+  older.resolve({ entries: [entry('older')], before: 'older', has_more: true });
+  assert.equal(await reveal, -1);
+  assert.equal(reads, 1);
+  assert.equal(store.getSnapshot().timelines.chat?.before, 'older');
+});

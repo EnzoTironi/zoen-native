@@ -1,3 +1,4 @@
+import { pickMediaReplacement } from './media-replacement-pick';
 import { randomUUID } from 'expo-crypto';
 import { AttachmentGalleryJournal } from './attachment-gallery-journal';
 import {
@@ -33,6 +34,7 @@ export async function pick(
     Pick<DurableAttachmentActions, 'failure' | 'openApproval' | 'edit' | 'send'>,
   kind: AttachmentPickKind,
 ) {
+  if (context.admission.current.mediaEdit) return pickMediaReplacement(context, kind);
   const {
     channel,
     current,
@@ -127,7 +129,6 @@ export async function pick(
             (!sendAsFileAllowed ||
               ((!existing || !existing.items.length) &&
                 (!submission.send || submission.requestEdit)) ||
-              submission.options.grouping !== 'separate' ||
               (existing &&
                 existing.items.length > 0 &&
                 existing.options?.presentation !== 'file'))) ||
@@ -191,6 +192,12 @@ export async function pick(
         selected:
           additions.find((asset) => asset.uri === preferred)?.id ?? additions[0]?.id ?? null,
       });
+      const options =
+        existing?.options ??
+        submission?.options ??
+        (kind === 'document' && !existing?.items.length && additions.length > 1
+          ? { presentation: 'file' as const, grouping: 'grouped' as const }
+          : undefined);
       const next: MediaDraftAttachments = {
         kind: 'attachments',
         reply_to: existing ? existing.reply_to : pickedReplyTo,
@@ -204,9 +211,7 @@ export async function pick(
             mutation_id: id,
           })),
         ],
-        ...((existing?.options ?? submission?.options)
-          ? { options: existing?.options ?? submission!.options }
-          : {}),
+        ...(options ? { options } : {}),
       };
       await channel.save(next, inputs);
       if (submission?.requestEdit) {

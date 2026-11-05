@@ -102,14 +102,7 @@ pub(super) fn media_contract_failed_local_metadata_remains_visible_after_revocat
             },
             false,
         )?;
-        let pending = f.engine.lock().store.outbox().unwrap();
-        for row in pending {
-            assert!(f
-                .engine
-                .lock()
-                .reject(&row.event.client_id, "permission denied", true, None)
-                .user_failed());
-        }
+        refuse_pending_media(&f);
         let recovered_scope = f.scope.clone();
         let check = |engine: &Client| {
             let timeline = engine.timeline(recovered_scope.space_id.clone()).unwrap();

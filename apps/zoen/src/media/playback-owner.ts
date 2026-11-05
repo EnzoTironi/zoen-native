@@ -1,12 +1,17 @@
 import { callAudioFocus } from './call-audio-focus.ts';
 /** One mounted player's revocable playback intent; owns no files or native lifetime. */
 export type PlaybackIntent = Readonly<{ owner: PlaybackOwner }>;
+export type PlaybackCheckpoint = { flush(): Promise<void>; reload?(): Promise<void> };
 export class PlaybackCoordinator {
   private owners = new Set<PlaybackOwner>();
   private current: PlaybackIntent | null = null;
 
-  register(pause: () => void, playing: () => boolean): PlaybackOwner {
-    const owner = new PlaybackOwner(this, pause, playing);
+  register(
+    pause: () => void,
+    playing: () => boolean,
+    checkpoint?: PlaybackCheckpoint,
+  ): PlaybackOwner {
+    const owner = new PlaybackOwner(this, pause, playing, checkpoint);
     this.owners.add(owner);
     return owner;
   }
@@ -32,6 +37,14 @@ export class PlaybackCoordinator {
     this.owners.delete(owner);
     if (this.current?.owner === owner) this.current = null;
   }
+  async pauseAllAndFlush(): Promise<void> {
+    const owners = [...this.owners];
+    this.pauseAll();
+    await Promise.all(owners.map((owner) => owner.flush()));
+  }
+  async refreshCheckpoints(): Promise<void> {
+    await Promise.all([...this.owners].map((owner) => owner.reload()));
+  }
   pauseAll(): void {
     this.current = null;
     for (const owner of this.owners) owner.interrupt();
@@ -45,10 +58,23 @@ export class PlaybackOwner {
   private coordinator: PlaybackCoordinator;
   private pause: () => void;
   private playing: () => boolean;
-  constructor(coordinator: PlaybackCoordinator, pause: () => void, playing: () => boolean) {
+  private readonly checkpoint: PlaybackCheckpoint | undefined;
+  constructor(
+    coordinator: PlaybackCoordinator,
+    pause: () => void,
+    playing: () => boolean,
+    checkpoint?: PlaybackCheckpoint,
+  ) {
+    this.checkpoint = checkpoint;
     this.coordinator = coordinator;
     this.pause = pause;
     this.playing = playing;
+  }
+  flush(): Promise<void> {
+    return this.checkpoint?.flush() ?? Promise.resolve();
+  }
+  reload(): Promise<void> {
+    return this.checkpoint?.reload?.() ?? Promise.resolve();
   }
   begin(): PlaybackIntent | null {
     if (this.closed) return null;

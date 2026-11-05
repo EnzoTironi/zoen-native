@@ -26,6 +26,7 @@ fn expected(
                 generation: checkpoint.generation,
                 sequence: checkpoint.sequence,
                 digest: checkpoint.digest.clone(),
+                source_fence: None,
             }),
         },
         f.world.relay_cell.as_deref().unwrap(),

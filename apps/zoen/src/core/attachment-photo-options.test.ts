@@ -15,7 +15,7 @@ test('fresh Photos default groups two through ten items, while a single photo ke
     });
     assert.deepEqual(photoSendOptions(count, 'send-as-file'), {
       presentation: 'file',
-      grouping: 'separate',
+      grouping: 'grouped',
     });
   }
   for (const count of [0, -1, 11, 1.5, NaN, Infinity])
@@ -28,9 +28,12 @@ test('append inherits the existing admitted batch and cannot convert its present
     { presentation: 'media', grouping: 'grouped' },
     { presentation: 'media', grouping: 'separate' },
     { presentation: 'file', grouping: 'separate' },
+    { presentation: 'file', grouping: 'grouped' },
   ] as const) {
     assert.deepEqual(photoSendOptions(1, 'default', options), options);
     assert.notStrictEqual(photoSendOptions(2, 'default', options), options);
+    if (options.presentation === 'file')
+      assert.deepEqual(photoSendOptions(1, 'send-as-file', options), options);
   }
   assert.throws(() =>
     photoSendOptions(2, 'send-as-file', { presentation: 'media', grouping: 'grouped' }),

@@ -34,9 +34,10 @@ impl Engine {
         kinds: &[String],
         cursor: Option<&str>,
         limit: u32,
-        identity: &str,
-        device: &str,
+        owner: (&str, &str),
+        filters: store::SearchPageFilters<'_>,
     ) -> R<UniversalSearchPage> {
+        let (identity, device) = owner;
         if !self.is_unlocked()
             || self.me.as_deref() != Some(identity)
             || !self
@@ -48,20 +49,39 @@ impl Engine {
                 reason: "A conta ou o dispositivo mudou.".into(),
             });
         }
+        let media = store::SearchMediaKind::from_filter(kinds);
+        let links = kinds == ["link"];
         const ALL: [&str; 6] = ["agent", "app", "item", "message", "person", "space"];
         if !(1..=100).contains(&limit)
             || query.len() > 512
             || query.contains('\0')
+            || filters.period.as_ref().is_some_and(|range| {
+                range.start < 0 || range.start >= range.end || range.end > 8_640_000_000_000_000
+            })
             || kinds.len() > ALL.len()
-            || kinds.iter().any(|kind| !ALL.contains(&kind.as_str()))
+            || (!links && media.is_none() && kinds.iter().any(|kind| !ALL.contains(&kind.as_str())))
         {
             return Err(invalid());
         }
-        let wanted: Vec<String> = ALL
-            .iter()
-            .filter(|kind| kinds.is_empty() || kinds.iter().any(|want| want == **kind))
-            .map(|kind| (*kind).into())
-            .collect();
+        for id in [filters.space, filters.author].into_iter().flatten() {
+            if id.is_empty() || id.len() > 256 || id.chars().any(char::is_control) {
+                return Err(invalid());
+            }
+        }
+        if filters
+            .space
+            .is_some_and(|space| !self.is_member(space, identity))
+        {
+            return Err(invalid());
+        }
+        let wanted: Vec<String> = if links || media.is_some() {
+            kinds.to_vec()
+        } else {
+            ALL.iter()
+                .filter(|kind| kinds.is_empty() || kinds.iter().any(|want| want == **kind))
+                .map(|kind| (*kind).into())
+                .collect()
+        };
         let mut spaces: Vec<String> = self
             .state
             .spaces
@@ -74,10 +94,17 @@ impl Engine {
             self.reindex()?;
         }
         let generation = self.store.search_generation()?;
-        let binding = hex::encode(Sha256::digest(
-            serde_json::to_vec(&(1_u8, query, &wanted, identity, device, &spaces, generation))
-                .map_err(|_| invalid())?,
-        ));
+        let scope = (1_u8, query, &wanted, identity, device, &spaces, generation);
+        let bytes = if filters.space.is_some() || filters.author.is_some() {
+            serde_json::to_vec(&(scope, &filters.period, filters.space, filters.author))
+        } else {
+            match &filters.period {
+                Some(range) => serde_json::to_vec(&(scope, range)),
+                None => serde_json::to_vec(&scope),
+            }
+        }
+        .map_err(|_| invalid())?;
+        let binding = hex::encode(Sha256::digest(bytes));
         let offset = cursor
             .map(|value| {
                 if value.len() > 4096 {
@@ -93,7 +120,7 @@ impl Engine {
             .unwrap_or_default();
         let mut rows = self
             .store
-            .universal_search_page(query, &wanted, &spaces, offset, limit)?;
+            .universal_search_page_filtered(query, &wanted, &spaces, offset, limit, filters)?;
         let more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
         let next_cursor = if more {
@@ -155,8 +182,23 @@ impl Client {
             &kinds,
             cursor.as_deref(),
             limit,
-            &expected_identity_id,
-            &expected_device_id,
+            (&expected_identity_id, &expected_device_id),
+            store::SearchPageFilters::default(),
         )
+    }
+}
+
+impl Client {
+    pub(crate) fn universal_search_page_filtered(
+        &self,
+        query: &str,
+        kinds: &[String],
+        cursor: Option<&str>,
+        limit: u32,
+        owner: (&str, &str),
+        filters: store::SearchPageFilters<'_>,
+    ) -> Result<UniversalSearchPage, CoreError> {
+        self.lock()
+            .universal_page(query, kinds, cursor, limit, owner, filters)
     }
 }

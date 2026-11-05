@@ -28,8 +28,10 @@ string cannot replace the pairing proof or external history.
 
 ## Private scope and actual effects
 
-The private `ManagedImageOutput` type is not Clone/Deserialize and is separate
-from `FreshOutputNamespace`. It binds namespace/source, certified agent/device,
+The private `ManagedNativeOutput` type is not Clone/Deserialize. Its checks and
+qualification implementation live behind the shared `NativeOutputAuthority`
+interface. The independent `FreshOutputNamespace` implementation is compiled only
+for tests; production text-output transactions no longer depend on its type. It binds namespace/source, certified agent/device,
 fixed route and the live generation lock. Each native owner transaction reads
 current FDB checkpoint with conflicts and compares it with the independent live
 anchor, in addition to existing root/head/lease/directory checks. Missing or
@@ -43,6 +45,44 @@ claim/witness/finance authority is unchanged. Current owner review, trust,
 expiry, directory, exact specification and budget remain independently required.
 General reply output, `run_model` continuity and absence-based refund boundaries
 remain closed. The constructor never creates a financial claim or fixture.
+
+Text activation now reuses the same retained activation intent and paired
+SQL/FDB/external-anchor publication checkpoint. Its sealed record optionally
+carries that checkpoint; unmanaged historical records keep their original shape.
+A managed context refuses an uncheckpointed record instead of downgrading to the
+legacy path. Recovery validates the original paid capture, run, envelope and
+native root before restoring its reference. Current output context is checked
+before automatic checkpoint maintenance. This is exercised with explicit native
+fixture continuity; it does not open production paid chat or text transport.
+
+Retained text transport reads the exact pending native reply (including its
+original reference, event and wire digests), with current grant, per-chat FIFO
+and failed-head checks. Runtime reconciles historical receipts first; only a
+still-pending reply loads fresh run/device leases, directory and source facts.
+The shared relay transport rebinds to the publication checkpoint before invoking
+the owner's final authorization callback. Cancellation, grant expiry, native
+root or source changes during the handshake therefore refuse before Publish.
+A lost ACK is resolved by the original sequencer position after cold reopen,
+without another model call. The public paid-chat boundary remains closed until
+normal host admission/continuity is qualified; these are real local relay tests
+with explicit fixture continuity, not production readiness evidence.
+
+Reply transport additionally binds the native source head, original run/attempt
+and optional grant deadline into the existing managed transport MAC. Its relay
+queue carries those facts on the same private linear publication permit. Before
+a fresh append, the real log transaction compares its current (including
+same-batch) head, reads cancellation/closure with conflicts, and checks deadline.
+Historical exact dedupe remains observation before these fresh-effect checks.
+Invalid or foreign-space fences refuse before independent consumption. Known
+committed refusals update the original independent consumption atomically with
+file/directory fsync and retire its held permit. The pinned upstream runner's
+maybe-committed signal is accumulated: once uncertain, a later known retry cannot
+manufacture a negative outcome. I/O failure stays unknown. Native historical
+publication facts validate the original without requiring a current send grant;
+Runtime exposes a durable `Refused` outcome after cold reopen without changing
+its capsule or creating another charge. Missing consumption/receipt is never a
+refusal, append permit or financial release. General paid-chat host/continuity
+integration remains incomplete and its production boundary stays closed.
 
 Scope lifetime retains the OS generation lock; stopping the host/dropping its
 last scope releases it before retirement can complete. Actual relay effects

@@ -129,7 +129,7 @@ impl Engine {
         })
     }
 
-    pub(super) fn entry_voice(&self, e: &Entry) -> Option<VoiceNoteDto> {
+    pub(crate) fn entry_voice(&self, e: &Entry) -> Option<VoiceNoteDto> {
         if !self.visible_message(e) {
             return None;
         }
@@ -142,7 +142,7 @@ impl Engine {
         else {
             return None;
         };
-        if marks.deleted {
+        if marks.deleted || marks.replacement().is_some() {
             return None;
         }
         if let Some(item) = attaches {
@@ -176,14 +176,48 @@ impl Engine {
         Some(voice)
     }
 
+    fn pinned_message_card(
+        &self,
+        entry: &Entry,
+        replacement: &types::MediaReplacement,
+    ) -> Option<ItemCard> {
+        let file = self.space_projections.get(&entry.space)?.replacement_file(
+            &entry.space,
+            &entry.author,
+            replacement,
+        )?;
+        Some(ItemCard {
+            item_id: replacement.item_id.clone(),
+            title: file.name.clone(),
+            summary: file.mime.clone(),
+            kind_label: kind_label(ItemKind::File).into(),
+            kind_id: kind_id(ItemKind::File).into(),
+            version: replacement.version,
+            total_cents: None,
+            budget_cents: None,
+            line_count: 0,
+            done_count: 0,
+            app: None,
+        })
+    }
+
     pub(crate) fn entry_dto(&self, e: &Entry) -> TimelineEntry {
         let kind = match &e.body {
-            EntryBody::Message { text, attaches, .. } => EntryKind::Message {
+            EntryBody::Message {
+                text,
+                attaches,
+                marks,
+                ..
+            } => EntryKind::Message {
                 text: text.clone(),
-                card: attaches
-                    .as_deref()
-                    .filter(|item| self.voice_of(&e.space, item).is_none())
-                    .and_then(|item| self.card_in_space(&e.space, item)),
+                card: if let Some(replacement) = marks.replacement() {
+                    self.pinned_message_card(e, replacement)
+                } else {
+                    attaches
+                        .as_deref()
+                        .filter(|item| self.voice_of(&e.space, item).is_none())
+                        .and_then(|item| self.card_in_space(&e.space, item))
+                },
             },
             EntryBody::ItemEdited {
                 item,

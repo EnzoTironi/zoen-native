@@ -179,6 +179,13 @@ impl Cell {
                 continue;
             }
 
+            // Dedupe above remains historical observation. A fresh effect must
+            // still match its current native source and live run in THIS batch.
+            if let Err(reason) = self.check_source_fence(trx, p, &state.head).await? {
+                results.push(Err(reason));
+                continue;
+            }
+
             if unsupported_members {
                 results.push(Err(Reject::no(
                     "stored membership contains an unsupported identity",

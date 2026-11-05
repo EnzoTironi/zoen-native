@@ -207,6 +207,8 @@ impl Engine {
                 }
             } else {
                 Content::Attachments {
+                    edit_revision: None,
+                    normal_revision: None,
                     reply_intent: None,
                     reply_to,
                     reply_quote,

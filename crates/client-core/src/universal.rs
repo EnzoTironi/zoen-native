@@ -150,20 +150,12 @@ impl Engine {
             return None;
         }
         let body = match &entry.body {
-            EntryBody::Message {
-                text,
-                attaches,
-                marks,
-                ..
-            } => {
+            EntryBody::Message { text, marks, .. } => {
                 if marks.deleted {
                     return None;
                 }
                 let mut body = searchable_text(text);
-                if let Some(voice) = attaches
-                    .as_deref()
-                    .and_then(|item| self.voice_of(&entry.space, item))
-                {
+                if let Some(voice) = self.entry_voice(entry) {
                     body.push('\n');
                     body.push_str(&voice.transcript);
                 }
@@ -183,6 +175,8 @@ impl Engine {
         let st = &self.store;
         st.index_clear()?;
         st.recent_attachments_reset()?;
+        st.reset_search_media()?;
+        st.reset_search_links()?;
         let me = self.me.clone().unwrap_or_default();
         for id in &self.identity_order {
             if *id == me {
@@ -236,7 +230,24 @@ impl Engine {
                         &file.name,
                     )?;
                 }
-                let Some(body) = self.searchable_entry_text(e) else {
+                let file = self.searchable_attachment_file(e);
+                if let Some(file) = file {
+                    st.index_search_media_kind(&s.id, e.id(), self.search_media_kind(e, file))?;
+                }
+                let attachment = file.map(|file| file.name.as_str());
+                let text = self.searchable_entry_text(e);
+                if text
+                    .as_deref()
+                    .is_some_and(crate::search_links::contains_web_link)
+                {
+                    st.index_search_links(&s.id, e.id())?;
+                }
+                let body = match (text, attachment) {
+                    (Some(caption), Some(name)) => Some(format!("{caption}\n{name}")),
+                    (caption @ Some(_), None) => caption,
+                    (None, name) => name.map(str::to_owned),
+                };
+                let Some(body) = body else {
                     continue;
                 };
                 let who = self

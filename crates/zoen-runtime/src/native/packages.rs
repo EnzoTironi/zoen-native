@@ -56,6 +56,7 @@ impl NativeCustody {
         device: &str,
         phase: Phase,
     ) -> Result<NativeKeyPackagePublication, RuntimeError> {
+        runtime.check_shared_runtime().await?;
         let credential = self.credential(agent, device)?;
         let principal = credential.principal();
         runtime
@@ -182,20 +183,7 @@ impl NativeCustody {
             .execution
             .stage_native(principal, Some(previous), fence, next)
             .await?;
-        let admission = runtime
-            .finance
-            .native_directory(
-                &credential.agent,
-                &credential.owner,
-                &principal.device,
-                &credential.certificate,
-            )
-            .await?
-            .authorize(staged.scope(&runtime.execution, fence))
-            .await?;
-        runtime
-            .execution
-            .activate_native(staged, fence, admission)
+        self.activate_maintenance(runtime, credential, staged, fence, None)
             .await
     }
 }

@@ -74,7 +74,25 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     sqlx::query("INSERT INTO push_tokens(identity, device, platform, token, purpose) VALUES ('upgrade', 'device', 'apns', 'upgrade-token', 'notification')")
         .execute(pool)
         .await?;
+    sqlx::raw_sql(
+        "INSERT INTO identities (id, kind, profile) VALUES ('upgrade-owner', 'Person', '{}'::jsonb);
+         INSERT INTO devices (identity, device, cert, revoked_at) VALUES
+           ('upgrade-owner', 'revoked-device', 'fixture', now()),
+           ('upgrade-owner', 'active-device', 'fixture', NULL);
+         INSERT INTO push_tokens (identity, device, platform, token, purpose) VALUES
+           ('upgrade-owner', 'revoked-device', 'apns', 'aabb', 'notification'),
+           ('upgrade-owner', 'revoked-device', 'apns-voip', 'ccdd', 'voip'),
+           ('upgrade-owner', 'active-device', 'apns', 'eeff', 'notification');",
+    )
+    .execute(pool)
+    .await?;
     zoen_relay::MIGRATIONS.run(pool).await?;
+    let upgrade_tokens: Vec<String> = sqlx::query_scalar(
+        "SELECT token FROM push_tokens WHERE identity = 'upgrade-owner' ORDER BY token",
+    )
+    .fetch_all(pool)
+    .await?;
+    assert_eq!(upgrade_tokens, ["eeff"]);
     let id: i64 = sqlx::query_scalar(
         "DELETE FROM push_tokens WHERE token = 'upgrade-token' RETURNING registration_id",
     )
@@ -120,7 +138,66 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    let now_ms: i64 =
+        sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint")
+            .fetch_one(pool)
+            .await?;
+    let expiry = now_ms + 30_000;
+    let (first, second) = tokio::join!(
+        db::claim_voip_wake(pool, "direct", 12, expiry),
+        db::claim_voip_wake(pool, "direct", 12, expiry),
+    );
+    assert_ne!(first?, second?);
+    assert!(!db::claim_voip_wake(pool, "direct", 12, expiry).await?);
+    assert!(!db::claim_voip_wake(pool, "direct", 13, now_ms).await?);
+    assert!(db::claim_voip_wake(pool, "direct", 13, expiry).await?);
+
+    let sender = Signer::generate()?.id();
+    sqlx::query("INSERT INTO identities (id, kind, profile) VALUES ($1, 'Person', '{}'::jsonb)")
+        .bind(&sender)
+        .execute(pool)
+        .await?;
     let audience = [identity.id.clone()];
+
+    let (first_claim, second_claim) = tokio::join!(
+        db::set_push_token(pool, &identity.id, device, push::APNS_VOIP, "ABCD"),
+        db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "abcd"),
+    );
+    first_claim?;
+    second_claim?;
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
+        .await?
+        .is_empty());
+    assert!(!db::get_voip_consent(pool, &identity.id, &sender, "direct").await?);
+    db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true).await?;
+    assert!(db::get_voip_consent(pool, &identity.id, &sender, "direct").await?);
+    assert!(!db::get_voip_consent(pool, &identity.id, &sender, "other").await?);
+    assert!(!db::get_voip_consent(pool, &sender, &identity.id, "direct").await?);
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "other")
+        .await?
+        .is_empty());
+    assert!(
+        db::voip_push_targets(pool, &identity.id, &identity.id, "direct")
+            .await?
+            .is_empty()
+    );
+    let selected = db::voip_push_targets(pool, &identity.id, &sender, "direct").await?;
+    let registration = selected[0].registration_id;
+    assert_eq!(tokens(selected), ["abcd"]);
+    assert!(
+        db::voip_registration_current(pool, &identity.id, &sender, "direct", registration).await?
+    );
+    db::set_voip_consent(pool, &identity.id, sibling, &sender, "direct", false).await?;
+    assert!(!db::get_voip_consent(pool, &identity.id, &sender, "direct").await?);
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
+        .await?
+        .is_empty());
+    assert!(
+        !db::voip_registration_current(pool, &identity.id, &sender, "direct", registration).await?
+    );
+    db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true).await?;
+    db::set_push_token(pool, &identity.id, device, push::APNS_VOIP, "").await?;
+    db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "").await?;
 
     db::set_push_token(pool, &identity.id, device, push::APNS, "aabb")
         .await
@@ -133,7 +210,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         ["aabb"]
     );
     assert_eq!(
-        tokens(db::voip_push_targets(pool, &audience).await.unwrap()),
+        tokens(
+            db::voip_push_targets(pool, &identity.id, &sender, "direct")
+                .await
+                .unwrap()
+        ),
         ["ccdd"]
     );
     db::set_push_token(pool, &identity.id, device, push::APNS_VOIP_SANDBOX, "eeff")
@@ -147,7 +228,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
         ["0011"]
     );
     assert_eq!(
-        tokens(db::voip_push_targets(pool, &audience).await.unwrap()),
+        tokens(
+            db::voip_push_targets(pool, &identity.id, &sender, "direct")
+                .await
+                .unwrap()
+        ),
         ["eeff"]
     );
 
@@ -156,10 +241,22 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     sqlx::query("UPDATE push_tokens SET token = 'EEFF' WHERE purpose = 'voip' AND token = 'eeff'")
         .execute(pool)
         .await?;
-    let previous_voip = db::voip_push_targets(pool, &audience).await?.remove(0);
+    let previous_voip = db::voip_push_targets(pool, &identity.id, &sender, "direct")
+        .await?
+        .remove(0);
     db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "EEFF")
         .await
         .unwrap();
+    assert!(
+        !db::voip_registration_current(
+            pool,
+            &identity.id,
+            &sender,
+            "direct",
+            previous_voip.registration_id,
+        )
+        .await?
+    );
     db::drop_push_token(pool, &previous_voip).await?;
     let owner: String = sqlx::query_scalar("SELECT device FROM push_tokens WHERE purpose = 'voip'")
         .fetch_one(pool)
@@ -173,7 +270,7 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     db::set_push_token(pool, &identity.id, sibling, push::APNS_VOIP, "")
         .await
         .unwrap();
-    assert!(db::voip_push_targets(pool, &audience)
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
         .await
         .unwrap()
         .is_empty());
@@ -195,7 +292,11 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     db::drop_push_token(pool, &current).await?;
     assert!(db::push_targets(pool, &audience).await.unwrap().is_empty());
     assert_eq!(
-        tokens(db::voip_push_targets(pool, &audience).await.unwrap()),
+        tokens(
+            db::voip_push_targets(pool, &identity.id, &sender, "direct")
+                .await
+                .unwrap()
+        ),
         ["0011"]
     );
     db::set_push_token(pool, &identity.id, device, push::APNS, "2233")
@@ -215,8 +316,20 @@ async fn exercise(pool: &PgPool) -> std::result::Result<(), Box<dyn std::error::
     );
     tx.commit().await.unwrap();
     assert!(registration.await.is_err());
+    let retained: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM push_tokens WHERE identity = $1 AND device = $2")
+            .bind(&identity.id)
+            .bind(device)
+            .fetch_one(pool)
+            .await?;
+    assert_eq!(retained, 0);
+    assert!(
+        db::set_voip_consent(pool, &identity.id, device, &sender, "direct", true)
+            .await
+            .is_err()
+    );
     assert_eq!(tokens(db::push_targets(pool, &audience).await?), ["4455"]);
-    assert!(db::voip_push_targets(pool, &audience)
+    assert!(db::voip_push_targets(pool, &identity.id, &sender, "direct")
         .await
         .unwrap()
         .is_empty());

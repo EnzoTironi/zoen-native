@@ -1,3 +1,5 @@
+import { searchLaunches } from '../core/search-launch';
+import { sendChatMessage } from '../core/send-chat-message';
 import { useReplyDestinationFocus } from '../core/use-reply-destination-focus';
 import { type FlashListRef } from '@shopify/flash-list';
 import { useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
@@ -39,10 +41,11 @@ import { useTheme } from '../theme';
 
 const revealQaEnabled = process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA === '1';
 export function useChatController() {
-  const { id, jump, compose } = useLocalSearchParams<{
+  const { id, jump, compose, searchTicket } = useLocalSearchParams<{
     id: string;
     jump?: string;
     compose?: string;
+    searchTicket?: string;
   }>();
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors } = useTheme();
@@ -66,8 +69,8 @@ export function useChatController() {
   );
   const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
-  const [sending, setSending] = useState(false);
-  const sendingNow = useRef(false);
+  const [pending, setPending] = useState<string | null>(null);
+  const sendRef = useRef<{ scope: string } | null>(null);
   const [loadedSpace, setLoadedSpace] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [nativeTimeline, setNativeTimeline] = useState<{ scope: string; tag: number } | null>(null);
@@ -76,11 +79,8 @@ export function useChatController() {
   const composerText = editing ? editDraft : draft;
   const chat = snapshot?.conversations.find((conversation) => conversation.id === id);
   const { owner, search, searchState } = useConversationSearch(id);
-  const rail = useConversationRail(
-    `${owner}:${store.sessionEpoch}:${id}`,
-    railHeight,
-    conversationMiniapps.length > 0,
-  );
+  const scope = `${owner}:${store.sessionEpoch}:${id}`;
+  const rail = useConversationRail(scope, railHeight, conversationMiniapps.length > 0);
   const { visibleHeight: railVisibleHeight } = rail;
   useMessageAudioFocus(id, `${owner}:${store.sessionEpoch}`);
   const [searchRead, setSearchRead] = useState<{
@@ -337,6 +337,13 @@ export function useChatController() {
       focused.current = true;
       initialEnd.focus();
       store.selectSpace(id);
+      const launch = searchLaunches.read(searchTicket, store);
+      if (launch?.space === id && search.openQuery(launch.query)) {
+        searchLaunches.release(searchTicket);
+        initialEnd.cancel();
+        store.setTyping(id, false);
+        input.current?.focus();
+      }
       return () => {
         focused.current = false;
         initialEnd.blur();
@@ -344,12 +351,12 @@ export function useChatController() {
         store.setTyping(id, false);
         store.selectSpace(null);
       };
-    }, [id, store, initialEnd, searchReveal]),
+    }, [id, store, initialEnd, searchReveal, search, searchTicket]),
   );
   const reveal = useCallback(
-    async (messageId: string, keepActivityVisible = true) => {
+    async (messageId: string, keepActivityVisible = true, current?: () => boolean) => {
       cancelInitialEnd();
-      const index = await store.revealMessage(id, messageId);
+      const index = await store.revealMessage(id, messageId, current);
       if (index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
       if (keepActivityVisible) setRevealedActivity({ scope: `${id}:${owner}`, id: messageId });
       return messageId;
@@ -360,8 +367,16 @@ export function useChatController() {
     let active = true;
     if (!searchState.active || !selectedHit) return;
     const captured = searchReveal.capture();
-    const current = () =>
-      active && focused.current && search.isCurrent() && searchReveal.isCurrent(captured);
+    const current = () => {
+      const latest = search.getSnapshot();
+      return (
+        active &&
+        focused.current &&
+        search.isCurrent() &&
+        latest.hits[latest.index] === selectedHit &&
+        searchReveal.isCurrent(captured)
+      );
+    };
     void (async () => {
       const message = await store.driver.request({
         op: 'message',
@@ -380,7 +395,7 @@ export function useChatController() {
         if (!entries.some((entry) => entry.id === selectedHit.ref_id))
           throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
         thread = { root: message.in_thread, entries };
-      } else await reveal(selectedHit.ref_id, false);
+      } else await reveal(selectedHit.ref_id, false, current);
       if (current()) {
         setSearchRead({ search, hit: selectedHit, thread, error: null });
         if (process.env.EXPO_OS === 'ios') searchReveal.request(selectedHit.ref_id, captured);
@@ -476,28 +491,17 @@ export function useChatController() {
     }, [last, manuallyUnread, id, store]),
   );
 
-  async function send() {
-    if (search.getSnapshot().active || sendingNow.current) return;
-    const attempt = normalDraft.capture();
-    if (!attempt) return;
-    const text = attempt.text;
-    if (!text.trim() && !(attempt.editingId && editing?.isCaption)) return;
-    sendingNow.current = true;
-    store.setTyping(id, false);
-    setSending(true);
-    try {
-      if (attempt.editingId) await normalDraft.sendEdit(attempt);
-      else await normalDraft.send();
-    } catch (reason) {
-      if (normalDraft.isCurrent(attempt))
-        void inform(
-          t(attempt.editingId ? 'chat.editCouldNotBeSaved' : 'chat.theReplyCouldNotBeSent'),
-          reason instanceof Error ? reason.message : t('chat.tryAgain'),
-        );
-    } finally {
-      sendingNow.current = false;
-      setSending(false);
-    }
+  function send() {
+    return sendChatMessage({
+      draft: normalDraft,
+      scope,
+      blocked: search.getSnapshot().active,
+      allowEmptyCaption: editing?.isCaption === true,
+      flight: sendRef,
+      setPending,
+      typing: () => store.setTyping(id, false),
+      inform,
+    });
   }
 
   const actions = useMessageActions({
@@ -544,7 +548,7 @@ export function useChatController() {
     reply,
     updateDraft,
     composerText,
-    sending,
+    sending: pending === scope,
     send,
     searchRevealBusy,
     searchRevealError,

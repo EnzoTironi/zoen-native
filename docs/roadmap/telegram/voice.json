@@ -95,11 +95,13 @@
     "acceptance": "pending",
     "evidence": [
       "apps/zoen/src/media/AudioClip.tsx",
-      "apps/zoen/src/media/message-audio-session.ts"
+      "apps/zoen/src/media/message-audio-session.ts",
+      "apps/zoen/src/core/audio-clip-controller.test.ts"
     ],
-    "gap": "Qualificar1/1,5/2×, preservação da posição e troca de nota sem sobreposição de áudio.",
+    "gap": "Teste automatizado cobre falha de carregamento durante reprodução pendente e exige novo toque após recuperação. No iPhone, qualificar 1/1,5/2×, posição e troca de nota sem sobreposição.",
     "issues": [
-      170
+      170,
+      173
     ]
   },
   {
@@ -194,9 +196,12 @@
     "acceptance": "pending",
     "evidence": [
       "apps/zoen/src/media/message-audio-session.ts",
-      "apps/zoen/src/media/AudioClip.tsx"
+      "apps/zoen/src/media/AudioClip.tsx",
+      "crates/client-core/src/media_playback.rs",
+      "apps/zoen/src/media/media-playback-journal.ts",
+      "apps/zoen/src/core/message-audio-resume.test.ts"
     ],
-    "gap": "Adicionar retomada durável, saltos/capítulos e arquivos longos; posição atual fica em cache da sessão.",
+    "gap": "Notas de voz iOS retomam posição/velocidade de journal criptografado por aparelho, mensagem e arquivo; saves são limitados/coalescidos e não geram recibo de leitura. Faltam a fila/controles próprios de música, podcasts, capítulos e arquivos longos, além de aceite manual iPhone por Enzo.",
     "issues": [
       170
     ]

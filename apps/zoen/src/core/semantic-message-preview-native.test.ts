@@ -124,6 +124,8 @@ int main() { @autoreleasepool {
         'project full source before the two-line UI truncation',
       );
       assert.equal(project(''), '');
+      assert.equal(project('Olá ||segredo **privado**||!'), 'Olá [Spoiler]!');
+      assert.equal(project('`||literal||`'), '||literal||');
       assert.equal(
         project('> **café🦊**\n> [Read more](https://example.org/a_(b))'),
         'café🦊\nRead more',

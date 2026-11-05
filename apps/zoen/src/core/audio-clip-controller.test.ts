@@ -278,3 +278,24 @@ test('retired or ineligible controls cannot pause another current playback owner
     assert.equal(b.native.pauses, pauses);
   }
 });
+
+test('a native load failure retires pending playback even if the source recovers', async () => {
+  const f = fixture();
+  const mode = deferred();
+  f.mode(() => mode.promise);
+  const play = f.controller.playFrom(2);
+  await tick();
+  assert.equal(f.native.modes, 1);
+  f.status({ isLoaded: false, playbackState: 'failed' });
+  assert.equal(f.controller.getSnapshot().loadFailed, true);
+  assert.equal(f.controller.getSnapshot().busy, false);
+  f.status();
+  mode.resolve();
+  await play;
+  await tick();
+  assert.deepEqual(f.native.seeks, []);
+  assert.equal(f.native.plays, 0);
+
+  await f.controller.playFrom(2);
+  assert.equal(f.native.plays, 1);
+});

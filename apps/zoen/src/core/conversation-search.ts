@@ -13,6 +13,7 @@ export type ConversationSearchState = Readonly<{
 }>;
 export type ConversationSearchSource = {
   current(): boolean;
+  allowsEmptyQuery?: boolean;
   fitsQuery?(query: string): boolean;
   search(query: string, cursor: string | null): Promise<MessageSearchPage>;
 };
@@ -70,7 +71,7 @@ export class ConversationSearch {
   }
   getSnapshot = () => this.state;
   assistantQuery(observed: ConversationSearchState): string | null {
-    if (observed !== this.state || !this.isCurrent()) return null;
+    if (observed !== this.state || this.dirty || !this.isCurrent()) return null;
     return emptySearchQuery(observed);
   }
   subscribe = (listener: () => void) => {
@@ -82,6 +83,13 @@ export class ConversationSearch {
   private publish(change: Partial<ConversationSearchState>) {
     this.state = { ...this.state, ...change };
     for (const listener of this.listeners) listener();
+  }
+  /** Enter contextual search without touching the conversation composer draft. */
+  openQuery(query: string) {
+    if (!this.source.current() || !this.fitsQuery(query)) return false;
+    this.setQuery(query);
+    this.open();
+    return true;
   }
   open() {
     this.publish({ active: true });
@@ -116,13 +124,22 @@ export class ConversationSearch {
       error: null,
     });
   }
+  get allowsEmptyQuery() {
+    return this.source.allowsEmptyQuery ?? false;
+  }
   fitsQuery(query: string) {
     return this.source.fitsQuery?.(query) ?? conversationQueryFits(query);
   }
   async search() {
     const query = this.state.query.trim();
     const generation = ++this.generation;
-    if (!this.state.active || !query || !this.fitsQuery(query) || !this.source.current()) return;
+    if (
+      !this.state.active ||
+      (!query && !this.allowsEmptyQuery) ||
+      !this.fitsQuery(query) ||
+      !this.source.current()
+    )
+      return;
     this.dirty = false;
     this.submitted = true;
     this.firstPage = null;
@@ -157,9 +174,17 @@ export class ConversationSearch {
     if (!this.submitted) return;
     this.dirty = true;
     const generation = ++this.generation;
-    if (!this.isCurrent()) return;
+    if (!this.isCurrent()) {
+      if (this.state.active) {
+        this.firstPage = null;
+        this.publish({ hits: [], cursor: null, index: -1, loading: false, completed: false });
+      } else {
+        this.publish({ completed: false });
+      }
+      return;
+    }
     const query = this.state.query.trim();
-    if (!query || !this.fitsQuery(query)) return;
+    if ((!query && !this.allowsEmptyQuery) || !this.fitsQuery(query)) return;
     this.publish({ loading: true, error: null });
     try {
       const page = await this.source.search(query, null);
@@ -198,7 +223,7 @@ export class ConversationSearch {
   }
   /** Search pages are newest first; older advances, newer moves back. */
   async move(direction: 'older' | 'newer') {
-    if (!this.isCurrent() || this.state.loading) return;
+    if (this.dirty || !this.isCurrent() || this.state.loading) return;
     const next = this.state.index + (direction === 'older' ? 1 : -1);
     if (next < 0) return;
     if (next < this.state.hits.length) {
@@ -214,7 +239,7 @@ export class ConversationSearch {
   }
   private async append(next: number) {
     const cursor = this.state.cursor;
-    if (!this.isCurrent() || this.state.loading || !cursor) return;
+    if (this.dirty || !this.isCurrent() || this.state.loading || !cursor) return;
     const generation = ++this.generation;
     const query = this.state.query.trim();
     this.publish({ loading: true, error: null });

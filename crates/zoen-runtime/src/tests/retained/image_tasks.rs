@@ -4,7 +4,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use client_core::image_tasks::{ImageTaskDefinition, ImageTaskInput};
 use native::testing::image_tasks as proof;
 use zoen_models::ModelGateway;
-mod delivery;
+pub(super) mod delivery;
 mod provider;
 
 fn gateway(p: &ImagePriceProfile) -> GatewayConfig {

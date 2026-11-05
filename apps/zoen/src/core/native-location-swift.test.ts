@@ -3,17 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-
-// These checks qualify Swift behavior, not cold SDK compilation latency. Keep
-// the compiler bounded separately from each contract executable, and share
-// only this run's toolchain/SDK module cache across the four independent builds.
-const moduleCache =
-  process.platform === 'darwin' ? mkdtempSync(join(tmpdir(), 'zoen-location-modules-')) : null;
-after(() => {
-  if (moduleCache) rmSync(moduleCache, { recursive: true, force: true });
-});
 
 for (const variant of [
   {
@@ -50,7 +41,6 @@ for (const variant of [
       const directory = mkdtempSync(join(tmpdir(), 'zoen-location-native-'));
       const root = new URL('../../modules/zoen-core/', import.meta.url);
       try {
-        assert.ok(moduleCache);
         const sdk = execFileSync('xcrun', ['--sdk', 'macosx', '--show-sdk-path'], {
           encoding: 'utf8',
           timeout: 10000,
@@ -70,8 +60,6 @@ for (const variant of [
             '1',
             '-target',
             'arm64-apple-macosx26.0',
-            '-module-cache-path',
-            moduleCache,
             '-sdk',
             sdk,
             fileURLToPath(new URL('ios/Location/ZoenStaticLocation.swift', root)),

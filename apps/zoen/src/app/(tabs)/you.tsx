@@ -116,6 +116,13 @@ function YouContent() {
               onPress: () => router.push('/settings/appearance'),
             },
             {
+              id: 'settings-chat-folders',
+              iconColor: '#5AC8FA',
+              title: t('inboxActions.folders'),
+              icon: { ios: 'folder', android: 'folder', web: 'folder' },
+              onPress: () => router.push('/settings/chat-folders'),
+            },
+            {
               id: 'settings-general',
               iconColor: '#8E8E93',
               title: t('settings.general'),

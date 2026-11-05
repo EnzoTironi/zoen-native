@@ -102,6 +102,13 @@ function fixture() {
     '../theme': { useTheme: () => ({ colors: { danger: '#f00' } }) },
     '../i18n/index.ts': { t: (key: string) => key },
     './playback-owner.ts': { mediaPlayback: coordinator },
+    './use-video-checkpoint': {
+      useVideoCheckpoint: () => ({
+        ready: true,
+        unavailable: false,
+        checkpoint: { flush: async () => {}, reload: async () => {} },
+      }),
+    },
   };
   const module = {
     exports: {} as { VideoClip(props: any): Element; VideoClipContent(props: any): Element },

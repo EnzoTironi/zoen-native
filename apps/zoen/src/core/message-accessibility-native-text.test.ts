@@ -41,6 +41,8 @@ test(
 ${implementation(bridge, 'static MarkdownASTNode *convertCppASTToObjC(')}
 ${implementation(serializer, 'static void appendPlainText(')}
 ${implementation(serializer, 'NSString *plainTextFromASTNode(')}
+${implementation(serializer, 'static MarkdownASTNode *ENRMSummaryNode(')}
+${implementation(serializer, 'NSString *ENRMMessageSummaryText(')}
 static void links(MarkdownASTNode *node, NSMutableArray *result) {
   if (node.type == MarkdownNodeTypeLink) [result addObject:node.attributes[@"url"] ?: @""];
   for (MarkdownASTNode *child in node.children) links(child, result);
@@ -53,7 +55,7 @@ int main() { @autoreleasepool {
   flags.latexMath = false; flags.noMedia = true;
   MarkdownASTNode *ast = convertCppASTToObjC(parser.parse(markdown.UTF8String, flags, true));
   NSMutableArray *urls = [NSMutableArray new]; links(ast, urls);
-  NSData *output = [NSJSONSerialization dataWithJSONObject:@{@"text":plainTextFromASTNode(ast), @"links":urls} options:0 error:nil];
+  NSData *output = [NSJSONSerialization dataWithJSONObject:@{@"text":ENRMMessageSummaryText(ast), @"links":urls} options:0 error:nil];
   [[NSFileHandle fileHandleWithStandardOutput] writeData:output];
 } }
 `,
@@ -107,6 +109,8 @@ int main() { @autoreleasepool {
         '*literal* [a](b) `z` café🦊',
       );
       assert.equal(parse(String.raw`\"Conversa pronta\"`).text, '"Conversa pronta"');
+      assert.equal(parse('Olá ||segredo **privado**||!').text, 'Olá [Spoiler]!');
+      assert.equal(parse('`||literal||`').text, '||literal||');
       const rich = parse(
         '**bold** *italic* ~~strike~~\n\n> quoted\n\n[label](https://example.test/path)',
       );

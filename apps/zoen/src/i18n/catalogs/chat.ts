@@ -1,3 +1,4 @@
+import { searchRefinements } from './search-refinements.ts';
 import { forwarding } from './forwarding.ts';
 import { defineFeature } from '../catalog.ts';
 import { quoteCollapse } from './quote-collapse.ts';
@@ -8,6 +9,7 @@ export const chat = defineFeature(
   {
     ...messageSelection.en,
     ...dateNavigation.en,
+    ...searchRefinements.en,
     ...forwarding.en,
     ...quoteCollapse.en,
     selectText: 'Select text',
@@ -25,6 +27,8 @@ export const chat = defineFeature(
     communities: 'Communities',
     archived: 'Archived',
     chats: 'Chats',
+    searchFrom: 'From',
+    searchIn: 'In',
     searchChats: 'Search chats',
     searchAllHistory: 'Search all history',
     newChat: 'New chat',
@@ -115,6 +119,7 @@ export const chat = defineFeature(
     opening: 'Opening…',
     openChat: 'Open chat',
     joinChat: 'Join chat',
+    waitingForInviteConfirmation: 'Waiting for confirmation',
     profileUnavailable: 'Profile unavailable',
     thisCouldNotBeCompleted: 'This could not be completed.',
     editMyProfile: 'Edit my profile',
@@ -142,6 +147,7 @@ export const chat = defineFeature(
     searchQueryTooLong: 'Use a shorter search (up to 512 UTF-8 bytes).',
     search: 'Search',
     messagesInThisChat: 'Messages in this chat',
+    searchMessagesFilter: 'Messages',
     peopleMessagesPages: 'People, messages, pages…',
     findWhatStayedInTheConversation: 'Find what stayed in the conversation',
     searchUsesTheHistoryAvailableOnThisDevice: 'Search uses the history available on this device.',
@@ -157,6 +163,7 @@ export const chat = defineFeature(
     publicChat: 'Public chat',
     pinChat: 'Pin chat',
     muteNotifications: 'Mute notifications',
+    backgroundCalls: 'Calls in background',
     archiveChat: 'Archive chat',
     searchThisChat2: 'Search this chat',
     checkHistoryIntegrity: 'Check history integrity',
@@ -227,6 +234,7 @@ export const chat = defineFeature(
   {
     ...messageSelection['pt-BR'],
     ...dateNavigation['pt-BR'],
+    ...searchRefinements['pt-BR'],
     ...forwarding['pt-BR'],
     ...quoteCollapse['pt-BR'],
     selectText: 'Selecionar texto',
@@ -244,6 +252,8 @@ export const chat = defineFeature(
     communities: 'Comunidades',
     archived: 'Arquivadas',
     chats: 'Chats',
+    searchFrom: 'De',
+    searchIn: 'Em',
     searchChats: 'Buscar nas conversas',
     searchAllHistory: 'Buscar em todo o histórico',
     newChat: 'Nova conversa',
@@ -335,6 +345,7 @@ export const chat = defineFeature(
     opening: 'Abrindo…',
     openChat: 'Abrir conversa',
     joinChat: 'Entrar na conversa',
+    waitingForInviteConfirmation: 'Aguardando confirmação',
     profileUnavailable: 'Perfil indisponível',
     thisCouldNotBeCompleted: 'Não foi possível concluir.',
     editMyProfile: 'Editar meu perfil',
@@ -361,6 +372,7 @@ export const chat = defineFeature(
     searchQueryTooLong: 'Use uma busca mais curta (até 512 bytes em UTF-8).',
     search: 'Buscar',
     messagesInThisChat: 'Mensagens desta conversa',
+    searchMessagesFilter: 'Mensagens',
     peopleMessagesPages: 'Pessoas, mensagens, páginas…',
     findWhatStayedInTheConversation: 'Encontre o que ficou na conversa',
     searchUsesTheHistoryAvailableOnThisDevice:
@@ -377,6 +389,7 @@ export const chat = defineFeature(
     publicChat: 'Conversa pública',
     pinChat: 'Fixar conversa',
     muteNotifications: 'Silenciar notificações',
+    backgroundCalls: 'Chamadas em segundo plano',
     archiveChat: 'Arquivar conversa',
     searchThisChat2: 'Buscar nesta conversa',
     checkHistoryIntegrity: 'Verificar integridade do histórico',

@@ -230,12 +230,10 @@ export function useMessageActions({
     pending.current = true;
     setBusy(true);
     try {
-      await store.mediaDrafts.recoverFailed(
-        spaceId,
-        value.in_thread,
-        value.id,
-        () => mounted.current && Boolean(current(value) && messageCanRecoverMedia(current(value)!)),
-      );
+      await store.mediaDrafts.recoverFailed(spaceId, value.in_thread, value.id, () => {
+        const latest = mounted.current ? current(value) : undefined;
+        return latest !== undefined && messageCanRecoverMedia(latest);
+      });
     } catch (reason) {
       if (mounted.current && current(value))
         void inform(

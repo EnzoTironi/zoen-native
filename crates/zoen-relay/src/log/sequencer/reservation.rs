@@ -45,7 +45,14 @@ impl<B: Batcher> Sequencer<B> {
         fence: Fence,
         reader: &AnchorReader,
         checkpoint: &Checkpoint,
+        source_fence: Option<protocol::runtime_binding::SourceFence>,
     ) -> Result<ManagedAdmission, Reject> {
+        if source_fence
+            .as_ref()
+            .is_some_and(|source| !source.valid() || source.space != env.space())
+        {
+            return Err(Reject::no("invalid managed source fence"));
+        }
         let reservation = self.reserve(env, target_known, fence)?;
         match reader
             .consume_publish(checkpoint, &reservation.pending.env)
@@ -54,7 +61,9 @@ impl<B: Batcher> Sequencer<B> {
             ConsumePublish::Fresh(permit) => {
                 Ok(ManagedAdmission::Queued(Box::new(QueuedManaged {
                     reservation,
-                    permit,
+                    permit: permit
+                        .with_source_fence(source_fence)
+                        .map_err(|_| Reject::retry("invalid managed source fence"))?,
                 })))
             }
             ConsumePublish::Consumed(condition) => {

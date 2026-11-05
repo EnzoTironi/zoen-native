@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const harness = String.raw`
 import Foundation
 
-struct MediaDraftScope { let expectedIdentityId: String; let expectedDeviceId: String; let spaceId: String; let threadRootId: String? }
+struct MediaDraftScope { let expectedIdentityId: String; let expectedDeviceId: String; let spaceId: String; let threadRootId: String?; let editMessageId: String? }
 struct MediaDraftAsset { let id: String; let name: String; let mime: String; let size: UInt64; let sha256: String }
 struct MediaDraftDto { let revision: String; let contentJson: String; let assets: [MediaDraftAsset]; let attempted: Bool; var acceptedIntentJson: String? = nil }
 enum ZoenMediaFiles { enum Failure: Error { case tooLarge, invalidFile, invalidRecording } }
@@ -42,6 +42,12 @@ enum ZoenVoiceEditor {
       let json = try JSONSerialization.data(withJSONObject: ZoenMediaDraftBridge.object(value))
       print(String(decoding: json, as: UTF8.self)); return
     }
+    if CommandLine.arguments.last == "scope" {
+      let data = FileHandle.standardInput.readDataToEndOfFile()
+      let decoded = try JSONDecoder().decode(ZoenMediaDraftBridge.Scope.self, from: data).core
+      let json = try JSONSerialization.data(withJSONObject: ["edit": decoded.editMessageId as Any? ?? NSNull()])
+      print(String(decoding: json, as: UTF8.self)); return
+    }
     let actual = render()
     if CommandLine.arguments.last == "emit" {
       print(String(decoding: try JSONEncoder().encode(actual), as: UTF8.self))
@@ -68,7 +74,7 @@ enum ZoenVoiceEditor {
 
 test(
   'native voice admission accepts JSON-rounded Float32 peaks and rejects changed audio metadata',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-native-media-draft-'));
     try {
@@ -90,15 +96,28 @@ test(
           '6',
           '-strict-concurrency=complete',
           '-warnings-as-errors',
-          '-module-cache-path',
-          join(directory, 'module-cache'),
           bridge,
           source,
           '-o',
           binary,
         ],
-        { env: { ...process.env, SDKROOT: sdk }, timeout: 45_000 },
+        { env: { ...process.env, SDKROOT: sdk }, timeout: 120_000 },
       );
+      const scope = {
+        expected_identity_id: 'owner',
+        expected_device_id: 'device',
+        space_id: 'chat',
+        thread_root_id: null,
+      };
+      for (const edit of [null, 'message']) {
+        const value = JSON.parse(
+          execFileSync(binary, ['scope'], {
+            input: JSON.stringify({ ...scope, ...(edit ? { edit_message_id: edit } : {}) }),
+            encoding: 'utf8',
+          }),
+        );
+        assert.equal(value.edit, edit);
+      }
       const native = JSON.parse(execFileSync(binary, ['emit'], { encoding: 'utf8' }));
       const accepted = JSON.parse(execFileSync(binary, ['receipt'], { encoding: 'utf8' }));
       assert.deepEqual(JSON.parse(accepted.accepted_intent_json), {

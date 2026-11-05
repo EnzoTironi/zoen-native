@@ -100,7 +100,8 @@ export async function previewConversationMedia(
   try {
     await check();
     if (!current() || signal.signal.aborted) return;
-    mediaPlayback.pauseAll();
+    await mediaPlayback.pauseAllAndFlush();
+    if (!current() || signal.signal.aborted) return;
     await preview(request, signal.signal);
   } finally {
     finished = true;
@@ -108,6 +109,10 @@ export async function previewConversationMedia(
     detachChanges();
     detachState();
     detachCleanup();
-    complete();
+    try {
+      await mediaPlayback.refreshCheckpoints();
+    } finally {
+      complete();
+    }
   }
 }

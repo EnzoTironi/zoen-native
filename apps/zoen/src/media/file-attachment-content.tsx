@@ -1,3 +1,4 @@
+import { messagePlaybackScope } from './media-playback-scope';
 import { LocationAttachment } from './location-attachment';
 import { isLocationFileMime } from './location-file';
 import { ContactAttachment } from './contact-attachment';
@@ -347,6 +348,8 @@ function FileAttachmentContent({
         <View>
           <VideoClip
             uri={local.uri}
+            checkpoint={messagePlaybackScope(mode, account, messageSource, local)}
+            isCurrent={() => current() && owned.current === local}
             compact
             tile={tile}
             onInlineUnavailable={onInlineUnavailable}

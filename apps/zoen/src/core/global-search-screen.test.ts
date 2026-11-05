@@ -40,7 +40,10 @@ test('compiled result opening preserves query and resolves the canonical thread 
     });
     assert.equal(f.input.value, 'old query');
     assert.deepEqual(JSON.parse(JSON.stringify(f.routes)), [
-      { pathname: '/thread/[space]/[root]', params: { space: 'chat', root: 'root' } },
+      {
+        pathname: '/thread/[space]/[root]',
+        params: { space: 'chat', root: 'root', jump: 'message' },
+      },
     ]);
     assert.equal(f.dismissals, 1);
     assert.deepEqual(f.root.errors, []);
@@ -70,6 +73,36 @@ for (const retirement of ['query', 'unmount', 'account', 'access-ABA'] as const)
       assert.equal(f.routes.length, 0);
       assert.equal(f.dismissals, 0);
       assert.deepEqual(f.root.errors, []);
+    } finally {
+      await f.root.close();
+    }
+  });
+
+for (const message of [
+  null,
+  { id: 'other', in_thread: null, deleted: false },
+  { id: 'message', in_thread: null, deleted: true },
+])
+  test(`compiled search rejects an unavailable result before dismissing the keyboard: ${JSON.stringify(message)}`, async () => {
+    const f = await fixture('old query');
+    try {
+      await f.root.act(() => f.list.renderItem({ item: f.list.data[0] }).props.onPress());
+      await f.root.act(async () => {
+        f.pending.resolve(message);
+        await f.pending.promise;
+      });
+      assert.equal(f.routes.length, 0);
+      assert.equal(f.dismissals, 0);
+      assert.equal(f.input.value, 'old query');
+      assert.equal(
+        f.list.ListHeaderComponent.props.children[0].props.children,
+        'chat.thisResultCouldNotBeOpened',
+      );
+      const retries = f.retries;
+      await f.root.act(() => f.list.ListHeaderComponent.props.children[1].props.onPress());
+      assert.equal(f.reads.length, 2);
+      assert.equal(f.retries, retries);
+      assert.equal(f.dismissals, 0);
     } finally {
       await f.root.close();
     }

@@ -42,6 +42,31 @@ impl RuntimeAuthority {
         envelope: &protocol::Envelope,
         checkpoint: Option<&relay_admission::managed_images::Checkpoint>,
     ) -> Result<Option<Expectation>, RuntimeError> {
+        self.output_publish_expectation(relay, envelope, checkpoint, None)
+            .await
+    }
+
+    pub(crate) async fn reply_publish_expectation(
+        &self,
+        relay: &str,
+        envelope: &protocol::Envelope,
+        checkpoint: Option<&relay_admission::managed_images::Checkpoint>,
+        fence: protocol::runtime_binding::SourceFence,
+    ) -> Result<Option<Expectation>, RuntimeError> {
+        if checkpoint.is_none() || !fence.valid() || fence.space != envelope.space() {
+            return Err(RuntimeError::CoreAuthorityUnavailable);
+        }
+        self.output_publish_expectation(relay, envelope, checkpoint, Some(fence))
+            .await
+    }
+
+    async fn output_publish_expectation(
+        &self,
+        relay: &str,
+        envelope: &protocol::Envelope,
+        checkpoint: Option<&relay_admission::managed_images::Checkpoint>,
+        source_fence: Option<protocol::runtime_binding::SourceFence>,
+    ) -> Result<Option<Expectation>, RuntimeError> {
         self.validate_image_publish_checkpoint(envelope, checkpoint)
             .await?;
         let Some(checkpoint) = checkpoint else {
@@ -51,6 +76,7 @@ impl RuntimeAuthority {
             generation: checkpoint.generation,
             sequence: checkpoint.sequence,
             digest: checkpoint.digest.clone(),
+            source_fence,
         };
         self.bound_output_expectation(
             relay,

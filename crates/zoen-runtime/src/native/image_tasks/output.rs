@@ -31,7 +31,7 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         run: &str,
         gateway: &ModelGateway,
-        capability: &dyn ImageOutputAuthority,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ImageOutputInspection, RuntimeError> {
         runtime.check_image_checkpoint().await?;
         runtime.image_continuity()?;
@@ -105,7 +105,7 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         step: &ImageStep,
-        capability: &dyn ImageOutputAuthority,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ImageOutputInspection, RuntimeError> {
         let task = &step.record.task;
         let run = &task.binding.context.run_id;

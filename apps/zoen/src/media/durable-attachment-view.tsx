@@ -213,6 +213,21 @@ export function renderDurableAttachment(
     busy,
     field,
     pick,
+    cancelEditMedia: options.mediaEdit
+      ? async () => {
+          if (
+            !channel ||
+            !current() ||
+            runtime.picking ||
+            runtime.submitting ||
+            channel.getSnapshot().sending
+          )
+            return false;
+          await cancel();
+          const next = channel.getSnapshot();
+          return current() && next.phase === 'ready' && !next.content && !next.error;
+        }
+      : undefined,
     canAdd: Boolean(
       !reviewing.mutationId &&
       state?.phase === 'ready' &&

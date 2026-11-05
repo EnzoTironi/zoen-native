@@ -1,3 +1,5 @@
+import { ConversationHashtagSearch } from '../components/conversation-hashtag-search.ts';
+import * as hashtags from './message-hashtag.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -171,6 +173,8 @@ for (const kind of ['plain', 'formatted', 'caption'] as const)
       './quote-layout-context': { useQuoteLayoutTransition: () => null },
       './use-message-code-copy': { useMessageCodeCopy: () => () => {} },
       './message-context-ports': { MessageTextSelection },
+      './conversation-hashtag-search': { ConversationHashtagSearch },
+      '../core/message-hashtag': hashtags,
     });
     const props = {
       text: kind === 'formatted' ? '**same** same' : 'same same',

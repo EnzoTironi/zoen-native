@@ -35,10 +35,24 @@ impl Session {
         let _generation = configured
             .upload_guard(&current)
             .map_err(crate::log::Reject::retry)?;
-        self.st
-            .log
-            .append_managed_effect(env, target_known, &requested)
-            .await
+        match request
+            .managed
+            .as_ref()
+            .and_then(|checkpoint| checkpoint.source_fence.clone())
+        {
+            Some(fence) => {
+                self.st
+                    .log
+                    .append_managed_fenced(env, target_known, &requested, fence)
+                    .await
+            }
+            None => {
+                self.st
+                    .log
+                    .append_managed_effect(env, target_known, &requested)
+                    .await
+            }
+        }
     }
 }
 
@@ -74,6 +88,7 @@ mod tests {
                 generation: 1,
                 sequence: 0,
                 digest: "ab".repeat(32),
+                source_fence: None,
             }),
         };
         let refused = publication_checkpoint(&request).unwrap_err();

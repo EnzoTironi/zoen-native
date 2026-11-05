@@ -8,7 +8,7 @@ import { test } from 'node:test';
 
 test(
   'actual image recipe restores framing and orientation without losing recent ink pixels',
-  { skip: process.platform !== 'darwin', timeout: 60_000 },
+  { skip: process.platform !== 'darwin', timeout: 180_000 },
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'zoen-photo-reset-'));
     const native = fileURLToPath(new URL('../../modules/zoen-core/', import.meta.url));
@@ -29,7 +29,7 @@ test(
           '-o',
           binary,
         ],
-        { timeout: 45_000 },
+        { timeout: 120_000 },
       );
       assert.match(
         // Hosted macOS exceeded the former 5s execution limit (run 40500782585).

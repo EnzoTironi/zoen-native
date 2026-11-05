@@ -131,7 +131,7 @@ export function useAttachmentPhotoPicker(
           returnToKeyboard: false,
         },
       );
-      const files = await session.open(remaining, current, admission?.journal);
+      const files = await session.open(remaining, current, admission?.journal, admission?.caption);
       if (pickerOwner.current === (request?.id ?? null)) pickerOwner.current = null;
       setKeyboardRequest(null);
       preferred.current =

@@ -217,22 +217,33 @@ impl Finance {
     }
     pub(super) async fn reserve_once(&self, b: &Binding) -> Result<(), RuntimeError> {
         let mut tx = self.begin().await?;
-        Self::directory(&mut tx, b).await?;
-        let balance = Self::lock_period(&mut tx, b, false).await?;
-        Self::not_closed(&mut tx, b).await?;
-        let policy = Self::policy(&mut tx, b).await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
+        Self::reserve_in(&mut tx, b).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+    pub(crate) async fn reserve_in(
+        tx: &mut Transaction<'_, Postgres>,
+        b: &Binding,
+    ) -> Result<bool, RuntimeError> {
+        if b.hold_units != b.price.reserve(b.requested_output_tokens)? {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        Self::directory(tx, b).await?;
+        let balance = Self::lock_period(tx, b, false).await?;
+        Self::not_closed(tx, b).await?;
+        let policy = Self::policy(tx, b).await?;
         let existing: Option<String> =
             sqlx::query_scalar("SELECT binding_digest FROM runtime_attempts WHERE attempt=$1")
                 .bind(&b.context.attempt_id)
-                .fetch_optional(&mut *tx)
+                .fetch_optional(&mut **tx)
                 .await?;
         let digest = b.digest()?;
         if let Some(old) = existing {
             if old != digest {
                 return Err(RuntimeError::InvalidBinding);
             }
-            tx.commit().await?;
-            return Ok(());
+            return Ok(false);
         }
         let held = balance
             .held_units
@@ -246,70 +257,15 @@ impl Finance {
             return Err(RuntimeError::OverBudget);
         }
         sqlx::query("INSERT INTO runtime_attempts(attempt,owner,period_start,binding_digest,binding,hold_units) VALUES ($1,$2,$3,$4,$5,$6)")
-            .bind(&b.context.attempt_id).bind(&b.context.owner).bind(b.period_start).bind(&digest).bind(Json(b)).bind(b.hold_units).execute(&mut *tx).await?;
+            .bind(&b.context.attempt_id).bind(&b.context.owner).bind(b.period_start).bind(&digest).bind(Json(b)).bind(b.hold_units).execute(&mut **tx).await?;
         sqlx::query("UPDATE runtime_periods SET held_units=$3 WHERE owner=$1 AND period_start=$2")
             .bind(&b.context.owner)
             .bind(b.period_start)
             .bind(held)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
-        Self::journal(&mut tx, b, "reserve", 0).await?;
-        tx.commit().await?;
-        Ok(())
-    }
-    pub async fn claim(&self, b: &Binding) -> Result<Option<FreshClaim>, RuntimeError> {
-        let digest = b.digest()?;
-        let mut tx = self.begin().await?;
-        Self::directory(&mut tx, b).await?;
-        let balance = Self::lock_period(&mut tx, b, false).await?;
-        Self::not_closed(&mut tx, b).await?;
-        let policy = Self::policy(&mut tx, b).await?;
-        if balance
-            .held_units
-            .checked_add(balance.spent_units)
-            .is_none_or(|v| v > policy.limit_units)
-        {
-            return Err(RuntimeError::OverBudget);
-        }
-        let exact: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM runtime_attempts WHERE attempt=$1 AND binding_digest=$2",
-        )
-        .bind(&b.context.attempt_id)
-        .bind(&digest)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if exact.is_none() {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let terminal: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM runtime_dispositions WHERE attempt=$1)",
-        )
-        .bind(&b.context.attempt_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if terminal {
-            tx.commit().await?;
-            return Ok(None);
-        }
-        let mut nonce = [0; 32];
-        getrandom::getrandom(&mut nonce).map_err(|_| RuntimeError::Unavailable)?;
-        let nonce = hex::encode(nonce);
-        let new = sqlx::query(
-            "INSERT INTO runtime_claims(attempt,nonce) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-        )
-        .bind(&b.context.attempt_id)
-        .bind(&nonce)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected()
-            == 1;
-        tx.commit().await?;
-        Ok(new.then(|| FreshClaim {
-            attempt: b.context.attempt_id.clone(),
-            nonce,
-            binding: digest,
-            checkpoint: None,
-        }))
+        Self::journal(tx, b, "reserve", 0).await?;
+        Ok(true)
     }
     pub async fn guard(
         &self,
@@ -317,10 +273,19 @@ impl Finance {
         step: &crate::VerifiedStep,
     ) -> Result<DirectoryGuard, RuntimeError> {
         let mut tx = self.begin().await?;
-        Self::directory(&mut tx, b).await?;
-        let balance = Self::lock_period(&mut tx, b, true).await?;
-        Self::not_closed(&mut tx, b).await?;
-        let policy = Self::policy(&mut tx, b).await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
+        let valid_until_ms = Self::guard_deadline_in(&mut tx, b, step).await?;
+        Ok(DirectoryGuard { tx, valid_until_ms })
+    }
+    pub(crate) async fn guard_deadline_in(
+        tx: &mut Transaction<'_, Postgres>,
+        b: &Binding,
+        step: &crate::VerifiedStep,
+    ) -> Result<i64, RuntimeError> {
+        Self::directory(tx, b).await?;
+        let balance = Self::lock_period(tx, b, true).await?;
+        Self::not_closed(tx, b).await?;
+        let policy = Self::policy(tx, b).await?;
         if balance
             .held_units
             .checked_add(balance.spent_units)
@@ -334,9 +299,9 @@ impl Finance {
         if let Some(native_deadline) = step.grant_deadline() {
             valid_until_ms = valid_until_ms.min(native_deadline);
         }
-        if Self::clock(&mut tx).await? >= valid_until_ms {
+        if Self::clock(tx).await? >= valid_until_ms {
             return Err(RuntimeError::Denied);
         }
-        Ok(DirectoryGuard { tx, valid_until_ms })
+        Ok(valid_until_ms)
     }
 }

@@ -140,10 +140,10 @@ async fn apns_wake_is_content_free_background() {
     }
     let calls = m.calls.lock().unwrap();
     assert_eq!(calls.len(), 2);
-    for ((url, headers, body), host) in calls.iter().zip([
-        "api.sandbox.push.apple.com",
-        "api.push.apple.com",
-    ]) {
+    for ((url, headers, body), host) in calls
+        .iter()
+        .zip(["api.sandbox.push.apple.com", "api.push.apple.com"])
+    {
         assert_eq!(url, &format!("https://{host}/3/device/aabb"));
         let h = |k: &str| headers.iter().find(|(n, _)| n == k).unwrap().1.clone();
         assert_eq!(h("apns-push-type"), "background");
@@ -174,7 +174,11 @@ async fn apns_dead_token_is_gone() {
 async fn apns_nonterminal_failures_preserve_registration() {
     let http = Arc::new(Mock::default());
     let pusher = Pusher::new(http.clone(), Some(apns_cfg()), None).unwrap();
-    for (status, reason) in [(400, "BadDeviceToken"), (429, "TooManyRequests"), (503, "Shutdown")] {
+    for (status, reason) in [
+        (400, "BadDeviceToken"),
+        (429, "TooManyRequests"),
+        (503, "Shutdown"),
+    ] {
         http.replies.lock().unwrap().push((status, reason.into()));
         assert_eq!(
             pusher.wake(&target(APNS)).await,

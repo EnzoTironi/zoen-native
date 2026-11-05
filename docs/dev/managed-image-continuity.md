@@ -159,32 +159,12 @@ in this dispatch increment. This is not native iPhone or deployment acceptance.
 
 ## Shared runtime deployment
 
-`RuntimeDeployment` and the `create_runtime`/`open_runtime` anchor constructors reuse the same durable prepare, history, consumption and generation locks for every principal in one SQL/FDB pairing. Namespace, witness and source identify this shared authority; the actual agent/device remains bound to each signed publication. A later effect by another agent advances the same checkpoint, and retirement drains effects from all principals. This is metadata for continuity, not a separate balance, device enrollment, financial admission or permission to publish.
-
-The shared representation is schema 3, with distinct genesis/transition hash domains. Schema 2 remains byte-compatible and single-device scoped. Neither constructor adopts the other format or bootstraps missing state. An existing deployment needs an explicit authority migration; changing its schema or configuration is not a migration.
-
-Relay's trusted operator file keeps its existing `devices` array and may also declare `runtimes`: each entry supplies `deployment` (`namespace`, `witness`, `source`), an absolute `anchor_directory`, and nonempty `principals` (`agent`, `device`). Several principals in that one entry share its reader. Duplicate devices, duplicate namespaces, mixed legacy/shared namespaces, wrong pairings and more than 256 total configured principals are refused. These locators do not replace the live directory, certificate, membership or per-effect managed-binding checks. No socket request can register a runtime or choose its anchor.
-
-This shared anchor/relay contract is part of [general agent continuity #327](https://github.com/EnzoTironi/zoen-native/issues/327). It does not activate the general runtime: capsule/cursor and owner-policy commitments, normal reply dispatch/output integration and the full isolated SQL/FDB/vault restore/takeover proof remain required. The general paid-dispatch, output and absence-based-refund gates remain closed. Apps/creation work remains paused.
+See [shared runtime continuity](shared-runtime-continuity.md#shared-runtime-deployment).
 
 ## Shared owner-policy continuity
 
-`initialize_runtime_continuity(directory)` binds the actual SQL pairing and configured FDB source to a new private absolute anchor path. It accepts an unused execution namespace with no periods, policies or attempts; a missing anchor is never recreated over either existing detector. `open_runtime_continuity(directory)` opens the retained writer, verifies both actual checkpoints and the current policy inventory, and reconciles only an original retained signed policy. These APIs currently protect policy installation; native capsule/cursor, model dispatch, general output and financial restore qualification remain part of #327. They do not set the runtime's production continuity Boolean or create a paid/output/refund capability.
+See [policy and recovery](shared-runtime-continuity.md#shared-owner-policy-continuity).
 
-The existing `runtime_image_checkpoint` table is reused, with profile 3 representing the shared scope and null legacy agent/device columns. Profile 2 remains device-scoped. No balance, ledger or policy store is duplicated. Legacy policy installation refuses a configured profile-3 row; native controls pass their original current-directory transaction into the shared installer. The same owner/month policy is shared across agents. Historical exact acknowledgements do not replace the latest version, clear disabled state or create financial effects.
+## Shared native maintenance
 
-Current subject hashes and the encrypted original policy intent are part of the anchor's atomic checkpoint rename. The next digest binds the complete subject-map hash, exact updates and encrypted intent. The original signed policy is retained in immutable checkpoint history. The independent directory contains hashes and ciphertext, not a plaintext policy copy. The cooperating single-host profile bounds metadata at 512 subjects, eight updates per checkpoint and 16,384 encoded intent bytes; exhaustion refuses before publication. This is an operational profile, not measured scale readiness.
-
-Policy validation/staging uses the existing SQL implementation. Before either store changes, PREPARED retains the original signed request. The FDB transaction writes its exact checkpoint/history; the original SQL policy/directory transaction writes the policy and matching detector together; only matching actual store contents permit external COMMITTED. An interrupted policy install can replay that exact signed owner command with fresh owner-device, expiry and version checks. It never recovers a model/native execution permit.
-
-| Retained state and actual stores | Policy recovery |
-| --- | --- |
-| PREPARED, both previous | Retain the original intent; forward that same valid policy, without resetting the checkpoint |
-| PREPARED, FDB next / SQL previous | Verify original FDB history, reauthorize the same signed policy and advance its SQL transaction once |
-| PREPARED, both next | Compare exact original history and the actual policy inventory, then commit the observation |
-| PREPARED, SQL next / FDB previous | Refuse the contradictory order; do not fabricate missing FDB history |
-| COMMITTED, old matching pair or rewound/missing policy rows | Refuse; agreement between old markers is insufficient |
-
-A refused recovery retains its original evidence. The anchor must remain outside SQL/FDB/vault restore domains; privileged rollback of that directory, NFS and distributed writers are not covered by this single-host mechanism. Stop old executors and pin the same independent configuration at host entry points; an unconfigured/older binary over restored stores is not made safe by a marker in those stores. The complete takeover, native custody, external effects, incurred-cost and full-volume restore proof remains open under #327. Row-level failure cuts and automatic tests do not qualify that full operational contract or manual iPhone acceptance.
-
-The automatic SQL restore case uses `pg_dump`/`pg_restore` into a new owned database; immutable-history triggers stay enabled. Overlaying only its mutable detector metadata must still refuse the older policy inventory. CI uses tools from its existing pinned PostgreSQL container (`ZOEN_TEST_PG_CONTAINER`); local fixtures use matching PostgreSQL tools on PATH. This SQL proof does not substitute for the remaining full FDB/vault/financial restore matrix. Deploy migration 0042 before the new runtime binary; it retains profile-2 defaults for existing deployments.
+See [native maintenance and discovery](shared-runtime-continuity.md#shared-native-maintenance).

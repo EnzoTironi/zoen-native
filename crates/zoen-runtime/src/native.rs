@@ -4,7 +4,8 @@
 mod image_activation;
 mod image_scope;
 mod image_tasks;
-pub(crate) use image_scope::{ImageOutputAuthority, ManagedImageOutput};
+mod output_scope;
+pub(crate) use output_scope::{ManagedNativeOutput, NativeOutputAuthority};
 mod managed;
 mod owner_policy;
 mod packages;
@@ -15,9 +16,17 @@ pub use image_tasks::{
     ImageDeliveryProgress, ImageDeliveryTarget, ImageOutputInspection, ImageReviewIntent,
     ImageReviewProgress,
 };
+mod shared;
 mod storage;
-pub(crate) use runs::output::{associate_capture, FreshOutputNamespace, ReplyOutputScope};
-pub(crate) use runs::{CleanupAcquisition, CleanupStep, ReplyStep};
+#[cfg(test)]
+pub(crate) use runs::output::FreshOutputNamespace;
+pub(crate) use runs::output::{associate_capture, ReplyOutputScope};
+pub(crate) use runs::{
+    cancel_commitments, cancel_intent, recover_shared_cancel, CleanupAcquisition, CleanupStep,
+    ReplyStep,
+};
+pub(crate) use shared::{recover_shared_native, shared_commitments, shared_intent};
+pub(crate) use storage::bounded_rows;
 
 use std::collections::BTreeMap;
 
@@ -334,6 +343,7 @@ impl NativeCustody {
         agent: &str,
         device: &str,
     ) -> Result<NativeInspection, RuntimeError> {
+        runtime.check_shared_runtime().await?;
         let credential = self.credential(agent, device)?;
         let principal = credential.principal();
         // Check real enrollment before acquiring a lease or staging any state.
@@ -395,6 +405,15 @@ impl NativeCustody {
             .execution
             .stage_native(principal, Some(previous), fence, next)
             .await?;
+        if runtime.runtime_continuity.is_some() {
+            let root = self
+                .activate_maintenance(runtime, credential, staged, fence, None)
+                .await?;
+            return Ok(NativeInspection {
+                generation: root.context.generation,
+                image_bytes: root.context.image_bytes,
+            });
+        }
         let guard = runtime
             .finance
             .native_directory(

@@ -26,6 +26,11 @@ export type MessageAudioRuntime = Readonly<{
   dispose(): Promise<void>;
 }>;
 export type MessageAudioPort = Readonly<{
+  resume?: {
+    load(source: MessageAudioSource, version: number): Promise<Metadata | null>;
+    remember(source: MessageAudioSource, value: Metadata, force: boolean): void;
+    flush(): Promise<void>;
+  };
   coordinator: PlaybackCoordinator;
   scope(): MessageAudioScope | null;
   authorized(source: MessageAudioSource): boolean;

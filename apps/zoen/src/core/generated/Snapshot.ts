@@ -3,6 +3,7 @@ import type { AccountDto } from "./AccountDto";
 import type { AgentProfile } from "./AgentProfile";
 import type { AgentRequestDto } from "./AgentRequestDto";
 import type { ConnectionDto } from "./ConnectionDto";
+import type { InboxFoldersResult } from "./InboxFoldersResult";
 import type { Persona } from "./Persona";
 import type { SpaceSummary } from "./SpaceSummary";
 
@@ -10,4 +11,4 @@ export type Snapshot = {
 /**
  * Checked Core wall-clock sample for exact relative mute intents, never a timer/store.
  */
-clock_ms?: string, account: AccountDto | null, me: Persona | null, connection: ConnectionDto, conversations: Array<SpaceSummary>, integrity_warnings: { [key in string]: string }, has_unreadable_local_history: boolean, requests: Array<AgentRequestDto>, agents: Array<AgentProfile>, };
+clock_ms?: string, account: AccountDto | null, me: Persona | null, connection: ConnectionDto, conversations: Array<SpaceSummary>, inbox_folders?: InboxFoldersResult, integrity_warnings: { [key in string]: string }, has_unreadable_local_history: boolean, requests: Array<AgentRequestDto>, agents: Array<AgentProfile>, };

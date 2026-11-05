@@ -4,6 +4,7 @@ use super::*;
 pub(crate) struct ForwardFileInput<'a> {
     pub from_space: &'a str,
     pub item_id: &'a str,
+    pub version: Option<u32>,
     pub to_space: &'a str,
     pub caption: &'a str,
     pub voice: Option<&'a VoiceNoteDto>,
@@ -17,6 +18,7 @@ impl Engine {
         let ForwardFileInput {
             from_space,
             item_id,
+            version,
             to_space,
             caption,
             voice,
@@ -33,7 +35,9 @@ impl Engine {
                 ),
             });
         }
-        let (item, file) = self.file_item(item_id)?;
+        let item = self.item_state(item_id)?;
+        let version = version.unwrap_or(item.current().number);
+        let file = self.file_doc_at(item_id, Some(version))?.clone();
         if item.space != from_space || file.is_voice() != voice.is_some() {
             return Err(invalid_file());
         }
@@ -42,7 +46,6 @@ impl Engine {
         }) {
             return Err(invalid_file());
         }
-        let version = item.current().number;
         let bytes = self
             .file_bytes_bounded(item_id, Some(version), MAX_FILE_BYTES as u64)?
             .ok_or_else(|| {

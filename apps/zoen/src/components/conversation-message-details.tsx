@@ -133,7 +133,11 @@ export function renderAlbumMessagePart(context: MessageFace) {
       actionsAccessibilityLabel={t('chat.messageActions', { name: entry.author.name })}
     >
       <MessageContextSource
-        ownerKey={JSON.stringify([spaceId, entry.id, tile ? 'album-media' : 'album-caption'])}
+        ownerKey={JSON.stringify([
+          spaceId,
+          entry.id,
+          tile ? 'album-media' : albumPart.fileOnly ? 'album-file' : 'album-caption',
+        ])}
         active={!disabled && messageCanInteract(entry)}
         handlesTap={false}
         reducedMotion={reducedMotion}
@@ -147,7 +151,7 @@ export function renderAlbumMessagePart(context: MessageFace) {
           testID={`message-bubble-${entry.id}`}
           style={tile ? { width: tile.width, height: tile.height } : undefined}
         >
-          {tile ? (
+          {tile || albumPart.fileOnly ? (
             <MessageMedia
               spaceId={spaceId}
               entry={entry}

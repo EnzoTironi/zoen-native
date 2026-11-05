@@ -1,9 +1,11 @@
+import { messageMayContainHashtags } from './message-hashtag.ts';
 /** Candidate selection only. The maintained renderer owns syntax and escape decoding. */
 export function messageMayContainMarkdown(text: string, nativeMediaDisabled = false): boolean {
   return (
     (nativeMediaDisabled || !messageMarkdownMayLoadMedia(text)) &&
     (/[*_`~[\]|]|(?:^|\n) {0,3}(?:#{1,6}\s|>\s?|[-+]\s|\d{1,9}[.)]\s)/u.test(text) ||
       text.includes('\\') ||
+      (nativeMediaDisabled && messageMayContainHashtags(text)) ||
       /(?:https?|zoen):\/\/|www\./iu.test(text) ||
       (text.includes('@') && text.includes('.')))
   );

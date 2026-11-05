@@ -25,30 +25,40 @@ impl Finance {
         sealed: &[u8],
     ) -> Result<FinancialState, RuntimeError> {
         let mut tx = self.begin().await?;
-        let balance = Self::lock_period(&mut tx, b, false).await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
+        let state = Self::settle_capture_in(&mut tx, b, charge, digest, sealed).await?;
+        tx.commit().await?;
+        Ok(state)
+    }
+    pub(crate) async fn settle_capture_in(
+        tx: &mut Transaction<'_, Postgres>,
+        b: &Binding,
+        charge: Option<i64>,
+        digest: &str,
+        sealed: &[u8],
+    ) -> Result<FinancialState, RuntimeError> {
+        let balance = Self::lock_period(tx, b, false).await?;
         let exact: Option<i32> = sqlx::query_scalar("SELECT 1 FROM runtime_attempts a JOIN runtime_claims c USING (attempt) WHERE a.attempt=$1 AND a.binding_digest=$2")
-            .bind(&b.context.attempt_id).bind(b.digest()?).fetch_optional(&mut *tx).await?;
+            .bind(&b.context.attempt_id).bind(b.digest()?).fetch_optional(&mut **tx).await?;
         if exact.is_none() {
             return Err(RuntimeError::InvalidBinding);
         }
         sqlx::query("INSERT INTO runtime_evidence(attempt,digest,sealed) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING")
-            .bind(&b.context.attempt_id).bind(digest).bind(sealed).execute(&mut *tx).await?;
-        Self::outbox(&mut tx, b, "evidence", digest).await?;
+            .bind(&b.context.attempt_id).bind(digest).bind(sealed).execute(&mut **tx).await?;
+        Self::outbox(tx, b, "evidence", digest).await?;
         let existing: Option<(String, i64, String)> = sqlx::query_as(
             "SELECT kind,amount_units,source_digest FROM runtime_dispositions WHERE attempt=$1",
         )
         .bind(&b.context.attempt_id)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?;
         if let Some((kind, units, source)) = existing {
             if kind != "settle" || source != digest {
                 return Err(RuntimeError::InvalidBinding);
             }
-            tx.commit().await?;
             return Ok(FinancialState::Settled { units });
         }
         let Some(charge) = charge else {
-            tx.commit().await?;
             return Ok(FinancialState::Claimed);
         };
         let held = balance
@@ -61,12 +71,11 @@ impl Finance {
             .checked_add(charge)
             .ok_or(RuntimeError::InvalidProfile)?;
         sqlx::query("INSERT INTO runtime_dispositions(attempt,kind,amount_units,source_digest) VALUES ($1,'settle',$2,$3)")
-            .bind(&b.context.attempt_id).bind(charge).bind(digest).execute(&mut *tx).await?;
+            .bind(&b.context.attempt_id).bind(charge).bind(digest).execute(&mut **tx).await?;
         sqlx::query("UPDATE runtime_periods SET held_units=$3,spent_units=$4 WHERE owner=$1 AND period_start=$2")
-            .bind(&b.context.owner).bind(b.period_start).bind(held).bind(spent).execute(&mut *tx).await?;
-        Self::journal(&mut tx, b, "settle", charge).await?;
-        Self::outbox(&mut tx, b, "settle", digest).await?;
-        tx.commit().await?;
+            .bind(&b.context.owner).bind(b.period_start).bind(held).bind(spent).execute(&mut **tx).await?;
+        Self::journal(tx, b, "settle", charge).await?;
+        Self::outbox(tx, b, "settle", digest).await?;
         Ok(FinancialState::Settled { units: charge })
     }
     pub(super) async fn outbox(
@@ -87,6 +96,7 @@ impl Finance {
         continuity.continuity()?;
         let (b, digest) = proof.consume();
         let mut tx = self.begin().await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
         let balance = Self::lock_period(&mut tx, &b, false).await?;
         let exact: Option<String> =
             sqlx::query_scalar("SELECT binding_digest FROM runtime_attempts WHERE attempt=$1")
@@ -204,13 +214,13 @@ impl Finance {
         for (attempt, kind, digest, length) in metadata {
             let length =
                 usize::try_from(length.unwrap_or(0)).map_err(|_| RuntimeError::InvalidBinding)?;
-            if length > 32 * 1024 * 1024 {
+            if length > crate::custody::MAX_PAYLOAD {
                 return Err(RuntimeError::EvidenceTooLarge);
             }
             let next = total
                 .checked_add(length)
                 .ok_or(RuntimeError::EvidenceTooLarge)?;
-            if next > 32 * 1024 * 1024 {
+            if next > crate::custody::MAX_PAYLOAD {
                 break;
             }
             let sealed: Option<Vec<u8>> = if length == 0 {
@@ -238,9 +248,28 @@ impl Finance {
         kind: &str,
         digest: &str,
     ) -> Result<(), RuntimeError> {
-        sqlx::query("INSERT INTO runtime_financial_acks(attempt,kind,digest) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING")
-            .bind(attempt).bind(kind).bind(digest).execute(&self.pool).await?;
+        let mut tx = self.begin().await?;
+        Self::require_unmanaged_policy(&mut tx).await?;
+        Self::ack_outbox_in(&mut tx, attempt, kind, digest).await?;
+        tx.commit().await?;
         Ok(())
+    }
+    pub(crate) async fn ack_outbox_in(
+        tx: &mut Transaction<'_, Postgres>,
+        attempt: &str,
+        kind: &str,
+        digest: &str,
+    ) -> Result<(), RuntimeError> {
+        sqlx::query("INSERT INTO runtime_financial_acks(attempt,kind,digest) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING")
+            .bind(attempt).bind(kind).bind(digest).execute(&mut **tx).await?;
+        Ok(())
+    }
+    pub(crate) async fn pending_outbox_keys(
+        &self,
+        limit: u16,
+    ) -> Result<Vec<(String, String, String)>, RuntimeError> {
+        Ok(sqlx::query_as("SELECT o.attempt,o.kind,o.digest FROM runtime_financial_outbox o WHERE NOT EXISTS(SELECT 1 FROM runtime_financial_acks a WHERE (a.attempt,a.kind,a.digest)=(o.attempt,o.kind,o.digest)) ORDER BY o.attempt,o.kind,o.digest LIMIT $1")
+            .bind(i64::from(limit)).fetch_all(&self.pool).await?)
     }
     #[cfg(test)]
     pub async fn current_period(&self) -> (i32, u8, i64, i64) {

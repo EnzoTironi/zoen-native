@@ -4,6 +4,7 @@ import {
   MessageAudioSession,
   type MessageAudioScope,
   type MessageAudioSource,
+  type MessageAudioPort,
 } from '../media/message-audio-session.ts';
 import { PlaybackCoordinator } from '../media/playback-owner.ts';
 import type { LocalMediaFile } from '../media/types.ts';
@@ -18,7 +19,7 @@ export function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-export function fixture() {
+export function fixture(resume?: MessageAudioPort['resume']) {
   const coordinator = new PlaybackCoordinator();
   let scope: MessageAudioScope | null = { identityId: 'account-A', deviceId: 'phone-A', epoch: 1 };
   let authorized = true;
@@ -45,6 +46,7 @@ export function fixture() {
   }> = [];
   let files = 0;
   const session = new MessageAudioSession({
+    resume,
     coordinator,
     scope: () => scope,
     authorized: () => authorized,

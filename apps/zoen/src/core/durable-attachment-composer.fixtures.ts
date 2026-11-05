@@ -26,6 +26,7 @@ export type Result = {
   active: boolean;
   busy: boolean;
   canAdd: boolean;
+  cancelEditMedia?: () => Promise<boolean>;
   pick(kind: string): Promise<void>;
   field?: {
     value: string;
@@ -259,6 +260,7 @@ export function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     './attachment-categories': attachmentCategories,
     './media-draft-channel': { MediaDraftFailure },
     './media-draft-contract': mediaDraftContract,
+    './media-draft-contract.ts': mediaDraftContract,
     './media-reply': mediaReply,
     './media-acceptance': mediaAcceptance,
     'expo-media-library': { MediaType: { IMAGE: 'image', VIDEO: 'video' } },

@@ -34,6 +34,12 @@ env -u SDKROOT DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 (cd ios && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer pod install)
 ```
 
+For an iPhone build, omit `--simulator` when generating the Rust framework.
+Run CocoaPods again after generating the framework whenever its slices change.
+CocoaPods records the available slices in its generated copy script, so an
+existing simulator-only script cannot select the new iPhone slice.
+For a generic simulator build with this framework, pass `ARCHS=arm64`.
+
 Explicit shared `CARGO_TARGET_DIR` selections use the source guard for iOS/types;
 see [cache admission, Python and receipts](../expo-shared-cargo-target.md).
 Android retains its existing pipeline and is not covered by that guard integration.

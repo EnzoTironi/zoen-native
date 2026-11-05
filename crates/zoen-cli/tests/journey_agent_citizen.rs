@@ -371,17 +371,22 @@ async fn an_agent_joins_a_space_as_a_real_mls_member() {
     let ask = note(&ask, "ask_owner").expect("ask")["ask_owner"].clone();
     assert!(ask["draft"].as_str().unwrap().contains("comprovante"));
 
-    // Paused by the owner: silence while paused, and the message that arrived meanwhile
-    // is answered once the owner resumes, so no client is left without a reply.
+    // The paused host stays silent. After resume, a fresh process answers the
+    // retained message exactly once and continues handling new messages.
     w.zoen("bruno", &["agent-pause", "@agenda_bruno"]);
     w.zoen("dani", &["send", "Barbearia", "Confirmo pra Carla"]);
     std::thread::sleep(Duration::from_secs(4));
     let paused = w.zoen("bruno", &["read", "Barbearia"]);
     assert!(!paused.contains("Fechado: sábado 10h"), "{paused}");
+    bot.kill().expect("stop the paused agent host");
+    bot.wait().expect("reap the paused agent host");
     w.zoen("bruno", &["agent-resume", "@agenda_bruno"]);
-    read_until(&w, "bruno", "Barbearia", "Fechado: sábado 10h", &mut bot);
+    let mut bot = host(&w, "bot", &[]);
+    let recovered = read_until(&w, "bruno", "Barbearia", "Fechado: sábado 10h", &mut bot);
+    assert_eq!(recovered.matches("Fechado: sábado 10h").count(), 1);
     w.zoen("dani", &["send", "Barbearia", "Obrigada!"]);
     let bruno = read_until(&w, "bruno", "Barbearia", "De nada!", &mut bot);
+    assert_eq!(bruno.matches("Fechado: sábado 10h").count(), 1);
     assert!(!bruno.contains("Recebido!"), "{bruno}");
 
     // The owner versions the definition; the agent itself can't redefine itself.

@@ -36,6 +36,8 @@ const files = new Map([
   ['durable-attachment-pick', 'ts'],
   ['durable-attachment-review', 'ts'],
   ['attachment-gallery-journal', 'ts'],
+  ['media-replacement-pick', 'ts'],
+  ['media-replacement-send', 'ts'],
   ['attachment-photo-picker', 'tsx'],
 ]);
 const output = await build({
@@ -229,6 +231,7 @@ export async function attachmentOwnerReactFixture(open = true) {
     '../theme': { useTheme: () => ({ colors: {} }) },
     './attachment-draft': attachment,
     './media-draft-contract': contract,
+    './media-draft-contract.ts': contract,
     './media-reply': mediaReply,
     './media-acceptance': mediaAcceptance,
     './attachment-review': { AttachmentReview },

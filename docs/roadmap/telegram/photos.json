@@ -46,13 +46,13 @@
   {
     "id": "TG-photos-file-albums",
     "scope": "active",
-    "implementation": "missing",
+    "implementation": "present",
     "acceptance": "pending",
     "evidence": [
       "docs/product/telegram-ios-media-albums.md",
       "apps/zoen/src/media/attachment-photo-options.ts"
     ],
-    "gap": "Agrupar documentos como álbum com seleção, legenda e ações coerentes; hoje voltam a linhas individuais.",
+    "gap": "Seleção múltipla nova de documentos é salva como grupo assinado de arquivos. A conversa projeta o álbum com documentos/legendas e ações individuais, ordem assinada e recibo agregado conservador. Qualificar envio/recepção e interação no iPhone.",
     "issues": [
       172
     ]
@@ -465,9 +465,15 @@
     "implementation": "partial",
     "acceptance": "pending",
     "evidence": [
-      "apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/ZoenConversationVideoPlayback.swift"
+      "apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/ZoenConversationVideoPlayback.swift",
+      "crates/client-core/src/media_playback.rs",
+      "crates/client-core/src/media_playback/tests.rs",
+      "apps/zoen/src/media/media-playback-journal.ts",
+      "apps/zoen/src/media/use-video-checkpoint.ts",
+      "apps/zoen/src/core/native-playback-resume.test.ts",
+      "apps/zoen/src/core/video-checkpoint.test.ts"
     ],
-    "gap": "Restaurar posição de vídeo ao reabrir e após reiniciar; o player atual mantém posição só na instância.",
+    "gap": "Conta iOS retoma vídeo inline e galeria canônica pelo checkpoint criptografado local, com CAS e troca coordenada entre players sem autoplay. Testes incluem AVPlayer real no Mac, reinício, falhas, isolamento e exclusão de backup. Faltam aceite manual no iPhone, retomada no viewer genérico de encaminhados/arquivos e plataformas posteriores.",
     "issues": [
       170
     ]
@@ -527,5 +533,53 @@
       170
     ],
     "recommendation": "Priorizar transferências retomáveis e qualidade explícita dentro dos limites medidos; casting e vantagens pagas são referências adicionais."
+  },
+  {
+    "id": "TG-messaging-replace-sent-media",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/message_media_edit.rs",
+      "crates/client-core/src/message_media_edit/projection.rs",
+      "crates/protocol/src/message_media_edit.rs",
+      "crates/client-core/src/message_edit/tests/media.rs",
+      "crates/client-core/src/tests/edit_convergence/media.rs",
+      "crates/client-core/src/media_drafts/media_edit.rs",
+      "crates/client-core/src/media_drafts/tests/media_edit_cases.rs",
+      "apps/zoen/src/media/media-replacement-pick.ts",
+      "apps/zoen/src/media/media-replacement-send.ts",
+      "apps/zoen/src/core/media-replacement-picker.test.ts",
+      "apps/zoen/src/core/media-replacement-send.test.ts"
+    ],
+    "gap": "Seletor/revisão existentes e journal criptografado por mensagem integrados. Publicação e conclusão do editor são atômicas; testes cobrem recuperação, rollback, retry e preservação de rascunhos posteriores. Aceite visual/de uso no iPhone adiado para Enzo; não é prova de paridade pixel perfect.",
+    "issues": [
+      172,
+      173
+    ]
+  },
+  {
+    "id": "TG-messaging-add-media-after-sending",
+    "scope": "active",
+    "implementation": "present",
+    "acceptance": "pending",
+    "evidence": [
+      "crates/client-core/src/message_media_edit.rs",
+      "crates/client-core/src/message_media_edit/projection.rs",
+      "crates/protocol/src/message_media_edit.rs",
+      "crates/client-core/src/message_edit/tests/media.rs",
+      "crates/client-core/src/tests/edit_convergence/media.rs",
+      "crates/client-core/src/media_drafts/media_edit.rs",
+      "crates/client-core/src/media_drafts/tests/media_edit_cases.rs",
+      "apps/zoen/src/media/media-replacement-pick.ts",
+      "apps/zoen/src/media/media-replacement-send.ts",
+      "apps/zoen/src/core/media-replacement-picker.test.ts",
+      "apps/zoen/src/core/media-replacement-send.test.ts"
+    ],
+    "gap": "Seletor/revisão existentes e journal criptografado por mensagem integrados. Publicação e conclusão do editor são atômicas; testes cobrem recuperação, rollback, retry e preservação de rascunhos posteriores. Aceite visual/de uso no iPhone adiado para Enzo; não é prova de paridade pixel perfect.",
+    "issues": [
+      172,
+      173
+    ]
   }
 ]

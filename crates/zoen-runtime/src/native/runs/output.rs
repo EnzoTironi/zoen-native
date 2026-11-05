@@ -1,5 +1,8 @@
 //! Original output associations. Retained metadata grants no live permission.
+mod delivery;
 mod prepare;
+mod recovery;
+pub(in crate::native) use recovery::{recover_activation_reference, ActivationPublication};
 mod receipt;
 mod storage;
 #[cfg(test)]
@@ -17,6 +20,7 @@ const METADATA_BYTES: usize = 16 * 1024;
 
 // No production constructor or read reconstruction exists. Only a cfg(test)
 // empty-namespace transaction can establish this private fixture capability.
+#[cfg(test)]
 pub(crate) struct FreshOutputNamespace {
     namespace: Vec<u8>,
     deployment: String,
@@ -27,6 +31,7 @@ pub(crate) struct FreshOutputNamespace {
     output_expiry_remaining: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
+#[cfg(test)]
 impl FreshOutputNamespace {
     pub(crate) async fn check_in(
         &self,
@@ -162,6 +167,8 @@ impl RetainedCapture {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PublicationRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint: Option<relay_admission::managed_images::Checkpoint>,
     format: u8,
     run: String,
     original: String,
@@ -177,6 +184,13 @@ struct PublicationRecord {
 }
 
 impl PublicationRecord {
+    fn checkpoint_context(&self, runtime: &RuntimeAuthority) -> Result<(), RuntimeError> {
+        if runtime.managed_images.is_some() != self.checkpoint.is_some() {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        Ok(())
+    }
+
     fn validate(
         &self,
         record: &RunRecord,
@@ -188,6 +202,11 @@ impl PublicationRecord {
             .context
             .validate(principal, record.original.context.key_version)?;
         if self.format != 1
+            || self.checkpoint.as_ref().is_some_and(|checkpoint| {
+                checkpoint.generation == 0
+                    || checkpoint.sequence == 0
+                    || !digest(&checkpoint.digest)
+            })
             || self.run != record.locator.run
             || self.original != original
             || self.binding != record.binding.digest()?
@@ -351,4 +370,35 @@ pub(crate) async fn associate_capture(
             &runtime.custody,
         )
         .await
+}
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl NativeOutputAuthority for FreshOutputNamespace {
+    async fn check_in(
+        &self,
+        execution: &Execution,
+        transaction: &Transaction,
+    ) -> Result<(), RuntimeError> {
+        FreshOutputNamespace::check_in(self, execution, transaction).await
+    }
+    fn check_context(&self, runtime: &RuntimeAuthority) -> Result<(), RuntimeError> {
+        runtime.continuity()
+    }
+    fn check_device(&self, _: &str, _: &str) -> Result<(), RuntimeError> {
+        Ok(())
+    }
+    fn check_target(&self, _: &ImageDeliveryTarget) -> Result<(), RuntimeError> {
+        Ok(())
+    }
+    fn observe(&self, digest: &str, envelope: &protocol::Envelope) -> Result<(), RuntimeError> {
+        self.observed
+            .lock()
+            .map_err(|_| RuntimeError::Unavailable)?
+            .insert(digest.into(), envelope.clone());
+        Ok(())
+    }
+    fn expiry_remaining(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicU64>> {
+        Some(std::sync::Arc::clone(&self.output_expiry_remaining))
+    }
 }

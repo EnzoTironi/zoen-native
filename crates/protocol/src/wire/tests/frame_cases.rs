@@ -87,6 +87,14 @@ pub(super) fn server_event_and_directory_cases(
             result: Ok(Reply::Done),
         },
         ServerFrame::Res {
+            id: 34,
+            result: Ok(Reply::VoipConsent(false)),
+        },
+        ServerFrame::Res {
+            id: 35,
+            result: Ok(Reply::VoipConsent(true)),
+        },
+        ServerFrame::Res {
             id: 13,
             result: Ok(Reply::AgreementKeys(vec![AgreementKeyRecord {
                 identity: "i".into(),
@@ -165,6 +173,29 @@ pub(super) fn client_discovery_cases() -> Vec<ClientFrame> {
             op: Op::RegisterPush {
                 platform: "fcm".into(),
                 token: "t".into(),
+            },
+        },
+        ClientFrame::Req {
+            id: 33,
+            op: Op::RequestVoipWake {
+                space: "direct".into(),
+                peer: "a".repeat(64),
+                seq: 71,
+            },
+        },
+        ClientFrame::Req {
+            id: 34,
+            op: Op::GetVoipConsent {
+                space: "direct".into(),
+                peer: "a".repeat(64),
+            },
+        },
+        ClientFrame::Req {
+            id: 32,
+            op: Op::SetVoipConsent {
+                space: "direct".into(),
+                peer: "a".repeat(64),
+                allowed: true,
             },
         },
         ClientFrame::Req {

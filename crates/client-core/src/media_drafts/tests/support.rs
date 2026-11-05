@@ -21,6 +21,7 @@ pub(super) fn fixture(path: &str) -> Fixture {
         engine,
         vault,
         scope: MediaDraftScope {
+            edit_message_id: None,
             expected_identity_id: account.identity_id,
             expected_device_id: account.device_id,
             space_id: space,
@@ -334,14 +335,7 @@ pub(super) fn media_contract_recovered_writer_at(
         },
         false,
     )?;
-    let pending = f.engine.lock().store.outbox().unwrap();
-    for row in pending {
-        assert!(f
-            .engine
-            .lock()
-            .reject(&row.event.client_id, "permission denied", true, None)
-            .user_failed());
-    }
+    refuse_pending_media(&f);
     media_contract_receive(
         &f,
         types::EventBody::MemberAdded {
@@ -407,5 +401,30 @@ pub(super) fn media_contract_upload_all(f: &Fixture) {
     let uploads = f.engine.lock().pending_uploads(64);
     for (blob, _) in uploads {
         f.engine.lock().upload_done(&blob);
+    }
+}
+
+pub(super) fn refuse_pending_media(f: &Fixture) {
+    let pending = f.engine.lock().store.outbox().unwrap();
+    for row in pending {
+        let mut engine = f.engine.lock();
+        let client_id = &row.event.client_id;
+        // Rejecting a file can already have settled its dependent message.
+        if engine
+            .store
+            .outbox_active_event(client_id)
+            .unwrap()
+            .is_some()
+        {
+            assert!(engine
+                .reject(client_id, "permission denied", true, None)
+                .user_failed());
+        }
+        assert!(engine
+            .store
+            .outbox()
+            .unwrap()
+            .iter()
+            .any(|retained| retained.event.client_id == *client_id && retained.failed));
     }
 }

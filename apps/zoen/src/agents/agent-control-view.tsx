@@ -46,14 +46,21 @@ export function AgentControlView({
           {t('agents.thisCouldNotBeCompleted')}
         </Text>
       ) : null}
-      {ticket ? (
+      {ticket ||
+      (state.phase === 'loading' &&
+        !state.pending &&
+        (status === 'Active' || status === 'Paused')) ? (
         <NativeButton
           testID="agent-lifecycle-change"
           secondary
-          disabled={disabled}
-          label={ticket.action === 'Pause' ? t('agents.pauseAgent') : t('agents.resumeAgent')}
+          disabled={disabled || !ticket}
+          label={
+            (ticket ? ticket.action === 'Pause' : status === 'Active')
+              ? t('agents.pauseAgent')
+              : t('agents.resumeAgent')
+          }
           onPress={() => {
-            if (!disabled) void session.change(ticket);
+            if (!disabled && ticket) void session.change(ticket);
           }}
         />
       ) : null}

@@ -404,6 +404,15 @@ impl Session {
                 self.st.log.revoke_agent_invite(&agent).await?;
                 Ok(Reply::Done)
             }
+            Op::RequestVoipWake { space, peer, seq } => {
+                self.request_voip_wake(&space, &peer, seq).await
+            }
+            Op::GetVoipConsent { space, peer } => self.get_voip_consent(&space, &peer).await,
+            Op::SetVoipConsent {
+                space,
+                peer,
+                allowed,
+            } => self.set_voip_consent(&space, &peer, allowed).await,
             Op::RegisterPush { platform, token } => {
                 if !crate::push::valid_registration(&platform, &token) {
                     return Err("bad push registration".into());

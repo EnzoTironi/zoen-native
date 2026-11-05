@@ -114,3 +114,15 @@ async fn blocked_peer_refuses_turn_before_network_and_unblock_restores_scope() {
         "http://127.0.0.1:1"
     );
 }
+
+#[tokio::test]
+async fn blocked_peer_cannot_receive_voip_wake_consent() -> Result<(), CoreError> {
+    let (client, identity, device, space, peer) = fixture();
+    client.block_person(peer.clone())?;
+    let result = client
+        .set_call_wake_consent(identity, device, space, peer, true)
+        .await;
+    assert!(matches!(result, Err(CoreError::Forbidden { reason })
+        if reason == "Call participant is blocked on this device"));
+    Ok(())
+}

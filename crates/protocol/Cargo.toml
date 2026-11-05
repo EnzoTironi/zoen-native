@@ -7,7 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-client-types = ["dep:ts-rs"]
+client-types = ["dep:ts-rs", "types/client-types"]
 
 [lints]
 workspace = true

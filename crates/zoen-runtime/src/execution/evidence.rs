@@ -3,7 +3,7 @@
 use super::*;
 const PREFIX: &[u8] = b"ZOEN-EVIDENCE-CHUNKS/1\0";
 const CHUNK: usize = 64 * 1024;
-const MAXIMUM: usize = 32 * 1024 * 1024;
+const MAXIMUM: usize = crate::custody::MAX_PAYLOAD;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Manifest {
@@ -12,7 +12,7 @@ struct Manifest {
     chunks: Vec<String>,
 }
 impl Execution {
-    pub(super) async fn evidence_payload(
+    pub(crate) async fn evidence_payload(
         &self,
         attempt: &str,
         digest: &str,
@@ -75,7 +75,7 @@ impl Execution {
         }
         Ok(root)
     }
-    pub(super) fn evidence_payload_size(root: &[u8]) -> Result<usize, RuntimeError> {
+    pub(crate) fn evidence_payload_size(root: &[u8]) -> Result<usize, RuntimeError> {
         if root.len() > crate::custody::MAX_SEALED {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -105,6 +105,25 @@ impl Execution {
         digest: &str,
         root: &[u8],
     ) -> Result<Vec<u8>, RuntimeError> {
+        self.read_evidence_chunks(None, attempt, digest, root).await
+    }
+    pub(crate) async fn read_evidence_payload_in(
+        &self,
+        trx: &foundationdb::Transaction,
+        attempt: &str,
+        digest: &str,
+        root: &[u8],
+    ) -> Result<Vec<u8>, RuntimeError> {
+        self.read_evidence_chunks(Some(trx), attempt, digest, root)
+            .await
+    }
+    async fn read_evidence_chunks(
+        &self,
+        transaction: Option<&foundationdb::Transaction>,
+        attempt: &str,
+        digest: &str,
+        root: &[u8],
+    ) -> Result<Vec<u8>, RuntimeError> {
         Self::evidence_payload_size(root)?;
         if !root.starts_with(PREFIX) {
             if root.len() > crate::custody::MAX_SEALED {
@@ -121,24 +140,43 @@ impl Execution {
             return Err(RuntimeError::InvalidBinding);
         }
         let mut sealed = Vec::with_capacity(manifest.bytes);
-        for (index, hash) in manifest.chunks.iter().enumerate() {
-            let key = self.root.pack(&(
-                "evidence-chunk/1",
-                attempt,
-                digest,
-                manifest.sha256.as_str(),
-                index as i64,
-            ));
-            let trx = self.transaction().await?;
-            let chunk = trx
-                .get(&key, false)
-                .await?
-                .ok_or(RuntimeError::Unavailable)?;
-            let expected = CHUNK.min(manifest.bytes - sealed.len());
-            if chunk.len() != expected || crate::hash(&chunk) != *hash {
-                return Err(RuntimeError::InvalidBinding);
+        // Pipeline at most 1 MiB of reads. Every chunk still belongs to the
+        // caller's same non-snapshot transaction and is individually hashed.
+        const READ_BATCH: usize = 16;
+        for (batch, hashes) in manifest.chunks.chunks(READ_BATCH).enumerate() {
+            let keys: Vec<_> = hashes
+                .iter()
+                .enumerate()
+                .map(|(offset, _)| {
+                    let index = batch * READ_BATCH + offset;
+                    self.root.pack(&(
+                        "evidence-chunk/1",
+                        attempt,
+                        digest,
+                        manifest.sha256.as_str(),
+                        index as i64,
+                    ))
+                })
+                .collect();
+            let fresh;
+            let trx = match transaction {
+                Some(trx) => trx,
+                None => {
+                    fresh = self.transaction().await?;
+                    &fresh
+                }
+            };
+            let chunks =
+                futures_util::future::try_join_all(keys.iter().map(|key| trx.get(key, false)))
+                    .await?;
+            for (hash, chunk) in hashes.iter().zip(chunks) {
+                let chunk = chunk.ok_or(RuntimeError::Unavailable)?;
+                let expected = CHUNK.min(manifest.bytes - sealed.len());
+                if chunk.len() != expected || crate::hash(&chunk) != *hash {
+                    return Err(RuntimeError::InvalidBinding);
+                }
+                sealed.extend_from_slice(&chunk);
             }
-            sealed.extend_from_slice(&chunk);
         }
         if sealed.len() != manifest.bytes || crate::hash(&sealed) != manifest.sha256 {
             return Err(RuntimeError::InvalidBinding);

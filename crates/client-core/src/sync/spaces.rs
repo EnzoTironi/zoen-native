@@ -247,8 +247,23 @@ impl Engine {
     }
 
     /// Queues "I'm joining" for a Space we don't have yet; the relay checks the code.
-    pub fn queue_join(&mut self, space: &str, role: Role, code: &str) -> R<()> {
+    pub fn queue_join(&mut self, space: &str, role: Role, code: &str) -> R<Option<String>> {
         let me = self.me_id()?;
+        if self.receipt_members(space)?.iter().any(|(id, _)| id == &me) {
+            return Ok(None);
+        }
+        for pending in self.store.outbox_heads()? {
+            if !pending.failed
+                && pending.space == space
+                && self
+                    .store
+                    .meta(&format!("invite:{}", pending.client_id))?
+                    .as_deref()
+                    == Some(code)
+            {
+                return Ok(Some(pending.client_id));
+            }
+        }
         let author = self.author_for(&me)?;
         let at = crate::engine::now_ms();
         let client_id = new_ulid(at)?;
@@ -259,13 +274,38 @@ impl Engine {
             None,
             EventBody::MemberAdded { identity: me, role },
         )?;
+        let transaction = self
+            .store
+            .conn()
+            .unchecked_transaction()
+            .map_err(store::StoreError::from)?;
         self.store.set_meta(&format!("invite:{client_id}"), code)?;
         self.store.outbox_put(&e)?;
         self.store.set_synced(space)?;
+        transaction.commit().map_err(store::StoreError::from)?;
         self.net.synced.insert(space.to_string());
-        self.net.pending.insert(client_id, space.to_string());
+        self.net
+            .pending
+            .insert(client_id.clone(), space.to_string());
         self.net.wake();
-        Ok(())
+        Ok(Some(client_id))
+    }
+
+    pub(crate) fn invite_join_status(&self, space: &str, client_id: &str) -> R<&'static str> {
+        let me = self.me_id()?;
+        if self.receipt_members(space)?.iter().any(|(id, _)| id == &me) {
+            return Ok("joined");
+        }
+        let failed = self
+            .store
+            .outbox_heads()?
+            .into_iter()
+            .any(|entry| entry.failed && entry.space == space && entry.client_id == client_id);
+        if failed && self.store.outbox_get(client_id)?.is_some_and(|event|
+            matches!(event.body, EventBody::MemberAdded { identity, .. } if identity == me)) {
+            return Ok("refused");
+        }
+        Ok("pending")
     }
 }
 
@@ -276,5 +316,43 @@ pub(super) fn may_remove_member(actor: Option<Role>, target: Option<Role>) -> bo
         (Some(Role::Owner), _) => true,
         (Some(Role::Admin), Some(role)) => role != Role::Owner,
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod invite_tests {
+    use super::*;
+
+    #[test]
+    fn failed_invite_write_rolls_back_the_event_and_code() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut engine = Engine::open(":memory:")?;
+        engine.create_account("Invite test", "invite_test", "http://127.0.0.1:1")?;
+        engine.store.conn().execute_batch(
+            "CREATE TRIGGER fail_invite_scope BEFORE INSERT ON synced_spaces
+             BEGIN SELECT RAISE(ABORT, 'injected invite scope failure'); END;",
+        )?;
+        let space = "sp_invite_atomic";
+        assert!(engine
+            .queue_join(space, Role::Member, "invite-code")
+            .is_err());
+        assert!(engine.store.outbox_heads()?.is_empty());
+        assert!(!engine.net.synced.contains(space));
+        assert!(engine.net.pending.is_empty());
+        let invite_count: i64 = engine.store.conn().query_row(
+            "SELECT count(*) FROM meta WHERE key LIKE 'invite:%'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(invite_count, 0);
+
+        engine
+            .store
+            .conn()
+            .execute_batch("DROP TRIGGER fail_invite_scope")?;
+        let receipt = engine.queue_join(space, Role::Member, "invite-code")?;
+        assert!(receipt.is_some());
+        assert_eq!(engine.store.outbox_heads()?.len(), 1);
+        Ok(())
     }
 }

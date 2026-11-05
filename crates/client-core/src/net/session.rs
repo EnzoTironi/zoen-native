@@ -94,7 +94,7 @@ async fn session_with_policy_and_retries(
     if let Err(e) = send(&mut sink, &hello).await {
         return Exit::Retry(e);
     }
-    let (nonce, relay, profiles, advertised_clock, complete_reads, saved_messages) =
+    let (nonce, relay, profiles, advertised_clock, complete_reads, saved_messages, voip_wake) =
         match recv(&mut stream).await {
             Ok(ServerFrame::Challenge {
                 nonce,
@@ -121,6 +121,9 @@ async fn session_with_policy_and_retries(
                 capabilities
                     .iter()
                     .any(|c| c == protocol::saved_messages::CAPABILITY),
+                capabilities
+                    .iter()
+                    .any(|c| c == protocol::push::VOIP_WAKE_CAPABILITY),
             ),
             Ok(ServerFrame::Challenge { protocol, .. }) => {
                 return Exit::Blocked(format!(
@@ -277,7 +280,7 @@ async fn session_with_policy_and_retries(
                     waiting: &mut waiting, profiles_inflight: &mut profiles_inflight,
                     traffic: &mut traffic, opening: &mut opening,
                     claim_clock: &mut claim_clock, clock_negotiated,
-                    media_kick: &media_kick,
+                    media_kick: &media_kick, voip_wake, next_id: &mut next_id,
                 }).await { break exit; }
 
             }

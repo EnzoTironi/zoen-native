@@ -10,6 +10,7 @@ import {
 import { AppState, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useClient } from '../core/provider';
+import { accountScope } from '../core/account-scope';
 import { useDialogs } from '../components/dialogs';
 import { PushCoordinator } from './coordinator';
 import { validLocalNotification } from './links';
@@ -37,15 +38,18 @@ const Context = createContext<PushCoordinator | null>(null);
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { store, snapshot, mode } = useClient();
   const dialogs = useDialogs();
+  const sessionEpoch = store.sessionEpoch;
   const deviceId = mode === 'account' ? (snapshot?.account?.device_id ?? null) : null;
   const jobs = useMemo(() => (deviceId ? new NotificationJobs() : null), [deviceId]);
   const identityId = mode === 'account' ? (snapshot?.account?.identity_id ?? null) : null;
+  const relay = mode === 'account' ? snapshot?.account?.relay_url : undefined;
   const coordinator = useMemo(() => {
     const current = () => {
       const state = store.getSnapshot();
       const account = state.snapshot?.account;
       return (
         state.mode === 'account' &&
+        store.sessionEpoch === sessionEpoch &&
         identityId !== null &&
         deviceId !== null &&
         account?.identity_id === identityId &&
@@ -72,7 +76,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       },
       nativePushConfiguration(),
     );
-  }, [store, identityId, deviceId]);
+  }, [store, identityId, deviceId, sessionEpoch]);
 
   useEffect(
     () =>
@@ -88,23 +92,33 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     coordinator.activate();
     if (!deviceId || !jobs || !nativeNotificationPlatform(Platform.OS))
       return () => coordinator.dispose();
-    const current = () =>
+    const sameDevice = () =>
       store.getSnapshot().mode === 'account' &&
       store.getSnapshot().snapshot?.account?.device_id === deviceId;
+    const current = () => sameDevice() && store.sessionEpoch === sessionEpoch;
     const canOpen = (data: unknown) => {
-      if (!current()) return null;
+      const state = store.getSnapshot();
+      const owner = accountScope(store, state);
+      if (
+        !owner ||
+        owner.identity !== identityId ||
+        owner.device !== deviceId ||
+        owner.relay !== relay ||
+        owner.epoch !== sessionEpoch
+      )
+        return null;
       const target = validLocalNotification(data, deviceId);
-      const currentSnapshot = store.getSnapshot().snapshot;
-      const chat =
-        target && currentSnapshot?.conversations.find((value) => value.id === target.spaceId);
-      return chat &&
-        currentSnapshot?.account &&
-        chat.members.some((member) => member.id === currentSnapshot.account?.identity_id)
-        ? chat
-        : null;
+      return (
+        target &&
+        state.snapshot?.conversations.find(
+          (chat) =>
+            chat.id === target.spaceId &&
+            chat.members.some((member) => member.id === owner.identity),
+        )
+      );
     };
-    const clearHandler = installNotificationHandler((data) =>
-      allowLocalNotification(store, data, deviceId),
+    const clearHandler = installNotificationHandler(async (data) =>
+      current() ? allowLocalNotification(store, data, deviceId) : false,
     );
     const stopToken = listenPushToken((token) => {
       void coordinator.receivedToken(token);
@@ -181,13 +195,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       clearHandler();
       foreground.remove();
       coordinator.dispose();
-      if (!current() && !store.getSnapshot().erasePending)
+      if (!sameDevice() && !store.getSnapshot().erasePending)
         void jobs
           .drain()
           .then(() => clearDeviceNotifications(deviceId))
           .catch(() => {});
     };
-  }, [store, deviceId, coordinator, jobs, dialogs]);
+  }, [store, deviceId, coordinator, jobs, dialogs, identityId, relay, sessionEpoch]);
   return <Context value={coordinator}>{children}</Context>;
 }
 

@@ -1,7 +1,11 @@
 //! Explicit fixture custody, not a production key or enrollment constructor.
 pub(crate) use super::image_tasks::seed_association_fixture;
 pub(crate) use super::image_tasks::testing as image_tasks;
+mod capture;
+pub(crate) use capture::complete_retained_for_capture;
+mod dispatch;
 use super::*;
+pub(crate) use dispatch::dispatch_retained_reply;
 pub(crate) use runs::output::testing as output;
 
 pub(crate) fn custody(
@@ -481,4 +485,72 @@ pub(crate) async fn admitted_before_revocation(
         RuntimeError::Denied
     );
     println!("native maintenance revocation ordering: known pre-revocation SQL admission finishes within window; subsequent calls denied PASS");
+}
+
+/// Runs the normal managed constructor against a real qualified relay route.
+/// No fixture capability or publication permission is synthesized here.
+pub(crate) async fn qualify_output(
+    runtime: &RuntimeAuthority,
+    target: ImageDeliveryTarget,
+) -> Result<impl NativeOutputAuthority, RuntimeError> {
+    ManagedNativeOutput::qualify(runtime, target).await
+}
+
+/// A real retained loader/paired lease for cancellation race tests. No fixture
+/// financial capability or continuity qualification is installed here.
+pub(crate) async fn retained_reply_holder(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<ReplyStep, RuntimeError> {
+    runtime
+        .native
+        .as_ref()
+        .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+        .verified_reply(runtime, run)
+        .await
+}
+
+/// Exercise the normal reservation phase with actual native extraction; no
+/// fixture continuity Boolean, financial permit or provider call is installed.
+pub(crate) async fn reserve_retained_reply(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<crate::Binding, RuntimeError> {
+    let step = crate::VerifiedStep::Native(Box::new(retained_reply_holder(runtime, run).await?));
+    let result: Result<crate::Binding, RuntimeError> = async {
+        let dispatch = runtime
+            .gateway
+            .preflight(step.request())
+            .map_err(|_| RuntimeError::InvalidProfile)?;
+        let binding = step.binding(&dispatch, &runtime.price)?;
+        runtime.reserve_verified_budget(&step, &binding).await?;
+        Ok(binding)
+    }
+    .await;
+    let released = step.release(&runtime.execution).await;
+    let binding = result?;
+    released?;
+    Ok(binding)
+}
+
+/// Actual retained extraction through the ordinary shared claim phase. The
+/// production continuity/dispatch/output guards remain untouched.
+pub(crate) async fn claim_retained_reply(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<Option<crate::finance::FreshClaim>, RuntimeError> {
+    let step = crate::VerifiedStep::Native(Box::new(retained_reply_holder(runtime, run).await?));
+    let result: Result<Option<crate::finance::FreshClaim>, RuntimeError> = async {
+        let dispatch = runtime
+            .gateway
+            .preflight(step.request())
+            .map_err(|_| RuntimeError::InvalidProfile)?;
+        let binding = step.binding(&dispatch, &runtime.price)?;
+        runtime.claim_verified_budget(&step, &binding).await
+    }
+    .await;
+    let released = step.release(&runtime.execution).await;
+    let claim = result?;
+    released?;
+    Ok(claim)
 }

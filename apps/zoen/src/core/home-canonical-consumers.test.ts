@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createContext } from 'react';
 import { conversationTitle } from '../saved-messages/presentation.ts';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +50,7 @@ const compiled = Object.fromEntries(
             name: 'actual-chat-owner-and-view',
             setup(builder) {
               builder.onResolve({ filter: /./ }, ({ path }) =>
-                /\/(?:chat-screen|use-chat-controller|use-conversation-search|use-reply-destination-focus)$/.test(
+                /\/(?:chat-screen|use-chat-controller|use-conversation-search|use-reply-destination-focus|conversation-hashtag-search|conversation-hashtag-provider|message-hashtag|search-launch|send-chat-message)$/.test(
                   path,
                 )
                   ? undefined
@@ -184,9 +185,12 @@ function renderScreen(
   }
   const components = (names: string[]) => Object.fromEntries(names.map((key) => [key, key]));
   function port(path: string): unknown {
+    if (path.endsWith('/thread-hashtag-provider'))
+      return { ThreadHashtagProvider: 'ThreadHashtagProvider' };
     if (path === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
     if (path === 'react')
       return {
+        createContext,
         useState: (value: unknown) => [typeof value === 'function' ? value() : value, noop],
         useRef: (value: unknown) => ({ current: value }),
         useMemo: (value: () => unknown) => value(),
@@ -242,9 +246,17 @@ function renderScreen(
     if (path.endsWith('/core/message-presentation')) return { messageCard };
     if (path.endsWith('/core/presentation')) return { messageText: () => 'Drawing update' };
     if (path.endsWith('/core/use-message-draft')) return { useMessageDraft: () => draft };
-    if (path.endsWith('/core/conversation-search') || path === './conversation-search')
+    if (
+      path.endsWith('/core/conversation-search') ||
+      path === './conversation-search' ||
+      path === './conversation-search.ts'
+    )
       return { ConversationSearch: SearchPort };
-    if (path.endsWith('/core/conversation-scope') || path === './conversation-scope')
+    if (
+      path.endsWith('/core/conversation-scope') ||
+      path === './conversation-scope' ||
+      path === './conversation-scope.ts'
+    )
       return { conversationScope };
     if (path.endsWith('/core/initial-timeline-end')) return { InitialTimelineEnd: LayoutPort };
     if (path === './navigation-container') return { navigationMetricsAvailable: false };

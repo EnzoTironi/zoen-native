@@ -13,6 +13,7 @@ import UIKit
     let sha256: String
   }
   private weak var presenter: UIViewController?
+  private let bookmarks: [String: ZoenMediaPlaybackBookmark]
   private let items: [Item]
   private let selectedId: String
   private let copies: ZoenFilePreview.ReadOnlyCopies
@@ -26,8 +27,9 @@ import UIKit
   private var didEnd = false
 
   init(presenter: UIViewController?, items: [Item], selectedId: String,
-       copies: ZoenFilePreview.ReadOnlyCopies,
+       bookmarks: [String: ZoenMediaPlaybackBookmark] = [:], copies: ZoenFilePreview.ReadOnlyCopies,
        load: @escaping @Sendable (Item) async throws -> UUID) {
+    self.bookmarks = bookmarks
     self.presenter = presenter; self.items = items; self.selectedId = selectedId
     self.copies = copies; self.load = load
   }
@@ -36,7 +38,7 @@ import UIKit
     guard controller == nil, let presenter, presenter.viewIfLoaded?.window != nil,
           presenter.presentedViewController == nil, presenter.transitionCoordinator == nil,
           !presenter.isBeingPresented, !presenter.isBeingDismissed else { throw ZoenFilePreview.Failure.unavailable }
-    let controller = Controller(items: items, selectedId: selectedId, initial: file, copies: copies, load: load)
+    let controller = Controller(items: items, selectedId: selectedId, initial: file, copies: copies, bookmarks: bookmarks, load: load)
     self.controller = controller; self.ended = ended
     controller.closed = { [weak self] error in
       self?.dismiss { [weak self] in self?.notifyEnded(error) }
@@ -84,6 +86,7 @@ import UIKit
   }
 
   @MainActor private final class Controller: UIViewController {
+    private let bookmarks: [String: ZoenMediaPlaybackBookmark]
     private let items: [Item]
     private var selectedId: String
     private let copies: ZoenFilePreview.ReadOnlyCopies
@@ -96,8 +99,9 @@ import UIKit
     private lazy var gallery = ZoenAttachmentGalleryContent { [weak self] action, payload in self?.action(action, payload: payload) }
     var closed: ((Error?) -> Void)?
     var disappeared: (() -> Void)?
-    init(items: [Item], selectedId: String, initial: URL, copies: ZoenFilePreview.ReadOnlyCopies,
+    init(items: [Item], selectedId: String, initial: URL, copies: ZoenFilePreview.ReadOnlyCopies, bookmarks: [String: ZoenMediaPlaybackBookmark],
          load: @escaping @Sendable (Item) async throws -> UUID) {
+      self.bookmarks = bookmarks
       self.items = items; self.selectedId = selectedId; self.copies = copies; self.load = load
       uris = [selectedId: initial]
       super.init(nibName: nil, bundle: nil)
@@ -109,6 +113,7 @@ import UIKit
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .allButUpsideDown }
     override func viewDidLoad() {
       super.viewDidLoad(); view.backgroundColor = .clear
+      gallery.playbackBookmarks = bookmarks
       view.addSubview(gallery.view)
       refresh(); loadWindow()
     }

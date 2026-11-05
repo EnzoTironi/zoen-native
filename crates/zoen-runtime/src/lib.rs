@@ -4,6 +4,7 @@ mod admission;
 #[cfg(test)]
 use admission::FixtureStep;
 use admission::{Binding, Capture, Session, VerifiedStep};
+mod capture_codec;
 mod continuity;
 mod custody;
 mod execution;
@@ -23,6 +24,7 @@ pub use native::{
 };
 mod pricing;
 mod relay_binding;
+mod reply_output;
 pub use pricing::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
@@ -97,7 +99,10 @@ impl From<sqlx::Error> for RuntimeError {
     }
 }
 impl From<foundationdb::FdbError> for RuntimeError {
-    fn from(_: foundationdb::FdbError) -> Self {
+    fn from(error: foundationdb::FdbError) -> Self {
+        #[cfg(test)]
+        eprintln!("runtime FDB failure category: {}", error.code());
+        let _ = error;
         Self::Unavailable
     }
 }
@@ -171,9 +176,14 @@ pub struct ReplyOutputInspection {
     pub generation: u64,
 }
 
+pub use relay_admission::managed_images::PublishRefusal as ReplyRefusal;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReplyReceiptProgress {
     Waiting,
+    Refused {
+        reason: ReplyRefusal,
+    },
     CatchingUp {
         through: types::Seen,
         generation: u64,
@@ -196,7 +206,7 @@ pub struct RuntimeAuthority {
     // No production setter: an incarnation UUID does not prove absence after restore.
     continuity: Arc<AtomicBool>,
     managed_images: Option<Arc<tokio::sync::Mutex<managed_images::ManagedImages>>>,
-    image_output: Option<native::ManagedImageOutput>,
+    image_output: Option<native::ManagedNativeOutput>,
     runtime_continuity: Option<Arc<tokio::sync::Mutex<continuity::ManagedRuntime>>>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
@@ -309,6 +319,7 @@ impl RuntimeAuthority {
         if !id(agent) || !id(device) {
             return Err(RuntimeError::InvalidBinding);
         }
+        self.check_shared_runtime().await?;
         self.native
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?
@@ -367,47 +378,17 @@ impl RuntimeAuthority {
     /// Durable scheduling locators, not execution capabilities. A lost wake
     /// reply cannot create another run or another paid attempt.
     pub async fn pending_reply_runs(&self, limit: u16) -> Result<Vec<ReplyRun>, RuntimeError> {
+        self.check_shared_runtime().await?;
         self.execution
             .pending_reply_runs(limit, &self.custody)
             .await
     }
 
-    fn production_output_scope(&self) -> Result<&native::FreshOutputNamespace, RuntimeError> {
+    fn production_output_scope(&self) -> Result<&dyn native::NativeOutputAuthority, RuntimeError> {
         // A fresh fixture cannot attest that old production writers stopped.
         Err(RuntimeError::CoreAuthorityUnavailable)
     }
 
-    /// Closed until actual custody, continuity and old-writer barrier evidence
-    /// can authorize this boundary. A locator never creates that evidence.
-    pub async fn prepare_reply_output(
-        &self,
-        run: &str,
-    ) -> Result<ReplyOutputInspection, RuntimeError> {
-        if !id(run) {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let scope = self.production_output_scope()?;
-        self.native
-            .as_ref()
-            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
-            .prepare_output(self, run, scope)
-            .await
-    }
-
-    pub async fn reconcile_reply_receipt(
-        &self,
-        run: &str,
-    ) -> Result<ReplyReceiptProgress, RuntimeError> {
-        if !id(run) {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let scope = self.production_output_scope()?;
-        self.native
-            .as_ref()
-            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
-            .reconcile_output(self, run, scope)
-            .await
-    }
     async fn verified_step(&self, run: &str) -> Result<VerifiedStep, RuntimeError> {
         let native = self
             .native
@@ -421,6 +402,10 @@ impl RuntimeAuthority {
     pub async fn cancel_model(&self, run: &str) -> Result<ModelCancellation, RuntimeError> {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
+        }
+        if self.runtime_continuity.is_some() {
+            self.request_shared_reply_cancel(run).await?;
+            return Ok(ModelCancellation::Requested);
         }
         self.continuity()?;
         self.execution
@@ -457,6 +442,9 @@ impl RuntimeAuthority {
     pub async fn reconcile(&self, limit: u16) -> Result<ReconcileReport, RuntimeError> {
         if !(1..=64).contains(&limit) {
             return Err(RuntimeError::InvalidBinding);
+        }
+        if self.runtime_continuity.is_some() {
+            return Box::pin(self.reconcile_shared(limit)).await;
         }
         let mut report = ReconcileReport::default();
         for (attempt, digest, sealed) in self.execution.pending_evidence(limit).await? {
@@ -527,10 +515,18 @@ impl RuntimeAuthority {
             binding: admitted.binding,
             result: result.clone(),
         };
-        let (digest, sealed) = self.custody.seal(
-            &format!("evidence/{}", capture.binding.context.attempt_id),
-            &capture,
-        )?;
+        let (digest, sealed) = capture_codec::seal(&self.custody, &capture)?;
+        if self.runtime_continuity.is_some() {
+            // Keep shared recovery's larger state machine out of the common
+            // completion future and its caller's poll stack.
+            let state = Box::pin(self.capture_shared(
+                &capture.binding.context.attempt_id,
+                &digest,
+                &sealed,
+            ))
+            .await?;
+            return Ok((result, state));
+        }
         // Output association refusal must not prevent either independent store
         // from retaining an already incurred expense, including late captures.
         let _ = native::associate_capture(self, step, &capture, &admitted.nonce, &digest, &sealed)

@@ -1,0 +1,62 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/MarkdownASTSerializer.h b/node_modules/react-native-enriched-markdown/ios/utils/MarkdownASTSerializer.h
+--- a/node_modules/react-native-enriched-markdown/ios/utils/MarkdownASTSerializer.h
++++ b/node_modules/react-native-enriched-markdown/ios/utils/MarkdownASTSerializer.h
+@@ -24,6 +24,9 @@
+ /// Extracts plain text content from an AST node recursively (no markdown syntax).
+ NSString *plainTextFromASTNode(MarkdownASTNode *node);
+ 
++/// Plain message summary with spoiler contents omitted.
++NSString *ENRMMessageSummaryText(MarkdownASTNode *node);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/MarkdownASTSerializer.m b/node_modules/react-native-enriched-markdown/ios/utils/MarkdownASTSerializer.m
+--- a/node_modules/react-native-enriched-markdown/ios/utils/MarkdownASTSerializer.m
++++ b/node_modules/react-native-enriched-markdown/ios/utils/MarkdownASTSerializer.m
+@@ -359,3 +359,23 @@
+   appendPlainText(node, buffer);
+   return [[buffer copy] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+ }
++
++// Summary readers cannot reveal a visually hidden spoiler.
++static MarkdownASTNode *ENRMSummaryNode(MarkdownASTNode *node)
++{
++  MarkdownASTNode *summary = [[MarkdownASTNode alloc] initWithType:node.type];
++  if (node.type == MarkdownNodeTypeSpoiler) {
++    summary.type = MarkdownNodeTypeText;
++    summary.content = @"[Spoiler]";
++    return summary;
++  }
++  summary.content = node.content;
++  summary.attributes = [node.attributes mutableCopy];
++  for (MarkdownASTNode *child in node.children) [summary addChild:ENRMSummaryNode(child)];
++  return summary;
++}
++
++NSString *ENRMMessageSummaryText(MarkdownASTNode *node)
++{
++  return node ? plainTextFromASTNode(ENRMSummaryNode(node)) : @"";
++}
+diff --git a/node_modules/react-native-enriched-markdown/ios/utils/ENRMPlainTextProjection.mm b/node_modules/react-native-enriched-markdown/ios/utils/ENRMPlainTextProjection.mm
+--- a/node_modules/react-native-enriched-markdown/ios/utils/ENRMPlainTextProjection.mm
++++ b/node_modules/react-native-enriched-markdown/ios/utils/ENRMPlainTextProjection.mm
+@@ -11,5 +11,5 @@
+   flags.noMedia = YES;
+   ENRMMarkdownParser *parser = [ENRMMarkdownParser new];
+   MarkdownASTNode *root = [parser parseMarkdown:markdown flags:flags isGFM:YES];
+-  return root ? plainTextFromASTNode(root) : nil;
++  return root ? ENRMMessageSummaryText(root) : nil;
+ }
+diff --git a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+--- a/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
++++ b/node_modules/react-native-enriched-markdown/ios/EnrichedMarkdown.mm
+@@ -788,7 +788,7 @@
+           return NO;
+ 
+         ENRMApplyQuotePresentation(ast, quoteCollapse);
+-        if (accessibilityRevision.length) accessibilityText = plainTextFromASTNode(ast);
++        if (accessibilityRevision.length) accessibilityText = ENRMMessageSummaryText(ast);
+         renderedSegments = ENRMRenderSegmentsFromAST(ast, config, allowTrailingMargin, allowFontScaling,
+                                                      maxFontSizeMultiplier, lineBreakStrategy,
+                                                      /*blockquoteContent*/ NO);

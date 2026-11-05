@@ -196,6 +196,7 @@ impl State {
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
             }
+            EventBody::InboxFoldersSet { .. } => {}
             EventBody::ChatPrefsSet { space, prefs, .. } => {
                 // Only my own Personal Space carries prefs; anywhere else they mean nothing.
                 let mine = self.spaces.get(&e.space).is_some_and(|s| {
@@ -209,29 +210,7 @@ impl State {
                 self.apply_private_message_deletion(&e.author, space, messages);
             }
             EventBody::MessageAnnotated { target, note } => {
-                if let Some(s) = self.spaces.get_mut(&e.space) {
-                    let found = s.entries.iter_mut().rev().find(|x| x.id() == target);
-                    if let Some(Entry {
-                        author,
-                        body:
-                            EntryBody::Message {
-                                text,
-                                attaches,
-                                marks,
-                                ..
-                            },
-                        ..
-                    }) = found
-                    {
-                        if let Some(new_text) = marks.apply(author, &e.author, note) {
-                            *text = new_text;
-                            marks.text_revision = Some(event_log::content_hash_of(e));
-                            if marks.deleted {
-                                *attaches = None;
-                            }
-                        }
-                    }
-                }
+                self.apply_message_annotation(e, target, note);
             }
             EventBody::BackgroundSet { background } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {

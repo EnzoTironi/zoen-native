@@ -7,13 +7,14 @@ enum ZoenMediaDraftBridge {
     let expectedDeviceId: String
     let spaceId: String
     let threadRootId: String?
+    let editMessageId: String?
     enum CodingKeys: String, CodingKey {
       case expectedIdentityId = "expected_identity_id", expectedDeviceId = "expected_device_id"
-      case spaceId = "space_id", threadRootId = "thread_root_id"
+      case spaceId = "space_id", threadRootId = "thread_root_id", editMessageId = "edit_message_id"
     }
     var core: MediaDraftScope {
       MediaDraftScope(expectedIdentityId: expectedIdentityId, expectedDeviceId: expectedDeviceId,
-        spaceId: spaceId, threadRootId: threadRootId)
+        spaceId: spaceId, threadRootId: threadRootId, editMessageId: editMessageId)
     }
   }
   struct Asset: Decodable {

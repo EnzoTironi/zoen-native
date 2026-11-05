@@ -165,7 +165,7 @@ fn maximum_counter_admits_its_last_unit_without_overflow_or_repeat_consumption()
         .lock()
         .map_err(|_| "fixture poisoned")?
         .used
-        .insert(("owner".into(), 0), u32::MAX - 1);
+        .insert("owner".into(), u32::MAX - 1);
     assert_eq!(quota.admit_at(&request, day(0)), Ok(Admission::Fresh));
     assert_eq!(
         quota.admit_at(&request, day(0)),
@@ -175,5 +175,25 @@ fn maximum_counter_admits_its_last_unit_without_overflow_or_repeat_consumption()
         quota.admit_at(&dispatch_for("next", "owner")?, day(0)),
         Err(AdmissionError::Denied)
     );
+    Ok(())
+}
+
+#[test]
+fn clock_rollback_cannot_reopen_a_prior_day_for_any_owner() -> TestResult {
+    let quota = CheapTierAuthority::new(1);
+    let first = dispatch_for("first", "owner")?;
+    let next = dispatch_for("next", "owner")?;
+    let other = dispatch_for("other", "another")?;
+    assert_eq!(quota.admit_at(&first, day(2)), Ok(Admission::Fresh));
+    assert_eq!(quota.admit_at(&first, day(1)), Ok(Admission::AlreadyKnown));
+    for request in [&next, &other] {
+        assert_eq!(
+            quota.admit_at(request, day(1)),
+            Err(AdmissionError::Unavailable)
+        );
+    }
+    assert_eq!(quota.admit_at(&next, day(2)), Err(AdmissionError::Denied));
+    assert_eq!(quota.admit_at(&other, day(2)), Ok(Admission::Fresh));
+    assert_eq!(quota.admit_at(&next, day(3)), Ok(Admission::Fresh));
     Ok(())
 }

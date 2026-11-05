@@ -25,6 +25,7 @@
 pub mod agent_control;
 mod envelope;
 mod frames;
+mod key_package_clock;
 pub use envelope::{valid_invite_code, Envelope, Sequenced};
 pub use frames::{
     retry_hint, slow_down, AgentAction, AgentRequest, AgentStateRecord, AgreementKeyRecord,
@@ -81,6 +82,7 @@ pub const PROTOCOL: &str = "zoen-sync/2";
 /// Optional features; each side announces its own and uses the intersection.
 pub const AGENT_OWNER_PROOF: &str = "agent_owner_proof_v1";
 pub const CAPABILITIES: &[&str] = &[
+    push::VOIP_WAKE_CAPABILITY,
     "blobs",
     saved_messages::CAPABILITY,
     "invites",
@@ -506,3 +508,5 @@ mod tests {
     }
 }
 pub mod provider_auth;
+
+pub mod message_media_edit;

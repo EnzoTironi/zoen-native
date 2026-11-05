@@ -1,6 +1,6 @@
 import { t } from '../i18n/index.ts';
-import { useState } from 'react';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Text, View } from 'react-native';
 import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
@@ -16,31 +16,108 @@ export default function OpenLink() {
           `zoen://${kind === 'invite' ? 'join' : 'agent'}/${encodeURIComponent(target)}`,
         )
       : null;
-  const { store } = useClient();
+  const { store, snapshot } = useClient();
+  const identity = snapshot?.account?.identity_id;
+  const device = snapshot?.account?.device_id;
+  const epoch = store.sessionEpoch;
+  const scope = useMemo(
+    () => ({ store, identity, device, epoch, kind, target }),
+    [store, identity, device, epoch, kind, target],
+  );
+  const admission = useRef<{ scope: object; pending: boolean; stop?: () => void } | null>(null);
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
+  const [awaitingMembership, setAwaitingMembership] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const lease: NonNullable<typeof admission.current> = { scope, pending: false };
+      admission.current = lease;
+      setBusy(false);
+      setAwaitingMembership(false);
+      setFailure(null);
+      return () => {
+        lease.stop?.();
+        if (admission.current === lease) admission.current = null;
+      };
+    }, [scope]),
+  );
   const {
     data: preview,
     error,
     retry,
-  } = useCoreQuery(link?.kind === 'invite' ? { op: 'preview_invite', code: link.code } : null);
+  } = useCoreQuery(
+    link?.kind === 'invite' ? { op: 'preview_invite', code: link.code } : null,
+    JSON.stringify([device, epoch]),
+  );
   async function open() {
-    if (!link || busy) return;
+    const lease = admission.current;
+    function current() {
+      const state = store.getSnapshot();
+      const account = state.snapshot?.account;
+      return (
+        state.phase === 'ready' &&
+        !state.erasePending &&
+        (state.mode === 'demo' || account?.unlocked === true) &&
+        lease !== null &&
+        lease.scope === scope &&
+        admission.current === lease &&
+        store.sessionEpoch === epoch &&
+        account?.identity_id === identity &&
+        account?.device_id === device
+      );
+    }
+    if (!link || !lease || lease.pending || lease.stop || !current()) return;
+    lease.pending = true;
     setBusy(true);
     setFailure(null);
     try {
-      const space =
-        link.kind === 'invite'
-          ? await store.request({ op: 'join_invite', code: link.code })
-          : link.kind === 'agent'
-            ? await store.request({ op: 'open_agent_link', target: link.target })
-            : null;
-      if (space) router.replace({ pathname: '/chat/[id]', params: { id: space } });
+      const [space, receipt] =
+        link.kind === 'invite' && process.env.EXPO_OS !== 'web'
+          ? await store.request({ op: 'join_invite_tracked', code: link.code })
+          : [
+              link.kind === 'invite'
+                ? await store.request({ op: 'join_invite', code: link.code })
+                : link.kind === 'agent'
+                  ? await store.request({ op: 'open_agent_link', target: link.target })
+                  : null,
+              null,
+            ];
+      if (!space || !current()) return;
+      const navigate = () => router.replace({ pathname: '/chat/[id]', params: { id: space } });
+      if (!receipt) {
+        navigate();
+        return;
+      }
+      const observe = async () => {
+        if (!current() || !lease.stop) return;
+        try {
+          const status = await store.driver.request({
+            op: 'invite_join_status',
+            space_id: space,
+            client_id: receipt,
+          });
+          if (!current() || !lease.stop || status === 'pending') return;
+          lease.stop();
+          lease.stop = undefined;
+          setAwaitingMembership(false);
+          if (status === 'joined') navigate();
+          else setFailure(t('chat.theInviteCouldNotBeOpened'));
+        } catch {
+          // The signed request remains in the outbox. The next store change can read it again.
+        }
+      };
+      setAwaitingMembership(true);
+      lease.stop = store.subscribeCanonicalChanges((spaces) => {
+        if (!spaces || spaces.includes(space)) void observe();
+      });
+      void observe();
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : t('chat.thisInviteCouldNotBeOpened'));
+      if (current())
+        setFailure(reason instanceof Error ? reason.message : t('chat.thisInviteCouldNotBeOpened'));
     } finally {
-      setBusy(false);
+      lease.pending = false;
+      if (current()) setBusy(false);
     }
   }
   return (
@@ -86,13 +163,15 @@ export default function OpenLink() {
           ) : null}
           <NativeButton
             label={
-              busy
-                ? t('chat.opening')
-                : preview?.kind === 'agent' || link.kind === 'agent'
-                  ? t('chat.openChat')
-                  : t('chat.joinChat')
+              awaitingMembership
+                ? t('chat.waitingForInviteConfirmation')
+                : busy
+                  ? t('chat.opening')
+                  : preview?.kind === 'agent' || link.kind === 'agent'
+                    ? t('chat.openChat')
+                    : t('chat.joinChat')
             }
-            disabled={busy}
+            disabled={busy || awaitingMembership}
             onPress={() => {
               void open();
             }}

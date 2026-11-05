@@ -4,7 +4,7 @@ use super::*;
 use relay_admission::managed_images::AnchorReader;
 use std::path::Path;
 mod recovery;
-mod snapshot;
+pub(super) mod snapshot;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 type Home = managed_images::Directory;
 
@@ -14,6 +14,11 @@ async fn fresh(w: &World) -> Result<RuntimeAuthority, RuntimeError> {
 async fn fresh_at(w: &World, url: &str) -> Result<RuntimeAuthority, RuntimeError> {
     let mut cfg = config(url, &w.config_namespace, &w.http.base);
     cfg.relay_cell = w.relay_cell.clone();
+    cfg.price = w.runtime.price.clone();
+    cfg.gateway.limits.max_response_bytes = w.response_limit;
+    if w.response_limit > 16384 {
+        cfg.gateway.limits.timeout = Duration::from_secs(15);
+    }
     RuntimeAuthority::open(cfg).await
 }
 

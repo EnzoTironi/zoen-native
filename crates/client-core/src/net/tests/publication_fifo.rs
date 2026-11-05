@@ -264,3 +264,67 @@ pub(super) async fn unsettled_space_does_not_block_another_and_reconnect_recover
     .await?;
     outcome
 }
+
+#[test]
+fn cold_reopen_reconciles_a_lost_message_confirmation() -> R<()> {
+    let path = std::env::temp_dir().join(types::new_id("cold-message")?);
+    std::fs::create_dir(&path)?;
+    let result = (|| -> R<()> {
+        let db = path.join("client.sqlite");
+        let db = db.to_str().ok_or("invalid database path")?;
+        let mut engine = Engine::open(db)?;
+        engine.create_account("Ana", "ana", "http://127.0.0.1:9")?;
+        let author = engine.net.author.clone().ok_or("fixture author")?;
+        let mut head = None;
+        let genesis = sequence(
+            Envelope::plain(&author.sign_event(
+                "room",
+                "genesis",
+                1,
+                None,
+                EventBody::SpaceCreated {
+                    title: "Room".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::Closed,
+                },
+            )?)?,
+            &mut head,
+        )?;
+        assert_eq!(engine.ingest(genesis), Ingest::Applied);
+        engine.append_synced(
+            "room",
+            &author,
+            100,
+            EventBody::MessagePosted {
+                message: "message".into(),
+                text: "Queued message".into(),
+                attaches: None,
+                reply: None,
+                media: None,
+                forwarded: false,
+                forwarded_author: None,
+            },
+        )?;
+        let original = engine.outbox_envelopes();
+        assert_eq!(original.len(), 1);
+        let confirmed = sequence(original[0].clone(), &mut head)?;
+        drop(engine);
+
+        let mut reopened = Engine::open(db)?;
+        assert_eq!(reopened.outbox_envelopes(), original);
+        assert_eq!(reopened.ingest(confirmed.clone()), Ingest::Confirmed);
+        assert_eq!(reopened.outbox_len(), 0);
+        drop(reopened);
+
+        let mut reopened = Engine::open(db)?;
+        assert_eq!(reopened.outbox_len(), 0);
+        assert_eq!(reopened.ingest(confirmed), Ingest::Duplicate);
+        assert_eq!(reopened.outbox_len(), 0);
+        let log = reopened.logs.get("room").ok_or("missing confirmed log")?;
+        assert_eq!(log.events().len(), 2);
+        log.verify()?;
+        Ok(())
+    })();
+    std::fs::remove_dir_all(path)?;
+    result
+}

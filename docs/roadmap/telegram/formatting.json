@@ -10,7 +10,7 @@
       "apps/zoen/src/core/composer-rich-native.test.ts",
       "apps/zoen/src/core/composer-rich-paste.test.ts"
     ],
-    "gap": "Compositor nativo oferece negrito, itálico, riscado, código, citação, Link e undo/redo com Markdown canônico. Sublinhado e spoiler do compositor seguem desabilitados; completar esses formatos e aceite manual em #660.",
+    "gap": "Compositor nativo oferece negrito, itálico, riscado, código, citação, Link e undo/redo com Markdown canônico. Spoiler habilitado no menu nativo, com seleção Unicode, serialização, reabertura e undo cobertos por testes. Sublinhado segue pendente, assim como o aceite manual em #660.",
     "issues": [
       172,
       660

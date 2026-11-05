@@ -16,6 +16,8 @@ import type { useMediaComposerController } from './use-media-composer-controller
 export function renderMediaComposer(context: ReturnType<typeof useMediaComposerController>) {
   const {
     media,
+    mediaEdit,
+    attachmentDisabled,
     voiceReplySupported,
     voiceReplyScope,
     cancelVoiceReply,
@@ -108,15 +110,15 @@ export function renderMediaComposer(context: ReturnType<typeof useMediaComposerC
   const attachment = (
     <MediaActions
       disabled={
-        disabled ||
+        attachmentDisabled ||
         busy ||
         attachments.busy ||
         !attachments.canAdd ||
         voiceActive ||
         Boolean(failure)
       }
-      hasVoiceEditor={!attachments.active && Boolean(media.voiceEditor)}
-      onChoose={(kind) => pick(kind)}
+      hasVoiceEditor={!mediaEdit && !attachments.active && Boolean(media.voiceEditor)}
+      onChoose={(kind) => (mediaEdit && kind !== 'audio' ? attachments.pick(kind) : pick(kind))}
     />
   );
   const voice = (
@@ -161,8 +163,10 @@ export function renderMediaComposer(context: ReturnType<typeof useMediaComposerC
         renderControls({
           attachment,
           voice,
-          review: disabled ? review : (attachments.review ?? review),
-          files: disabled ? undefined : attachments.field,
+          review: attachmentDisabled ? review : (attachments.review ?? review),
+          files: attachmentDisabled ? undefined : attachments.field,
+          cancelEditMedia:
+            mediaEdit && 'cancelEditMedia' in attachments ? attachments.cancelEditMedia : undefined,
           reply: voiceReplyScope ? (
             <AttachmentReplyContext scope={voiceReplyScope} onCancel={cancelVoiceReply} />
           ) : undefined,

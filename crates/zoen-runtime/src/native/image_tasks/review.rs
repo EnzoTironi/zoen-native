@@ -113,7 +113,7 @@ impl Review {
 struct Staging<'a> {
     runtime: &'a RuntimeAuthority,
     custody: &'a NativeCustody,
-    capability: &'a dyn ImageOutputAuthority,
+    capability: &'a dyn NativeOutputAuthority,
     credential: &'a Credential,
     fence: &'a crate::execution::Fence,
     key: Vec<u8>,
@@ -131,7 +131,7 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         intent: &ImageReviewIntent,
         target: &super::delivery::ImageDeliveryTarget,
-        capability: &dyn ImageOutputAuthority,
+        capability: &dyn NativeOutputAuthority,
     ) -> Result<ImageReviewProgress, RuntimeError> {
         let ImageReviewIntent {
             agent,

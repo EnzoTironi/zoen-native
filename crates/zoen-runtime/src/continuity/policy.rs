@@ -104,7 +104,7 @@ impl RuntimeAuthority {
         {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        let before = inventory(&mut tx).await?;
+        let before = inventory(self, &mut tx, &fdb).await?;
         if before
             != managed
                 .anchor
@@ -129,7 +129,7 @@ impl RuntimeAuthority {
             }
         }
         let actual = Finance::install_continuous_policy_in(&mut tx, signed.clone()).await?;
-        let after = inventory(&mut tx).await?;
+        let after = inventory(self, &mut tx, &fdb).await?;
         if after == before {
             tx.commit().await?;
             return Ok(actual);

@@ -79,9 +79,13 @@ mod liveview;
 mod sites;
 pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod local_sealed;
+mod media_playback;
+pub use media_playback::{MediaPlaybackBookmark, MediaPlaybackPosition, MediaPlaybackScope};
 mod media;
 mod media_drafts;
 mod recent_attachments;
+mod search_links;
+mod search_media;
 mod universal_pages;
 pub use media_drafts::{
     MediaDraftAsset, MediaDraftAssetInput, MediaDraftDto, MediaDraftSaveResult, MediaDraftScope,
@@ -93,6 +97,8 @@ pub use recent_attachments::{
 };
 pub mod chat_layout;
 mod chat_mute;
+pub mod inbox_folders;
+pub mod message_media_edit;
 pub use universal_pages::UniversalSearchPage;
 mod message_info;
 pub use message_info::{MessageInfo, MessageInfoScope};

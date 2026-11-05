@@ -58,20 +58,22 @@ export function useMediaComposerController({
   replyIntent = null,
   thread = false,
   threadRootId = null,
-  disabled = false,
+  disabled: globallyDisabled = false,
+  mediaEdit,
   suspended = false,
   onSent,
   onReplyAccepted,
   onReplyCancelled,
   renderControls,
 }: MediaComposerOptions) {
+  const disabled = globallyDisabled || Boolean(mediaEdit);
   const client = useClient();
   const { store } = client;
   const channel = useMemo(() => {
     if (client.phase !== 'ready' || client.mode !== 'account' || !client.snapshot?.account)
       return null;
-    return store.mediaDrafts?.channel(spaceId, threadRootId) ?? null;
-  }, [store, spaceId, threadRootId, client.phase, client.mode, client.snapshot]);
+    return store.mediaDrafts?.channel(spaceId, threadRootId, mediaEdit?.id) ?? null;
+  }, [store, spaceId, threadRootId, mediaEdit?.id, client.phase, client.mode, client.snapshot]);
   const durableState = useSyncExternalStore(
     channel?.subscribe ?? subscribeNoDraft,
     channel?.getSnapshot ?? noDraft,
@@ -165,14 +167,15 @@ export function useMediaComposerController({
     [],
   );
   const attachments = useAttachmentComposer({
+    mediaEdit,
     spaceId,
-    replyTo,
-    replyQuote,
-    sharedReply,
-    replyIntent,
+    replyTo: mediaEdit ? null : replyTo,
+    replyQuote: mediaEdit ? null : replyQuote,
+    sharedReply: mediaEdit ? null : sharedReply,
+    replyIntent: mediaEdit ? null : replyIntent,
     thread,
     threadRootId,
-    disabled: disabled || Boolean(clip) || captureActive || recorderState.isRecording,
+    disabled: globallyDisabled || Boolean(clip) || captureActive || recorderState.isRecording,
     suspended,
     onSent,
     onReplyCancelled,
@@ -613,6 +616,8 @@ export function useMediaComposerController({
   }
   return {
     media,
+    mediaEdit,
+    attachmentDisabled: globallyDisabled,
     voiceReplyScope: resolveVoiceReplyScope(
       channel,
       clip,

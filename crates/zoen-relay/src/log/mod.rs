@@ -108,6 +108,15 @@ pub trait LogStore: Send + Sync {
     ) -> Result<ManagedPublication, Reject> {
         Err(Reject::retry("managed publication unavailable"))
     }
+    async fn append_managed_fenced(
+        &self,
+        _env: &Envelope,
+        _target_known: bool,
+        _checkpoint: &relay_admission::managed_images::Checkpoint,
+        _source_fence: protocol::runtime_binding::SourceFence,
+    ) -> Result<ManagedPublication, Reject> {
+        Err(Reject::retry("managed source fencing unavailable"))
+    }
     /// Observe only the exact retained publication. Absence after independent
     /// consumption is uncertainty, never a new append capability.
     async fn managed_publication_observation(
@@ -141,6 +150,18 @@ pub trait LogStore: Send + Sync {
     /// Transport admission only; the relay cannot inspect encrypted call consent.
     async fn call_pair(&self, _space: &str, _who: &str, _peer: &str) -> Result<bool, StoreError> {
         Ok(false)
+    }
+    /// Observes the exact encrypted publication and current call pair in one snapshot.
+    /// The envelope alone does not establish that the plaintext is a call invitation.
+    async fn call_wake_event(
+        &self,
+        _space: &str,
+        _who: &str,
+        _device: &str,
+        _peer: &str,
+        _seq: u64,
+    ) -> Result<Option<Sequenced>, StoreError> {
+        Ok(None)
     }
     /// One fixed membership read version, before the paired PostgreSQL snapshot.
     async fn membership_read_version(&self) -> Result<i64, StoreError> {

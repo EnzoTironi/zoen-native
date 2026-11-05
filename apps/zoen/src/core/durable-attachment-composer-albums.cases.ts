@@ -115,3 +115,55 @@ test('recovered grouped drafts preserve admitted mode on append/reorder and expl
   assert.equal(f.sendCalls(), 0);
   f.unmount();
 });
+
+test('a new multi-document selection saves a file album in chosen order before explicit Send', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([
+    { ...photo('second.pdf'), mime: 'application/pdf' },
+    { ...photo('first.txt'), mime: 'text/plain' },
+  ]);
+  await f.render().pick('document');
+  const saved = JSON.parse(f.durable().content_json);
+  assert.deepEqual(saved.options, { presentation: 'file', grouping: 'grouped' });
+  assert.equal(saved.items.length, 2);
+  assert.equal(f.sendCalls(), 0);
+  const persisted = structuredClone(f.durable());
+  f.unmount();
+  const recovered = fixture(persisted);
+  recovered.render();
+  await tick();
+  assert.equal(recovered.sendCalls(), 0);
+  recovered.render().field!.onSend();
+  await tick();
+  assert.deepEqual(JSON.parse(recovered.sent[0]!).items, saved.items);
+  assert.deepEqual(JSON.parse(recovered.sent[0]!).options, saved.options);
+  recovered.unmount();
+});
+
+test('Photos Send as Files retains its signed grouped intent through a lost send acknowledgement', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo('b.jpg'), photo('a.jpg')]);
+  f.submitPhotos({
+    captions: ['B', 'A'],
+    caption: 'B',
+    send: true,
+    options: { presentation: 'file', grouping: 'grouped' },
+  });
+  f.loseNextSendAck();
+  await f.render().pick('photo');
+  assert.deepEqual(JSON.parse(f.sent[0]!).options, { presentation: 'file', grouping: 'grouped' });
+  assert.deepEqual(
+    JSON.parse(f.sent[0]!).items.map((item: { caption: string }) => item.caption),
+    ['B', 'A'],
+  );
+  assert.equal(f.channel.getSnapshot().frozen, true);
+  f.render().field!.onSend();
+  await tick();
+  assert.equal(f.sendCalls(), 2);
+  assert.equal(f.sent.length, 1);
+  f.unmount();
+});

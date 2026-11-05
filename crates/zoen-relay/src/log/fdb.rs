@@ -93,6 +93,8 @@ mod managed_registry;
 mod membership_reads;
 mod routing;
 mod runtime;
+mod source_fence;
+mod terminal;
 pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
 
 pub struct FdbLog {
@@ -476,6 +478,7 @@ impl Batcher for Cell {
         // back only with a committed result. Later attempts reload from the head they read.
         let cached = Mutex::new(state.take());
         let attempts = AtomicU32::new(0);
+        let history = terminal::History::default();
         let started = std::time::Instant::now();
         #[cfg(debug_assertions)]
         let hooks = conflicts::Diagnostics::new(self, space);
@@ -483,7 +486,8 @@ impl Batcher for Cell {
         let hooks = foundationdb::NoopHooks;
         let r = self
             .db
-            .run_with_hooks(&hooks, |trx, _committed| {
+            .run_with_hooks(&hooks, |trx, committed| {
+                history.observe(bool::from(committed));
                 attempts.fetch_add(1, Ordering::Relaxed);
                 let cached = fallible::take_cache(&cached);
                 async move {
@@ -503,7 +507,7 @@ impl Batcher for Cell {
         let results = match r {
             Ok((results, fresh)) => {
                 *state = Some(fresh);
-                results
+                terminal::confirm(batch, results, history.uncertain()).await
             }
             Err(e) => {
                 tracing::error!(error = %e, size = batch.len(), attempts,

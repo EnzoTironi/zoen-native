@@ -1,8 +1,12 @@
 //! Shared independent continuity, retaining the existing SQL financial
 //! authority. No constructor here opens paid dispatch, output or refund gates.
 #![deny(clippy::all, clippy::perf, clippy::unwrap_used, clippy::expect_used)]
+mod ack;
+mod capture;
+pub(crate) mod dispatch;
 mod policy;
 mod recovery;
+mod reservation;
 mod setup;
 mod stores;
 use crate::{
@@ -16,8 +20,8 @@ use sqlx::{types::Json, Postgres, Transaction};
 use std::collections::BTreeMap;
 
 pub(crate) struct ManagedRuntime {
-    anchor: AnchorWriter,
-    deployment: RuntimeDeployment,
+    pub(crate) anchor: AnchorWriter,
+    pub(crate) deployment: RuntimeDeployment,
 }
 
 #[cfg(test)]
@@ -66,7 +70,7 @@ fn key(execution: &crate::execution::Execution) -> Vec<u8> {
     execution.root.pack(&("managed-images/checkpoint/1",))
 }
 
-fn history(execution: &crate::execution::Execution, sequence: u64) -> Vec<u8> {
+pub(crate) fn history(execution: &crate::execution::Execution, sequence: u64) -> Vec<u8> {
     execution.root.pack(&("managed-images/effect/1", sequence))
 }
 
@@ -74,7 +78,7 @@ fn error(error: relay_admission::managed_images::AnchorError) -> RuntimeError {
     crate::managed_images::error(error)
 }
 
-async fn inventory(
+async fn policy_inventory(
     tx: &mut Transaction<'_, Postgres>,
 ) -> Result<BTreeMap<String, String>, RuntimeError> {
     let rows: Vec<(String,i64,i64,String,Json<SignedOwnerPolicy>)> = sqlx::query_as("SELECT DISTINCT ON(owner,period_start) owner,period_start,version,digest,signed FROM runtime_policies ORDER BY owner,period_start,version DESC LIMIT 513")
@@ -96,4 +100,58 @@ async fn inventory(
         }
     }
     Ok(subjects)
+}
+
+pub(crate) async fn inventory(
+    runtime: &RuntimeAuthority,
+    sql: &mut Transaction<'_, Postgres>,
+    fdb: &foundationdb::Transaction,
+) -> Result<BTreeMap<String, String>, RuntimeError> {
+    let mut result = policy_inventory(sql).await?;
+    for (subject, value) in Finance::financial_inventory(sql).await? {
+        if result.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
+    for (subject, value) in crate::native::shared_commitments(runtime, fdb).await? {
+        if result.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
+    let (dispatch, admitted) = dispatch::commitments(runtime, fdb).await?;
+    for (subject, value) in dispatch {
+        if result.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
+    let (captures, captured, bytes) = capture::commitments(runtime, fdb).await?;
+    for (subject, value) in captures {
+        if result.insert(subject, value).is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
+    }
+    // ACKs refine the existing capture commitment, without consuming another
+    // subject or invalidating the byte-exact pre-ACK inventory on upgrades.
+    for (subject, value) in ack::commitments(runtime, sql, fdb).await? {
+        let original = result
+            .get_mut(&subject)
+            .ok_or(RuntimeError::RestoreUnreconciled)?;
+        *original = value;
+    }
+    // A live provider must have room to retain its largest allowed result.
+    // Unrelated transitions cannot consume another in-flight call's capacity.
+    let pending = admitted.difference(&captured).count();
+    let reserved_bytes = pending
+        .checked_mul(crate::capture_codec::MAXIMUM)
+        .and_then(|value| value.checked_add(bytes))
+        .ok_or(RuntimeError::EvidenceTooLarge)?;
+    if result
+        .len()
+        .checked_add(pending)
+        .is_none_or(|value| value > 512)
+        || reserved_bytes > crate::capture_codec::INVENTORY_MAXIMUM
+    {
+        return Err(RuntimeError::EvidenceTooLarge);
+    }
+    Ok(result)
 }

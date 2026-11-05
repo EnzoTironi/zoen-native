@@ -13,7 +13,9 @@ export function photoSendOptions(
     throw new Error('Invalid media selection');
   if (mode === 'send-as-file') {
     if (existing && existing.presentation !== 'file') throw new Error('The media draft changed');
-    return { presentation: 'file', grouping: 'separate' };
+    return existing
+      ? { ...existing }
+      : { presentation: 'file', grouping: count > 1 ? 'grouped' : 'separate' };
   }
   if (mode === 'send-without-grouping') {
     if (

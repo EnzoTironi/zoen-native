@@ -1,3 +1,4 @@
+import type { MediaPlaybackBookmark } from './generated/MediaPlaybackBookmark';
 import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { MessageInfo } from './generated/MessageInfo';
 import type { ForwardBatchReview } from './generated/ForwardBatchReview';
@@ -96,7 +97,14 @@ export type CoreEvent =
   | { kind: 'presence'; identityId: string; online: boolean }
   | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
   | { kind: 'error'; message?: string };
+import type { InboxFoldersResult } from './generated/InboxFoldersResult';
+import type { MessageMediaEditResult } from './generated/MessageMediaEditResult';
 type Results = {
+  replace_message_media: MessageMediaEditResult;
+  media_playback_read: MediaPlaybackBookmark;
+  media_playback_save: MediaPlaybackBookmark;
+  inbox_folders: InboxFoldersResult;
+  call_wake_consent: boolean;
   chat_layout: ChatLayoutResult;
   saved_messages: SpaceSummary;
   space_member_context: SpaceMemberContext;
@@ -207,6 +215,8 @@ type Results = {
   create_agent_invite: InviteDto;
   preview_invite: InvitePreviewDto;
   join_invite: string;
+  join_invite_tracked: [string, string | null];
+  invite_join_status: 'joined' | 'refused' | 'pending';
   profile: ProfileDto;
   standing_decisions: StandingDecisionDto[];
   verify_log: LogReport;

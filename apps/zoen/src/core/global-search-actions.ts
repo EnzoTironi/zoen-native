@@ -2,6 +2,7 @@
 export class GlobalSearchActions {
   private active = false;
   private generation = 0;
+  private retryFailedRead: (() => Promise<void>) | null = null;
   private state = { pending: false, error: null as string | null };
   private listeners = new Set<() => void>();
   private readonly current: () => boolean;
@@ -13,8 +14,8 @@ export class GlobalSearchActions {
   isCurrent() {
     return this.active && this.current();
   }
-  clearError() {
-    if (this.isCurrent() && !this.state.pending) this.publish(false, null);
+  retry() {
+    if (this.isCurrent() && !this.state.pending) return this.retryFailedRead?.();
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
@@ -28,11 +29,13 @@ export class GlobalSearchActions {
     for (const listener of this.listeners) listener();
   }
   focus() {
+    this.retryFailedRead = null;
     this.active = true;
     this.generation++;
     this.publish(false, null);
   }
   blur() {
+    this.retryFailedRead = null;
     this.active = false;
     this.generation++;
   }
@@ -44,14 +47,19 @@ export class GlobalSearchActions {
     if (!this.active || !this.current() || this.state.pending) return;
     const generation = this.generation;
     const valid = () => this.active && generation === this.generation && this.current();
+    this.retryFailedRead = null;
     this.publish(true, null);
+    let error: string | null = null;
     try {
       const value = await read();
       if (valid()) complete(value);
     } catch (reason) {
-      if (valid()) this.publish(false, reason instanceof Error ? reason.message : fallback);
+      if (valid()) {
+        this.retryFailedRead = () => this.run(read, complete, fallback);
+        error = reason instanceof Error ? reason.message : fallback;
+      }
     } finally {
-      if (valid()) this.publish(false, this.state.error);
+      if (valid()) this.publish(false, error);
     }
   }
 }

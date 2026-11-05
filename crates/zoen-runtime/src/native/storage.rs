@@ -74,7 +74,7 @@ fn decode<T: for<'de> Deserialize<'de>>(value: &[u8]) -> Result<T, RuntimeError>
     serde_json::from_slice(value).map_err(|_| RuntimeError::InvalidBinding)
 }
 
-pub(super) async fn bounded_rows(
+pub(crate) async fn bounded_rows(
     trx: &Transaction,
     mut range: foundationdb::RangeOption<'static>,
     max_rows: usize,

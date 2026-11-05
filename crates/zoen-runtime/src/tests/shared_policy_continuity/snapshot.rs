@@ -8,7 +8,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-pub(super) struct Snapshot {
+pub(in crate::tests) struct Snapshot {
     directory: PathBuf,
     dump: PathBuf,
 }
@@ -32,8 +32,25 @@ fn postgres(program: &str) -> Command {
     }
 }
 
+pub(in crate::tests) fn check_postgres_tools() -> Result<(), Box<dyn std::error::Error>> {
+    let url = std::env::var("ZOEN_TEST_PG")?;
+    let output = postgres("pg_dump")
+        .args(["--schema-only", "--lock-wait-timeout=5000", "--dbname"])
+        .arg(url)
+        .stdout(Stdio::null())
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "PostgreSQL snapshot preflight failed ({}). Check the connection and use pg_dump at least as new as the server.",
+            output.status
+        )
+        .into());
+    }
+    Ok(())
+}
+
 impl Snapshot {
-    pub(super) fn capture(w: &World) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(in crate::tests) fn capture(w: &World) -> Result<Self, Box<dyn std::error::Error>> {
         let directory = std::env::temp_dir().join(types::new_id("policy-snapshot")?);
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
@@ -188,5 +205,54 @@ pub(super) async fn restored_policy_refuses(
     assert_eq!(reader(&current, &home.0).await?.checkpoint()?, *tip);
     drop(current);
     println!("shared policy backup: real pg_dump/pg_restore to a new owned database preserves immutable triggers; old SQL and counter-only repairs both refuse, current original remains usable PASS");
+    Ok(())
+}
+
+pub(in crate::tests) async fn restored_finance_refuses(
+    w: &World,
+    directory: &Path,
+    snapshot: &Snapshot,
+    tip: &relay_admission::managed_images::Checkpoint,
+    expected_attempts: i64,
+    expected_claims: i64,
+    expected_witnesses: i64,
+) -> TestResult {
+    let restored = snapshot.restore(w).await?;
+    let pool = PgPool::connect(&restored.url).await?;
+    let old_attempts: i64 = sqlx::query_scalar("SELECT count(*) FROM runtime_attempts")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(old_attempts, expected_attempts);
+    let claims: i64 = sqlx::query_scalar("SELECT count(*) FROM runtime_claims")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(claims, expected_claims);
+    let witnesses: i64 = sqlx::query_scalar("SELECT count(*) FROM runtime_admission_witnesses")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(
+        witnesses, expected_witnesses,
+        "actual backup retains the expected original admission count"
+    );
+    let immutable: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='runtime_attempts'::regclass AND tgname='immutable_history' AND tgenabled='O')")
+        .fetch_one(&pool).await?;
+    assert!(
+        immutable,
+        "restore retains actual financial immutability triggers"
+    );
+    sqlx::query("UPDATE runtime_image_checkpoint SET generation=$1,sequence=$2,digest=$3 WHERE singleton AND profile=3")
+        .bind(i64::try_from(tip.generation)?).bind(i64::try_from(tip.sequence)?).bind(&tip.digest).execute(&pool).await?;
+    assert!(
+        matches!(
+            fresh_at(w, &restored.url)
+                .await?
+                .open_runtime_continuity(directory)
+                .await,
+            Err(RuntimeError::RestoreUnreconciled)
+        ),
+        "identical policies and advanced markers do not hide an actually older financial ledger"
+    );
+    pool.close().await;
+    restored.cleanup(w).await?;
     Ok(())
 }
