@@ -9,6 +9,9 @@ pub(super) async fn run() -> TestResult {
         Ok(cohort) if cohort == "shared-capture" => {
             vec![|| Box::pin(retained::shared_native::capture::run())]
         }
+        Ok(cohort) if cohort == "shared-output-route" => {
+            vec![|| Box::pin(retained::shared_native::output_route::run())]
+        }
         Ok(cohort) if cohort == "shared-association" => {
             vec![|| Box::pin(retained::shared_native::association::run())]
         }
@@ -26,6 +29,7 @@ pub(super) async fn run() -> TestResult {
             || Box::pin(retained::shared_native::run()),
             || Box::pin(retained::shared_native::ack::run()),
             || Box::pin(retained::shared_native::association::run()),
+            || Box::pin(retained::shared_native::output_route::run()),
             || Box::pin(retained::output::managed::run()),
             || Box::pin(retained::output::delivery::run()),
             || Box::pin(owner_policy_controls::run()),

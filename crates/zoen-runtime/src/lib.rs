@@ -207,6 +207,7 @@ pub struct RuntimeAuthority {
     continuity: Arc<AtomicBool>,
     managed_images: Option<Arc<tokio::sync::Mutex<managed_images::ManagedImages>>>,
     image_output: Option<native::ManagedNativeOutput>,
+    reply_output: Option<native::ManagedNativeOutput>,
     runtime_continuity: Option<Arc<tokio::sync::Mutex<continuity::ManagedRuntime>>>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
@@ -254,6 +255,7 @@ impl RuntimeAuthority {
             continuity: Arc::new(AtomicBool::new(false)),
             managed_images: None,
             image_output: None,
+            reply_output: None,
             runtime_continuity: None,
             #[cfg(test)]
             fault: std::sync::atomic::AtomicU8::new(0),
@@ -382,11 +384,6 @@ impl RuntimeAuthority {
         self.execution
             .pending_reply_runs(limit, &self.custody)
             .await
-    }
-
-    fn production_output_scope(&self) -> Result<&dyn native::NativeOutputAuthority, RuntimeError> {
-        // A fresh fixture cannot attest that old production writers stopped.
-        Err(RuntimeError::CoreAuthorityUnavailable)
     }
 
     async fn verified_step(&self, run: &str) -> Result<VerifiedStep, RuntimeError> {

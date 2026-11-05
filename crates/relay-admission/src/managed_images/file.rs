@@ -81,6 +81,16 @@ pub(super) fn sync_directory(path: &Path) -> Result<(), AnchorError> {
 }
 
 impl AnchorReader {
+    /// Read-only domain from the trusted constructor. This does not migrate an
+    /// anchor or attest current store state, principal authorization or effects.
+    #[must_use]
+    pub fn runtime_deployment(&self) -> Option<&RuntimeDeployment> {
+        match &self.deployment {
+            Binding::Runtime(deployment) => Some(deployment),
+            Binding::Device(_) => None,
+        }
+    }
+
     pub fn open(directory: &Path, deployment: Deployment) -> Result<Self, AnchorError> {
         Self::open_bound(directory, Binding::Device(deployment))
     }
