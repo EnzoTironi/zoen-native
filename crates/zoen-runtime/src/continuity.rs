@@ -27,6 +27,28 @@ pub(crate) struct ManagedRuntime {
     pub(crate) deployment: RuntimeDeployment,
 }
 
+/// One writer plus a read-only view of that same anchor. Inventory checks may
+/// inspect immutable/pending history while already holding the writer mutex.
+pub(crate) struct RuntimeContinuity {
+    managed: tokio::sync::Mutex<ManagedRuntime>,
+    reader: relay_admission::managed_images::AnchorReader,
+}
+impl RuntimeContinuity {
+    pub(super) fn new(managed: ManagedRuntime) -> Self {
+        let reader = managed.anchor.reader();
+        Self {
+            managed: tokio::sync::Mutex::new(managed),
+            reader,
+        }
+    }
+    pub(crate) async fn lock(&self) -> tokio::sync::MutexGuard<'_, ManagedRuntime> {
+        self.managed.lock().await
+    }
+    pub(crate) fn reader(&self) -> &relay_admission::managed_images::AnchorReader {
+        &self.reader
+    }
+}
+
 #[cfg(test)]
 impl ManagedRuntime {
     pub(crate) fn test_deployment(&self) -> RuntimeDeployment {
@@ -151,6 +173,12 @@ pub(crate) async fn inventory(
             &serde_json::to_vec(&("runtime-capture-association/1", &*value, association))
                 .map_err(|_| RuntimeError::InvalidBinding)?,
         );
+    }
+    for (subject, publication) in captures.publications {
+        let value = result
+            .get_mut(&subject)
+            .ok_or(RuntimeError::RestoreUnreconciled)?;
+        *value = crate::native::publication_commitment(value, &publication)?;
     }
     // A live provider must have room to retain its largest allowed result.
     // Unrelated transitions cannot consume another in-flight call's capacity.

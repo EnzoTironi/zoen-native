@@ -5,7 +5,10 @@ mod prepare;
 mod recovery;
 pub(in crate::native) use recovery::{recover_activation_reference, ActivationPublication};
 mod receipt;
+mod shared;
 mod storage;
+pub(crate) use shared::publication_commitment;
+pub(in crate::native) use shared::{LivePublication, SharedPublication};
 #[cfg(test)]
 pub(crate) mod testing;
 
@@ -170,6 +173,8 @@ impl RetainedCapture {
 struct PublicationRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     checkpoint: Option<relay_admission::managed_images::Checkpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shared_sequence: Option<u64>,
     format: u8,
     run: String,
     original: String,
@@ -186,7 +191,10 @@ struct PublicationRecord {
 
 impl PublicationRecord {
     fn checkpoint_context(&self, runtime: &RuntimeAuthority) -> Result<(), RuntimeError> {
-        if runtime.managed_images.is_some() != self.checkpoint.is_some() {
+        if (runtime.managed_images.is_some() || runtime.runtime_continuity.is_some())
+            != self.checkpoint.is_some()
+            || runtime.runtime_continuity.is_some() != self.shared_sequence.is_some()
+        {
             return Err(RuntimeError::RestoreUnreconciled);
         }
         Ok(())

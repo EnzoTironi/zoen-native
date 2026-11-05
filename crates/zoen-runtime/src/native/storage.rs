@@ -226,9 +226,17 @@ impl Execution {
         fence: Option<&Fence>,
     ) -> Result<PreparedImage, RuntimeError> {
         let trx = self.transaction().await?;
+        self.read_native_in(&trx, principal, fence).await
+    }
+    pub(in crate::native) async fn read_native_in(
+        &self,
+        trx: &Transaction,
+        principal: &Principal,
+        fence: Option<&Fence>,
+    ) -> Result<PreparedImage, RuntimeError> {
         if let Some(fence) = fence {
             Self::lease(
-                &trx,
+                trx,
                 &self.native_lease(principal),
                 fence,
                 trx.get_read_version().await?,
@@ -236,7 +244,7 @@ impl Execution {
             .await?;
         }
         let root = self
-            .native_root(&trx, principal)
+            .native_root(trx, principal)
             .await?
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
         root.context.validate(principal, root.context.key_version)?;

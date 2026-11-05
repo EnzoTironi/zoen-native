@@ -166,3 +166,36 @@ fn partial_commit_and_corrupted_latest_subject_cannot_be_treated_as_clean() -> T
     }
     Ok(())
 }
+
+#[test]
+fn observation_of_pending_or_retired_history_never_restores_effect_authority() -> TestResult {
+    let home = Home::new()?;
+    let mut writer = AnchorWriter::create_runtime(&home.0, configured())?;
+    let reader = writer.reader();
+    let before = reader.checkpoint()?;
+    let original = writer.prepare_subjects(
+        &effect(),
+        &before,
+        &before,
+        false,
+        &[update(1, None, 2)],
+        Some("original"),
+    )?;
+    assert_eq!(reader.observed_transition(&original.next)?, original);
+    assert!(
+        reader.historical_generation_guard(&original.next).is_err(),
+        "pending facts are not retained effect authority"
+    );
+    writer.reconcile(&original.next, &original.next)?;
+    let retirement = writer.prepare(&effect(), &original.next, &original.next, true)?;
+    writer.reconcile(&retirement.next, &retirement.next)?;
+    assert_eq!(reader.observed_transition(&original.next)?, original);
+    assert!(
+        reader.historical_generation_guard(&original.next).is_err(),
+        "retirement does not erase facts or revive old permits"
+    );
+    let mut unknown = retirement.next;
+    unknown.sequence = unknown.sequence.checked_add(1).ok_or("sequence")?;
+    assert!(reader.observed_transition(&unknown).is_err());
+    Ok(())
+}

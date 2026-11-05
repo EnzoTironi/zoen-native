@@ -4,7 +4,10 @@ use crate::native::NativeOutputAuthority;
 use crate::tests::retained::image_tasks::delivery::relay::Relay;
 use zoen_relay::managed_devices::{ManagedDevices, ManagedPrincipal, ManagedRuntime};
 
-async fn configured(f: &Fixture, second: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub(super) async fn configured(
+    f: &Fixture,
+    second: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let managed = f
         .world
         .runtime
@@ -162,7 +165,7 @@ pub(in crate::tests) async fn run() -> TestResult {
             let stable = checkpoint(&f).await?;
             assert_eq!(
                 f.world.runtime.prepare_reply_output("unknown-run").await,
-                Err(RuntimeError::RestoreUnreconciled)
+                Err(RuntimeError::Denied)
             );
             assert_eq!(checkpoint(&f).await?, stable);
             assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 0);

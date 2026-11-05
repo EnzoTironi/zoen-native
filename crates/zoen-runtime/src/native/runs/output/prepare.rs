@@ -41,9 +41,13 @@ impl NativeCustody {
         run: &str,
         capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyOutputInspection, RuntimeError> {
-        runtime.continuity()?;
         capability.check_context(runtime)?;
-        runtime.check_image_checkpoint().await?;
+        if runtime.runtime_continuity.is_some() {
+            runtime.check_shared_runtime().await?;
+        } else {
+            runtime.continuity()?;
+            runtime.check_image_checkpoint().await?;
+        }
         let trx = runtime.execution.transaction().await?;
         capability.check_in(&runtime.execution, &trx).await?;
         let (record, original) = runtime
@@ -100,29 +104,24 @@ impl NativeCustody {
     ) -> Result<ReplyOutputInspection, RuntimeError> {
         let principal = &loaded.record.original.context.principal;
         let credential = self.credential(&principal.agent, &principal.device)?;
-        #[cfg(test)]
-        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 54 {
-            self.repack_fenced(runtime, credential, principal, &loaded.fences.device)
-                .await?;
-        }
-        let capsule = runtime
-            .execution
-            .read_native(principal, Some(&loaded.fences.device))
+        let prepared = self
+            .sign_reply_output(runtime, loaded, &retained, capability)
             .await?;
-        if capsule.root != loaded.current {
-            return Err(RuntimeError::Denied);
-        }
-        let mut core =
-            DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
-                .map_err(native_error)?;
-        let at = runtime.finance.reply_clock().await?;
-        let prepared = core
-            .prepare_reply(&loaded.record.intent, retained.text(&loaded.record)?, at)
-            .map_err(native_error)?;
-        #[cfg(test)]
-        capability.observe(prepared.publish_digest(), prepared.envelope())?;
-        if prepared.facts().frontier() != loaded.facts.frontier() {
-            return Err(RuntimeError::Denied);
+        if runtime.runtime_continuity.is_some() {
+            let image = self.seal_image(principal, Some(&loaded.current), prepared.image())?;
+            let staged = runtime
+                .execution
+                .stage_native(
+                    principal,
+                    Some(loaded.current.clone()),
+                    &loaded.fences.device,
+                    image,
+                )
+                .await?;
+            let live = LivePublication::new(loaded, &retained, &prepared, capability);
+            return self
+                .activate_shared_reply(runtime, credential, staged, &loaded.fences.device, &live)
+                .await;
         }
         let transition = runtime
             .begin_image_publish_checkpoint(prepared.envelope())
@@ -142,6 +141,7 @@ impl NativeCustody {
             &format!("native-publication/1/{}", loaded.record.locator.run),
             PublicationRecord {
                 checkpoint: transition.as_ref().map(|value| value.checkpoint()),
+                shared_sequence: None,
                 format: 1,
                 run: loaded.record.locator.run.clone(),
                 original: loaded.record_digest.clone(),
@@ -278,5 +278,40 @@ impl NativeCustody {
             transition.finish(runtime).await?;
         }
         Ok(inspection)
+    }
+    async fn sign_reply_output(
+        &self,
+        runtime: &RuntimeAuthority,
+        loaded: &LoadedReply,
+        retained: &RetainedCapture,
+        _capability: &dyn NativeOutputAuthority,
+    ) -> Result<PreparedReply, RuntimeError> {
+        let principal = &loaded.record.original.context.principal;
+        let credential = self.credential(&principal.agent, &principal.device)?;
+        #[cfg(test)]
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 54 {
+            self.repack_fenced(runtime, credential, principal, &loaded.fences.device)
+                .await?;
+        }
+        let capsule = runtime
+            .execution
+            .read_native(principal, Some(&loaded.fences.device))
+            .await?;
+        if capsule.root != loaded.current {
+            return Err(RuntimeError::Denied);
+        }
+        let mut core =
+            DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
+                .map_err(native_error)?;
+        let at = runtime.finance.reply_clock().await?;
+        let prepared = core
+            .prepare_reply(&loaded.record.intent, retained.text(&loaded.record)?, at)
+            .map_err(native_error)?;
+        #[cfg(test)]
+        _capability.observe(prepared.publish_digest(), prepared.envelope())?;
+        if prepared.facts().frontier() != loaded.facts.frontier() {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(prepared)
     }
 }

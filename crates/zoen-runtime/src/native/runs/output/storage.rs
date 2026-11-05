@@ -186,7 +186,7 @@ impl Execution {
         else {
             return Ok(None);
         };
-        let publication: SealedRecord<PublicationRecord> = open_metadata(
+        let mut publication: SealedRecord<PublicationRecord> = open_metadata(
             custody,
             &format!("native-publication/1/{}", record.locator.run),
             &bytes,
@@ -200,6 +200,8 @@ impl Execution {
         {
             return Err(RuntimeError::InvalidBinding);
         }
+        self.resolve_shared_publication(trx, &mut publication, custody)
+            .await?;
         Ok(Some(publication))
     }
 

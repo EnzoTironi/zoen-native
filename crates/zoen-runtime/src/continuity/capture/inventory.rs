@@ -1,6 +1,7 @@
 use super::*;
 pub(in crate::continuity) struct CaptureInventory {
     pub(in crate::continuity) commitments: BTreeMap<String, String>,
+    pub(in crate::continuity) publications: BTreeMap<String, String>,
     pub(in crate::continuity) associations: BTreeMap<String, String>,
     pub(in crate::continuity) attempts: std::collections::BTreeSet<String>,
     pub(in crate::continuity) bytes: usize,
@@ -26,6 +27,7 @@ pub(in crate::continuity) async fn commitments(
     let mut result = BTreeMap::new();
     let mut total = 0usize;
     let mut associations = BTreeMap::new();
+    let mut publications = BTreeMap::new();
     let mut attempts = std::collections::BTreeSet::new();
     for (key, bytes) in rows {
         let pointer: Pointer =
@@ -56,6 +58,13 @@ pub(in crate::continuity) async fn commitments(
         {
             associations.insert(pointer.subject()?, crate::hash(&bytes));
         }
+        if let Some(publication) = runtime
+            .execution
+            .shared_publication_digest_in(runtime, tx, &binding)
+            .await?
+        {
+            publications.insert(pointer.subject()?, publication);
+        }
         attempts.insert(pointer.attempt.clone());
         if result
             .insert(pointer.subject()?, crate::hash(&bytes))
@@ -67,6 +76,7 @@ pub(in crate::continuity) async fn commitments(
     Ok(CaptureInventory {
         commitments: result,
         associations,
+        publications,
         attempts,
         bytes: total,
     })

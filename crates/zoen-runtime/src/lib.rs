@@ -208,7 +208,7 @@ pub struct RuntimeAuthority {
     managed_images: Option<Arc<tokio::sync::Mutex<managed_images::ManagedImages>>>,
     image_output: Option<native::ManagedNativeOutput>,
     reply_output: Option<native::ManagedNativeOutput>,
-    runtime_continuity: Option<Arc<tokio::sync::Mutex<continuity::ManagedRuntime>>>,
+    runtime_continuity: Option<Arc<continuity::RuntimeContinuity>>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
     #[cfg(test)]
