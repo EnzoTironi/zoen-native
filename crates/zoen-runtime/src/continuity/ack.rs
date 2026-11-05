@@ -129,6 +129,12 @@ impl RuntimeAuthority {
                 report.parked += 1;
             }
         }
+        let associations = self
+            .reconcile_shared_associations(limit.saturating_sub(report.inspected))
+            .await?;
+        report.inspected += associations.inspected;
+        report.transferred += associations.transferred;
+        report.parked += associations.parked;
         Ok(report)
     }
 }

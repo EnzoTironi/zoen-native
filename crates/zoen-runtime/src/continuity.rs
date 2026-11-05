@@ -2,6 +2,7 @@
 //! authority. No constructor here opens paid dispatch, output or refund gates.
 #![deny(clippy::all, clippy::perf, clippy::unwrap_used, clippy::expect_used)]
 mod ack;
+mod association;
 mod capture;
 pub(crate) mod dispatch;
 mod policy;
@@ -124,8 +125,8 @@ pub(crate) async fn inventory(
             return Err(RuntimeError::InvalidBinding);
         }
     }
-    let (captures, captured, bytes) = capture::commitments(runtime, fdb).await?;
-    for (subject, value) in captures {
+    let captures = capture::commitments(runtime, fdb).await?;
+    for (subject, value) in captures.commitments {
         if result.insert(subject, value).is_some() {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -138,12 +139,23 @@ pub(crate) async fn inventory(
             .ok_or(RuntimeError::RestoreUnreconciled)?;
         *original = value;
     }
+    // Output correspondence refines the same subject after financial receipts.
+    // Missing correspondence preserves the exact historical commitment bytes.
+    for (subject, association) in captures.associations {
+        let value = result
+            .get_mut(&subject)
+            .ok_or(RuntimeError::RestoreUnreconciled)?;
+        *value = crate::hash(
+            &serde_json::to_vec(&("runtime-capture-association/1", &*value, association))
+                .map_err(|_| RuntimeError::InvalidBinding)?,
+        );
+    }
     // A live provider must have room to retain its largest allowed result.
     // Unrelated transitions cannot consume another in-flight call's capacity.
-    let pending = admitted.difference(&captured).count();
+    let pending = admitted.difference(&captures.attempts).count();
     let reserved_bytes = pending
         .checked_mul(crate::capture_codec::MAXIMUM)
-        .and_then(|value| value.checked_add(bytes))
+        .and_then(|value| value.checked_add(captures.bytes))
         .ok_or(RuntimeError::EvidenceTooLarge)?;
     if result
         .len()

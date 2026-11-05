@@ -576,3 +576,23 @@ pub(crate) async fn restore_publication_record(
         .map_err(|_| RuntimeError::Unavailable)?;
     Ok(())
 }
+
+/// Exercise the original output reader without provisioning publication authority.
+pub(crate) async fn retained_result(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<(String, String), RuntimeError> {
+    let tx = runtime.execution.retention_transaction().await?;
+    let (record, original) = runtime
+        .execution
+        .reply_in(&tx, run, &runtime.custody)
+        .await?;
+    let retained = runtime
+        .execution
+        .output_capture_in(&tx, &record, &original, &runtime.custody)
+        .await?;
+    Ok((
+        retained.association.value.evidence.clone(),
+        retained.text(&record)?.into(),
+    ))
+}

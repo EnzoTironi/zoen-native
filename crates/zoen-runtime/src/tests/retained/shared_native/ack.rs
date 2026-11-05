@@ -16,7 +16,7 @@ async fn subjects(f: &Fixture) -> Result<usize, Box<dyn std::error::Error>> {
         .subject_commitments()?
         .len())
 }
-async fn captured(
+pub(super) async fn captured(
     f: &mut Fixture,
     unknown: bool,
     maximum: bool,
