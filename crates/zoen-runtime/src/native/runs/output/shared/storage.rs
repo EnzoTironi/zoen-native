@@ -34,12 +34,12 @@ impl Execution {
         record.value.checkpoint = Some(prepared.next);
         Ok(())
     }
-    pub(crate) async fn shared_publication_digest_in(
+    pub(crate) async fn shared_output_digests_in(
         &self,
         runtime: &RuntimeAuthority,
         tx: &Transaction,
         binding: &Binding,
-    ) -> Result<Option<String>, RuntimeError> {
+    ) -> Result<Option<(String, Option<String>)>, RuntimeError> {
         let key = self.run(&binding.context.run_id, "native-publication/1");
         if tx.get(&key, false).await?.is_none() {
             return Ok(None);
@@ -92,6 +92,12 @@ impl Execution {
         {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        Ok(Some(publication.digest))
+        let receipt = self
+            .receipt_in(tx, &record, &publication, &runtime.custody)
+            .await?;
+        Ok(Some((
+            publication.digest,
+            receipt.map(|value| value.digest),
+        )))
     }
 }

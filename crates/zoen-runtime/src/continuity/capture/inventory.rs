@@ -2,6 +2,7 @@ use super::*;
 pub(in crate::continuity) struct CaptureInventory {
     pub(in crate::continuity) commitments: BTreeMap<String, String>,
     pub(in crate::continuity) publications: BTreeMap<String, String>,
+    pub(in crate::continuity) receipts: BTreeMap<String, String>,
     pub(in crate::continuity) associations: BTreeMap<String, String>,
     pub(in crate::continuity) attempts: std::collections::BTreeSet<String>,
     pub(in crate::continuity) bytes: usize,
@@ -28,6 +29,7 @@ pub(in crate::continuity) async fn commitments(
     let mut total = 0usize;
     let mut associations = BTreeMap::new();
     let mut publications = BTreeMap::new();
+    let mut receipts = BTreeMap::new();
     let mut attempts = std::collections::BTreeSet::new();
     for (key, bytes) in rows {
         let pointer: Pointer =
@@ -58,12 +60,15 @@ pub(in crate::continuity) async fn commitments(
         {
             associations.insert(pointer.subject()?, crate::hash(&bytes));
         }
-        if let Some(publication) = runtime
+        if let Some((publication, receipt)) = runtime
             .execution
-            .shared_publication_digest_in(runtime, tx, &binding)
+            .shared_output_digests_in(runtime, tx, &binding)
             .await?
         {
             publications.insert(pointer.subject()?, publication);
+            if let Some(receipt) = receipt {
+                receipts.insert(pointer.subject()?, receipt);
+            }
         }
         attempts.insert(pointer.attempt.clone());
         if result
@@ -77,6 +82,7 @@ pub(in crate::continuity) async fn commitments(
         commitments: result,
         associations,
         publications,
+        receipts,
         attempts,
         bytes: total,
     })

@@ -180,6 +180,15 @@ pub(crate) async fn inventory(
             .ok_or(RuntimeError::RestoreUnreconciled)?;
         *value = crate::native::publication_commitment(value, &publication)?;
     }
+    for (subject, receipt) in captures.receipts {
+        let value = result
+            .get_mut(&subject)
+            .ok_or(RuntimeError::RestoreUnreconciled)?;
+        *value = crate::hash(
+            &serde_json::to_vec(&("runtime-capture-receipt/1", &*value, receipt))
+                .map_err(|_| RuntimeError::InvalidBinding)?,
+        );
+    }
     // A live provider must have room to retain its largest allowed result.
     // Unrelated transitions cannot consume another in-flight call's capacity.
     let pending = admitted.difference(&captures.attempts).count();

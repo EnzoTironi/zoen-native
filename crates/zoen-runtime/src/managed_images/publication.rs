@@ -16,6 +16,26 @@ impl RuntimeAuthority {
         envelope: &Envelope,
         checkpoint: Option<&Checkpoint>,
     ) -> Result<(), RuntimeError> {
+        if let Some(shared) = &self.runtime_continuity {
+            let checkpoint = checkpoint.ok_or(RuntimeError::RestoreUnreconciled)?;
+            self.check_shared_runtime().await?;
+            let facts = shared
+                .reader()
+                .inspect_publish(checkpoint, envelope)
+                .map_err(error)?;
+            let tx = self.execution.transaction().await?;
+            let bytes = tx
+                .get(
+                    &crate::continuity::history(&self.execution, checkpoint.sequence),
+                    false,
+                )
+                .await?
+                .ok_or(RuntimeError::RestoreUnreconciled)?;
+            if crate::hash(&bytes) != facts.checkpoint_record_digest {
+                return Err(RuntimeError::RestoreUnreconciled);
+            }
+            return Ok(());
+        }
         let Some(managed) = &self.managed_images else {
             return if checkpoint.is_none() {
                 Ok(())
@@ -53,6 +73,12 @@ impl RuntimeAuthority {
     ) -> Result<Option<crate::ReplyRefusal>, RuntimeError> {
         self.validate_image_publish_checkpoint(envelope, checkpoint)
             .await?;
+        if let (Some(shared), Some(checkpoint)) = (&self.runtime_continuity, checkpoint) {
+            return shared
+                .reader()
+                .publication_refusal(checkpoint, envelope)
+                .map_err(error);
+        }
         let (Some(managed), Some(checkpoint)) = (&self.managed_images, checkpoint) else {
             return Ok(None);
         };

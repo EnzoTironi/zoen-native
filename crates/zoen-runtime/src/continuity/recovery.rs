@@ -8,6 +8,12 @@ impl ManagedRuntime {
         runtime: &RuntimeAuthority,
     ) -> Result<(), RuntimeError> {
         if let Some(prepared) = self.anchor.pending().map_err(error)? {
+            if crate::native::shared_receipt_intent(&prepared) {
+                return Box::pin(crate::native::recover_shared_receipt(
+                    runtime, self, &prepared,
+                ))
+                .await;
+            }
             if super::association::association_intent(&prepared) {
                 return Box::pin(self.recover_capture_association(runtime, &prepared)).await;
             }

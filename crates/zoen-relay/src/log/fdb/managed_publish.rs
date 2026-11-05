@@ -171,7 +171,7 @@ impl Cell {
             return refused();
         };
         if current.len() > 4096
-            || history.len() > 4096
+            || history.len() > permit.checkpoint_record_limit()
             || event_log::sha256_hex(&history) != condition.checkpoint_record_digest
         {
             return refused();

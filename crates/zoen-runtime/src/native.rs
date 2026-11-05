@@ -18,6 +18,7 @@ pub use image_tasks::{
 };
 mod shared;
 mod storage;
+pub(crate) use runs::output::shared_receipt::{recover_shared_receipt, shared_receipt_intent};
 #[cfg(test)]
 pub(crate) use runs::output::FreshOutputNamespace;
 pub(crate) use runs::output::{associate_capture, publication_commitment, ReplyOutputScope};

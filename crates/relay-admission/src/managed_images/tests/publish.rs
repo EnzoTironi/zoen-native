@@ -307,3 +307,55 @@ fn refusal_write_and_sync_failures_never_recreate_a_consumed_effect() -> TestRes
     }
     Ok(())
 }
+
+#[test]
+fn publication_record_bound_comes_from_the_trusted_anchor_profile() -> TestResult {
+    for shared in [false, true] {
+        let home = Home::new()?;
+        let (configured, original) = envelope("profile-bound")?;
+        let mut writer = if shared {
+            AnchorWriter::create_runtime(
+                &home.0,
+                RuntimeDeployment {
+                    namespace: configured.namespace.clone(),
+                    witness: configured.witness.clone(),
+                    source: configured.source.clone(),
+                },
+            )?
+        } else {
+            AnchorWriter::create(&home.0, configured.clone())?
+        };
+        let previous = writer.reader().checkpoint()?;
+        let digest = publish_digest(&configured.namespace, &original)?;
+        let prepared = if shared {
+            writer.prepare_subjects(
+                &digest,
+                &previous,
+                &previous,
+                false,
+                &[SubjectUpdate {
+                    subject: "a".repeat(64),
+                    previous: None,
+                    next: "b".repeat(64),
+                }],
+                Some("retained-native-facts"),
+            )?
+        } else {
+            writer.prepare(&digest, &previous, &previous, false)?
+        };
+        writer.reconcile(&prepared.next, &prepared.next)?;
+        let ConsumePublish::Fresh(permit) =
+            writer.reader().consume_publish(&prepared.next, &original)?
+        else {
+            return Err("expected fresh original".into());
+        };
+        assert_eq!(
+            permit.checkpoint_record_limit(),
+            if shared { 32_768 } else { 4096 }
+        );
+        permit.check(&original)?;
+        let (_, different) = envelope("different-profile-wire")?;
+        assert!(permit.check(&different).is_err());
+    }
+    Ok(())
+}

@@ -8,6 +8,7 @@ mod claims;
 mod discovery;
 mod dispatch;
 pub(in crate::tests) mod output_route;
+pub(in crate::tests) mod receipts;
 mod reservation;
 use super::*;
 use relay_admission::managed_images::AnchorReader;
