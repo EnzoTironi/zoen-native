@@ -6,6 +6,7 @@ mod recovery;
 pub(in crate::native) use recovery::{recover_activation_reference, ActivationPublication};
 mod receipt;
 mod shared;
+pub(in crate::native) use shared::receipt as shared_receipt;
 mod storage;
 pub(crate) use shared::publication_commitment;
 pub(in crate::native) use shared::{LivePublication, SharedPublication};

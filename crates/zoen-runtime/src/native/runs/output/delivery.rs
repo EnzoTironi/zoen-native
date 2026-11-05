@@ -39,7 +39,11 @@ impl NativeCustody {
         target: &ImageDeliveryTarget,
         capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyReceiptProgress, RuntimeError> {
-        runtime.continuity()?;
+        if runtime.runtime_continuity.is_some() {
+            runtime.check_shared_runtime().await?;
+        } else {
+            runtime.continuity()?;
+        }
         capability.check_context(runtime)?;
         capability.check_target(target)?;
         if runtime.execution.reply_source()?.cell() != target.source {
@@ -166,7 +170,11 @@ impl NativeCustody {
             .await
         {
             Ok(_) => Ok(()),
-            Err(AuthorizedPublishError::Transport(error)) => Err(transport_error(error)),
+            Err(AuthorizedPublishError::Transport(error)) => {
+                #[cfg(test)]
+                eprintln!("native reply transport refused: {error:?}");
+                Err(transport_error(error))
+            }
             Err(AuthorizedPublishError::Authorization(error)) => Err(error),
         }
     }
@@ -238,7 +246,11 @@ impl NativeCustody {
         if current.digest != publication.digest {
             return Err(RuntimeError::InvalidBinding);
         }
-        runtime.continuity()?;
+        if runtime.runtime_continuity.is_some() {
+            runtime.check_shared_runtime().await?;
+        } else {
+            runtime.continuity()?;
+        }
         drop(trx);
         // Directory/FDB work can also wait; observe the SQL clock once more
         // after it, so that work cannot consume the last grant interval.

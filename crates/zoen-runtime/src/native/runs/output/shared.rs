@@ -1,5 +1,6 @@
 //! Exact original publication bytes and a locator into existing checkpoint history.
 mod live;
+pub(in crate::native) mod receipt;
 mod storage;
 use super::*;
 use crate::native::shared::SharedSource;

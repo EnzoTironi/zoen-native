@@ -1,3 +1,4 @@
+mod activation;
 use protocol::{ClientFrame, Sequenced};
 
 use super::*;
@@ -208,17 +209,21 @@ impl NativeCustody {
         run: &str,
         capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyReceiptProgress, RuntimeError> {
-        runtime.continuity()?;
         capability.check_context(runtime)?;
-        runtime.check_image_checkpoint().await?;
+        if runtime.runtime_continuity.is_some() {
+            runtime.check_shared_runtime().await?;
+        } else {
+            runtime.continuity()?;
+            runtime.check_image_checkpoint().await?;
+        }
         let loaded = receipt_stage!(
             "load_historical_receipt",
             self.load_receipt(runtime, run, capability).await
         )?;
         let result = receipt_stage!(
             "receive_fenced_receipt",
-            self.receive_output_fenced(runtime, &loaded, capability)
-                .await
+            // Keep native image/proof processing off each caller's inline future.
+            Box::pin(self.receive_output_fenced(runtime, &loaded, capability)).await
         );
         let _ = runtime
             .execution
@@ -415,7 +420,9 @@ impl NativeCustody {
             runtime.native_cut_entered.notify_one();
             runtime.native_cut_resume.notified().await;
         }
-        runtime.continuity()?;
+        if runtime.runtime_continuity.is_none() {
+            runtime.continuity()?;
+        }
         receipt_stage!(
             "activate_receipt",
             runtime

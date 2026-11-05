@@ -265,6 +265,17 @@ impl ManagedPublishPermit {
         self.source_fence.as_deref()
     }
 
+    /// Shared native intents carry bounded encrypted capsule/publication facts.
+    /// This bound derives from the trusted anchor profile, never a request flag.
+    #[must_use]
+    pub fn checkpoint_record_limit(&self) -> usize {
+        if self.reader.runtime_deployment().is_some() {
+            32_768
+        } else {
+            4096
+        }
+    }
+
     pub fn condition(&self) -> &PublishCondition {
         &self.condition
     }

@@ -3,7 +3,8 @@
 use super::*;
 use crate::tests::retained::image_tasks::delivery::relay::Relay;
 use native::testing::output as proof;
-async fn ready() -> Result<(Fixture, Relay, crate::ReplyRun), Box<dyn std::error::Error>> {
+pub(super) async fn ready() -> Result<(Fixture, Relay, crate::ReplyRun), Box<dyn std::error::Error>>
+{
     let mut f = Fixture::with_shared_runtime().await?;
     f.grant("shared-activation-owner").await?;
     f.message(ORIGINAL).await?;
@@ -43,7 +44,7 @@ async fn subjects(f: &Fixture) -> Result<usize, Box<dyn std::error::Error>> {
         .subject_commitments()?
         .len())
 }
-async fn restore_route(f: &mut Fixture, relay: &Relay) -> TestResult {
+pub(super) async fn restore_route(f: &mut Fixture, relay: &Relay) -> TestResult {
     let target = relay.target(f, relay.address);
     // The normal cold constructor deliberately returns no live route.
     assert!(f.world.runtime.production_output_scope().is_err());
@@ -207,18 +208,15 @@ pub(in crate::tests) async fn run() -> TestResult {
             f.world.runtime.continuity(),
             Err(RuntimeError::RestoreUnreconciled)
         );
-        assert_eq!(
-            f.world
-                .runtime
-                .deliver_reply_output(&run.run, relay.target(&f, relay.address))
-                .await,
+        assert!(matches!(
+            Box::pin(f.world.runtime.run_model(&run.run)).await,
             Err(RuntimeError::RestoreUnreconciled)
-        );
+        ));
         relay.stop().await;
         f.finish().await;
         println!("shared reply activation fault={fault}: actual native original, one committed generation/checkpoint, cold exact ciphertext/wire hash, no new subject/claim/provider/charge, clean missing metadata/history refusal PASS");
     }
-    denied_directory().await?;
+    Box::pin(denied_directory()).await?;
     Ok(())
 }
 async fn denied_directory() -> TestResult {

@@ -6,8 +6,20 @@ type Phase = fn() -> Journey;
 
 pub(super) async fn run() -> TestResult {
     let phases: Vec<Phase> = match std::env::var("ZOEN_RUNTIME_TEST_COHORT") {
+        Ok(cohort) if cohort == "shared-output" => {
+            vec![
+                || Box::pin(retained::shared_native::activation::run()),
+                || Box::pin(retained::shared_native::receipts::run()),
+            ]
+        }
         Ok(cohort) if cohort == "shared-capture" => {
             vec![|| Box::pin(retained::shared_native::capture::run())]
+        }
+        Ok(cohort) if cohort == "shared-transport" => {
+            vec![|| Box::pin(retained::shared_native::receipts::lost_ack_and_revocation())]
+        }
+        Ok(cohort) if cohort == "shared-receipts" => {
+            vec![|| Box::pin(retained::shared_native::receipts::run())]
         }
         Ok(cohort) if cohort == "shared-activation" => {
             vec![|| Box::pin(retained::shared_native::activation::run())]
@@ -34,6 +46,7 @@ pub(super) async fn run() -> TestResult {
             || Box::pin(retained::shared_native::association::run()),
             || Box::pin(retained::shared_native::output_route::run()),
             || Box::pin(retained::shared_native::activation::run()),
+            || Box::pin(retained::shared_native::receipts::run()),
             || Box::pin(retained::output::managed::run()),
             || Box::pin(retained::output::delivery::run()),
             || Box::pin(owner_policy_controls::run()),
@@ -50,8 +63,10 @@ pub(super) async fn run() -> TestResult {
     };
     // Factories construct each future before polling it. The driver retains
     // only one boxed phase, not the debug poll temporaries of every sibling.
-    for phase in phases {
+    for (index, phase) in phases.into_iter().enumerate() {
+        eprintln!("Runtime journey phase {index}: start");
         phase().await?;
+        eprintln!("Runtime journey phase {index}: complete");
     }
     Ok(())
 }
