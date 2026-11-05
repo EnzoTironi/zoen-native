@@ -78,15 +78,6 @@ impl RuntimeAuthority {
                 }
             }
         }
-        // Financial outbox acknowledgements need their own subsequent shared
-        // transition. Never execute the unmanaged mutation path in this profile.
-        let remaining = limit.saturating_sub(report.inspected);
-        if remaining > 0 {
-            let parked = u16::try_from(self.finance.pending_outbox(remaining).await?.len())
-                .map_err(|_| RuntimeError::EvidenceTooLarge)?;
-            report.inspected += parked;
-            report.parked += parked;
-        }
         Ok(report)
     }
 }

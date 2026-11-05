@@ -1,4 +1,5 @@
 //! Shared actual policies/native capsules, source cursors and cold failure cuts.
+pub(in crate::tests) mod ack;
 mod cancellation;
 pub(in crate::tests) mod capture;
 mod claims;

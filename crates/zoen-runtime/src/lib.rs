@@ -444,7 +444,7 @@ impl RuntimeAuthority {
             return Err(RuntimeError::InvalidBinding);
         }
         if self.runtime_continuity.is_some() {
-            return Box::pin(self.reconcile_shared_captures(limit)).await;
+            return Box::pin(self.reconcile_shared(limit)).await;
         }
         let mut report = ReconcileReport::default();
         for (attempt, digest, sealed) in self.execution.pending_evidence(limit).await? {

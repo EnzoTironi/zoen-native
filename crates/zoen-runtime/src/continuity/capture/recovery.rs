@@ -60,14 +60,23 @@ impl ManagedRuntime {
             .evidence_payload(&source.attempt, &source.digest, &source.sealed)
             .await?;
 
+        #[cfg(test)]
+        let observed = std::time::Instant::now();
         let mut sql = runtime.finance.continuity_transaction().await?;
         let sql_cp = self.sql_checkpoint(&mut sql).await?;
-        let tx = runtime.execution.transaction().await?;
+        let tx = runtime.execution.retention_transaction().await?;
         let fdb_cp = self.fdb_checkpoint(runtime, &tx).await?;
         let original = intent
             .pointer
             .original(runtime, &tx, &root, &verified)
             .await?;
+        #[cfg(test)]
+        if source.sealed.len() > 32 * 1024 * 1024 {
+            eprintln!(
+                "large recovery stage=original elapsed_ms={}",
+                observed.elapsed().as_millis()
+            );
+        }
         if intent.financial.subject
             != crate::finance::snapshot::subject(
                 &original.capture.binding.context.owner,
@@ -77,6 +86,13 @@ impl ManagedRuntime {
             return Err(RuntimeError::RestoreUnreconciled);
         }
         let actual = super::super::inventory(runtime, &mut sql, &tx).await?;
+        #[cfg(test)]
+        if source.sealed.len() > 32 * 1024 * 1024 {
+            eprintln!(
+                "large recovery stage=inventory elapsed_ms={}",
+                observed.elapsed().as_millis()
+            );
+        }
         let expected = self
             .anchor
             .reader()
@@ -97,6 +113,13 @@ impl ManagedRuntime {
                     != *prepared
                 {
                     return Err(RuntimeError::RestoreUnreconciled);
+                }
+                #[cfg(test)]
+                if source.sealed.len() > 32 * 1024 * 1024 {
+                    eprintln!(
+                        "large recovery stage=observed-sql elapsed_ms={}",
+                        observed.elapsed().as_millis()
+                    );
                 }
                 observe(&mut sql, &original, &intent.pointer).await?;
                 sql.commit().await?;

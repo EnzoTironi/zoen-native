@@ -9,6 +9,9 @@ pub(super) async fn run() -> TestResult {
         Ok(cohort) if cohort == "shared-capture" => {
             vec![|| Box::pin(retained::shared_native::capture::run())]
         }
+        Ok(cohort) if cohort == "shared-financial-ack" => {
+            vec![|| Box::pin(retained::shared_native::ack::run())]
+        }
         Ok(cohort) if cohort == "native-text-delivery" => {
             vec![|| Box::pin(retained::output::delivery::run())]
         }
@@ -18,6 +21,7 @@ pub(super) async fn run() -> TestResult {
         Err(std::env::VarError::NotPresent) => vec![
             || Box::pin(shared_native_setup::run()),
             || Box::pin(retained::shared_native::run()),
+            || Box::pin(retained::shared_native::ack::run()),
             || Box::pin(retained::output::managed::run()),
             || Box::pin(retained::output::delivery::run()),
             || Box::pin(owner_policy_controls::run()),

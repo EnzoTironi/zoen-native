@@ -265,7 +265,7 @@ pub(in crate::tests) async fn run() -> TestResult {
             tx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         }
         reopen(&mut f).await?;
-        f.world.runtime.reconcile(8).await?;
+        f.world.runtime.reconcile_shared_captures(8).await?;
         let cp = checkpoint(&f).await?;
         assert_eq!(cp.sequence, before.sequence + 1);
         assert_eq!(
@@ -415,7 +415,7 @@ pub(in crate::tests) async fn run() -> TestResult {
             reopen(&mut f).await?;
         }
         reopen(&mut f).await?;
-        f.world.runtime.reconcile(8).await?;
+        f.world.runtime.reconcile_shared_captures(8).await?;
         assert_eq!(checkpoint(&f).await?, cp);
         assert_eq!(
             f.world.balance().await.spent_units,

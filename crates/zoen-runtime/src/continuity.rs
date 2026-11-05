@@ -1,6 +1,7 @@
 //! Shared independent continuity, retaining the existing SQL financial
 //! authority. No constructor here opens paid dispatch, output or refund gates.
 #![deny(clippy::all, clippy::perf, clippy::unwrap_used, clippy::expect_used)]
+mod ack;
 mod capture;
 pub(crate) mod dispatch;
 mod policy;
@@ -128,6 +129,14 @@ pub(crate) async fn inventory(
         if result.insert(subject, value).is_some() {
             return Err(RuntimeError::InvalidBinding);
         }
+    }
+    // ACKs refine the existing capture commitment, without consuming another
+    // subject or invalidating the byte-exact pre-ACK inventory on upgrades.
+    for (subject, value) in ack::commitments(runtime, sql, fdb).await? {
+        let original = result
+            .get_mut(&subject)
+            .ok_or(RuntimeError::RestoreUnreconciled)?;
+        *original = value;
     }
     // A live provider must have room to retain its largest allowed result.
     // Unrelated transitions cannot consume another in-flight call's capacity.

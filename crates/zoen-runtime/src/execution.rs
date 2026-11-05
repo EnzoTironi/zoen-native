@@ -156,6 +156,14 @@ impl Execution {
         }
         Ok(())
     }
+    /// Result-retention work reads up to a complete bounded encrypted Capture.
+    /// It grants no execution capability. Keep ordinary admission transactions
+    /// and finite dispatch permits on their original shorter deadlines.
+    pub(super) async fn retention_transaction(&self) -> Result<Transaction, RuntimeError> {
+        let tx = self.transaction().await?;
+        tx.set_option(TransactionOption::Timeout(5000))?;
+        Ok(tx)
+    }
     pub(super) async fn transaction(&self) -> Result<Transaction, RuntimeError> {
         let trx = Self::bounded_transaction(&self.db)?;
         // Guard each operation and its commit against an unpaired store or a

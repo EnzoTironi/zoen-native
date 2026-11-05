@@ -8,6 +8,9 @@ impl ManagedRuntime {
         runtime: &RuntimeAuthority,
     ) -> Result<(), RuntimeError> {
         if let Some(prepared) = self.anchor.pending().map_err(error)? {
+            if super::ack::ack_intent(&prepared) {
+                return Box::pin(self.recover_financial_ack(runtime, &prepared)).await;
+            }
             if super::capture::capture_intent(&prepared) {
                 return Box::pin(self.recover_capture(runtime, &prepared)).await;
             }

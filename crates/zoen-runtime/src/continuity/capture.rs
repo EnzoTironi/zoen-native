@@ -3,12 +3,14 @@ mod inbox;
 mod inventory;
 mod record;
 mod recovery;
+mod reference;
 use super::*;
 use crate::FinancialState;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 pub(super) use inventory::commitments;
 pub(super) use record::capture_intent;
 use record::{Intent, Original, Pointer, Source};
+pub(super) use reference::reference;
 use serde::{Deserialize, Serialize};
 
 async fn settle(
@@ -91,9 +93,11 @@ impl RuntimeAuthority {
             .evidence_payload(attempt, digest, sealed)
             .await?;
 
+        #[cfg(test)]
+        let observed = std::time::Instant::now();
         let mut sql = self.finance.continuity_transaction().await?;
         let previous = managed.sql_checkpoint(&mut sql).await?;
-        let tx = self.execution.transaction().await?;
+        let tx = self.execution.retention_transaction().await?;
         let before = super::inventory(self, &mut sql, &tx).await?;
         if managed.fdb_checkpoint(self, &tx).await? != previous
             || managed.anchor.reader().checkpoint().map_err(error)? != previous
@@ -106,6 +110,13 @@ impl RuntimeAuthority {
         {
             return Err(RuntimeError::RestoreUnreconciled);
         }
+        #[cfg(test)]
+        if sealed.len() > 32 * 1024 * 1024 {
+            eprintln!(
+                "large capture stage=before-inventory elapsed_ms={}",
+                observed.elapsed().as_millis()
+            );
+        }
         let nonce: String =
             sqlx::query_scalar("SELECT nonce FROM runtime_admission_witnesses WHERE attempt=$1")
                 .bind(attempt)
@@ -115,10 +126,31 @@ impl RuntimeAuthority {
         Finance::observe_witness(&mut sql, &capture.binding, &nonce).await?;
         let pointer = Pointer::new(capture, digest, sealed, &root, &nonce)?;
         let original = pointer.original(self, &tx, &root, &verified).await?;
+        #[cfg(test)]
+        if sealed.len() > 32 * 1024 * 1024 {
+            eprintln!(
+                "large capture stage=verified-original elapsed_ms={}",
+                observed.elapsed().as_millis()
+            );
+        }
         let existing = tx.get(&pointer.key(self), false).await?.is_some();
         let state = settle(&mut sql, &original, &pointer).await?;
+        #[cfg(test)]
+        if sealed.len() > 32 * 1024 * 1024 {
+            eprintln!(
+                "large capture stage=settled elapsed_ms={}",
+                observed.elapsed().as_millis()
+            );
+        }
         pointer.stage(self, &tx, &root).await?;
         let after = super::inventory(self, &mut sql, &tx).await?;
+        #[cfg(test)]
+        if sealed.len() > 32 * 1024 * 1024 {
+            eprintln!(
+                "large capture stage=after-inventory elapsed_ms={}",
+                observed.elapsed().as_millis()
+            );
+        }
         if existing {
             if before != after {
                 return Err(RuntimeError::RestoreUnreconciled);
@@ -166,6 +198,13 @@ impl RuntimeAuthority {
         #[cfg(test)]
         if self.fault.load(std::sync::atomic::Ordering::SeqCst) == 118 {
             return Err(RuntimeError::Unavailable);
+        }
+        #[cfg(test)]
+        if sealed.len() > 32 * 1024 * 1024 {
+            eprintln!(
+                "large capture stage=prepared elapsed_ms={}",
+                observed.elapsed().as_millis()
+            );
         }
         managed.write_sql(&mut sql, &prepared).await?;
         sql.commit().await?;

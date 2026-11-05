@@ -250,10 +250,26 @@ impl Finance {
     ) -> Result<(), RuntimeError> {
         let mut tx = self.begin().await?;
         Self::require_unmanaged_policy(&mut tx).await?;
-        sqlx::query("INSERT INTO runtime_financial_acks(attempt,kind,digest) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING")
-            .bind(attempt).bind(kind).bind(digest).execute(&mut *tx).await?;
+        Self::ack_outbox_in(&mut tx, attempt, kind, digest).await?;
         tx.commit().await?;
         Ok(())
+    }
+    pub(crate) async fn ack_outbox_in(
+        tx: &mut Transaction<'_, Postgres>,
+        attempt: &str,
+        kind: &str,
+        digest: &str,
+    ) -> Result<(), RuntimeError> {
+        sqlx::query("INSERT INTO runtime_financial_acks(attempt,kind,digest) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING")
+            .bind(attempt).bind(kind).bind(digest).execute(&mut **tx).await?;
+        Ok(())
+    }
+    pub(crate) async fn pending_outbox_keys(
+        &self,
+        limit: u16,
+    ) -> Result<Vec<(String, String, String)>, RuntimeError> {
+        Ok(sqlx::query_as("SELECT o.attempt,o.kind,o.digest FROM runtime_financial_outbox o WHERE NOT EXISTS(SELECT 1 FROM runtime_financial_acks a WHERE (a.attempt,a.kind,a.digest)=(o.attempt,o.kind,o.digest)) ORDER BY o.attempt,o.kind,o.digest LIMIT $1")
+            .bind(i64::from(limit)).fetch_all(&self.pool).await?)
     }
     #[cfg(test)]
     pub async fn current_period(&self) -> (i32, u8, i64, i64) {
