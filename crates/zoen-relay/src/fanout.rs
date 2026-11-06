@@ -71,12 +71,14 @@ pub struct BusStats {
     pub outbound_bytes: u64,
 }
 
+mod worker;
 pub struct Fanout {
     pub hub: Arc<Hub>,
     /// Authors of the last messages per Space delivered through this node (receipt routing).
     pub recent: Arc<crate::recent::RecentAuthors>,
     pub node: String,
     bus: Box<dyn Bus>,
+    worker_hints: Option<worker::WorkerHints>,
 }
 
 impl Fanout {
@@ -86,6 +88,7 @@ impl Fanout {
             recent: Arc::default(),
             node,
             bus: Box::new(LocalBus),
+            worker_hints: None,
         }
     }
 
@@ -98,7 +101,14 @@ impl Fanout {
             recent,
             node,
             bus: Box::new(bus),
+            worker_hints: None,
         })
+    }
+
+    /// Install advisory wakes while preserving the existing node topology.
+    pub async fn enable_worker_wakes(&mut self, url: &str, cell: &str) -> anyhow::Result<()> {
+        self.worker_hints = Some(worker::WorkerHints::connect(url, cell).await?);
+        Ok(())
     }
 
     pub fn bus_kind(&self) -> &'static str {
@@ -124,6 +134,11 @@ impl Fanout {
         remember(&self.recent, frame);
         let n = self.hub.send(to, frame, skip);
         self.bus.publish(to, frame);
+        if matches!(frame, ServerFrame::Event { .. }) {
+            if let Some(worker) = &self.worker_hints {
+                worker.wake(to);
+            }
+        }
         n
     }
 
@@ -229,3 +244,19 @@ pub fn new_node_id() -> String {
 
 #[cfg(test)]
 mod tests;
+
+/// Canonical pseudonymous hint subject. Receiving frames grants no authority.
+pub fn worker_subject(cell: &str, identity: &str) -> Option<String> {
+    if !protocol::runtime_binding::valid_namespace(cell)
+        || identity.len() != 64
+        || !identity
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return None;
+    }
+    Some(nats::subject_for(
+        &format!("zoen.{}.workers", nats::subject_token(cell)),
+        identity,
+    ))
+}

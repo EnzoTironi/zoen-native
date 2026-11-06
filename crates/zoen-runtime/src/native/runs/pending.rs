@@ -10,6 +10,16 @@ impl Execution {
         after: Option<&str>,
         custody: &Custody,
     ) -> Result<ReplyWorkPage, RuntimeError> {
+        self.reply_page_scoped(limit, after, custody, None).await
+    }
+
+    pub(crate) async fn reply_page_scoped(
+        &self,
+        limit: u16,
+        after: Option<&str>,
+        custody: &Custody,
+        principal: Option<(&str, &str)>,
+    ) -> Result<ReplyWorkPage, RuntimeError> {
         if !(1..=64).contains(&limit) || after.is_some_and(|cursor| !id(cursor)) {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -46,9 +56,13 @@ impl Execution {
             if record.locator != wake.locator || digest != wake.record_digest {
                 return Err(RuntimeError::InvalidBinding);
             }
-            if Box::pin(self.completed_reply_in(&tx, &wake.locator.run, custody))
-                .await?
-                .is_none()
+            let owner = &record.original.context.principal;
+            let matches = principal
+                .is_none_or(|(agent, device)| owner.agent == agent && owner.device == device);
+            if matches
+                && Box::pin(self.completed_reply_in(&tx, &wake.locator.run, custody))
+                    .await?
+                    .is_none()
             {
                 runs.push(wake.locator);
             }

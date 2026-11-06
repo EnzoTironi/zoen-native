@@ -7,6 +7,7 @@ mod image_tasks;
 mod output_scope;
 pub(crate) use output_scope::{ManagedNativeOutput, NativeOutputAuthority};
 mod managed;
+mod membership;
 mod owner_policy;
 mod packages;
 mod runs;

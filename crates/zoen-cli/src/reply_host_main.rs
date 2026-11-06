@@ -9,6 +9,8 @@ mod protocol;
 #[path = "image_host/provision.rs"]
 mod provision;
 mod runtime_host_config;
+#[path = "reply_host/worker.rs"]
+mod worker;
 use client_core::SecretVault;
 use std::{
     io::{BufRead, Read, Write},
@@ -22,7 +24,7 @@ fn main() {
     let result = if args.len() == 3 && args[0] == "--config" {
         run(Path::new(&args[1]), &args[2])
     } else {
-        Err("usage: zoen-reply-host --config <private-config.json> provision|initialize|execute|serve".into())
+        Err("usage: zoen-reply-host --config <private-config.json> provision|initialize|execute|serve|watch".into())
     };
     if let Err(error) = result {
         eprintln!("reply host: {error}");
@@ -30,7 +32,10 @@ fn main() {
     }
 }
 fn run(path: &Path, action: &str) -> Result<(), String> {
-    if !matches!(action, "provision" | "initialize" | "execute" | "serve") {
+    if !matches!(
+        action,
+        "provision" | "initialize" | "execute" | "serve" | "watch"
+    ) {
         return Err("unsupported reply host action".into());
     }
     let config = config::Config::read(path)?;
@@ -121,6 +126,9 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
         );
         let host = ReplyRuntimeHost::configured(authority.clone(), host_config, gate)
             .map_err(|e| e.to_string())?;
+        if action == "watch" {
+            return worker::run(&host, &config, &vault).await;
+        }
         if action == "execute" {
             let mut bytes = Vec::new();
             std::io::stdin()

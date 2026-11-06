@@ -64,6 +64,54 @@ impl ReplyRuntimeHost {
         })
     }
 
+    /// Bounded current membership hints for this certified host only.
+    pub async fn conversation_page(
+        &self,
+        after: Option<&str>,
+    ) -> Result<(Vec<String>, Option<String>), RuntimeError> {
+        self.runtime.check_reply_continuity().await?;
+        let native = self
+            .runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
+        native
+            .conversation_page(
+                &self.runtime,
+                &self.config.agent,
+                &self.config.device,
+                after,
+            )
+            .await
+    }
+
+    pub async fn pending_page(&self, after: Option<&str>) -> Result<ReplyWorkPage, RuntimeError> {
+        self.runtime.check_reply_continuity().await?;
+        self.runtime
+            .execution
+            .reply_page_scoped(
+                16,
+                after,
+                &self.runtime.custody,
+                Some((&self.config.agent, &self.config.device)),
+            )
+            .await
+    }
+
+    /// Canonical relay hint routing, never a dispatch permit.
+    pub fn wake_subject(&self) -> Result<String, RuntimeError> {
+        zoen_relay::fanout::worker_subject(
+            self.runtime
+                .execution
+                .source
+                .as_ref()
+                .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+                .cell(),
+            &self.config.agent,
+        )
+        .ok_or(RuntimeError::InvalidBinding)
+    }
+
     pub async fn discover(&self, space: &str) -> Result<ReplySync, RuntimeError> {
         let scope = self.runtime.production_output_scope()?;
         scope.check_context(&self.runtime)?;

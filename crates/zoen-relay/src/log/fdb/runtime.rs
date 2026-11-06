@@ -1,10 +1,12 @@
 //! Read-only seam owned by the relay log schema. The runtime supplies its own
 //! transaction on the configured shared cluster; source heads are always read
 //! with conflicts in that transaction, never copied into a runtime head key.
+mod memberships;
 use foundationdb::{
     tuple::{unpack, Subspace},
     Transaction,
 };
+pub use memberships::RuntimeMembershipError;
 use protocol::Sequenced;
 
 use crate::log::StoreError;

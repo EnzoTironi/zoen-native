@@ -76,7 +76,7 @@ fn receipt(delivery: ReplyReceiptProgress) -> Value {
         ReplyReceiptProgress::Refused { reason } => json!({"status":"refused","reason":reason}),
     }
 }
-fn progress(p: ReplyHostProgress) -> Value {
+pub(super) fn progress(p: ReplyHostProgress) -> Value {
     match p {
         ReplyHostProgress::CatchingUp {
             run,

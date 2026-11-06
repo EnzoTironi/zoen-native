@@ -262,10 +262,23 @@ pub async fn build_with_managed(
     tracing::info!(cell = %cfg.fdb_cell, "log store ready (FoundationDB)");
     let log = Arc::new(log);
     let node = log.owner.node.clone();
-    let fanout = match &cfg.nats_url {
+    let mut fanout = match &cfg.nats_url {
         Some(url) => fanout::Fanout::nats(node.clone(), url, &cfg.fdb_cell).await?,
         None => fanout::Fanout::local(node.clone()),
     };
+    // Advisory metadata only. This does not enable distributed managed custody.
+    if let Ok(url) = std::env::var("ZOEN_WORKER_WAKE_NATS_URL") {
+        if fanout
+            .enable_worker_wakes(&url, &cfg.fdb_cell)
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                "worker wake bus unavailable; workers must reconcile the durable source"
+            );
+        }
+    }
+
     tracing::info!(node = %node, bus = fanout.bus_kind(), "fan-out ready");
     if let Some(url) = &cfg.nats_url {
         log.enable_forwarding(url, &cfg.fdb_cell, pool.clone())

@@ -27,8 +27,10 @@ mod relay_binding;
 mod reply_execution;
 mod reply_host;
 mod reply_output;
+mod reply_worker;
 pub use pricing::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use reply_host::{ReplyHostConfig, ReplyHostProgress, ReplyRuntimeHost};
+pub use reply_worker::{ReplyWorker, ReplyWorkerEvent};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
 use foundationdb::{tuple::Subspace, Database};
