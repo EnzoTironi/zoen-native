@@ -170,6 +170,14 @@ pub struct ReplySync {
     pub runs: Vec<ReplyRun>,
 }
 
+/// Bounded scheduling observation. The cursor grants no execution authority.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReplyWorkPage {
+    pub runs: Vec<ReplyRun>,
+    pub next: Option<String>,
+    pub scanned: u16,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ReplyOutputInspection {
     pub client_id: String,
@@ -359,12 +367,28 @@ impl RuntimeAuthority {
             .await
     }
 
-    /// Durable scheduling locators, not execution capabilities. A lost wake
-    /// reply cannot create another run or another paid attempt.
+    /// Undelivered scheduling locators, not execution capabilities. A lost wake
+    /// reply cannot create another run or another paid attempt. Use paged reads
+    /// for a continuously running host; this compatibility read scans at most
+    /// the declared 8,192-wake discovery profile.
     pub async fn pending_reply_runs(&self, limit: u16) -> Result<Vec<ReplyRun>, RuntimeError> {
         self.check_shared_runtime().await?;
         self.execution
             .pending_reply_runs(limit, &self.custody)
+            .await
+    }
+
+    /// A page can contain no work and still have `next`: keep traversing it.
+    /// Only the authenticated original receipt hides a completed reply. Reset
+    /// the cursor at the end of each sweep; it is not an insertion watermark.
+    pub async fn pending_reply_page(
+        &self,
+        limit: u16,
+        after: Option<&str>,
+    ) -> Result<ReplyWorkPage, RuntimeError> {
+        self.check_shared_runtime().await?;
+        self.execution
+            .pending_reply_page(limit, after, &self.custody)
             .await
     }
 

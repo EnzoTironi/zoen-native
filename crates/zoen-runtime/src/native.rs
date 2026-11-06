@@ -362,7 +362,7 @@ impl NativeCustody {
             .commit()
             .await?;
         runtime.execution.collect_native_stage(&principal).await?;
-        runtime.execution.collect_native_retired(&principal).await?;
+        runtime.collect_reply_retired(&principal).await?;
         let fence = runtime.execution.acquire_native_device(&principal).await?;
         let result = self
             .repack_fenced(runtime, credential, &principal, &fence)

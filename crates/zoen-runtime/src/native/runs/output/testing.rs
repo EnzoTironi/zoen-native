@@ -642,3 +642,6 @@ pub(crate) async fn retained_publication(
     }
     Ok(retained.envelope().clone())
 }
+
+mod retention;
+pub(crate) use retention::{collect_reply_images, retention_rows};

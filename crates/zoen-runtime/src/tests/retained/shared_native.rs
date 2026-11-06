@@ -12,6 +12,7 @@ pub(in crate::tests) mod execution;
 pub(in crate::tests) mod output_route;
 pub(in crate::tests) mod receipts;
 mod reservation;
+pub(in crate::tests) mod terminal;
 use super::*;
 use relay_admission::managed_images::AnchorReader;
 type TestResult = Result<(), Box<dyn std::error::Error>>;

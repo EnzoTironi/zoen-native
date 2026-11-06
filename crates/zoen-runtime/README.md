@@ -131,10 +131,15 @@ the final admission write. Seeded CoreCapsule/copied-frontier authority exists
 only in the explicitly separate test Fixture variant.
 Lease release preserves monotonic tokens and cannot release a newer holder.
 
-No-op synchronization consumes no image generation. Runs protect their original
-capsule through real GC references; terminal reference release and wake ACKs
-await a verified run disposition protocol. Production paid entry remains
-closed until external continuity is established. Managed loading alone does
+No-op synchronization consumes no image generation. A validated delivery receipt
+ends reply work and permits collection of its obsolete original/publication
+images. Immutable wake, reference and billing evidence remain; unfinished shared
+references and active/staged images stay protected. Unknown usage retains its hold.
+`pending_reply_page(1..=64, cursor)` scans bounded wake rows. Follow `next` even on
+an empty page, and reset after each sweep: a cursor is not an insertion watermark.
+The compatibility read crosses completed prefixes within the 8,192-wake profile.
+Cancellation, billing reconciliation and other retention windows remain separate.
+Paid entry remains closed until external continuity is established. Managed loading alone does
 not supply that authority. The joined SQL/OpenMLS/FdbLog fixture validates this
 unit separately from financial core-scope fixtures; it does not qualify live WS
 provisioning, a deployed managed vault, external nonrollback continuity or
