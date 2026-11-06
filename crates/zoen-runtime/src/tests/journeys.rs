@@ -9,6 +9,9 @@ pub(super) async fn run() -> TestResult {
         Ok(cohort) if cohort == "native-terminal" => {
             vec![|| Box::pin(retained::shared_native::terminal::run())]
         }
+        Ok(cohort) if cohort == "native-reply-host" => {
+            vec![|| Box::pin(retained::shared_native::context::policy_host::run())]
+        }
         Ok(cohort) if cohort == "native-agent-context" => {
             vec![|| Box::pin(retained::shared_native::context::run())]
         }

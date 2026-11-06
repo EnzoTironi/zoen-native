@@ -2,6 +2,7 @@
 //! derives current native facts separately and does not create a spend permit.
 mod cancellation;
 mod context;
+mod conversation;
 mod loading;
 mod pending;
 mod records;

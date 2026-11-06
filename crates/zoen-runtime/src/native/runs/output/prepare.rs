@@ -41,6 +41,28 @@ impl NativeCustody {
         run: &str,
         capability: &dyn NativeOutputAuthority,
     ) -> Result<ReplyOutputInspection, RuntimeError> {
+        self.prepare_output_checked(runtime, run, capability, None)
+            .await
+    }
+
+    pub(crate) async fn prepare_reviewed_output(
+        &self,
+        runtime: &RuntimeAuthority,
+        run: &str,
+        capability: &dyn NativeOutputAuthority,
+        review: &ReplyOutputReview,
+    ) -> Result<ReplyOutputInspection, RuntimeError> {
+        self.prepare_output_checked(runtime, run, capability, Some(review))
+            .await
+    }
+
+    async fn prepare_output_checked(
+        &self,
+        runtime: &RuntimeAuthority,
+        run: &str,
+        capability: &dyn NativeOutputAuthority,
+        review: Option<&ReplyOutputReview>,
+    ) -> Result<ReplyOutputInspection, RuntimeError> {
         capability.check_context(runtime)?;
         if runtime.runtime_continuity.is_some() {
             runtime.check_shared_runtime().await?;
@@ -60,6 +82,9 @@ impl NativeCustody {
             .execution
             .output_capture_in(&trx, &record, &original, &runtime.custody)
             .await?;
+        if let Some(review) = review {
+            review.validate(&original, &retained, &record)?;
+        }
         if let Some(publication) = runtime
             .execution
             .publication_in(
@@ -86,7 +111,13 @@ impl NativeCustody {
             return Err(RuntimeError::InvalidBinding);
         }
         let result = self
-            .prepare_output_fenced(runtime, &loaded, retained, capability)
+            .prepare_output_fenced(
+                runtime,
+                &loaded,
+                retained,
+                capability,
+                review.map(|review| review.audit()),
+            )
             .await;
         let _ = runtime
             .execution
@@ -101,6 +132,7 @@ impl NativeCustody {
         loaded: &LoadedReply,
         retained: RetainedCapture,
         capability: &dyn NativeOutputAuthority,
+        audit: Option<&gate::AuditRecord>,
     ) -> Result<ReplyOutputInspection, RuntimeError> {
         let principal = &loaded.record.original.context.principal;
         let credential = self.credential(&principal.agent, &principal.device)?;
@@ -118,7 +150,7 @@ impl NativeCustody {
                     image,
                 )
                 .await?;
-            let live = LivePublication::new(loaded, &retained, &prepared, capability);
+            let live = LivePublication::new(loaded, &retained, &prepared, capability, audit);
             return self
                 .activate_shared_reply(runtime, credential, staged, &loaded.fences.device, &live)
                 .await;
@@ -140,6 +172,7 @@ impl NativeCustody {
             &runtime.custody,
             &format!("native-publication/1/{}", loaded.record.locator.run),
             PublicationRecord {
+                gate: audit.cloned(),
                 checkpoint: transition.as_ref().map(|value| value.checkpoint()),
                 shared_sequence: None,
                 format: 1,
