@@ -64,6 +64,36 @@ impl ReplyRuntimeHost {
         })
     }
 
+    /// Owner-signed budget, scoped to this host's certified current owner.
+    /// Uses the same directory locks and retained installation as other hosts.
+    pub async fn import_owner_policy(
+        &self,
+        signed: types::owner_budget::SignedOwnerPolicy,
+    ) -> Result<OwnerPolicyInstallation, RuntimeError> {
+        self.runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .install_owner_policy(
+                &self.runtime,
+                &self.config.agent,
+                &self.config.device,
+                signed,
+            )
+            .await
+    }
+
+    /// Canonical owner lifecycle revision, never an execution permit.
+    pub async fn control_revision(&self) -> Result<Option<u64>, RuntimeError> {
+        self.runtime.check_reply_continuity().await?;
+        self.runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .reply_control_revision(&self.runtime, &self.config.agent, &self.config.device)
+            .await
+    }
+
     /// Bounded current membership hints for this certified host only.
     pub async fn conversation_page(
         &self,

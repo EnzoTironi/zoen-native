@@ -1,6 +1,26 @@
 //! Current certified membership hints; full native authorization happens later.
 use super::*;
 impl NativeCustody {
+    pub(crate) async fn reply_control_revision(
+        &self,
+        runtime: &RuntimeAuthority,
+        agent: &str,
+        device: &str,
+    ) -> Result<Option<u64>, RuntimeError> {
+        let credential = self.credential(agent, device)?;
+        runtime
+            .finance
+            .native_directory(
+                &credential.agent,
+                &credential.owner,
+                device,
+                &credential.certificate,
+            )
+            .await?
+            .reply_control_revision()
+            .await
+    }
+
     pub(crate) async fn conversation_page(
         &self,
         runtime: &RuntimeAuthority,
