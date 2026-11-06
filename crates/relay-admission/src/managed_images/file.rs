@@ -23,6 +23,14 @@ pub struct AnchorReader {
     pub(super) deployment: Binding,
 }
 
+impl AnchorReader {
+    /// Compare trusted routing configuration without exposing the private path.
+    /// This is not a checkpoint, custody or effect authorization check.
+    pub fn same_configuration(&self, other: &Self) -> bool {
+        self.directory == other.directory && self.deployment == other.deployment
+    }
+}
+
 /// Relay/gateway effects retain this shared OS lock through the actual effect.
 /// It is deliberately neither Clone nor Deserialize. Retirement takes exclusive.
 pub struct GenerationGuard {

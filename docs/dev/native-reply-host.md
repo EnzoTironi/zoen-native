@@ -6,8 +6,8 @@ rules and controls. The existing SQL/FDB financial authority, encrypted native
 capsule and independent continuity anchor own durable state.
 
 The operator configures the host; product clients and model tools supply bounded
-conversation/run locators or an already signed owner budget. The existing owner-approved agent enrollment remains canonical. Public deployment
-provisioning and the normal Brain/tool host integration remain work in #175.
+conversation/run locators or an already signed owner budget. The existing owner-approved agent enrollment remains canonical. Public service provisioning/distribution and the normal Brain/tool host integration
+remain work in #175.
 
 ## Enrollment and startup
 
@@ -28,9 +28,15 @@ oversized input and changed file identity. Errors omit configuration content.
 
 For a service that owns the executor lifecycle, set `supervised: true`, leave
 `device` empty, and provide the existing absolute `ZOEN_REPLY_HOST_BIN` and
-`ZOEN_REPLY_HOST_CONFIG` paths to `zoen agent-controls`. The operator still
-provisions infrastructure credentials and the relay deployment binding below;
-these are service setup, not steps presented to a person creating an agent.
+`ZOEN_REPLY_HOST_CONFIG` paths to `zoen agent-controls`. The operator provisions infrastructure credentials and the private relay registry
+once. Set that registry to `{"live":true,"devices":[]}`, select it through the relay's
+existing `ZOEN_MANAGED_DEVICE_CONFIG`, and set `admission_config` in the executor
+config to the same absolute file. Its directory must be private and separate from
+the executor home. The directory/file remain outside SQL/FDB restores.
+
+The executor appends only its currently certified principal and actual deployment
+binding after successful native initialization. The relay adopts additions without
+restart. No person creating an agent edits a principal list or chooses a device.
 
 After verifying the enrolled agent's current state, `agent-controls` automatically
 prepares retained device material through a private bounded pipe, certifies that
@@ -39,7 +45,8 @@ starts the executor. It publishes readiness only after actual worker startup.
 The sponsor publishes only a deterministic public device certificate proof,
 never an IdentityBox, account root, agreement secret, profile key or MLS copy.
 Unknown acknowledgements retry the same certificate bytes through the existing
-relay admission transaction. Revoked targets remain refused by that transaction.
+relay admission transaction. Registration uses the existing atomic FileVault writer
+and a shared operator-directory lock; an uncertain save resumes the same record. Revoked targets remain refused by that transaction.
 The new device resolves from retained originals; recovery never reseeds it.
 
 A separately supervised executor remains supported with `supervised: false`
@@ -218,3 +225,25 @@ it to retire between durable ticks. Thus killing the parent also closes the pipe
 without depending on parent destructors. Normal termination closes the pipe and
 waits for actual child exit; startup/read errors and early child exit fail the
 control service. Existing native locks and financial/source fences remain intact.
+
+## Live operator admission
+
+Live mode is explicitly single-host, including an initially empty registry. The
+relay pins its actual source cell at configuration time. A changed file is read
+only from the original operator-selected private path, with byte/entry bounds and
+stable-file checks. A complete candidate is validated before one atomic map swap;
+all registry clones share the result. Unchanged files avoid reparsing.
+
+Live changes may add principals; they cannot delete/reassign existing devices,
+change a deployment binding or relocate its anchor. A refused/corrupt candidate
+keeps all prior managed classifications, including ordinary-wire downgrade
+protection. An unadmitted device cannot obtain a managed Runtime binding.
+Revocation remains the canonical directory/owner control, not deleting JSON.
+Cold startup rejects invalid configuration rather than starting an empty registry.
+Static mode remains the default for existing deployments.
+
+The configured limit remains 256 principals per relay registry. This local
+integration proves live enrollment and recovery; it is not scale qualification or
+a public multi-tenant control plane. Identity enrollment, current certificates,
+source fencing, SQL/FDB continuity, financial reservation and owner grants remain
+independent requirements for actual effects.

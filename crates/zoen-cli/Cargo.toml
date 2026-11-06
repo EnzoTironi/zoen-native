@@ -19,6 +19,7 @@ name = "zoen-reply-host"
 path = "src/reply_host_main.rs"
 
 [dependencies]
+relay-admission = { path = "../relay-admission" }
 async-nats = "0.50"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 zoen-runtime = { path = "../zoen-runtime" }

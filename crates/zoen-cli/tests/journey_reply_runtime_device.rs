@@ -76,9 +76,25 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
         .as_str()
         .ok_or("citizen device")?
         .to_owned();
+    // One deployment-time operator setting; all later enrollments happen while
+    // this same relay process remains alive, without editing individual entries.
+    let directory = w.dir.join("operator");
+    std::fs::create_dir(&directory)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let registry = directory.join("managed.json");
+    write_json(&registry, &json!({"live":true,"devices":[]}))?;
+    w.stop_relay();
+    w.configure_relay_env("ZOEN_MANAGED_DEVICE_CONFIG", registry.to_str());
+    w.start_relay();
+    let same_relay = w.relay_name().to_owned();
     let provider = provider::Provider::start().await?;
     let mut value = configuration(&w, &agent, &provider.endpoint);
     value["worker_bus_key"] = "bus".into();
+    value["admission_config"] = registry.to_string_lossy().to_string().into();
     let mut config: config::Config = serde_json::from_value(value.clone())?;
     std::fs::create_dir(&config.home)?;
     #[cfg(unix)]
@@ -107,6 +123,13 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     )
     .is_err());
     assert!(provision::installed_device(&config.enrollment_scope(), &vault).is_err());
+    let operator = file_vault::FileVault {
+        dir: directory.clone(),
+    };
+    operator.write_bytes(
+        "managed.json",
+        &serde_json::to_vec(&json!({"live":false,"devices":[]}))?,
+    )?;
     let first = w
         .cmd("citizen", &["agent-controls", "--for", "1"])
         .env("ZOEN_REPLY_HOST_BIN", env!("CARGO_BIN_EXE_zoen-reply-host"))
@@ -116,33 +139,14 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
         .output()?;
     assert!(
         !first.status.success(),
-        "a deployment without relay admission cannot be ready"
+        "an inactive operator registry cannot admit an executor"
     );
-    let code = provision::prepare(&config.enrollment_scope(), &vault)?;
-    config.resolve_device(&vault)?;
-    // Public deployment provisioning is still an operator-owned boundary. It
-    // admits exactly the original principal, never an arbitrary new credential.
-    let directory = w.dir.join("operator");
-    std::fs::create_dir(&directory)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let registry = directory.join("managed.json");
-    let witness = w
-        .scalar("SELECT witness FROM runtime_deployment_binding WHERE singleton")
-        .await;
-    write_json(
-        &registry,
-        &json!({"devices":[],"runtimes":[{"deployment":{"namespace":config.namespace,"witness":witness,"source":w.cell},"anchor_directory":config.continuity,"principals":[{"agent":agent,"device":code.device}]}]}),
+    let original = provision::prepare(&config.enrollment_scope(), &vault)?;
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+    operator.write_bytes(
+        "managed.json",
+        &serde_json::to_vec(&json!({"live":true,"devices":[]}))?,
     )?;
-    w.stop_relay();
-    w.configure_relay_env("ZOEN_MANAGED_DEVICE_CONFIG", registry.to_str());
-    w.start_relay();
-    value["relay_key"] = w.relay_name().into();
-    std::fs::remove_file(&path)?;
-    write_json(&path, &value)?;
     // The normal control service now owns preparation, certified enrollment,
     // initialization, readiness and graceful worker retirement. No pairing UI,
     // copied identity box, manually selected device or separate worker command.
@@ -160,13 +164,19 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
             String::from_utf8_lossy(&output.stderr)
         );
         if pass == 0 {
+            let code = provision::prepare(&config.enrollment_scope(), &vault)?;
             managed_startup::killed_parent(&w, &path, &agent, &code).await?;
         }
     }
-    assert_eq!(
-        provision::prepare(&config.enrollment_scope(), &vault)?,
-        code
-    );
+    let code = provision::prepare(&config.enrollment_scope(), &vault)?;
+    assert_eq!(code, original);
+    config.resolve_device(&vault)?;
+    assert_eq!(w.relay_name(), same_relay);
+    let admitted: relay_admission::managed_images::OperatorConfig =
+        serde_json::from_slice(&std::fs::read(&registry)?)?;
+    assert_eq!(admitted.runtimes.len(), 1);
+    assert_eq!(admitted.runtimes[0].principals.len(), 1);
+    assert_eq!(admitted.runtimes[0].principals[0].device, code.device);
     assert_ne!(code.device, citizen_device);
     assert_eq!(
         provision::installed_device(&config.enrollment_scope(), &vault)?,

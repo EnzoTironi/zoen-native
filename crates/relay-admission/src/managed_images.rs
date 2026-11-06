@@ -6,12 +6,14 @@ mod deployment;
 mod file;
 mod history;
 mod lock;
+mod operator;
 mod originals;
 mod publish;
 mod state;
 mod subjects;
 pub use deployment::RuntimeDeployment;
 pub use file::{AnchorReader, AnchorWriter, GenerationGuard};
+pub use operator::{ManagedPrincipal, ManagedRuntime, OperatorConfig, OperatorDevice};
 pub use publish::{
     publish_digest, ConsumePublish, ManagedPublishPermit, PublishCondition, PublishRefusal,
 };

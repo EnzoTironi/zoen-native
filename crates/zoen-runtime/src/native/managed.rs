@@ -38,6 +38,16 @@ fn secret(vault: &dyn SecretVault, key: String) -> Result<Zeroizing<[u8; 32]>, R
 }
 
 impl RuntimeAuthority {
+    /// Current certified native principal and SQL/FDB deployment locators for
+    /// trusted operator registration. This observation grants no effect permit.
+    pub async fn native_deployment(
+        &self,
+        agent: &str,
+        device: &str,
+    ) -> Result<relay_admission::managed_images::Deployment, RuntimeError> {
+        self.configured_image_deployment(agent, device).await
+    }
+
     pub(crate) async fn configured_image_deployment(
         &self,
         agent: &str,
