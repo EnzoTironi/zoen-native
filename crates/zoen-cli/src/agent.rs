@@ -40,8 +40,8 @@ mod turn;
 use turn::turn;
 mod messages;
 use messages::{
-    owner_note, selected_owner_note, selected_proposal, selected_reply, tell_owner, text_of,
-    turn_note,
+    context_reply, owner_note, selected_owner_note, selected_proposal, selected_reply, tell_owner,
+    text_of, turn_note,
 };
 pub(crate) mod controls;
 mod history_search;
@@ -73,6 +73,7 @@ mod trace;
 pub(crate) use startup::Readiness;
 
 /// History the brain sees: the Space's last messages before the one it answers.
+#[cfg(test)]
 const HISTORY: usize = 16;
 /// A message whose brain call keeps failing is skipped after this many tries.
 const MAX_TRIES: u32 = 3;

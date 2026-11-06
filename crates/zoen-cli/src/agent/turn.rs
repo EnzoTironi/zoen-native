@@ -119,7 +119,7 @@ async fn checked(
     cx: &Ctx,
     def: &Definition,
     space: &str,
-    before: &[TimelineEntry],
+    _before: &[TimelineEntry],
     t: &TimelineEntry,
     selection: Option<&source_mode::Bound>,
     attempt: &mut source_mode::Attempt,
@@ -173,32 +173,29 @@ async fn checked(
             None => true,
         };
     }
-    let scoped = match e.agent_artifact_request(space, &t.id, &t.author.id) {
-        Ok(scope) => scope.is_some(),
-        Err(_) => return false,
+    let context = match e.agent_conversation_context(space, &t.id, &t.author.id) {
+        Ok(context)
+            if context.source().text() == text
+                && context.source().revision() == t.text_revision.as_deref().unwrap_or(&t.id) =>
+        {
+            context
+        }
+        _ => return false,
     };
-    let history: Vec<Turn> = before
+    let scoped = context.scoped();
+    let history: Vec<Turn> = context
+        .history()
         .iter()
-        .rev()
-        // A scoped App request reads through its bounded native tool. Unrelated
-        // conversation history must not become an implicit artifact read.
-        .filter(|_| !scoped)
-        .filter_map(|m| {
-            text_of(m).map(|x| Turn {
-                space: space.into(),
-                from: m.author.id.clone(),
-                text: x.to_string(),
-            })
+        .map(|message| Turn {
+            space: space.into(),
+            from: message.author().into(),
+            text: message.text().into(),
         })
-        .take(HISTORY)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
         .collect();
     let inbound = Turn {
         space: space.into(),
-        from: t.author.id.clone(),
-        text: text.to_string(),
+        from: context.source().author().into(),
+        text: context.source().text().into(),
     };
     let tc = TurnContext {
         agent: &cx.me,
@@ -470,6 +467,9 @@ async fn checked(
     if tools.check_selection().is_err() {
         return false;
     }
+    if e.recheck_agent_conversation_context(&context).is_err() {
+        return false;
+    }
     trace::turn_result(space, &t.id, &result);
     let out = match result {
         Ok(o) => o,
@@ -495,7 +495,7 @@ async fn checked(
         TurnOutcome::Say { text } if scoped => e
             .agent_artifact_reply(space, &t.id, &t.author.id, &text)
             .is_ok(),
-        TurnOutcome::Say { text } => selected_reply(e, space, &text, &t.id, selection),
+        TurnOutcome::Say { text } => context_reply(e, space, &text, &context, selection),
         TurnOutcome::ToolAsk { ask } if ask.call.name == image_tools::TOOL => {
             tools.image_stage(&ask.call).is_ok()
         }

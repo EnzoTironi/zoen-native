@@ -49,6 +49,7 @@ async fn reviewed_media_replies_recover_cold_deliver_once_and_never_grant_source
             expected_device_id: account.device_id.clone(),
             space_id: space.clone(),
             thread_root_id: None,
+            edit_message_id: None,
         };
         let quoted = if shared { &source } else { &local };
         let selection = serde_json::json!({"source_id":quoted.id,"revision":quoted.text_revision,"text":"😀","spans":[{"start_utf16":6,"end_utf16":8}]});

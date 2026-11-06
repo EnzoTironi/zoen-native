@@ -73,7 +73,7 @@ impl Engine {
         }
         Ok(binding)
     }
-    fn agent_source_binding(
+    pub(crate) fn agent_source_binding(
         &self,
         space: &str,
         source: &str,
@@ -102,6 +102,10 @@ impl Engine {
             .iter()
             .find(|entry| entry.id() == source)
             .ok_or_else(denied)?;
+        self.check_private_message_view()?;
+        if !self.visible_message(entry) {
+            return Err(denied());
+        }
         let EntryBody::Message {
             text,
             attaches,

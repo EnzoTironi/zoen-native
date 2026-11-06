@@ -2,6 +2,7 @@ use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use zoen_agentd::citizen::{testing::ControlledToolBrain, BrainOut};
 mod approval_delivery;
+mod canonical_context;
 mod file_import;
 mod fixture;
 mod history_search;

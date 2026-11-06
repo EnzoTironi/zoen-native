@@ -39,8 +39,12 @@ pub(in crate::agent) fn key(context: &Ctx, space: &str, source: &str) -> String 
 
 pub(in crate::agent) fn binding(source: &TimelineEntry) -> Result<String, String> {
     Ok(digest(json!([
-        "zoen.agent.source-budget-content.v1",
+        "zoen.agent.source-budget-content.v2",
         source.author.id,
+        source
+            .text_revision
+            .as_deref()
+            .ok_or("The source revision is missing")?,
         text_of(source).ok_or("The source is not a message")?
     ])))
 }

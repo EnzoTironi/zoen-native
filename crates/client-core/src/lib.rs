@@ -7,8 +7,10 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod agent_binary_documents;
+mod agent_conversation_context;
 pub mod agent_conversation_tools;
 mod agent_history_search;
+pub use agent_conversation_context::{AgentConversationContext, AgentConversationMessage};
 pub use agent_history_search::AGENT_HISTORY_PAGE_LIMIT;
 #[path = "agent_pages/contract.rs"]
 pub mod agent_page_tools;
