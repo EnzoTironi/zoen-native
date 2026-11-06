@@ -7,7 +7,8 @@ use types::{Event, EventBody};
 
 use super::publication::MAX_PUBLISH_BYTES;
 use super::{
-    direct_writers, DeviceCore, NativeError, ReplyIntent, Result, State, MAX_EVENT_BYTES, PROFILE,
+    direct_writers, DeviceCore, NativeError, ReplyIntent, Result, State, LEGACY_PROFILE,
+    MAX_EVENT_BYTES, PROFILE,
 };
 
 pub(super) const MAX_REFERENCE_BYTES: usize = 135_168;
@@ -26,6 +27,8 @@ pub(super) struct ReplyReference {
     pub(super) message: String,
     pub(super) inner_digest: String,
     wire: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reply: Option<types::ReplyRef>,
 }
 
 fn bounded(value: &str) -> bool {
@@ -49,9 +52,10 @@ impl ReplyReference {
     }
 
     pub(super) fn envelope(&self, core: &DeviceCore) -> Result<Envelope> {
-        if self.version != 1
-            || self.original.profile != PROFILE
-            || self.original.agent != core.agent
+        if !matches!(
+            (self.version, self.original.profile.as_str()),
+            (1, LEGACY_PROFILE) | (2, PROFILE)
+        ) || self.original.agent != core.agent
             || self.original.owner != core.owner
             || !digest(&self.original.trigger)
             || !digest(&self.original.trigger_digest)
@@ -109,6 +113,9 @@ impl ReplyReference {
             return Err(NativeError::History);
         }
         core.verify_original_history(&self.original)?;
+        if self.reply != core.expected_reply(&self.original)? {
+            return Err(NativeError::History);
+        }
         Ok(env)
     }
 
@@ -123,7 +130,8 @@ impl ReplyReference {
             && event.content.len() <= MAX_EVENT_BYTES
             && content_hash_of(event) == self.inner_digest
             && verify_author(event).is_ok()
-            && matches!(&event.body, EventBody::MessagePosted { message, attaches: None, reply: None, .. } if message == &self.message)
+            && matches!(&event.body, EventBody::MessagePosted { message, attaches: None, reply, media: None, forwarded: false, forwarded_author: None, .. }
+                if message == &self.message && reply == &self.reply)
     }
 }
 
@@ -138,7 +146,11 @@ impl DeviceCore {
             return Err(NativeError::History);
         };
         let reference = ReplyReference {
-            version: 1,
+            version: if original.profile == LEGACY_PROFILE {
+                1
+            } else {
+                2
+            },
             original: original.clone(),
             client_id: event.client_id.clone(),
             message: message.clone(),
@@ -149,6 +161,7 @@ impl DeviceCore {
                 }
                 .encode(),
             ),
+            reply: self.expected_reply(original)?,
         };
         let expected = reference.envelope(self)?;
         if !reference.matches_inner(event, &expected) || expected != *envelope {
@@ -232,14 +245,9 @@ impl DeviceCore {
                 if !accepted
                     || event.author != self.owner
                     || content_hash_of(event) != original.trigger_digest
-                    || !matches!(
-                        event.body,
-                        EventBody::MessagePosted {
-                            attaches: None,
-                            reply: None,
-                            ..
-                        }
-                    )
+                    || !super::conversation::supported(&ordered, event)
+                    || (original.profile == LEGACY_PROFILE
+                        && !matches!(event.body, EventBody::MessagePosted { reply: None, .. }))
                     || crate::mls_opening::opened_leaf(&self.engine.store, event)
                         .is_none_or(|leaf| leaf.identity != self.owner)
                     || content_hash_of(issued) != original.grant_digest

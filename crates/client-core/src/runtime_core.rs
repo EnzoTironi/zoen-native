@@ -26,10 +26,12 @@ use zeroize::Zeroizing;
 use crate::engine::{Engine, GrantState, State};
 use crate::sync::{AccountMeta, Ingest, EVENT_FORMAT_META, EVENT_FORMAT_VALUE};
 
-const PROFILE: &str = "owner-direct-text-reply/1";
+const LEGACY_PROFILE: &str = "owner-direct-text-reply/1";
+const PROFILE: &str = "owner-direct-text-reply/2";
 const MAX_BATCH: usize = 64;
 const MAX_EVENT_BYTES: usize = 65536;
 mod context;
+mod conversation;
 pub use context::ReplyMessage;
 
 const MAX_CONTEXT_BYTES: usize = 32768;
@@ -158,6 +160,12 @@ pub struct ReplyIntent {
 }
 
 impl ReplyIntent {
+    /// Frozen native input contract; this identifier grants no execution permission.
+    #[must_use]
+    pub fn profile(&self) -> &str {
+        &self.profile
+    }
+
     #[must_use]
     pub fn trigger(&self) -> &str {
         &self.trigger
