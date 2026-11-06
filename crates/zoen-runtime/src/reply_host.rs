@@ -108,6 +108,41 @@ impl ReplyRuntimeHost {
         &self.config.device
     }
 
+    /// Read one bounded tool page from the host-bound source conversation.
+    /// Neither arguments nor a run locator grant access or authorize model spend.
+    pub async fn search_history(
+        &self,
+        run: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<client_core::MessageSearchPage, RuntimeError> {
+        if !id(run) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let scope = self.runtime.production_output_scope()?;
+        scope.check_context(&self.runtime)?;
+        scope.check_device(&self.config.agent, &self.config.device)?;
+        scope.check_target(&self.config.target)?;
+        let native = self
+            .runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
+        let state = native
+            .reply_host_state(
+                &self.runtime,
+                run,
+                scope,
+                (&self.config.agent, &self.config.device),
+            )
+            .await?;
+        if !self.refresh(&state.space).await? {
+            return Err(RuntimeError::Unavailable);
+        }
+        native
+            .search_reply_history(&self.runtime, run, arguments, scope)
+            .await
+    }
+
     /// Canonical owner lifecycle revision, never an execution permit.
     pub async fn control_revision(&self) -> Result<Option<u64>, RuntimeError> {
         self.runtime.check_reply_continuity().await?;
@@ -192,7 +227,14 @@ impl ReplyRuntimeHost {
             .native
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
-        let state = native.reply_host_state(runtime, run, scope).await?;
+        let state = native
+            .reply_host_state(
+                runtime,
+                run,
+                scope,
+                (&self.config.agent, &self.config.device),
+            )
+            .await?;
         if let Some(output) = state.output {
             let delivery = runtime.reconcile_reply_receipt(run).await?;
             match delivery {

@@ -52,6 +52,7 @@ impl NativeCustody {
         runtime: &RuntimeAuthority,
         run: &str,
         scope: &dyn NativeOutputAuthority,
+        expected: (&str, &str),
     ) -> Result<ReplyHostState, RuntimeError> {
         runtime.check_reply_continuity().await?;
         let tx = runtime.execution.transaction().await?;
@@ -61,6 +62,9 @@ impl NativeCustody {
             .reply_in(&tx, run, &runtime.custody)
             .await?;
         let principal = &record.original.context.principal;
+        if principal.agent != expected.0 || principal.device != expected.1 {
+            return Err(RuntimeError::Denied);
+        }
         scope.check_device(&principal.agent, &principal.device)?;
         let captured = tx
             .get(

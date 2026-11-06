@@ -10,6 +10,10 @@ pub(super) const MAX_OUTPUT: usize = 65536;
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Command {
+    SearchHistory {
+        run: String,
+        arguments: Value,
+    },
     Discover {
         space: String,
     },
@@ -28,6 +32,13 @@ pub(super) enum Command {
 }
 pub(super) async fn execute(host: &ReplyRuntimeHost, command: Command) -> Result<Value, String> {
     match command {
+        Command::SearchHistory { run, arguments } => {
+            let page = host
+                .search_history(&run, &arguments)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(json!({"status":"history","page":page}))
+        }
         Command::Discover { space } => {
             let p = host.discover(&space).await.map_err(|e| e.to_string())?;
             Ok(

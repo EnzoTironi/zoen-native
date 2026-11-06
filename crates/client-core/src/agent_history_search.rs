@@ -20,14 +20,28 @@ impl Client {
         cursor: Option<&str>,
         limit: u32,
     ) -> R<MessageSearchPage> {
-        let mut engine = self.lock();
-        engine.agent_source_authority(space, source, serving, false)?;
+        self.lock()
+            .agent_search_messages(space, source, serving, query, cursor, limit)
+    }
+}
+
+impl crate::engine::Engine {
+    pub(crate) fn agent_search_messages(
+        &mut self,
+        space: &str,
+        source: &str,
+        serving: &str,
+        query: &str,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> R<MessageSearchPage> {
+        self.agent_source_authority(space, source, serving, false)?;
         if !(1..=AGENT_HISTORY_PAGE_LIMIT).contains(&limit) {
             return Err(CoreError::Invalid {
                 reason: "Search one page of 1 to 20 conversation messages.".into(),
             });
         }
-        engine.search_messages(space, query, cursor, limit)
+        self.search_messages(space, query, cursor, limit)
     }
 }
 
