@@ -19,6 +19,17 @@ impl Execution {
             .await?
             .is_none()
         {
+            if let Some(next) = Box::pin(self.next_search_reply_in(tx, run, custody)).await? {
+                if let Some(completed) =
+                    Box::pin(self.completed_reply_in(tx, &next, custody)).await?
+                {
+                    let (parent, _) = self.reply_in(tx, run, custody).await?;
+                    return Ok(Some(CompletedReply {
+                        original: parent.original,
+                        publication: completed.publication,
+                    }));
+                }
+            }
             return Ok(None);
         }
         let (record, original) = self.reply_in(tx, run, custody).await?;

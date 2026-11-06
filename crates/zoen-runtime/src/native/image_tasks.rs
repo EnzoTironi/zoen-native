@@ -312,6 +312,7 @@ impl NativeCustody {
                 return Err(RuntimeError::InvalidBinding);
             }
             let request = ModelRequest {
+                tool_mode: Default::default(),
                 context: ctx.clone(),
                 operation: Operation::ImageGeneration,
                 messages: vec![InputMessage::User {

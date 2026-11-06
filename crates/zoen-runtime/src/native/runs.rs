@@ -7,6 +7,7 @@ mod loading;
 mod pending;
 mod records;
 mod search;
+mod turn;
 use records::{PreparedRun, RunRecord, Wake};
 pub(crate) mod output;
 mod storage;
@@ -305,6 +306,7 @@ impl NativeCustody {
                         wake: types::new_id("wake").map_err(|_| RuntimeError::Unavailable)?,
                     };
                     let request = ModelRequest {
+                        tool_mode: Default::default(),
                         context: zoen_models::AttemptContext {
                             run_id: locator.run.clone(),
                             attempt_id: locator.attempt.clone(),
@@ -327,7 +329,7 @@ impl NativeCustody {
                                 text: facts.text().into(),
                             }],
                         },
-                        tools: Vec::new(),
+                        tools: turn::tools(if agent_context.is_some() { 3 } else { 1 }),
                         max_output_tokens: runtime.price.max_output_tokens,
                     };
                     let dispatch = runtime
@@ -346,7 +348,8 @@ impl NativeCustody {
                         price: runtime.price.clone().into(),
                     };
                     let record = RunRecord {
-                        format: if agent_context.is_some() { 2 } else { 1 },
+                        format: if agent_context.is_some() { 3 } else { 1 },
+                        continuation: None,
                         agent_context: agent_context.clone(),
                         source: effects.source.clone(),
                         locator: locator.clone(),
@@ -372,6 +375,7 @@ impl NativeCustody {
                         },
                     )?;
                     effects.runs.push(PreparedRun {
+                        parent: None,
                         trigger: record.intent.trigger().into(),
                         locator,
                         record: sealed,

@@ -192,6 +192,7 @@ impl World {
             .0;
         let step = VerifiedStep::Fixture(Box::new(FixtureStep {
             request: ModelRequest {
+                tool_mode: Default::default(),
                 context: AttemptContext {
                     attempt_id: types::new_id("attempt")?,
                     run_id: types::new_id("run")?,

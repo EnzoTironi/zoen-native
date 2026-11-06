@@ -235,6 +235,13 @@ impl ReplyRuntimeHost {
                 (&self.config.agent, &self.config.device),
             )
             .await?;
+        if let Some(next) = runtime
+            .execution
+            .next_search_reply(run, &runtime.custody)
+            .await?
+        {
+            return Box::pin(self.advance(&next)).await;
+        }
         if let Some(output) = state.output {
             let delivery = runtime.reconcile_reply_receipt(run).await?;
             match delivery {
@@ -283,6 +290,9 @@ impl ReplyRuntimeHost {
             }
             Err(error) => return Err(error),
         };
+        if let Some(next) = Box::pin(native.continue_search_reply(runtime, run, scope)).await? {
+            return Box::pin(self.advance(&next)).await;
+        }
         let review = match native
             .review_reply_output(runtime, run, scope, self.gate.clone())
             .await?

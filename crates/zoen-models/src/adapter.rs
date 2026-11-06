@@ -26,7 +26,8 @@ fn strict_calls(value: &Value, request: &ModelRequest) -> Result<(), OutputFailu
         return Ok(());
     };
     let calls = calls.as_array().ok_or(OutputFailure::InvalidToolCall)?;
-    if calls.len() > 64 {
+    if calls.len() > 64 || (!calls.is_empty() && request.tool_mode == crate::ToolMode::FinalAnswer)
+    {
         return Err(OutputFailure::InvalidToolCall);
     }
     let mut ids: BTreeSet<&str> = request

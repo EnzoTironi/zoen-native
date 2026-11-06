@@ -53,6 +53,9 @@ impl NativeCustody {
                 facts.expires_at_ms().and_then(|expiry| expiry.checked_sub(observed))
             );
             record.verify_input(&facts)?;
+            let tx = runtime.execution.transaction().await?;
+            runtime.execution.verify_search_continuation_in(&tx, &record, &runtime.custody).await?;
+            drop(tx);
             let dispatch = runtime
                 .gateway
                 .preflight(&record.request)

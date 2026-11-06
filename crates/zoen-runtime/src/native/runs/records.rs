@@ -15,6 +15,8 @@ pub(super) struct RunRecord {
     pub(super) epoch: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) agent_context: Option<context::AgentContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) continuation: Option<turn::Continuation>,
 }
 
 impl RunRecord {
@@ -49,7 +51,8 @@ impl RunRecord {
             || context.price_version != self.binding.price.chat()?.version
             || self.request.operation != Operation::ChatCompletion
             || self.request.max_output_tokens != self.binding.requested_output_tokens
-            || !self.request.tools.is_empty()
+            || self.request.tools != turn::tools(self.format)
+            || (self.request.tool_mode == zoen_models::ToolMode::FinalAnswer) != (self.format == 4)
             || self.binding.hold_units
                 != self.binding.price.reserve(self.request.max_output_tokens)?
         {
@@ -68,6 +71,8 @@ pub(super) struct Wake {
 #[derive(Serialize, Deserialize)]
 pub(super) struct PreparedRun {
     pub(super) trigger: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) parent: Option<String>,
     pub(super) locator: ReplyRun,
     pub(super) record: Vec<u8>,
     pub(super) binding: Vec<u8>,

@@ -22,6 +22,7 @@ pub(super) fn dispatch_for(attempt: &str, owner: &str) -> TestResult<DispatchReq
         },
     })?;
     Ok(gateway.preflight(&ModelRequest {
+        tool_mode: Default::default(),
         context: AttemptContext {
             attempt_id: attempt.into(),
             run_id: "run".into(),

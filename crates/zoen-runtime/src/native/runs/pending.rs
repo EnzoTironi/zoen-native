@@ -60,6 +60,10 @@ impl Execution {
             let matches = principal
                 .is_none_or(|(agent, device)| owner.agent == agent && owner.device == device);
             if matches
+                && self
+                    .next_search_reply_in(&tx, &wake.locator.run, custody)
+                    .await?
+                    .is_none()
                 && Box::pin(self.completed_reply_in(&tx, &wake.locator.run, custody))
                     .await?
                     .is_none()

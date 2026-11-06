@@ -2,6 +2,7 @@
 mod association;
 mod completed;
 mod policy;
+mod search;
 pub(crate) use policy::{ReplyOutputCheck, ReplyOutputReview};
 mod delivery;
 mod prepare;

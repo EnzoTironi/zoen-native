@@ -31,7 +31,11 @@ impl Execution {
             if !digest(&candidate.trigger) || !triggers.insert(&candidate.trigger) {
                 return Err(RuntimeError::InvalidBinding);
             }
-            let key = self.reply_trigger(&principal.agent, &batch.space, &candidate.trigger);
+            let key = match &candidate.parent {
+                Some(parent) if id(parent) => self.reply_followup(parent),
+                Some(_) => return Err(RuntimeError::InvalidBinding),
+                None => self.reply_trigger(&principal.agent, &batch.space, &candidate.trigger),
+            };
             if let Some(prior) = trx.get(&key, false).await? {
                 let run = std::str::from_utf8(&prior).map_err(|_| RuntimeError::InvalidBinding)?;
                 if !id(run) {
@@ -42,6 +46,8 @@ impl Execution {
                     || record.request.context.owner != principal.owner
                     || record.intent.space() != batch.space
                     || record.intent.trigger() != candidate.trigger
+                    || record.continuation.as_ref().map(|step| &step.parent)
+                        != candidate.parent.as_ref()
                 {
                     return Err(RuntimeError::InvalidBinding);
                 }
@@ -73,12 +79,16 @@ impl Execution {
                 || record.head != batch.head
                 || record.intent.space() != batch.space
                 || record.intent.trigger() != candidate.trigger
+                || record.continuation.as_ref().map(|step| &step.parent)
+                    != candidate.parent.as_ref()
                 || frozen != record.binding
                 || wake.locator != candidate.locator
                 || wake.record_digest != hash(&candidate.record)
             {
                 return Err(RuntimeError::InvalidBinding);
             }
+            self.verify_search_continuation_in(trx, &record, custody)
+                .await?;
             let record_key = self.run(&candidate.locator.run, "record/1");
             let prepared_key = self.attempt(&candidate.locator.attempt, "prepared");
             let wake_key = self.reply_wake(&candidate.locator.wake);
@@ -147,11 +157,7 @@ impl Execution {
             self.reply_wake(&record.locator.wake),
             self.native_references(&record.original)
                 .pack(&(record.locator.run.as_str(),)),
-            self.reply_trigger(
-                &record.request.context.agent,
-                record.intent.space(),
-                record.intent.trigger(),
-            ),
+            self.reply_slot(record),
         ] {
             let bytes = trx
                 .get(&key, false)
@@ -164,6 +170,16 @@ impl Execution {
             {
                 return Err(RuntimeError::InvalidBinding);
             }
+        }
+        if let Some(step) = &record.continuation {
+            let (parent, _) = self.reply_in(trx, &step.parent, custody).await?;
+            Box::pin(self.capture_reply_rows(trx, &parent, custody, checks)).await?;
+            let key = self.attempt(&parent.locator.attempt, "native-capture/1");
+            let bytes = trx
+                .get(&key, false)
+                .await?
+                .ok_or(RuntimeError::RestoreUnreconciled)?;
+            checks.insert(key, hash(&bytes));
         }
         Ok(())
     }

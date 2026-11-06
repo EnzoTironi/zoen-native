@@ -65,3 +65,18 @@ pub(crate) async fn collect_reply_images(
         .collect_reply_retired(&record.original.context.principal)
         .await
 }
+
+/// Observe the genuine completion proof, without granting dispatch or GC.
+pub(crate) async fn reply_completed(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> Result<bool, RuntimeError> {
+    let tx = runtime.execution.transaction().await?;
+    Ok(Box::pin(
+        runtime
+            .execution
+            .completed_reply_in(&tx, run, &runtime.custody),
+    )
+    .await?
+    .is_some())
+}

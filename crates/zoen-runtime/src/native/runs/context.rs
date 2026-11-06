@@ -131,6 +131,9 @@ impl RunRecord {
         if !matches!(self.intent.profile(), PROFILE | "owner-direct-text-reply/2") {
             return Err(RuntimeError::InvalidBinding);
         }
+        if (self.format == 4) != self.continuation.is_some() {
+            return Err(RuntimeError::InvalidBinding);
+        }
         match (self.format, &self.agent_context) {
             (1, None)
                 if matches!(
@@ -140,9 +143,9 @@ impl RunRecord {
             {
                 Ok(self.intent.profile().into())
             }
-            (2, Some(context)) => {
-                let [InputMessage::System { text }, rest @ ..] = self.request.messages.as_slice()
-                else {
+            (2..=4, Some(context)) => {
+                let messages = turn::base_messages(self)?;
+                let [InputMessage::System { text }, rest @ ..] = messages else {
                     return Err(RuntimeError::InvalidBinding);
                 };
                 if text!=&context.behavior()?.system_prompt() || rest.is_empty() || rest.len()>17
@@ -163,8 +166,14 @@ impl RunRecord {
                 text: facts.text().into(),
             }],
         };
-        if self.request.messages != expected {
+        if turn::base_messages(self)? != expected {
             return Err(RuntimeError::InvalidBinding);
+        }
+        if self.format == 4
+            && (facts.frontier().hash() != self.head.hash
+                || facts.frontier().seq() != self.head.seq)
+        {
+            return Err(RuntimeError::Denied);
         }
         Ok(())
     }
