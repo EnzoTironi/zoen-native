@@ -57,7 +57,7 @@ impl Worker {
         }
     }
 }
-async fn message(w: &World, agent: &str, space: &str) -> TestResult {
+fn open_owner(w: &World) -> Result<Arc<Client>, Box<dyn std::error::Error>> {
     let owner = Client::open(
         w.dir
             .join("owner")
@@ -69,6 +69,10 @@ async fn message(w: &World, agent: &str, space: &str) -> TestResult {
     assert!(owner.unlock(Arc::new(file_vault::FileVault {
         dir: w.dir.join("owner").join("vault")
     }))?);
+    Ok(owner)
+}
+async fn message(w: &World, agent: &str, space: &str) -> TestResult {
+    let owner = open_owner(w)?;
     owner.start_sync(None)?;
     owner.wait_until_settled(20_000).await?;
     owner.set_trust(agent.into(), space.into(), TrustLevelDto::Listen)?;
@@ -90,7 +94,20 @@ pub(super) async fn run(
 ) -> TestResult {
     // A new signed source arrives while no worker/client remains open.
     message(w, agent, space).await?;
+    // Same JSON bridge and reviewed revision used by the iOS control screen.
+    // A separately paired runtime device must obey the citizen's owner control.
+    let paused = lifecycle(w, agent, "Pause").await?;
+    assert_eq!(paused["status"], "Paused");
     let mut worker = Worker::start(w, path).await?;
+    let deferred = worker.wait("conversation_deferred").await?;
+    assert_eq!(
+        deferred["reason"],
+        zoen_runtime::RuntimeError::Denied.to_string()
+    );
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
+    let resumed = lifecycle(w, agent, "Resume").await?;
+    assert_eq!(resumed["status"], "Active");
     let output = worker.wait("output").await?;
     assert_eq!(output["delivery"]["status"], "accepted");
     assert_eq!(provider.calls.load(Ordering::SeqCst), 2);
@@ -147,4 +164,31 @@ pub(super) async fn run(
     assert_eq!(history.matches(provider::ANSWER).count(), 3);
     println!("automatic worker: canonical membership discovery, closed clients, actual process termination/cold backlog, three originals and no duplicate call/charge/response PASS");
     Ok(())
+}
+
+async fn lifecycle(
+    w: &World,
+    agent: &str,
+    action: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let owner = open_owner(w)?;
+    owner.start_sync(None)?;
+    owner.wait_until_settled(20_000).await?;
+    let account = owner.account().ok_or("owner account")?;
+    let mut input = json!({
+        "op":"agent_control_read", "agent_id":agent,
+        "expected_identity_id":account.identity_id,
+        "expected_device_id":account.device_id,
+    });
+    let observed: Value = serde_json::from_str(&owner.client_request(input.to_string()).await?)?;
+    input["op"] = "agent_control_change".into();
+    input["observed_revision"] = observed["revision"].clone();
+    input["action"] = action.into();
+    let changed: Value = serde_json::from_str(&owner.client_request(input.to_string()).await?)?;
+    assert_eq!(changed["outcome"], "Confirmed");
+    assert_eq!(changed["pending"], Value::Null);
+    // Replaying a stale reviewed revision cannot repeat or reverse the effect.
+    assert!(owner.client_request(input.to_string()).await.is_err());
+    owner.stop_sync();
+    Ok(changed)
 }

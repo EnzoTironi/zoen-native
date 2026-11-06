@@ -86,7 +86,12 @@ impl ImageRuntimeHost {
             .native
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?
-            .install_owner_policy(&self.runtime, &self.config, signed)
+            .install_owner_policy(
+                &self.runtime,
+                &self.config.agent,
+                &self.config.device,
+                signed,
+            )
             .await
     }
 

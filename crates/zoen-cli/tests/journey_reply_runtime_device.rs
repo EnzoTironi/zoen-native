@@ -132,7 +132,32 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     value["relay_key"] = w.relay_name().into();
     std::fs::remove_file(&path)?;
     write_json(&path, &value)?;
-    let signed = signed_policy(&w, &owner, config.chat_price.digest()?).await?;
+    // A valid unrelated owner signature is not authority to install a policy
+    // through this configured agent. Rejection must precede financial writes.
+    w.init("outsider", "Unrelated owner");
+    let outsider = account(&w, "outsider")?["identity"]
+        .as_str()
+        .ok_or("outsider identity")?
+        .to_owned();
+    let unrelated = signed_policy(&w, "outsider", &outsider, config.chat_price.digest()?).await?;
+    assert!(call(
+        &path,
+        "execute",
+        Some(json!({"command":"policy_import","signed":unrelated})),
+    )
+    .is_err());
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 0);
+    let signed = signed_policy(&w, "owner", &owner, config.chat_price.digest()?).await?;
+    assert_eq!(
+        call(
+            &path,
+            "execute",
+            Some(json!({"command":"policy_import","signed":signed.clone()}))
+        )?["status"],
+        "policy_installed"
+    );
+    // Exact replay acknowledges the retained installation, including a cold
+    // process; it never makes a second version or resets the monthly budget.
     assert_eq!(
         call(
             &path,
@@ -141,6 +166,7 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
         )?["status"],
         "policy_installed"
     );
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 1);
     let space = w
         .zoen("owner", &["dm", "@reply_citizen", "A calm conversation"])
         .trim()

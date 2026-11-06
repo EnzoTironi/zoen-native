@@ -135,7 +135,7 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
                 .take(protocol::MAX_INPUT as u64 + 1)
                 .read_to_end(&mut bytes)
                 .map_err(|_| "command unavailable")?;
-            return dispatch(&authority, &host, &bytes).await;
+            return dispatch(&host, &bytes).await;
         }
         // The supervising worker controls waking; serving does not poll or
         // repeatedly evaluate held replies. Durable state remains in authority.
@@ -150,23 +150,19 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
             if read == 0 {
                 return Ok(());
             }
-            dispatch(&authority, &host, &bytes).await?;
+            dispatch(&host, &bytes).await?;
         }
     });
     drop(executor);
     drop(network);
     result
 }
-async fn dispatch(
-    authority: &RuntimeAuthority,
-    host: &ReplyRuntimeHost,
-    bytes: &[u8],
-) -> Result<(), String> {
+async fn dispatch(host: &ReplyRuntimeHost, bytes: &[u8]) -> Result<(), String> {
     if bytes.len() > protocol::MAX_INPUT {
         return Err("reply command too large".into());
     }
     let command = serde_json::from_slice(bytes).map_err(|_| "invalid reply command")?;
-    emit(&protocol::execute(authority, host, command).await?)
+    emit(&protocol::execute(host, command).await?)
 }
 fn emit(value: &serde_json::Value) -> Result<(), String> {
     let bytes = serde_json::to_vec(value).map_err(|_| "reply progress unavailable")?;

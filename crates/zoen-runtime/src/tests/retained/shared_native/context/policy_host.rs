@@ -97,6 +97,25 @@ async fn happy() -> TestResult {
             .is_err()
     );
     let consumer = host(&f, &relay, None, calls.clone())?;
+    assert!(consumer
+        .pending_page(None)
+        .await?
+        .runs
+        .iter()
+        .any(|item| item.run == run.run));
+    let foreign = f
+        .world
+        .runtime
+        .execution
+        .reply_page_scoped(
+            16,
+            None,
+            &f.world.runtime.custody,
+            Some((&f.agent.id, &types::new_id("another_device")?)),
+        )
+        .await?;
+    assert!(foreign.scanned > 0);
+    assert!(foreign.runs.is_empty());
     assert!(consumer.advance(&types::new_id("missing")?).await.is_err());
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 0);

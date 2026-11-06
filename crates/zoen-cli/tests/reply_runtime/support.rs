@@ -64,12 +64,13 @@ pub fn configuration(w: &World, agent: &str, endpoint: &str) -> Value {
 }
 pub async fn signed_policy(
     w: &World,
+    who: &str,
     owner: &str,
     profile: String,
 ) -> Result<types::owner_budget::SignedOwnerPolicy, Box<dyn std::error::Error>> {
     use event_log::{Author, Signer};
     let vault = file_vault::FileVault {
-        dir: w.dir.join("owner").join("vault"),
+        dir: w.dir.join(who).join("vault"),
     };
     let key = |name: &str| -> Result<Signer, Box<dyn std::error::Error>> {
         Ok(Signer::from_secret(

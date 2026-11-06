@@ -20,12 +20,14 @@ pub struct ReplyWorker {
     conversations: Option<String>,
     pending: Option<String>,
     deferred: BTreeMap<String, Instant>,
+    control: Option<Option<u64>>,
 }
 impl ReplyWorker {
     pub async fn tick(
         &mut self,
         host: &ReplyRuntimeHost,
     ) -> Result<Vec<ReplyWorkerEvent>, RuntimeError> {
+        self.observe_control(host.control_revision().await?)?;
         let now = Instant::now();
         self.deferred.retain(|_, until| *until > now);
         let mut events = Vec::new();
@@ -97,6 +99,20 @@ impl ReplyWorker {
         }
         Ok(events)
     }
+    fn observe_control(&mut self, revision: Option<u64>) -> Result<(), RuntimeError> {
+        if let Some(previous) = self.control {
+            if previous.is_some() && revision < previous {
+                return Err(RuntimeError::RestoreUnreconciled);
+            }
+            if previous != revision {
+                // Owner resume should not wait behind a policy/model cooldown.
+                // This only reschedules originals; advance rechecks all authority.
+                self.deferred.clear();
+            }
+        }
+        self.control = Some(revision);
+        Ok(())
+    }
     fn defer(&mut self, key: String, delay: Duration) -> Result<(), RuntimeError> {
         if self.deferred.len() >= MAX_DEFERRED && !self.deferred.contains_key(&key) {
             return Err(RuntimeError::EvidenceTooLarge);
@@ -115,6 +131,25 @@ fn retryable(error: RuntimeError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn owner_control_changes_reschedule_without_accepting_revision_rollback() {
+        let mut worker = ReplyWorker::default();
+        assert!(worker.observe_control(Some(1)).is_ok());
+        assert!(worker.defer("paid-original".into(), REVIEW).is_ok());
+        assert!(worker.observe_control(Some(1)).is_ok());
+        assert_eq!(worker.deferred.len(), 1);
+        assert!(worker.observe_control(Some(2)).is_ok());
+        assert!(worker.deferred.is_empty());
+        assert_eq!(
+            worker.observe_control(Some(1)),
+            Err(RuntimeError::RestoreUnreconciled)
+        );
+        assert_eq!(
+            worker.observe_control(None),
+            Err(RuntimeError::RestoreUnreconciled)
+        );
+        assert_eq!(worker.control, Some(Some(2)));
+    }
     #[test]
     fn cooldowns_are_bounded_and_authority_failures_never_retry_as_success() {
         let mut worker = ReplyWorker::default();

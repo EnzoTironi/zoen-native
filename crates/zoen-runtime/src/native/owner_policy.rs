@@ -11,10 +11,11 @@ impl NativeCustody {
     pub(crate) async fn install_owner_policy(
         &self,
         runtime: &RuntimeAuthority,
-        config: &crate::ImageHostConfig,
+        agent: &str,
+        device: &str,
         signed: SignedOwnerPolicy,
     ) -> Result<crate::OwnerPolicyInstallation, RuntimeError> {
-        let credential = self.credential(&config.agent, &config.device)?;
+        let credential = self.credential(agent, device)?;
         if signed.policy.owner != credential.owner.id {
             return Err(RuntimeError::Denied);
         }
@@ -23,7 +24,7 @@ impl NativeCustody {
             .native_directory(
                 &credential.agent,
                 &credential.owner,
-                &config.device,
+                device,
                 &credential.certificate,
             )
             .await?;

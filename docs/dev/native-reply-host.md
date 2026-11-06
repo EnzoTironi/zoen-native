@@ -108,6 +108,17 @@ transient work after two seconds. These are scheduling observations, never a
 financial release or terminal-consumption record. Cooldowns are bounded to 4,096
 entries; exceeding the declared profile fails closed. Losing process-local
 cursors/cooldowns still recovers originals from the native source/wake queue.
+The worker observes the canonical citizen control revision on each cycle. Owner
+pause/resume uses the same reviewed Core command as iOS. A new revision clears
+only scheduling cooldowns, so resume does not require a process restart or wait
+for a prior 60-second deferral. Admission still checks the current lifecycle,
+source, grants and budget. A revision rollback or disappearance stops the worker.
+
+`pending` returns only the configured agent/device's work. `policy_import` checks
+that device's current native directory and actual owner under the installation
+transaction; a valid signature from another owner is refused without financial
+writes. Exact replay acknowledges the retained policy, without resetting budget.
+Invalid/conflicting policies report `policy_refused`, distinct from installation.
 
 SIGINT/SIGTERM stop at a cycle boundary, finishing the current cycle before
 closing custody. A kill still relies on existing durable admission, capture and

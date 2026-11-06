@@ -2,7 +2,8 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
 use zoen_runtime::{
-    FinancialState, ReplyHostProgress, ReplyReceiptProgress, ReplyRuntimeHost, RuntimeAuthority,
+    FinancialState, OwnerPolicyInstallation, ReplyHostProgress, ReplyReceiptProgress,
+    ReplyRuntimeHost,
 };
 pub(super) const MAX_INPUT: usize = 16384;
 pub(super) const MAX_OUTPUT: usize = 65536;
@@ -22,11 +23,7 @@ pub(super) enum Command {
         signed: Box<types::owner_budget::SignedOwnerPolicy>,
     },
 }
-pub(super) async fn execute(
-    authority: &RuntimeAuthority,
-    host: &ReplyRuntimeHost,
-    command: Command,
-) -> Result<Value, String> {
+pub(super) async fn execute(host: &ReplyRuntimeHost, command: Command) -> Result<Value, String> {
     match command {
         Command::Discover { space } => {
             let p = host.discover(&space).await.map_err(|e| e.to_string())?;
@@ -35,18 +32,25 @@ pub(super) async fn execute(
             )
         }
         Command::Pending { after } => {
-            let page = authority
-                .pending_reply_page(16, after.as_deref())
+            let page = host
+                .pending_page(after.as_deref())
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(json!({"status":"pending","runs":page.runs,"next":page.next}))
         }
         Command::PolicyImport { signed } => {
-            let digest = authority
-                .install_policy(*signed)
+            let installation = host
+                .import_owner_policy(*signed)
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(json!({"status":"policy_installed","digest":digest}))
+            Ok(match installation {
+                OwnerPolicyInstallation::Installed(digest) => {
+                    json!({"status":"policy_installed","digest":digest})
+                }
+                OwnerPolicyInstallation::Refused(digest) => {
+                    json!({"status":"policy_refused","digest":digest})
+                }
+            })
         }
         Command::Advance { run } => Ok(progress(
             Box::pin(host.advance(&run))
