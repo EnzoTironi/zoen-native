@@ -3,7 +3,7 @@
 # Reviewed Cargo roots, test commands, client coverage and embedded-resource
 # recipes. Drift selects the full lane; refreshing a pin never bypasses tests.
 FRONTEND_CONTRACTS = {
-    "apps/zoen/src/core/photo-editor-image.test.ts": "bccf5c4e25968b1dca8afac700c2d5c3475012b2abeb419e509686af3f16c194",
+    "apps/zoen/src/core/photo-editor-image.test.ts": "b5a0da03a2c6b677cedc8c3315f440795edb20e155debda96e824d56d655bcfd",
     "scripts/expo_artifact_candidate.py": "0f43561817f940cb50e607c5d94ce06ad4aafde130690b683c4bae6099332a31",
     "miniapps/pdfcraft-ui/prepare-engine.py": "4704dfe72d3608e5a48e5847d3c3fae14e5042e286ee0351003eeb9c9a6b1879",
     "miniapps/pdfcraft-ui/build-resource-manifest.mjs": "69635b70da63254efc2a96629c869e8398a6989e8890fa756b64c76c1225c586",
@@ -43,21 +43,21 @@ FRONTEND_CONTRACTS = {
     "miniapps/deckcraft-ui/build-runtime.mjs": "6af2fd64c6a5500387e2e668943dad5caffeaed6f9b12a9edc4978de4015f36f",
     "miniapps/deckcraft-ui/build-resource-manifest.mjs": "b42a717513b924557cc5bdba395424763469b2813eede6fa1790fd18c3a30b27",
     "crates/zoen-agentd/src/citizen/codex.rs": "4d5e32fb4677abf8e2429b7a8867c50ca7e9998dc2d073dc8e0d6e4f9def41df",
-    "crates/zoen-relay/src/lib.rs": "0a85a11509ff1968e85b09abefab3b979c5e19ba797624f2fb7a42ab1deb0981",
-    "Cargo.toml": "6abf6b794f912e0e95fcb66d5ea6f89a176b04a1b2b8714d1c21f40f091827bb",
-    ".github/workflows/ci.yml": "5c99ada947a1bd6499e7b86e0ddffc98caac6c7ef5473d8b422d947e4eb5209b",
+    "crates/zoen-relay/src/lib.rs": "f68b83d7d4240a1b5212627aff5707ab64a5756c1d1375779ecd83adf7bd6dd5",
+    "Cargo.toml": "b8200fbe5cb264916a77af1a5cccb2637d24309ea2b4b3a4524528c211a5dda3",
+    ".github/workflows/ci.yml": "7c6a5a25e5c319ee36d98138cf54c85bb1eca75877597b43632b38a13366e419",
     ".github/workflows/expo.yml": "ef1e1404e180c34f62bd0b9f82aaa7f660860e9fcad1e43a7f96d74240c4ecf7",
     # Android installer and its invoked fixtures are real workflow inputs.
     "scripts/install-android-sdk.py": "aff7527c4fb23ca29e9d9eeace380837e9a23eb20b88d5499e33fd4e30cf1144",
     "scripts/test-install-android-sdk.py": "986a43af641273820ad8d50ca62a1b52e0f64bf70066b836c04dd08da82244cd",
-    "apps/zoen/package.json": "d93f7c3a6961d2627b6aa24415fcc3b92cefa88a43daf764249a78b7a3bdcab7",
+    "apps/zoen/package.json": "5d51aaab738730e6cea2e5d5528290d1f6eca6101d347583f0f59e74008a30f5",
     "apps/zoen/src/miniapps/vendor/deckcraft-bootstrap.manifest.json": "2f0eccb5f4de55d63dd56a287685921b4acdb4224308d9d7747edd2eec2464cd",
     "apps/zoen/src/miniapps/vendor/runtime-support.manifest.json": "3bd56bac1f1f496a2213c69c2242c6233891cd377fc298db94260b14fcd91318",
     "apps/zoen/src/miniapps/vendor/excalidraw-ui.manifest.json": "10c784d78a451c963826cbbcc8335de1485d89b0e90a84b36c14777b21f6c0b4",
     "miniapps/deckcraft-ui/build-bootstrap.mjs": "ecf7c02ddf67fac3f3bbb566b00940c2c5becc5a8f94060bf410a0f9b74fb57e",
     "miniapps/gridcraft-ui/build-bootstrap.mjs": "0ed258e83d06338d27393778c552a1094e694ca1a0f585c28dec11728ecc64ec",
     "tools/miniapp-build/managed-binary-bootstrap.mjs": "2fab14e03bb95ccd5707c648527d598c882f1835b22a78c620a348aaaba2629e",
-    "scripts/build-expo-core.mjs": "99fa3265955b75ce881f413b4ef93832c1010aa948fd3e7b225e95ae1b9aef96",
+    "scripts/build-expo-core.mjs": "ca33acd09f683c9dc4999ca8216449779da729861f0149686df23422414a855f",
     "scripts/build-expo-web-core.mjs": "9504ad593e1413ed9b8e36c4b79032df1336e7ad740adbac18b5e9361fa8dfd2",
 }
 RESOURCE_MANIFESTS = (
