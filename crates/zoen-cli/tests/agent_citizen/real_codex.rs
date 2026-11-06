@@ -87,22 +87,14 @@ async fn real_codex_thread_reply_recovers_capture_without_another_inference() ->
     }
     let w = World::new("real_codex_thread").await;
     w.init("bruno", "Bruno");
-    let marker = types::new_id("real_ack")?;
+    // Natural text: a random high-entropy marker correctly trips the secret guard.
+    let marker = "Recebido. Vamos continuar a conversa.".to_owned();
     let definition: zoen_agentd::Definition = serde_json::from_value(serde_json::json!({
         "version":1,"kind":"user","persona":format!("Local synthetic QA. Answer each inbound request with exactly {marker}. Do not call tools or propose actions."),
         "rules":[],"state":{}
     }))?;
     let path = definition_file(&w, "definition.json", &definition);
     let agent = citizen(&w, "bruno", "agent", "Real model", "real_model", &path);
-    w.zoen(
-        "bruno",
-        &[
-            "agent-define",
-            "@real_model",
-            "--definition",
-            path.to_str().ok_or("definition path")?,
-        ],
-    );
     w.zoen("bruno", &["dm", "@real_model"]);
     let client = owner(&w)?;
     client.start_sync(None)?;
