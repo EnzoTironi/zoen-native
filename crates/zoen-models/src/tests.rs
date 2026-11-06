@@ -193,6 +193,7 @@ fn config(base_url: &str) -> GatewayConfig {
 }
 fn request() -> ModelRequest {
     ModelRequest {
+        tool_mode: Default::default(),
         context: AttemptContext {
             attempt_id: "attempt-1".into(),
             run_id: "run-1".into(),
@@ -228,6 +229,7 @@ fn reply() -> Value {
 }
 
 mod dispatch;
+mod final_answer;
 mod images;
 mod privacy;
 mod provider;

@@ -76,6 +76,7 @@ async fn cheap_chat_quota_cannot_admit_images_or_a_chat_label_with_image_output(
     assert_eq!(authority.admit(&image).await, Err(AdmissionError::Denied));
     let mut chat = gateway
         .preflight(&ModelRequest {
+            tool_mode: Default::default(),
             context,
             operation: Operation::ChatCompletion,
             messages: vec![InputMessage::User {

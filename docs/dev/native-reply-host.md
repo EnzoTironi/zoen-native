@@ -270,6 +270,22 @@ before returning data, including after index computation. Pausing, revoking,
 replacing the source grant or changing the definition refuses the old read.
 Reads perform no model call, financial reservation or publication.
 
-This Rust/backend port prepares the same custody owner for conversation tools.
-Offering tools to the model, retaining multi-round continuations and completing
-owner-reviewed effects remain pending in #175. Apps/editors remain paused.
+Configured canonical agents now offer this search directly to the model. A
+complete captured proposal can perform one native search (up to 20 results),
+then feed its exact page back as a ToolResult for a final answer. The second
+model request has its own immutable run/attempt, current budget and one-shot
+admission. The continuation uses the existing native activation/checkpoint,
+evidence and financial journals; retrying either run does not repeat paid calls.
+Historical text-only records retain their original format and semantics.
+
+The result is bound to the parent capture, original message, principal and source
+frontier. Actor/definition/grant changes, cancellation of the parent, or source
+changes after freezing refuse the follow-up. A changed source currently requires
+a new user request; the host never silently reuses a stale search result. Parent
+wakes delegate to the retained child; authenticated completion also releases the
+parent image pin through the existing receipt-based collection rules.
+
+This bounded turn supports one search and then an answer, without arbitrary
+writes, pagination rounds or owner-reviewed effects. General tools/approvals,
+consumer onboarding and product acceptance remain open in #175. Apps/editors
+remain paused.

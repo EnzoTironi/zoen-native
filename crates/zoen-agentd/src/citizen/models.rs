@@ -138,6 +138,7 @@ impl Brain for ModelBrain {
         let attempt =
             types::new_id("att").map_err(|error| BrainError::NotDispatched(error.to_string()))?;
         let request = ModelRequest {
+            tool_mode: Default::default(),
             context: AttemptContext {
                 attempt_id: attempt.clone(),
                 run_id: attempt,

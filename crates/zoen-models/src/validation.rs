@@ -217,10 +217,15 @@ pub(crate) fn prepare(
             ))
         })
         .collect::<Result<Vec<_>, GatewayError>>()?;
-    Ok(CompletionRequest::new(last)
+    let prepared = CompletionRequest::new(last)
         .messages(messages)
         .tools(tools)
-        .max_tokens(request.max_output_tokens))
+        .max_tokens(request.max_output_tokens);
+    Ok(if request.tool_mode == crate::ToolMode::FinalAnswer {
+        prepared.tool_choice(rig_core::message::ToolChoice::None)
+    } else {
+        prepared
+    })
 }
 
 fn prepare_message(message: &InputMessage) -> Result<Message, GatewayError> {

@@ -17,6 +17,21 @@ impl Execution {
         self.root.pack(&("native-trigger/1", agent, space, trigger))
     }
 
+    pub(super) fn reply_slot(&self, record: &RunRecord) -> Vec<u8> {
+        match &record.continuation {
+            Some(step) => self.reply_followup(&step.parent),
+            None => self.reply_trigger(
+                &record.request.context.agent,
+                record.intent.space(),
+                record.intent.trigger(),
+            ),
+        }
+    }
+
+    pub(super) fn reply_followup(&self, parent: &str) -> Vec<u8> {
+        self.root.pack(&("native-search-followup/1", parent))
+    }
+
     fn reply_wake(&self, wake: &str) -> Vec<u8> {
         self.root.pack(&("native-wake/1", wake))
     }
@@ -161,16 +176,7 @@ impl Execution {
             return Err(RuntimeError::InvalidBinding);
         }
         record.validate(&record.locator.run, self.reply_source()?.cell())?;
-        let trigger = trx
-            .get(
-                &self.reply_trigger(
-                    &record.request.context.agent,
-                    record.intent.space(),
-                    record.intent.trigger(),
-                ),
-                false,
-            )
-            .await?;
+        let trigger = trx.get(&self.reply_slot(record), false).await?;
         if trigger.as_deref() != Some(record.locator.run.as_bytes()) {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -195,6 +201,15 @@ impl Execution {
         expected: &str,
     ) -> Result<(), RuntimeError> {
         self.reply_original_scope(trx, record, expected).await?;
+        if let Some(step) = &record.continuation {
+            if trx
+                .get(&self.run(&step.parent, "cancel"), false)
+                .await?
+                .is_some()
+            {
+                return Err(RuntimeError::Denied);
+            }
+        }
         if trx
             .get(&self.run(&record.locator.run, "cancel"), false)
             .await?
@@ -235,6 +250,7 @@ impl Execution {
         custody: &Custody,
     ) -> Result<(), RuntimeError> {
         self.reply_record_scope(trx, record, expected).await?;
+        Box::pin(self.verify_search_continuation_in(trx, record, custody)).await?;
         record.verify_input(facts)?;
         let principal = &record.original.context.principal;
         let version = trx.get_read_version().await?;

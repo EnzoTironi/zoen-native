@@ -70,8 +70,24 @@ pub struct ToolDefinition {
     pub parameters: Value,
 }
 
+/// Keep authenticated tool history while forbidding another model proposal.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolMode {
+    #[default]
+    Auto,
+    FinalAnswer,
+}
+impl ToolMode {
+    fn is_auto(&self) -> bool {
+        *self == Self::Auto
+    }
+}
+
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelRequest {
+    #[serde(default, skip_serializing_if = "ToolMode::is_auto")]
+    pub tool_mode: ToolMode,
     pub context: AttemptContext,
     pub operation: Operation,
     pub messages: Vec<InputMessage>,
