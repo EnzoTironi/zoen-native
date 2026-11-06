@@ -107,7 +107,14 @@ impl ImageRuntimeHost {
             .ok_or(
                 OwnerPolicyContextStage::Credential.failed(RuntimeError::CoreAuthorityUnavailable),
             )?
-            .owner_policy_options(&self.runtime, &self.config, &self.definition, signed)
+            .owner_policy_options(
+                &self.runtime,
+                &self.config.agent,
+                &self.config.device,
+                &crate::pricing::BoundPrice::Image(self.config.price.clone()),
+                Some(&self.definition),
+                signed,
+            )
             .await
     }
 

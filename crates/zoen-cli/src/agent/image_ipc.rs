@@ -6,6 +6,19 @@ pub(super) use failure::Failure;
 use std::{path::PathBuf, process::Stdio};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+fn reply_paths() -> Result<Option<(PathBuf, PathBuf)>, String> {
+    match (env("ZOEN_REPLY_HOST_BIN"), env("ZOEN_REPLY_HOST_CONFIG")) {
+        (None, None) => Ok(None),
+        (Some(binary), Some(config)) => {
+            let (binary, config) = (PathBuf::from(binary), PathBuf::from(config));
+            if !binary.is_absolute() || !config.is_absolute() {
+                return Err("reply host paths must be absolute".into());
+            }
+            Ok(Some((binary, config)))
+        }
+        _ => Err("incomplete reply host configuration".into()),
+    }
+}
 fn paths() -> Result<(PathBuf, PathBuf), String> {
     let binary = PathBuf::from(env("ZOEN_IMAGE_HOST_BIN").ok_or("image host unavailable")?);
     let config =
@@ -16,7 +29,7 @@ fn paths() -> Result<(PathBuf, PathBuf), String> {
     Ok((binary, config))
 }
 pub(super) fn configured() -> bool {
-    paths().is_ok()
+    matches!(reply_paths(), Ok(Some(_))) || paths().is_ok()
 }
 pub(super) fn command_bytes(command: &Command) -> Result<Vec<u8>, String> {
     command.validate()?;
@@ -36,12 +49,26 @@ pub(super) async fn execute_observed<T: serde::de::DeserializeOwned>(
     command: Command,
 ) -> Result<T, Failure> {
     let bytes = command_bytes(&command).map_err(|_| Failure::Input)?;
-    let (binary, config) = paths().map_err(|_| Failure::Configuration)?;
+    let account_control = match &command {
+        Command::PolicyImport { .. } => true,
+        Command::PolicyContext { signed, .. } => signed.inquiry.purpose.is_some(),
+        _ => false,
+    };
+    let reply = if account_control {
+        reply_paths().map_err(|_| Failure::Configuration)?
+    } else {
+        None
+    };
+    let is_reply = reply.is_some();
+    let (binary, config) = match reply {
+        Some(paths) => paths,
+        None => paths().map_err(|_| Failure::Configuration)?,
+    };
     let mut process = tokio::process::Command::new(binary);
     process
         .arg("--config")
         .arg(config)
-        .arg("execute")
+        .arg(if is_reply { "owner-control" } else { "execute" })
         .env_clear()
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

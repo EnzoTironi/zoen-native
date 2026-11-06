@@ -6,6 +6,10 @@ mod config;
 mod control;
 mod file_vault;
 mod gate_transport;
+#[path = "reply_host/owner_control.rs"]
+mod owner_control;
+mod owner_policy_protocol;
+mod owner_policy_response;
 #[path = "reply_host/protocol.rs"]
 mod protocol;
 #[path = "image_host/provision.rs"]
@@ -26,7 +30,7 @@ fn main() {
     let result = if args.len() == 3 && args[0] == "--config" {
         run(Path::new(&args[1]), &args[2])
     } else {
-        Err("usage: zoen-reply-host --config <private-config.json> provision|initialize|execute|serve|watch|control".into())
+        Err("usage: zoen-reply-host --config <private-config.json> provision|initialize|execute|serve|watch|control|owner-control".into())
     };
     if let Err(error) = result {
         eprintln!("reply host: {error}");
@@ -36,11 +40,14 @@ fn main() {
 fn run(path: &Path, action: &str) -> Result<(), String> {
     if !matches!(
         action,
-        "provision" | "initialize" | "execute" | "serve" | "watch" | "control"
+        "provision" | "initialize" | "execute" | "serve" | "watch" | "control" | "owner-control"
     ) {
         return Err("unsupported reply host action".into());
     }
     let config = config::Config::read(path)?;
+    if action == "owner-control" {
+        return emit(&owner_control::execute(&config, &read_command()?)?);
+    }
     if action == "control" {
         return emit(&control::request(&config.home, &read_command()?)?);
     }

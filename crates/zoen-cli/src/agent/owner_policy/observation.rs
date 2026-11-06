@@ -1,6 +1,6 @@
 //! Closed, deduplicated operational evidence. No locators, payload, Debug or Display.
 use super::super::image_ipc;
-use crate::image_protocol::PolicyUnavailable;
+use crate::owner_policy_protocol::PolicyUnavailable;
 use client_core::CoreError;
 use serde::Serialize;
 

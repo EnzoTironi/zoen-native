@@ -44,9 +44,8 @@ export function validContext(value: OwnerPolicyContext) {
     value.month <= 12 &&
     units(value.reservation_units) &&
     time(value.observed_at_ms) &&
-    digest(value.image_profile_digest) &&
-    ['1024x1024', '1536x1024', '1024x1536'].includes(value.image_size) &&
-    ['low', 'medium', 'high'].includes(value.image_quality) &&
+    digest(value.profile_digest) &&
+    ['image', 'conversation'].includes(value.service_kind) &&
     Number.isInteger(value.existing_profile_count) &&
     value.existing_profile_count >= 0 &&
     value.existing_profile_count <= 16 &&
@@ -79,7 +78,7 @@ export function validReview(value: OwnerPolicyReview, scope: PolicyScope, state:
     value.version === 1 &&
     Array.isArray(value.allowed_profiles) &&
     value.allowed_profiles.length === 1 &&
-    value.allowed_profiles[0] === context.image_profile_digest;
+    value.allowed_profiles[0] === context.profile_digest;
   return (
     !!context &&
     value.scope.expected_identity_id === scope.identity &&
@@ -107,7 +106,7 @@ export function validReview(value: OwnerPolicyReview, scope: PolicyScope, state:
     value.allowed_profiles.length <= 16 &&
     value.allowed_profiles.every(digest) &&
     (value.enabled
-      ? value.allowed_profiles.includes(context.image_profile_digest)
+      ? value.allowed_profiles.includes(context.profile_digest)
       : firstDisable || value.allowed_profiles.length === context.existing_profile_count) &&
     value.allowed_profiles.every(
       (profile, index) => index === 0 || value.allowed_profiles[index - 1] < profile,

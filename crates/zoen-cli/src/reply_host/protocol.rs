@@ -19,6 +19,9 @@ pub(super) enum Command {
     Pending {
         after: Option<String>,
     },
+    PolicyContext {
+        signed: Box<types::owner_policy_context::SignedOwnerPolicyInquiry>,
+    },
     PolicyImport {
         signed: Box<types::owner_budget::SignedOwnerPolicy>,
     },
@@ -37,6 +40,22 @@ pub(super) async fn execute(host: &ReplyRuntimeHost, command: Command) -> Result
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(json!({"status":"pending","runs":page.runs,"next":page.next}))
+        }
+        Command::PolicyContext { signed } => {
+            use crate::owner_policy_protocol::PolicyProgress;
+            let digest = event_log::owner_policy_inquiry::digest(&signed.inquiry)
+                .ok_or("invalid inquiry")?;
+            let reply = match host.owner_policy_options(&signed).await {
+                Ok(options) => PolicyProgress::Options {
+                    options: Box::new(options),
+                },
+                Err(error) => crate::owner_policy_response::context_failure(
+                    error,
+                    digest,
+                    host.configured_device(),
+                ),
+            };
+            serde_json::to_value(reply).map_err(|_| "invalid policy response".into())
         }
         Command::PolicyImport { signed } => {
             let installation = host

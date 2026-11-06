@@ -99,9 +99,8 @@ export function context(patch: Partial<Context> = {}): Context {
     current_expires_at_ms: null,
     current_policy_digest: null,
     existing_profile_count: 0,
-    image_profile_digest: profile,
-    image_size: '1024x1024',
-    image_quality: 'low',
+    profile_digest: profile,
+    service_kind: 'image',
     observed_at_ms: '100000',
     ...patch,
   };

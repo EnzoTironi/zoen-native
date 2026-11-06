@@ -21,7 +21,7 @@ pub(super) async fn run(w: &World) {
     let options = owner_policy_controls::guard(w, &w.runtime)
         .await
         .unwrap()
-        .owner_policy_options(&signed, &price)
+        .owner_policy_options(&signed, &crate::pricing::BoundPrice::Image(price.clone()))
         .await
         .unwrap();
     assert_eq!(options.image_profile_digest, price.digest().unwrap());
@@ -54,7 +54,7 @@ pub(super) async fn run(w: &World) {
         owner_policy_controls::guard(w, &w.runtime)
             .await
             .unwrap()
-            .owner_policy_options(&stale, &price)
+            .owner_policy_options(&stale, &crate::pricing::BoundPrice::Image(price.clone()))
             .await
             .unwrap_err(),
         RuntimeError::Denied

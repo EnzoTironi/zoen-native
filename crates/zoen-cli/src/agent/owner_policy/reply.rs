@@ -1,6 +1,7 @@
 //! Classification cannot manufacture an authenticated report from an unavailable reply.
 use super::{image_ipc, observation::Counts};
-use crate::image_protocol::{PolicyOperation, PolicyProgress, PolicyUnavailable};
+use crate::image_protocol::{PolicyOperation, PolicyProgress};
+use crate::owner_policy_protocol::PolicyUnavailable;
 pub(super) enum Fault {
     Ipc(image_ipc::Failure),
     Runtime(

@@ -4,6 +4,8 @@ mod agent_host_lock;
 mod config;
 mod file_vault;
 mod image_protocol;
+mod owner_policy_protocol;
+mod owner_policy_response;
 #[path = "image_host/policy.rs"]
 mod policy;
 #[path = "image_host/provision.rs"]

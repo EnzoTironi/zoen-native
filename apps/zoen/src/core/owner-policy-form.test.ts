@@ -48,10 +48,7 @@ test('account without a policy can review explicit disable without typing unused
   assert.deepEqual(f.f.prepares[0]!.slice(3), ['0', '0', false]);
   assert.equal(f.session.getSnapshot().phase, 'review');
   assert.equal(f.session.getSnapshot().review?.version, 1);
-  assert.equal(
-    f.session.getSnapshot().review?.allowed_profiles[0],
-    f.f.context.image_profile_digest,
-  );
+  assert.equal(f.session.getSnapshot().review?.allowed_profiles[0], f.f.context.profile_digest);
   assert.equal(f.f.submissions.length, 0);
   button(f.render(), 'ownerPolicy.disable').props.onPress();
   await settle();
@@ -141,7 +138,7 @@ for (const [label, patch] of [
   ['missing limit', { current_limit_units: undefined }],
   ['malformed digest', { current_policy_digest: 'not-a-digest' }],
   ['inconsistent null policy', { current_limit_units: '0' }],
-  ['malformed image profile', { image_profile_digest: 'not-a-profile' }],
+  ['malformed image profile', { profile_digest: 'not-a-profile' }],
 ] as const)
   test(`incomplete account context never becomes a zero disable: ${label}`, async () => {
     const f = await account(context(patch));
@@ -210,5 +207,19 @@ test('first-disable lost acknowledgement resumes its exact receipt and fresh dis
   assert.equal(has(reopened(), 'ownerPolicy.disabled'), true);
   assert.equal(has(reopened(), 'ownerPolicy.installed'), false);
   assert.equal(f.f.prepares.length, 1);
+  assert.equal(f.f.submissions.length, 1);
+});
+
+test('conversation budget reviews use the authenticated service without image-only fields', async () => {
+  const f = await account(context({ service_kind: 'conversation' }));
+  fill(f.render, '2', '0.000100');
+  button(f.render(), 'ownerPolicy.review').props.onPress();
+  await settle();
+  assert.equal(f.session.getSnapshot().phase, 'review');
+  assert.equal(has(f.render(), 'ownerPolicy.conversationService'), true);
+  assert.equal(has(f.render(), 'ownerPolicy.imageService'), false);
+  assert.equal(f.f.submissions.length, 0);
+  button(f.render(), 'ownerPolicy.confirm').props.onPress();
+  await settle();
   assert.equal(f.f.submissions.length, 1);
 });

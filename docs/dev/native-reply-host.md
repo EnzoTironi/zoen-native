@@ -155,7 +155,31 @@ retain the original installation and can be reconciled through exact replay.
 
 The live-policy integration test disables spending, resumes the citizen, proves
 that no new paid attempt starts, then installs the next signed version and gets
-one answer in the same running process. This is an internal operator/control
-transport; the full iOS budget discovery and confirmation bridge remains open.
+one answer in the same running process. The normal `agent-controls` companion can route account-budget controls through
+this host with `ZOEN_REPLY_HOST_BIN` and `ZOEN_REPLY_HOST_CONFIG`. It launches
+`owner-control`, with a cleared environment, into the same private live channel.
+The companion retains its own certified primary device and transports only typed
+owner inquiries/submissions and authenticated reports; it does not run models.
+Exact image-request inquiries continue through their existing image host.
+
+Account-budget quotes use the configured conversation price profile and finite
+maximum reservation, with an explicit service tag. No image dimensions or image
+provider configuration is fabricated. Historical image options omit the new tag
+to preserve their original authenticated bytes. The iOS Core budget projection
+uses generic profile/service fields; revision, limits and explicit confirmation
+still belong to the existing Core. UI/device acceptance remains separate.
 Windows live controls require a platform transport; its ordinary worker remains
 available without this Unix channel.
+
+
+Budget controls are authenticated opaque metadata for native conversation
+extraction. Exact inquiry/submission signatures and report-original bindings
+are verified, as are the historical writers and actual MLS opening/own echo.
+The existing signed clear-envelope profile-key exchange is likewise non-content;
+its key boxes remain encrypted per recipient. These controls preserve an existing
+readable baseline but cannot open one, change grants,
+enter model text or authorize an execution. Unknown and cross-scope controls
+remain unsupported. Discovery cursor version 2 performs one bounded re-scan of
+verified history to recover messages skipped by the former classification;
+invalid legacy cursors still fail closed. The existing immutable trigger/run
+index and paid-result receipts continue to prevent a second inference/charge.

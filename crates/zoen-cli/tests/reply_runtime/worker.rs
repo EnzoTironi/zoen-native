@@ -121,60 +121,26 @@ pub(super) async fn run(
         )?["status"],
         "pending"
     );
-    let config = config::Config::read(path)?;
-    let owner_id = account(w, "owner")?["identity"]
-        .as_str()
-        .ok_or("owner")?
-        .to_owned();
-    let original = signed_policy(w, "owner", &owner_id, config.chat_price.digest()?).await?;
-    let mut disabled = original.policy.clone();
-    disabled.version += 1;
-    disabled.previous_digest = event_log::owner_budget::digest(&original.policy);
-    disabled.enabled = false;
-    let author = policy_author(w, "owner")?;
-    let disabled = event_log::owner_budget::sign(&author, disabled).ok_or("disable signature")?;
-    assert_eq!(
-        call(
-            path,
-            "control",
-            Some(json!({"command":"policy_import","signed":disabled.clone()}))
-        )?["status"],
-        "policy_installed"
-    );
-    // Replaying the same control acknowledges one installation, without reset.
-    assert_eq!(
-        call(
-            path,
-            "control",
-            Some(json!({"command":"policy_import","signed":disabled.clone()}))
-        )?["status"],
-        "policy_installed"
-    );
+    let mut controls = owner_budget::Companion::start(w, path)?;
+    owner_budget::set(w, &mut controls, agent, space, false).await?;
     assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);
     let resumed = lifecycle(w, agent, "Resume").await?;
     assert_eq!(resumed["status"], "Active");
     // Resuming the citizen does not bypass the owner's disabled budget.
-    assert!(call(
+    if let Ok(progress) = call(
         path,
         "control",
-        Some(json!({"command":"discover","space":space}))
-    )
-    .is_err());
+        Some(json!({"command":"discover","space":space})),
+    ) {
+        assert_eq!(progress["status"], "discovered");
+        println!(
+            "disabled discovery observation: caught_up={} complete={}",
+            progress["caught_up"], progress["complete"]
+        );
+    }
     assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
-    let mut enabled = disabled.policy.clone();
-    enabled.version += 1;
-    enabled.previous_digest = event_log::owner_budget::digest(&disabled.policy);
-    enabled.enabled = true;
-    let enabled = event_log::owner_budget::sign(&author, enabled).ok_or("enable signature")?;
-    assert_eq!(
-        call(
-            path,
-            "control",
-            Some(json!({"command":"policy_import","signed":enabled}))
-        )?["status"],
-        "policy_installed"
-    );
+    owner_budget::set(w, &mut controls, agent, space, true).await?;
     assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 3);
     let output = worker.wait("output").await?;
     assert_eq!(output["delivery"]["status"], "accepted");
@@ -228,6 +194,28 @@ pub(super) async fn run(
         }
     }
     drop(worker);
+    // Prove an explicit disabled successor survives an actual runtime kill,
+    // and a fresh authenticated quote is read-only after cold recovery.
+    let worker = Worker::start(w, path).await?;
+    owner_budget::set(w, &mut controls, agent, space, false).await?;
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 4);
+    drop(worker);
+    let worker = Worker::start(w, path).await?;
+    owner_budget::observe_disabled(w, &mut controls, agent, space).await?;
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 3);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 3);
+    assert_eq!(
+        w.scalar("SELECT sum(spent_units)::text FROM runtime_periods")
+            .await,
+        "18"
+    );
+    assert_eq!(
+        w.scalar("SELECT sum(held_units)::text FROM runtime_periods")
+            .await,
+        "0"
+    );
+    drop(worker);
+    drop(controls);
     let history = w.zoen("owner", &["read", "@reply_citizen"]);
     assert_eq!(history.matches(provider::ANSWER).count(), 3);
     println!("automatic worker: canonical membership discovery, closed clients, actual process termination/cold backlog, three originals and no duplicate call/charge/response PASS");

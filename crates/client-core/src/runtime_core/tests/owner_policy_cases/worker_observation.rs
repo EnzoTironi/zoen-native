@@ -12,6 +12,7 @@ fn options_fixture(
     let now = crate::engine::now_ms();
     let date = chrono::DateTime::from_timestamp_millis(now).ok_or("fixture UTC clock")?;
     Ok(types::owner_policy_context::OwnerPolicyOptions {
+        service: None,
         inquiry_digest: query.digest().into(),
         currency: "USD".into(),
         scale: 6,

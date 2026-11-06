@@ -30,6 +30,46 @@ fn source(body: &EventBody) -> Option<&str> {
 }
 
 impl Engine {
+    /// Authenticated non-content controls may preserve a conversation baseline;
+    /// they never open one, enter model text or grant execution/financial power.
+    /// Historical controls are checked at their own event time, not expired away.
+    pub(crate) fn owner_policy_conversation_control(
+        &self,
+        event: &Event,
+        owner: &str,
+        agent: &str,
+    ) -> bool {
+        if event.seq == 0 || event.sealed_wire.is_none() || verify_author(event).is_err() {
+            return false;
+        }
+        match &event.body {
+            EventBody::OwnerPolicyOptionsRequested {
+                agent: target,
+                signed,
+            } => {
+                event.author == owner
+                    && target == agent
+                    && signed.inquiry.owner == owner
+                    && signed.inquiry.agent == agent
+                    && signed.inquiry.space == event.space
+                    && event.device.as_deref() == Some(signed.device.as_str())
+                    && event.cert.as_deref() == Some(signed.cert.as_str())
+                    && event_log::owner_policy_inquiry::verify(signed)
+            }
+            EventBody::OwnerPolicySubmitted { .. } => control::original(event, agent)
+                .is_some_and(|(signed, _)| signed.policy.owner == owner),
+            EventBody::OwnerPolicyReported { .. }
+            | EventBody::OwnerPolicyOptionsReported { .. }
+            | EventBody::OwnerPolicyOptionsRefused { .. } => {
+                event.author == agent
+                    && self
+                        .policy_report_original(event)
+                        .is_ok_and(|source| source.author == owner)
+            }
+            _ => false,
+        }
+    }
+
     fn policy_report_original(&self, event: &Event) -> R<&Event> {
         let source = source(&event.body).ok_or_else(denied)?;
         let original = self

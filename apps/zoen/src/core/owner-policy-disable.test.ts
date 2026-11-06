@@ -30,9 +30,8 @@ test('disabled review preserves sixteen approved services without approving a ne
     current_expires_at_ms: '200000',
     current_policy_digest: 'b'.repeat(64),
     existing_profile_count: 16,
-    image_profile_digest: 'f'.repeat(64),
-    image_size: '1024x1024',
-    image_quality: 'low',
+    profile_digest: 'f'.repeat(64),
+    service_kind: 'image',
     observed_at_ms: '100000',
   };
   const state = {
@@ -70,7 +69,7 @@ test('disabled review preserves sixteen approved services without approving a ne
   );
   assert.equal(
     validReview(
-      { ...review, allowed_profiles: [...profiles, context.image_profile_digest] },
+      { ...review, allowed_profiles: [...profiles, context.profile_digest] },
       scope,
       state,
     ),
