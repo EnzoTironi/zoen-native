@@ -1,6 +1,6 @@
 //! Actual original discovery survives SQL/FDB cuts without minting new runs.
 use super::*;
-pub(super) async fn run() -> TestResult {
+pub(in crate::tests) async fn run() -> TestResult {
     for fault in [0, 90, 91, 92] {
         let mut f = Fixture::with_shared_runtime().await?;
         f.grant("shared-discovery-owner").await?;

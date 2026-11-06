@@ -6,6 +6,9 @@ type Phase = fn() -> Journey;
 
 pub(super) async fn run() -> TestResult {
     let phases: Vec<Phase> = match std::env::var("ZOEN_RUNTIME_TEST_COHORT") {
+        Ok(cohort) if cohort == "native-agent-context" => {
+            vec![|| Box::pin(retained::shared_native::context::run())]
+        }
         Ok(cohort) if cohort == "shared-execution" => {
             vec![|| Box::pin(retained::shared_native::execution::run())]
         }
@@ -14,6 +17,8 @@ pub(super) async fn run() -> TestResult {
                 || Box::pin(retained::shared_native::activation::run()),
                 || Box::pin(retained::shared_native::receipts::run()),
                 || Box::pin(retained::shared_native::execution::run()),
+                || Box::pin(retained::shared_native::context::run()),
+                || Box::pin(retained::shared_native::discovery::run()),
             ]
         }
         Ok(cohort) if cohort == "shared-capture" => {
@@ -52,6 +57,7 @@ pub(super) async fn run() -> TestResult {
             || Box::pin(retained::shared_native::activation::run()),
             || Box::pin(retained::shared_native::receipts::run()),
             || Box::pin(retained::shared_native::execution::run()),
+            || Box::pin(retained::shared_native::context::run()),
             || Box::pin(retained::output::managed::run()),
             || Box::pin(retained::output::delivery::run()),
             || Box::pin(owner_policy_controls::run()),

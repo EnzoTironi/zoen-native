@@ -52,12 +52,7 @@ impl NativeCustody {
                 facts.expires_at_ms(),
                 facts.expires_at_ms().and_then(|expiry| expiry.checked_sub(observed))
             );
-            let [InputMessage::User { text }] = record.request.messages.as_slice() else {
-                return Err(RuntimeError::InvalidBinding);
-            };
-            if text != facts.text() {
-                return Err(RuntimeError::InvalidBinding);
-            }
+            record.verify_input(&facts)?;
             let dispatch = runtime
                 .gateway
                 .preflight(&record.request)

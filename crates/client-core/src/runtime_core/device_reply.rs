@@ -3,7 +3,8 @@
 use super::{
     direct_writers, evaluate_permission, ActionClass, Capability, DeviceCore, Event, EventBody,
     GrantScope, GrantState, NativeError, NativeFrontier, Policy, ReplyDiscovery, ReplyFacts,
-    ReplyIntent, Result, Seen, SpaceLog, State, Zeroizing, MAX_BATCH, MAX_CONTEXT_BYTES, PROFILE,
+    ReplyIntent, ReplyMessage, Result, Seen, SpaceLog, State, Zeroizing, MAX_BATCH,
+    MAX_CONTEXT_BYTES, PROFILE,
 };
 
 impl DeviceCore {
@@ -120,6 +121,7 @@ impl DeviceCore {
         let mut original = None;
         let mut readable = false;
         let mut text = Zeroizing::new(String::new());
+        let mut native_context = Vec::new();
         let mut plans = crate::pages::PlanReplay::new(&self.engine.store, &self.engine.logs);
         for (end, event) in log.events().iter().enumerate() {
             let opened = crate::mls_opening::opened_leaf(&self.engine.store, event);
@@ -151,6 +153,7 @@ impl DeviceCore {
                         .as_ref()
                         .is_some_and(|from| from.identity == self.owner);
                     text.clear();
+                    native_context.clear();
                 }
             }
             let supported = match &event.body {
@@ -194,6 +197,14 @@ impl DeviceCore {
                     {
                         return Err(NativeError::Bounds);
                     }
+                    if native_context.len() == 17 {
+                        native_context.remove(0);
+                    }
+                    native_context.push(ReplyMessage {
+                        author: event.author.clone(),
+                        source: event.hash.clone(),
+                        text: Zeroizing::new(message.clone()),
+                    });
                     text.push_str(message);
                     text.push('\n');
                 }
@@ -257,6 +268,7 @@ impl DeviceCore {
             .ok_or(NativeError::NotReady)?;
         let last = log.events().last().ok_or(NativeError::History)?;
         Ok(ReplyFacts {
+            context: native_context,
             intent,
             frontier: NativeFrontier {
                 seq: last.seq,

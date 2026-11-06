@@ -20,7 +20,10 @@ async fn unpaid() -> Result<(Fixture, Relay, crate::ReplyRun), Box<dyn std::erro
     f.world.runtime = Arc::new(runtime.qualify_shared_reply_output(target).await?);
     Ok((f, relay, run))
 }
-async fn qualify(mut f: Fixture, relay: &Relay) -> Result<Fixture, Box<dyn std::error::Error>> {
+pub(super) async fn qualify(
+    mut f: Fixture,
+    relay: &Relay,
+) -> Result<Fixture, Box<dyn std::error::Error>> {
     let target = relay.target(&f, relay.address);
     assert!(f.world.runtime.production_output_scope().is_err());
     let runtime = Arc::try_unwrap(f.world.runtime).map_err(|_| "exclusive runtime")?;

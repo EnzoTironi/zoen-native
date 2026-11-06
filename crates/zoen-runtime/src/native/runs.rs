@@ -1,7 +1,10 @@
 //! Stable discovery records. These are inert retained originals; the loader
 //! derives current native facts separately and does not create a spend permit.
 mod cancellation;
+mod context;
 mod loading;
+mod records;
+use records::{PreparedRun, RunRecord, Wake};
 pub(crate) mod output;
 mod storage;
 pub(crate) use cancellation::{cancel_commitments, cancel_intent, recover_shared_cancel};
@@ -22,81 +25,6 @@ use crate::{
 const PROFILE: &str = "owner-direct-text-reply/1";
 const MAX_RUNS: usize = 16;
 const MAX_BATCH_BYTES: usize = 2 * 1024 * 1024;
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RunRecord {
-    format: u8,
-    source: String,
-    locator: ReplyRun,
-    request: ModelRequest,
-    binding: Binding,
-    intent: ReplyIntent,
-    original: Root,
-    head: Seen,
-    epoch: u64,
-}
-
-impl RunRecord {
-    fn validate(&self, run: &str, source: &str) -> Result<(), RuntimeError> {
-        let context = &self.request.context;
-        let principal = &self.original.context.principal;
-        self.original
-            .context
-            .validate(principal, self.original.context.key_version)?;
-        if self.format != 1
-            || self.source != source
-            || self.locator.run != run
-            || ![&self.locator.run, &self.locator.attempt, &self.locator.wake]
-                .into_iter()
-                .all(|value| id(value))
-            || context != &self.binding.context
-            || context.run_id != run
-            || context.attempt_id != self.locator.attempt
-            || context.owner != principal.owner
-            || context.agent != principal.agent
-            || context.device != principal.device
-            || hash(self.binding.device_cert.as_bytes()) != principal.certificate_digest
-            || context.space != self.intent.space()
-            || context.agent != self.intent.agent()
-            || !digest(self.intent.trigger())
-            || !digest(&self.head.hash)
-            || !digest(&self.original.manifest_digest)
-            || !digest(&self.binding.request_digest)
-            || context.authority_version != self.head.hash
-            || self.binding.frontier != self.head.hash
-            || context.definition_version != PROFILE
-            || context.price_version != self.binding.price.chat()?.version
-            || self.request.operation != Operation::ChatCompletion
-            || self.request.max_output_tokens != self.binding.requested_output_tokens
-            || !self.request.tools.is_empty()
-            || !matches!(
-                self.request.messages.as_slice(),
-                [InputMessage::User { .. }]
-            )
-            || self.binding.hold_units
-                != self.binding.price.reserve(self.request.max_output_tokens)?
-        {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        Ok(())
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct Wake {
-    locator: ReplyRun,
-    record_digest: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PreparedRun {
-    trigger: String,
-    locator: ReplyRun,
-    record: Vec<u8>,
-    binding: Vec<u8>,
-    wake: Vec<u8>,
-}
 
 #[derive(Serialize, Deserialize)]
 pub(in crate::native) struct Batch {
@@ -358,6 +286,10 @@ impl NativeCustody {
                     .finance
                     .reply_budget(&principal.owner, &runtime.price)
                     .await?;
+                let mut definition_tx = runtime.finance.continuity_transaction().await?;
+                let agent_context =
+                    context::AgentContext::read_in(&mut definition_tx, principal).await?;
+                definition_tx.commit().await?;
                 for facts in discovery.replies {
                     if facts.frontier().seq() != effects.head.seq
                         || facts.frontier().hash() != effects.head.hash
@@ -378,13 +310,20 @@ impl NativeCustody {
                             device: principal.device.clone(),
                             space: space.into(),
                             authority_version: effects.head.hash.clone(),
-                            definition_version: PROFILE.into(),
+                            definition_version: agent_context
+                                .as_ref()
+                                .map(context::AgentContext::version)
+                                .transpose()?
+                                .unwrap_or_else(|| PROFILE.into()),
                             price_version: runtime.price.version.clone(),
                         },
                         operation: Operation::ChatCompletion,
-                        messages: vec![InputMessage::User {
-                            text: facts.text().into(),
-                        }],
+                        messages: match &agent_context {
+                            Some(context) => context.messages(&facts, principal)?,
+                            None => vec![InputMessage::User {
+                                text: facts.text().into(),
+                            }],
+                        },
                         tools: Vec::new(),
                         max_output_tokens: runtime.price.max_output_tokens,
                     };
@@ -404,7 +343,8 @@ impl NativeCustody {
                         price: runtime.price.clone().into(),
                     };
                     let record = RunRecord {
-                        format: 1,
+                        format: if agent_context.is_some() { 2 } else { 1 },
+                        agent_context: agent_context.clone(),
                         source: effects.source.clone(),
                         locator: locator.clone(),
                         request,
