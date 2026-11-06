@@ -32,7 +32,7 @@ impl RuntimeAuthority {
 
     /// Bootstrap one unused paired runtime. The operator must retain this
     /// private local directory independently of SQL/FDB/vault backups.
-    /// This configures policy continuity; paid dispatch/output stay closed.
+    /// This alone grants no paid dispatch/output; each needs its qualified route.
     pub async fn initialize_runtime_continuity(
         mut self,
         directory: &Path,

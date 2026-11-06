@@ -5,6 +5,8 @@ mod prepare;
 mod recovery;
 pub(in crate::native) use recovery::{recover_activation_reference, ActivationPublication};
 mod receipt;
+mod retained;
+pub(crate) use retained::retained_model_state;
 mod shared;
 pub(in crate::native) use shared::receipt as shared_receipt;
 mod storage;

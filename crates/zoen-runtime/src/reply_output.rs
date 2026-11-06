@@ -13,8 +13,26 @@ impl RuntimeAuthority {
             .ok_or(RuntimeError::CoreAuthorityUnavailable)
     }
 
-    /// Closed until actual custody, continuity and old-writer barrier evidence
-    /// can authorize this boundary. A locator never creates that evidence.
+    pub(crate) fn reply_continuity(&self) -> Result<(), RuntimeError> {
+        if self.runtime_continuity.is_some() {
+            self.production_output_scope()?.check_context(self)
+        } else {
+            self.continuity()
+        }
+    }
+
+    pub(crate) async fn check_reply_continuity(&self) -> Result<(), RuntimeError> {
+        self.reply_continuity()?;
+        if self.runtime_continuity.is_some() {
+            self.check_shared_runtime().await?;
+            self.production_output_scope()?
+                .check_in(&self.execution, &self.execution.transaction().await?)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Activate the retained original under current per-run/native authority.
     pub async fn prepare_reply_output(
         &self,
         run: &str,
@@ -45,8 +63,8 @@ impl RuntimeAuthority {
             .await
     }
 
-    /// Send only an already activated original. Retained metadata cannot open
-    /// the same closed production authority boundary as preparation/receipt.
+    /// Send only an already activated original under current native authority.
+    /// Retained metadata alone cannot authorize another transport effect.
     pub async fn deliver_reply_output(
         &self,
         run: &str,

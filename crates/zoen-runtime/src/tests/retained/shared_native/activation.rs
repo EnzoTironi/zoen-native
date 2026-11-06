@@ -208,10 +208,13 @@ pub(in crate::tests) async fn run() -> TestResult {
             f.world.runtime.continuity(),
             Err(RuntimeError::RestoreUnreconciled)
         );
-        assert!(matches!(
-            Box::pin(f.world.runtime.run_model(&run.run)).await,
-            Err(RuntimeError::RestoreUnreconciled)
-        ));
+        assert_eq!(
+            Box::pin(f.world.runtime.run_model(&run.run))
+                .await?
+                .financial,
+            crate::FinancialState::Settled { units: 6 }
+        );
+        assert_eq!(f.world.http.sends.load(Ordering::SeqCst), 1);
         relay.stop().await;
         f.finish().await;
         println!("shared reply activation fault={fault}: actual native original, one committed generation/checkpoint, cold exact ciphertext/wire hash, no new subject/claim/provider/charge, clean missing metadata/history refusal PASS");

@@ -1,5 +1,5 @@
-//! Images-only authority derived from a live anchor, certified device and real
-//! mandatory relay binding. Neither callers nor fixtures construct this type.
+//! Operation-scoped authority uses the qualified image or reply route.
+//! Neither retained locators nor caller flags construct live permission.
 use super::*;
 
 impl RuntimeAuthority {
@@ -41,13 +41,15 @@ impl RuntimeAuthority {
     pub(crate) fn step_continuity(&self, step: &crate::VerifiedStep) -> Result<(), RuntimeError> {
         match step {
             crate::VerifiedStep::NativeImage(_) => self.image_continuity(),
+            crate::VerifiedStep::Native(_) => self.reply_continuity(),
             #[cfg(test)]
             crate::VerifiedStep::Fixture(step)
                 if step.request.operation == zoen_models::Operation::ImageGeneration =>
             {
                 self.image_continuity()
             }
-            _ => self.continuity(),
+            #[cfg(test)]
+            crate::VerifiedStep::Fixture(_) => self.continuity(),
         }
     }
 }

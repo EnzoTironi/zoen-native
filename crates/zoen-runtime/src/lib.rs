@@ -24,6 +24,7 @@ pub use native::{
 };
 mod pricing;
 mod relay_binding;
+mod reply_execution;
 mod reply_output;
 pub use pricing::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote, PriceProfile};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
@@ -294,25 +295,6 @@ impl RuntimeAuthority {
         }
         self.finance.inspect(attempt).await
     }
-    pub async fn run_model(&self, run: &str) -> Result<RetainedModel, RuntimeError> {
-        if !id(run) {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        #[cfg(test)]
-        println!("native paid stage: verified_step_start");
-        let step = self.verified_step(run).await?;
-        #[cfg(test)]
-        println!("native paid stage: verified_step_complete");
-        let result = self.complete_verified(&step).await;
-        #[cfg(test)]
-        println!(
-            "native paid stage: complete_verified result={:?}",
-            result.as_ref().map(|_| "ok")
-        );
-        // Lease loss must not erase an already incurred and retained bill.
-        let _ = step.release(&self.execution).await;
-        result.map(|(_, financial)| RetainedModel { financial })
-    }
     pub async fn inspect_native_device(
         &self,
         agent: &str,
@@ -391,7 +373,7 @@ impl RuntimeAuthority {
             .native
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
-        self.continuity()?;
+        self.check_reply_continuity().await?;
         Ok(VerifiedStep::Native(Box::new(
             native.verified_reply(self, run).await?,
         )))
@@ -485,7 +467,7 @@ impl RuntimeAuthority {
         &self,
         step: &VerifiedStep,
     ) -> Result<(ModelAttemptResult, FinancialState), RuntimeError> {
-        self.continuity()?;
+        self.step_continuity(step)?;
         let session = Session {
             runtime: self,
             step,

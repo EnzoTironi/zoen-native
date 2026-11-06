@@ -7,6 +7,7 @@ pub(in crate::tests) mod capture;
 mod claims;
 mod discovery;
 mod dispatch;
+pub(in crate::tests) mod execution;
 pub(in crate::tests) mod output_route;
 pub(in crate::tests) mod receipts;
 mod reservation;
