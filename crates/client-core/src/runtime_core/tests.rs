@@ -432,3 +432,5 @@ mod pending_reply_cases;
 fn native_image_upgrades_only_exact_previous_outbox_schema_without_changing_signed_queue() {
     outbox_fifo::native_image_upgrades_only_exact_previous_outbox_schema_without_changing_signed_queue().unwrap();
 }
+
+mod context_cases;

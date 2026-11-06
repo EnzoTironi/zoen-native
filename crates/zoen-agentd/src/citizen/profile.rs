@@ -2,31 +2,13 @@
 
 use event_log::{agent_owner, Author, Signer};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use types::{Identity, IdentityKind};
 use zeroize::Zeroizing;
 
 /// Default avatar style until content-addressed hand-drawn art lands.
 pub const AVATAR_STYLE: &str = "hand-drawn-animated";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentKind {
-    /// Prompt-first agent that creates other user agents from conversation.
-    Creator,
-    /// An ordinary user agent (booking bot, shop assistant, …).
-    User,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModelTier {
-    /// Cheap default (GLM-5.3-Flash class). Always the starting tier.
-    #[default]
-    Cheap,
-    Standard,
-    Premium,
-}
+pub use types::agent_behavior::{AgentKind, Definition, ModelTier};
 
 /// Hand-drawn animated face. Glyph + tint stand in until `asset` is filled.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,29 +28,6 @@ impl Avatar {
             glyph: glyph.into(),
             asset: None,
         }
-    }
-}
-
-/// Versioned behavior. Persona and rules are prompts; `state` is free JSON.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Definition {
-    pub version: u32,
-    pub kind: AgentKind,
-    pub persona: String,
-    pub rules: Vec<String>,
-    #[serde(default)]
-    pub state: Value,
-    #[serde(default)]
-    pub model_tier: ModelTier,
-}
-
-impl Definition {
-    pub fn encode(&self) -> Result<Vec<u8>, serde_json::Error> {
-        serde_json::to_vec(self)
-    }
-
-    pub fn decode(bytes: &[u8]) -> Result<Self, serde_json::Error> {
-        serde_json::from_slice(bytes)
     }
 }
 
@@ -220,14 +179,4 @@ pub enum ClaimError {
     Owner,
     #[error("agent profile needs a name and handle")]
     Profile,
-}
-
-impl AgentKind {
-    /// The relay's spelling (`agent_citizens.kind`).
-    pub fn relay_kind(self) -> &'static str {
-        match self {
-            AgentKind::Creator => "Creator",
-            AgentKind::User => "User",
-        }
-    }
 }

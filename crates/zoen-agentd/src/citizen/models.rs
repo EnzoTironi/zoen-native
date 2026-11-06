@@ -194,18 +194,7 @@ impl Brain for ModelBrain {
 }
 
 pub fn system_prompt(def: &Definition) -> String {
-    let mut s = def.persona.clone();
-    if !def.rules.is_empty() {
-        s.push_str("\n\nRules:\n");
-        for r in &def.rules {
-            s.push_str("- ");
-            s.push_str(r);
-            s.push('\n');
-        }
-    }
-    s.push_str("\nYour state (JSON, you own it):\n");
-    s.push_str(&def.state.to_string());
-    s
+    def.system_prompt()
 }
 
 #[cfg(test)]

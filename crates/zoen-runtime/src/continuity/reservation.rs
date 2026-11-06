@@ -234,6 +234,9 @@ impl RuntimeAuthority {
             return Err(RuntimeError::RestoreUnreconciled);
         }
         scope(self, step, binding, &tx).await?;
+        if let VerifiedStep::Native(native) = step {
+            native.current_definition_in(&mut sql).await?;
+        }
         let mut live_admission = None;
         let mut witness_nonce = None;
         let (inserted, mut outcome) = match phase {

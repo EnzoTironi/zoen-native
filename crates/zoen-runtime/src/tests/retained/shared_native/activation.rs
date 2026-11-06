@@ -5,10 +5,23 @@ use crate::tests::retained::image_tasks::delivery::relay::Relay;
 use native::testing::output as proof;
 pub(super) async fn ready() -> Result<(Fixture, Relay, crate::ReplyRun), Box<dyn std::error::Error>>
 {
-    let mut f = Fixture::with_shared_runtime().await?;
-    f.grant("shared-activation-owner").await?;
-    f.message(ORIGINAL).await?;
-    let run = f.sync(false).await?.runs.into_iter().next().ok_or("run")?;
+    let mut f = Fixture::with_shared_runtime()
+        .await
+        .map_err(|error| format!("activation fixture: {error}"))?;
+    f.grant("shared-activation-owner")
+        .await
+        .map_err(|error| format!("activation grant: {error}"))?;
+    f.message(ORIGINAL)
+        .await
+        .map_err(|error| format!("activation message: {error}"))?;
+    let run = f
+        .sync(false)
+        .await
+        .map_err(|error| format!("activation discovery: {error}"))?
+        .runs
+        .into_iter()
+        .next()
+        .ok_or("run")?;
     native::testing::reserve_retained_reply(&f.world.runtime, &run.run).await?;
     let claim = native::testing::claim_retained_reply(&f.world.runtime, &run.run)
         .await?

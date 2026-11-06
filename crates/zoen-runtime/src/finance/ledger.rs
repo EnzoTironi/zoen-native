@@ -282,6 +282,9 @@ impl Finance {
         b: &Binding,
         step: &crate::VerifiedStep,
     ) -> Result<i64, RuntimeError> {
+        if let crate::VerifiedStep::Native(native) = step {
+            native.current_definition_in(tx).await?;
+        }
         Self::directory(tx, b).await?;
         let balance = Self::lock_period(tx, b, true).await?;
         Self::not_closed(tx, b).await?;

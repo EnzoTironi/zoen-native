@@ -85,6 +85,9 @@ impl ManagedRuntime {
                     return Err(RuntimeError::RestoreUnreconciled);
                 }
                 scope(runtime, &step, &intent.binding, &tx).await?;
+                if let VerifiedStep::Native(native) = &step {
+                    native.current_definition_in(&mut sql).await?;
+                }
                 let inserted = match &intent.claim_nonce {
                     Some(nonce) => {
                         Finance::restore_claim_in(&mut sql, &intent.binding, nonce).await?

@@ -29,6 +29,9 @@ use crate::sync::{AccountMeta, Ingest, EVENT_FORMAT_META, EVENT_FORMAT_VALUE};
 const PROFILE: &str = "owner-direct-text-reply/1";
 const MAX_BATCH: usize = 64;
 const MAX_EVENT_BYTES: usize = 65536;
+mod context;
+pub use context::ReplyMessage;
+
 const MAX_CONTEXT_BYTES: usize = 32768;
 
 #[derive(Debug, thiserror::Error)]
@@ -198,6 +201,7 @@ impl NativeFrontier {
 /// Derived native facts, with no public constructor or Deserialize. These do
 /// not mint a runtime dispatch capability or prove a current relay frontier.
 pub struct ReplyFacts {
+    context: Vec<ReplyMessage>,
     intent: ReplyIntent,
     frontier: NativeFrontier,
     expires_at_ms: Option<i64>,
@@ -241,6 +245,12 @@ impl ReplyFacts {
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// Ordered native provenance; role is derived from the certified author.
+    #[must_use]
+    pub fn messages(&self) -> &[ReplyMessage] {
+        &self.context
     }
 }
 

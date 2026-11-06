@@ -235,6 +235,7 @@ impl Execution {
         custody: &Custody,
     ) -> Result<(), RuntimeError> {
         self.reply_record_scope(trx, record, expected).await?;
+        record.verify_input(facts)?;
         let principal = &record.original.context.principal;
         let version = trx.get_read_version().await?;
         Self::lease(

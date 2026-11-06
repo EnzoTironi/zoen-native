@@ -13,6 +13,7 @@
 //! Tudo que acontece num Espaço vira um [`Event`] assinado no log daquele Espaço
 //! (ver `event-log`). Nenhuma tela mostra o log; ele é a fonte da verdade.
 
+pub mod agent_behavior;
 pub mod call_transport;
 pub mod calls;
 pub mod forwarding;
