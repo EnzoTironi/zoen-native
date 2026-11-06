@@ -95,7 +95,7 @@ mod routing;
 mod runtime;
 mod source_fence;
 mod terminal;
-pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
+pub use runtime::{RuntimeHead, RuntimeMembershipError, RuntimeSource, RuntimeSourceBatch};
 
 pub struct FdbLog {
     cell: Arc<Cell>,

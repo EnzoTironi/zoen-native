@@ -32,6 +32,7 @@ pub(super) struct Config {
     #[serde(default)]
     pub chat_endpoint_policy: ChatEndpoint,
     pub gate: GateConfig,
+    pub worker_bus_key: Option<String>,
 }
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "snake_case")]

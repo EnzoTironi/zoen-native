@@ -14,6 +14,8 @@ mod provision;
 mod runtime_host_config;
 #[path = "reply_runtime/support.rs"]
 mod support;
+#[path = "reply_runtime/worker.rs"]
+mod worker;
 use client_core::{Client, SecretVault, TrustLevelDto};
 use common::World;
 use serde_json::{json, Value};
@@ -26,7 +28,15 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestResult {
-    let mut w = World::new("reply_dedicated_device").await;
+    let mut w = World::new_with(
+        "reply_dedicated_device",
+        None,
+        &[(
+            "ZOEN_WORKER_WAKE_NATS_URL",
+            &std::env::var("ZOEN_NATS_URL")?,
+        )],
+    )
+    .await;
     w.init("owner", "Owner");
     let agent = w.zoen("citizen", &["agent-keys"]).trim().to_owned();
     let owner = account(&w, "owner")?["identity"]
@@ -64,6 +74,7 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
         .to_owned();
     let provider = provider::Provider::start().await?;
     let mut value = configuration(&w, &agent, &provider.endpoint);
+    value["worker_bus_key"] = "bus".into();
     let config: config::Config = serde_json::from_value(value.clone())?;
     std::fs::create_dir(&config.home)?;
     let vault = Arc::new(file_vault::FileVault {
@@ -86,9 +97,11 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     ] {
         assert!(vault.save(name.into(), bytes));
     }
+    assert!(vault.save("bus".into(), std::env::var("ZOEN_NATS_URL")?.into_bytes()));
     let path = w.dir.join("reply-host.json");
     write_json(&path, &value)?;
     let checked = config::Config::read(&path)?;
+    assert_eq!(checked.worker_bus_key.as_deref(), Some("bus"));
     let _ = checked.runtime(&vault)?;
     let _ = checked.host()?;
     let _ = checked.gate(&vault)?;
@@ -212,6 +225,7 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     assert_eq!(history.matches(provider::ANSWER).count(), 1);
     assert!(!config.home.join("zoen.sqlite").exists());
     assert!(!vault.dir.join("zoen.identity.v1").exists());
+    worker::run(&w, &path, &agent, &space, &provider).await?;
     println!("reply executable: actual sponsor/device pairing, canonical persona on dedicated leaf, owner-signed budget, closed clients, paid HTTP, owner MLS and repeated cold processes without duplicate inference/charge/output PASS");
     Ok(())
 }

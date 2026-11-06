@@ -83,3 +83,35 @@ The executable journey `journey_reply_runtime_device` uses real sponsor pairing,
 separate MLS leaves, owner-signed policy, controlled HTTP, actual relay and owner
 MLS recovery across cold processes. The runtime's `native-agent-context` cohort
 covers policy races, retained results, threads and canonical definitions.
+
+## Automatic worker
+
+Run `zoen-reply-host --config /absolute/private.json watch` under the process
+supervisor. It pages the existing relay membership index and the native wake
+queue for its configured agent/device; each actual discovery/advance retains
+all native and financial checks. No per-conversation operator list is needed.
+Startup and periodic reconciliation recover missed notifications and cold work.
+
+For prompt wakeups, set the relay operator environment
+`ZOEN_WORKER_WAKE_NATS_URL` and put that URL in the host vault under the optional
+`worker_bus_key` configuration locator. The wake-only publisher carries empty
+payloads on pseudonymous `workers` subjects, has a bounded queue and drops hints
+on pressure. It preserves the relay's existing topology and the single-host
+restriction for managed devices. It does not use distributed relay fan-out or
+answer presence pings. The worker ignores all broker payloads.
+
+Each cycle pages up to 32 memberships and 16 wake records. Notifications coalesce
+at a maximum four cycles per second; a two-second reconciliation timer remains
+active when the broker disconnects or drops hints. Local monotonic cooldowns
+avoid repeatedly evaluating held/recovery/denied work (60 seconds) and retry
+transient work after two seconds. These are scheduling observations, never a
+financial release or terminal-consumption record. Cooldowns are bounded to 4,096
+entries; exceeding the declared profile fails closed. Losing process-local
+cursors/cooldowns still recovers originals from the native source/wake queue.
+
+SIGINT/SIGTERM stop at a cycle boundary, finishing the current cycle before
+closing custody. A kill still relies on existing durable admission, capture and
+receipt recovery. Restore/binding failures stop the worker; unavailable storage
+is retried. Live paid-provider validation, normal Brain/tool approval integration,
+iOS product wiring, managed multi-host custody and production scale acceptance
+remain open in #175/#170.
