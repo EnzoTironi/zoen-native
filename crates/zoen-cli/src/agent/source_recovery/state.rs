@@ -1,7 +1,7 @@
 use super::*;
 impl SourceTools<'_, '_> {
     pub(super) fn record(&self) -> Result<Option<ResumeAttempts>, String> {
-        self.tools.check_selection()?;
+        self.check_source()?;
         let mut state = JournalState::load(self.tools.journal)?;
         let prior = state
             .continuations
@@ -19,7 +19,7 @@ impl SourceTools<'_, '_> {
         &self,
         apply: impl FnOnce(&mut ResumeAttempts) -> Result<(), String>,
     ) -> Result<(), String> {
-        self.tools.check_selection()?;
+        self.check_source()?;
         let key = key(self.cx, &self.tools.space, &self.source.id);
         let binding = binding(self.source)?;
         JournalState::update(self.tools.journal, |state| {

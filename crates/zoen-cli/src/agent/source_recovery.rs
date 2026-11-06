@@ -12,6 +12,25 @@ pub(super) struct SourceTools<'a, 'b> {
     first: AtomicBool,
 }
 impl SourceTools<'_, '_> {
+    /// Gates and inference can await remote IO. Their original source must still
+    /// be current before a model round, returned plan or tool crosses its port.
+    fn check_source(&self) -> Result<(), String> {
+        self.tools.check_selection()?;
+        let current = self
+            .tools
+            .e
+            .agent_conversation_context(&self.tools.space, &self.source.id, self.tools.serving)
+            .map_err(|error| error.to_string())?;
+        if current.source().author() != self.source.author.id
+            || current.source().text()
+                != text_of(self.source).ok_or("The source is not a message")?
+            || Some(current.source().revision()) != self.source.text_revision.as_deref()
+        {
+            return Err("The source changed while the agent was working".into());
+        }
+        Ok(())
+    }
+
     pub(super) fn new<'a, 'b>(
         tools: &'a SpaceTools<'b>,
         cx: &'a Ctx,
@@ -79,7 +98,7 @@ impl SourceTools<'_, '_> {
     }
 
     fn recover_step(&self, call: &ToolCall) -> Result<String, String> {
-        self.tools.check_selection()?;
+        self.check_source()?;
         let current = self.tools.fresh();
         if call.name == history_search::TOOL {
             // This is a read, not an App effect receipt. Repeat its authorized
@@ -99,7 +118,7 @@ impl SourceTools<'_, '_> {
             .e
             .agent_recover_tool(item, tool, &args.to_string(), self.tools.serving)
             .map_err(|error| error.to_string())?;
-        self.tools.check_selection()?;
+        self.check_source()?;
         if result.status != AppCallStatus::Done {
             return Err("The accepted effect is no longer authorized".into());
         }
@@ -135,6 +154,7 @@ impl ToolHost for SourceTools<'_, '_> {
         self.tools.gate_public_references(call)
     }
     fn call(&self, call: &ToolCall) -> Result<String, String> {
+        self.check_source()?;
         self.tools.call(call)
     }
     fn begin_model(&self) -> Result<(), String> {
