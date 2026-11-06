@@ -131,13 +131,19 @@ pub(super) struct AdmittedBinding {
 impl DispatchAuthority for Session<'_> {
     async fn admit(&self, request: &DispatchRequest) -> Result<Admission, AdmissionError> {
         let result: Result<Admission, RuntimeError> = async {
-            if self.image.is_some() {
-                self.runtime.image_continuity()?;
-            } else {
-                self.runtime.continuity()?;
-            }
+            self.runtime.step_continuity(self.step)?;
             if self.image.is_some() {
                 let capability = self.runtime.image_output_scope()?;
+                capability.check_device(&request.context.agent, &request.context.device)?;
+                capability
+                    .check_in(
+                        &self.runtime.execution,
+                        &self.runtime.execution.transaction().await?,
+                    )
+                    .await?;
+            }
+            if self.image.is_none() && self.runtime.runtime_continuity.is_some() {
+                let capability = self.runtime.production_output_scope()?;
                 capability.check_device(&request.context.agent, &request.context.device)?;
                 capability
                     .check_in(
@@ -261,11 +267,7 @@ impl DispatchAuthority for Session<'_> {
                 self.runtime.native_cut_entered.notify_one();
                 self.runtime.native_cut_resume.notified().await;
             }
-            if self.image.is_some() {
-                self.runtime.image_continuity()?;
-            } else {
-                self.runtime.continuity()?;
-            }
+            self.runtime.step_continuity(self.step)?;
             *self
                 .admitted
                 .lock()

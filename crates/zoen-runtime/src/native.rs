@@ -21,7 +21,9 @@ mod storage;
 pub(crate) use runs::output::shared_receipt::{recover_shared_receipt, shared_receipt_intent};
 #[cfg(test)]
 pub(crate) use runs::output::FreshOutputNamespace;
-pub(crate) use runs::output::{associate_capture, publication_commitment, ReplyOutputScope};
+pub(crate) use runs::output::{
+    associate_capture, publication_commitment, retained_model_state, ReplyOutputScope,
+};
 pub(crate) use runs::{
     cancel_commitments, cancel_intent, recover_shared_cancel, CleanupAcquisition, CleanupStep,
     ReplyStep,
