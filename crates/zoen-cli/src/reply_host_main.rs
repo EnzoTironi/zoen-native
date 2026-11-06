@@ -2,6 +2,8 @@
 mod agent_host_lock;
 #[path = "reply_host/config.rs"]
 mod config;
+#[path = "reply_host/control.rs"]
+mod control;
 mod file_vault;
 mod gate_transport;
 #[path = "reply_host/protocol.rs"]
@@ -24,7 +26,7 @@ fn main() {
     let result = if args.len() == 3 && args[0] == "--config" {
         run(Path::new(&args[1]), &args[2])
     } else {
-        Err("usage: zoen-reply-host --config <private-config.json> provision|initialize|execute|serve|watch".into())
+        Err("usage: zoen-reply-host --config <private-config.json> provision|initialize|execute|serve|watch|control".into())
     };
     if let Err(error) = result {
         eprintln!("reply host: {error}");
@@ -34,11 +36,14 @@ fn main() {
 fn run(path: &Path, action: &str) -> Result<(), String> {
     if !matches!(
         action,
-        "provision" | "initialize" | "execute" | "serve" | "watch"
+        "provision" | "initialize" | "execute" | "serve" | "watch" | "control"
     ) {
         return Err("unsupported reply host action".into());
     }
     let config = config::Config::read(path)?;
+    if action == "control" {
+        return emit(&control::request(&config.home, &read_command()?)?);
+    }
     let _lock = agent_host_lock::HostLock::acquire(&config.home)?;
     let vault = Arc::new(file_vault::FileVault {
         dir: config.home.join("vault"),
@@ -130,11 +135,7 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
             return worker::run(&host, &config, &vault).await;
         }
         if action == "execute" {
-            let mut bytes = Vec::new();
-            std::io::stdin()
-                .take(protocol::MAX_INPUT as u64 + 1)
-                .read_to_end(&mut bytes)
-                .map_err(|_| "command unavailable")?;
+            let bytes = read_command()?;
             return dispatch(&host, &bytes).await;
         }
         // The supervising worker controls waking; serving does not poll or
@@ -156,6 +157,17 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
     drop(executor);
     drop(network);
     result
+}
+fn read_command() -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    std::io::stdin()
+        .take(protocol::MAX_INPUT as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "command unavailable")?;
+    if bytes.len() > protocol::MAX_INPUT {
+        return Err("reply command too large".into());
+    }
+    Ok(bytes)
 }
 async fn dispatch(host: &ReplyRuntimeHost, bytes: &[u8]) -> Result<(), String> {
     if bytes.len() > protocol::MAX_INPUT {

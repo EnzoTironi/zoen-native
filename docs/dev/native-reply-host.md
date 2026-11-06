@@ -126,3 +126,36 @@ receipt recovery. Restore/binding failures stop the worker; unavailable storage
 is retried. Live paid-provider validation, normal Brain/tool approval integration,
 iOS product wiring, managed multi-host custody and production scale acceptance
 remain open in #175/#170.
+
+
+## Controls while the worker runs
+
+On a Unix host, use `zoen-reply-host --config /private/config.json control`
+with the same bounded JSON command on stdin. This connects to the running
+`watch` process; it does not open custody, boot another FDB network or acquire
+its home lock. `execute` remains the cold single-command mode and refuses a
+concurrent owner. No broker payload becomes a control command.
+
+The host home must be a real private directory (`chmod 700`). The socket is
+mode 600 in a mode-700 ephemeral directory under `/tmp`, derived from the
+canonical home and its filesystem identity. Routing is independent of subprocess
+environment variables. This keeps macOS socket paths short
+without moving any custody, database, vault or continuity state. A stopped
+process's socket can be reclaimed under the home lock; symlinks, ordinary files,
+foreign directories and active listeners are refused. Cleanup only unlinks the
+same socket inode created by this process.
+
+Requests are limited to 16 KiB, with a two-second input deadline, and responses
+to 64 KiB with a two-second write deadline. Clients wait up to 150 seconds for
+the existing bounded operation. One request is handled between scheduler cycles;
+there is no second executor or concurrent native-device owner. An acknowledged
+owner-policy installation reschedules deferred work, whose source, current
+budget, lifecycle and publication authority are all checked again. Lost replies
+retain the original installation and can be reconciled through exact replay.
+
+The live-policy integration test disables spending, resumes the citizen, proves
+that no new paid attempt starts, then installs the next signed version and gets
+one answer in the same running process. This is an internal operator/control
+transport; the full iOS budget discovery and confirmation bridge remains open.
+Windows live controls require a platform transport; its ordinary worker remains
+available without this Unix channel.
