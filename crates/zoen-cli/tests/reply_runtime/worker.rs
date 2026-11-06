@@ -222,7 +222,7 @@ pub(super) async fn run(
     Ok(())
 }
 
-async fn lifecycle(
+pub(super) async fn lifecycle(
     w: &World,
     agent: &str,
     action: &str,

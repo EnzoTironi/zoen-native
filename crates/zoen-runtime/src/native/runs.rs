@@ -6,6 +6,7 @@ mod conversation;
 mod loading;
 mod pending;
 mod records;
+mod search;
 use records::{PreparedRun, RunRecord, Wake};
 pub(crate) mod output;
 mod storage;

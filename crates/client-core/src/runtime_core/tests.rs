@@ -416,6 +416,7 @@ use super::{publication, reference};
 // Complete cases keep their original annotated entrypoints above.
 mod authenticated_echo_cases;
 mod fork_recovery_cases;
+mod history_search;
 mod image_discovery_cases;
 mod receipt_prefix_cases;
 mod receipt_recovery_cases;

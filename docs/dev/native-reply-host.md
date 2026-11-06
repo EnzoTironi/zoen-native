@@ -88,6 +88,7 @@ owns waking and retries; serving does not poll or repeatedly evaluate held work.
 {"command":"policy_import","signed":{"policy":"...","device":"...","cert":"...","signature":"..."}}
 {"command":"discover","space":"<conversation>"}
 {"command":"pending","after":null}
+{"command":"search_history","run":"<original run>","arguments":{"query":"earlier decision","limit":10}}
 {"command":"advance","run":"<original run>"}
 ```
 
@@ -247,3 +248,28 @@ integration proves live enrollment and recovery; it is not scale qualification o
 a public multi-tenant control plane. Identity enrollment, current certificates,
 source fencing, SQL/FDB continuity, financial reservation and owner grants remain
 independent requirements for actual effects.
+
+## Conversation history tool port
+
+`search_history` returns `{"status":"history","page":...}` using the existing
+Core `MessageSearchPage`: exact original message references, source conversation,
+canonical authors, excerpts and an optional opaque next cursor. Arguments use the
+existing closed conversation-search schema (`query`, `cursor`, `limit`, at most
+20 hits). The model/caller cannot select an actor, source, conversation or grant
+inside the arguments. The run must belong to this host's configured principal.
+
+Each read catches up the source, restores the existing certified device capsule,
+and reuses Client's native source authority and search index. Its temporary view
+is consumed; rebuilding the derived index changes no retained image, MLS leaf,
+outbox, financial policy or provider attempt. The opaque native cursor binds the
+original intent and actual source frontier, so cold pages remain coherent and a
+source change requires restarting the search. Errors never become empty results.
+
+Current actor/definition, source head, grant, device fences and expiry are checked
+before returning data, including after index computation. Pausing, revoking,
+replacing the source grant or changing the definition refuses the old read.
+Reads perform no model call, financial reservation or publication.
+
+This Rust/backend port prepares the same custody owner for conversation tools.
+Offering tools to the model, retaining multi-round continuations and completing
+owner-reviewed effects remain pending in #175. Apps/editors remain paused.

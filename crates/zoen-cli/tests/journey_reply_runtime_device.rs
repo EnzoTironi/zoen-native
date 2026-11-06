@@ -6,6 +6,8 @@ mod config;
 mod file_vault;
 #[path = "../src/gate_transport.rs"]
 mod gate_transport;
+#[path = "reply_runtime/history_search.rs"]
+mod history_search;
 #[path = "reply_runtime/managed_startup.rs"]
 mod managed_startup;
 #[path = "reply_runtime/owner_budget.rs"]
@@ -281,6 +283,7 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     assert_eq!(scan["caught_up"], true);
     let runs = scan["runs"].as_array().ok_or("runs")?;
     let run = runs.last().ok_or("run")?["run"].as_str().ok_or("run id")?;
+    history_search::run(&w, &path, run, &space, &agent, &provider).await?;
     let first = call(
         &path,
         "execute",
