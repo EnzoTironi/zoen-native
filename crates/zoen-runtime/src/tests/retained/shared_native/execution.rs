@@ -3,7 +3,8 @@ use super::*;
 use crate::tests::retained::image_tasks::delivery::relay::Relay;
 use native::testing::output as proof;
 
-async fn unpaid() -> Result<(Fixture, Relay, crate::ReplyRun), Box<dyn std::error::Error>> {
+pub(super) async fn unpaid() -> Result<(Fixture, Relay, crate::ReplyRun), Box<dyn std::error::Error>>
+{
     let mut f = Fixture::with_shared_runtime().await?;
     f.grant("shared-public-execution-owner").await?;
     f.message(ORIGINAL).await?;

@@ -1,5 +1,6 @@
 //! Original output associations. Retained metadata grants no live permission.
 mod association;
+mod completed;
 mod delivery;
 mod prepare;
 mod recovery;

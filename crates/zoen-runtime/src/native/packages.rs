@@ -71,7 +71,7 @@ impl NativeCustody {
             .commit()
             .await?;
         runtime.execution.collect_native_stage(&principal).await?;
-        runtime.execution.collect_native_retired(&principal).await?;
+        runtime.collect_reply_retired(&principal).await?;
         let fence = runtime.execution.acquire_native_device(&principal).await?;
         // Restored DeviceCore and its nested activation futures belong on the
         // heap: callers can compose concurrent publication without embedding

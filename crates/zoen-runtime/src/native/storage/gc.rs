@@ -46,9 +46,27 @@ impl Execution {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(in crate::native) async fn collect_native_retired(
         &self,
         principal: &Principal,
+    ) -> Result<(), RuntimeError> {
+        self.collect_native_retired_in(principal, None).await
+    }
+
+    pub(in crate::native) async fn collect_native_retired_with_receipts(
+        &self,
+        principal: &Principal,
+        custody: &crate::custody::Custody,
+    ) -> Result<(), RuntimeError> {
+        self.collect_native_retired_in(principal, Some(custody))
+            .await
+    }
+
+    async fn collect_native_retired_in(
+        &self,
+        principal: &Principal,
+        custody: Option<&crate::custody::Custody>,
     ) -> Result<(), RuntimeError> {
         let trx = self.transaction().await?;
         let version = trx.get_read_version().await?;
@@ -79,10 +97,9 @@ impl Execution {
             if capsule != retired.root.context.capsule {
                 return Err(RuntimeError::InvalidBinding);
             }
-            if retired.collect_after > version
-                || active
-                    .as_ref()
-                    .is_some_and(|r| r.context.capsule == capsule)
+            if active
+                .as_ref()
+                .is_some_and(|r| r.context.capsule == capsule)
                 || stage.as_ref().is_some_and(|s| {
                     s.root.context.capsule == capsule
                         || s.previous
@@ -92,11 +109,18 @@ impl Execution {
             {
                 continue;
             }
-            let mut references =
-                foundationdb::RangeOption::from(self.native_references(&retired.root).range());
-            references.limit = Some(1);
-            if !trx.get_range(&references, 1, false).await?.is_empty() {
-                continue;
+            match self
+                .retired_reply_retention(&trx, &retired.root, custody)
+                .await?
+            {
+                super::reply_retention::ReplyRetention::Pinned => continue,
+                super::reply_retention::ReplyRetention::Timed
+                    if retired.collect_after > version =>
+                {
+                    continue
+                }
+                super::reply_retention::ReplyRetention::Timed
+                | super::reply_retention::ReplyRetention::Completed => {}
             }
             let (begin, end) = self.native_generation(&retired.root).range();
             trx.clear_range(&begin, &end);

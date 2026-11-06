@@ -1,5 +1,5 @@
 mod discovery;
-use foundationdb::{RangeOption, Transaction};
+use foundationdb::Transaction;
 use zoen_relay::log::fdb::RuntimeSource;
 
 use super::*;
@@ -316,44 +316,5 @@ impl Execution {
         }
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         Ok(())
-    }
-
-    pub(crate) async fn pending_reply_runs(
-        &self,
-        limit: u16,
-        custody: &Custody,
-    ) -> Result<Vec<ReplyRun>, RuntimeError> {
-        if !(1..=64).contains(&limit) {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        self.reply_source()?;
-        let trx = self.transaction().await?;
-        let prefix = self.root.subspace(&("native-wake/1",));
-        let rows = super::super::storage::bounded_rows(
-            &trx,
-            RangeOption::from(prefix.range()),
-            limit as usize,
-            crate::custody::MAX_SEALED,
-        )
-        .await?;
-        let mut runs = Vec::new();
-        for (key, sealed) in rows {
-            let (id,): (String,) = prefix
-                .unpack(&key)
-                .map_err(|_| RuntimeError::InvalidBinding)?;
-            if !crate::id(&id) {
-                return Err(RuntimeError::InvalidBinding);
-            }
-            let wake: Wake = custody.open(&format!("native-wake/1/{id}"), None, &sealed)?;
-            if wake.locator.wake != id {
-                return Err(RuntimeError::InvalidBinding);
-            }
-            let (record, digest) = self.reply_in(&trx, &wake.locator.run, custody).await?;
-            if record.locator != wake.locator || digest != wake.record_digest {
-                return Err(RuntimeError::InvalidBinding);
-            }
-            runs.push(wake.locator);
-        }
-        Ok(runs)
     }
 }

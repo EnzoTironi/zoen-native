@@ -1,5 +1,6 @@
 mod gc;
 mod image_activation;
+mod reply_retention;
 use foundationdb::{options::StreamingMode, Transaction};
 use serde::{Deserialize, Serialize};
 
