@@ -367,11 +367,12 @@ fn shared_anchor_supports_the_same_scoped_agent_read_and_mutation_authority() ->
             message: types::new_id("m")?,
             text: text.into(),
             reply: types::ReplyRef {
+                source: None,
                 shared: None,
                 quote: None,
                 to: f.original_root.id.clone(),
                 thread: true,
-                artifact: Some(binding.clone()),
+                artifact: Some(Box::new(binding.clone())),
             },
         },
     )?;

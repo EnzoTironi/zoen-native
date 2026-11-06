@@ -39,9 +39,14 @@ pub struct AgentConversationContext {
     source: AgentConversationMessage,
     history: Vec<AgentConversationMessage>,
     scoped: bool,
+    thread_root: Option<String>,
 }
 
 impl AgentConversationContext {
+    pub fn thread_root(&self) -> Option<&str> {
+        self.thread_root.as_deref()
+    }
+
     pub fn source(&self) -> &AgentConversationMessage {
         &self.source
     }
@@ -74,6 +79,15 @@ fn message(entry: &Entry) -> Option<AgentConversationMessage> {
     })
 }
 
+fn thread_root(entry: &Entry) -> Option<&str> {
+    match &entry.body {
+        EntryBody::Message {
+            reply: Some(reply), ..
+        } if reply.thread => Some(&reply.to),
+        _ => None,
+    }
+}
+
 impl Client {
     /// Read the actual source and preceding text under one native lock. Scoped
     /// artifact turns deliberately receive no unrelated conversation history.
@@ -94,6 +108,7 @@ impl Client {
             .position(|entry| entry.id() == source)
             .ok_or_else(denied)?;
         let source = message(&entries[index]).ok_or_else(denied)?;
+        let thread_root = thread_root(&entries[index]).map(str::to_owned);
         let history = if scoped {
             Vec::new()
         } else {
@@ -101,6 +116,10 @@ impl Client {
                 .iter()
                 .rev()
                 .filter(|entry| e.visible_message(entry))
+                .filter(|entry| match thread_root.as_deref() {
+                    Some(root) => entry.id() == root || self::thread_root(entry) == Some(root),
+                    None => self::thread_root(entry).is_none(),
+                })
                 .filter_map(message)
                 .take(HISTORY)
                 .collect();
@@ -114,6 +133,7 @@ impl Client {
             source,
             history,
             scoped,
+            thread_root,
         })
     }
 
@@ -144,7 +164,7 @@ impl Client {
         if let Some(prior) = e.space_state(&context.space)?.entries.iter().find(|entry| {
             entry.author == context.actor
                 && matches!(&entry.body, EntryBody::Message { reply: Some(reply), .. }
-                    if reply.to == context.source.id())
+                    if reply.source_id() == context.source.id())
         }) {
             let id = prior.id().to_owned();
             if !matches!(&prior.body, EntryBody::Message { text: prior_text, .. } if prior_text == text)
@@ -157,7 +177,12 @@ impl Client {
                 .find(|entry| entry.id == id)
                 .ok_or_else(denied);
         }
-        e.send_reply(&context.space, text, context.source.id(), false)
+        e.send_reply(
+            &context.space,
+            text,
+            context.source.id(),
+            context.thread_root.is_some(),
+        )
     }
 }
 

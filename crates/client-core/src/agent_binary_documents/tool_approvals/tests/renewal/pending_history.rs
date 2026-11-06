@@ -161,7 +161,7 @@ pub(super) fn append_source(f: &Fixture, item: &str, target: Option<String>) -> 
         .ok_or("App discussion")?;
     let text = "Read the unchanged owned drawing";
     let mut reference = types::ReplyRef::thread(root.id);
-    reference.artifact = Some(types::ArtifactRequest {
+    reference.artifact = Some(Box::new(types::ArtifactRequest {
         item_id: item.into(),
         version: doc.version,
         sha256: doc.sha256,
@@ -170,7 +170,7 @@ pub(super) fn append_source(f: &Fixture, item: &str, target: Option<String>) -> 
         // Legacy and explicit sources must preserve their original signed shape.
         intent_sha256: target.as_ref().map(|_| "55".repeat(32)),
         agent_id: target,
-    });
+    }));
     Ok(e.append(
         &f.space,
         &f.owner,

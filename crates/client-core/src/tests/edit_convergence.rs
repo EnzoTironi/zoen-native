@@ -199,6 +199,7 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
                 INLINE,
                 "Obrigado, combinado.",
                 Some(ReplyRef {
+                    source: None,
                     shared: None,
                     quote: None,
                     artifact: None,
@@ -214,6 +215,7 @@ fn pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reope
                 CHILD,
                 "Levar lanche",
                 Some(ReplyRef {
+                    source: None,
                     shared: None,
                     quote: None,
                     artifact: None,

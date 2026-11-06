@@ -226,6 +226,7 @@ impl<S: Signer> Client<S> {
                     .resolve_post(&request.space_id, &reference)
                     .ok_or("That message is no longer available.")?;
                 Some(types::ReplyRef {
+                    source: None,
                     shared: None,
                     quote: None,
                     artifact: None,
@@ -374,6 +375,7 @@ impl<S: Signer> Client<S> {
                     .resolve_post(&request.space_id, &reference)
                     .ok_or("That message is no longer available.")?;
                 Some(types::ReplyRef {
+                    source: None,
                     shared: None,
                     quote: None,
                     artifact: None,

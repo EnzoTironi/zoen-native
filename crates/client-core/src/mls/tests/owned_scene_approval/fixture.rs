@@ -190,7 +190,7 @@ pub(super) fn fixture(legacy: bool) -> TestResult<Fixture> {
         .ok_or("anchor")?
         .id;
     let mut reply = types::ReplyRef::thread(anchor);
-    reply.artifact = Some(types::ArtifactRequest {
+    reply.artifact = Some(Box::new(types::ArtifactRequest {
         item_id: item.clone(),
         version: doc.version,
         sha256: doc.sha256,
@@ -198,7 +198,7 @@ pub(super) fn fixture(legacy: bool) -> TestResult<Fixture> {
         text_sha256: event_log::sha256_hex(TEXT.as_bytes()),
         agent_id: None,
         intent_sha256: None,
-    });
+    }));
     let source = owner
         .lock()
         .append(

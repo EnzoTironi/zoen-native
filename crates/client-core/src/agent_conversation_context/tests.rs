@@ -1,6 +1,8 @@
 use crate::agent_binary_documents::tests::{fixture, Fixture};
 use types::{Annotation, EventBody};
 
+mod threads;
+
 type Result = std::result::Result<(), Box<dyn std::error::Error>>;
 
 fn post(f: &Fixture, text: &str) -> std::result::Result<String, crate::CoreError> {
@@ -159,7 +161,7 @@ fn scoped_source_never_imports_unrelated_history() -> Result {
         .id;
     let text = "Edit this document only";
     let mut reply = types::ReplyRef::thread(root);
-    reply.artifact = Some(types::ArtifactRequest {
+    reply.artifact = Some(Box::new(types::ArtifactRequest {
         item_id: f.base.item_id.clone(),
         version: f.base.version,
         sha256: f.base.sha256.clone(),
@@ -167,7 +169,7 @@ fn scoped_source_never_imports_unrelated_history() -> Result {
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
         agent_id: None,
         intent_sha256: None,
-    });
+    }));
     let source = e
         .append(
             &f.space,

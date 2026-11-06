@@ -143,6 +143,10 @@ impl SharedReply {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ReplyRef {
+    /// Exact message answered inside a thread; `to` remains its root. This is a
+    /// signed locator, never permission to read a different conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shared: Option<Box<SharedReply>>,
     /// Event hash of the message being answered (the thread root for thread replies).
@@ -150,15 +154,26 @@ pub struct ReplyRef {
     /// `true` = in the thread under `to`; `false` = inline, quoting `to`.
     #[serde(default)]
     pub thread: bool,
+    /// Rare scoped requests stay off the ordinary message's inline allocation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifact: Option<ArtifactRequest>,
+    pub artifact: Option<Box<ArtifactRequest>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quote: Option<Box<SelectedQuote>>,
 }
 
 impl ReplyRef {
+    /// The exact answered message, including older explicit selected quotes.
+    #[must_use]
+    pub fn source_id(&self) -> &str {
+        self.source
+            .as_deref()
+            .or_else(|| self.quote.as_ref().map(|quote| quote.source_id.as_str()))
+            .unwrap_or(&self.to)
+    }
+
     pub fn inline(to: impl Into<String>) -> Self {
         Self {
+            source: None,
             shared: None,
             to: to.into(),
             thread: false,
@@ -168,6 +183,7 @@ impl ReplyRef {
     }
     pub fn thread(root: impl Into<String>) -> Self {
         Self {
+            source: None,
             shared: None,
             to: root.into(),
             thread: true,
@@ -223,7 +239,7 @@ mod tests {
             r#"{"to":"root","thread":true}"#
         );
         let mut reply = ReplyRef::thread("root");
-        reply.artifact = Some(ArtifactRequest {
+        reply.artifact = Some(Box::new(ArtifactRequest {
             item_id: "item".into(),
             version: 1,
             sha256: "ab".repeat(32),
@@ -231,7 +247,7 @@ mod tests {
             text_sha256: "cd".repeat(32),
             agent_id: None,
             intent_sha256: None,
-        });
+        }));
         assert!(reply.artifact.as_ref().unwrap().is_well_formed());
         let mut value = serde_json::to_value(&reply).unwrap();
         assert_eq!(
@@ -251,7 +267,7 @@ mod tests {
             MessagePosted { text: String },
         }
         let mut reply = ReplyRef::thread("root");
-        reply.artifact = Some(ArtifactRequest {
+        reply.artifact = Some(Box::new(ArtifactRequest {
             item_id: "item".into(),
             version: 1,
             sha256: "ab".repeat(32),
@@ -259,7 +275,7 @@ mod tests {
             text_sha256: "cd".repeat(32),
             agent_id: None,
             intent_sha256: None,
-        });
+        }));
         let scoped = serde_json::to_vec(&EventBody::AppEditRequested {
             message: "m".into(),
             text: "Only this App".into(),
@@ -354,3 +370,6 @@ mod selected_quote_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod thread_source_tests;

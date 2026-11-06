@@ -145,6 +145,9 @@ impl Engine {
 /// Use the authenticated existing prefix to validate an old observed source even if
 /// a concurrent edit was ordered before this reply. Never persist a parallel history.
 pub(crate) fn received_valid(state: &State, event: &Event, prefix: &[Event]) -> bool {
+    if !crate::replies::thread_source::received_valid(state, event) {
+        return false;
+    }
     if let EventBody::MessagePosted { reply: Some(r), .. } = &event.body {
         if let Some(shared) = &r.shared {
             return shared.is_well_formed()
@@ -168,7 +171,7 @@ pub(crate) fn received_valid(state: &State, event: &Event, prefix: &[Event]) -> 
             None => return true,
         },
         EventBody::AppEditRequested { reply, .. } => {
-            return reply.quote.is_none() && reply.shared.is_none()
+            return reply.quote.is_none() && reply.shared.is_none() && reply.source.is_none()
         }
         _ => return true,
     };
