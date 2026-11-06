@@ -85,18 +85,10 @@ impl AgentContext {
         if identity.as_deref() != Some(principal.agent.as_str()) {
             return Err(RuntimeError::Denied);
         }
-        type Row = (
-            String,
-            String,
-            Option<String>,
-            i32,
-            Option<Vec<u8>>,
-            bool,
-            bool,
-        );
-        let row:Option<Row>=sqlx::query_as("SELECT owner,device,kind,definition_version,CASE WHEN octet_length(definition)<=65536 THEN definition ELSE NULL END,paused_at IS NOT NULL,revoked_at IS NOT NULL FROM agent_citizens WHERE agent=$1 FOR SHARE")
+        type Row = (String, Option<String>, i32, Option<Vec<u8>>, bool, bool);
+        let row:Option<Row>=sqlx::query_as("SELECT owner,kind,definition_version,CASE WHEN octet_length(definition)<=65536 THEN definition ELSE NULL END,paused_at IS NOT NULL,revoked_at IS NOT NULL FROM agent_citizens WHERE agent=$1 FOR SHARE")
             .bind(&principal.agent).fetch_optional(&mut **tx).await?;
-        let Some((owner, device, kind, version, definition, paused, revoked)) = row else {
+        let Some((owner, kind, version, definition, paused, revoked)) = row else {
             return Ok(None);
         };
         if owner != principal.owner || paused || revoked {
@@ -108,7 +100,17 @@ impl AgentContext {
         if kind.is_none() && version == 0 && definition.as_deref() == Some(b"".as_slice()) {
             return Ok(None);
         }
-        if device != principal.device {
+        // The original citizen installation and an independently paired native
+        // executor share the identity's canonical definition, not its MLS leaf.
+        // Lock the actual runtime device; native_directory separately verifies
+        // its exact certificate before any effect.
+        let device_owner: Option<String> = sqlx::query_scalar(
+            "SELECT identity FROM devices WHERE device=$1 AND revoked_at IS NULL FOR SHARE",
+        )
+        .bind(&principal.device)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if device_owner.as_deref() != Some(principal.agent.as_str()) {
             return Err(RuntimeError::Denied);
         }
         let value = Self {

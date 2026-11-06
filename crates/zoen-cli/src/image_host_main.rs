@@ -8,6 +8,7 @@ mod image_protocol;
 mod policy;
 #[path = "image_host/provision.rs"]
 mod provision;
+mod runtime_host_config;
 
 use client_core::SecretVault;
 use image_protocol::{Command, Progress, MAX_INPUT, MAX_OUTPUT};
@@ -46,9 +47,9 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
         dir: config.home.join("vault"),
     });
     if action == "provision" {
-        return provision::run(&config, &vault);
+        return provision::run(&config.enrollment_scope(), &vault);
     }
-    provision::validate_installed(&config, &vault)?;
+    provision::validate_installed(&config.enrollment_scope(), &vault)?;
     let command = if action == "execute" {
         let mut bytes = Vec::new();
         std::io::stdin()

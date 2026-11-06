@@ -17,7 +17,7 @@
 //! hands the model what already ran instead of running it twice.
 
 use client_core::{AppCallStatus, Client, ConnectionDto, CoreListener, EntryKind, TimelineEntry};
-use gate::{Clef, ClefModel, Gate, HttpTransport};
+use gate::{Clef, ClefModel, Gate};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -85,16 +85,9 @@ const MAX_STATE_FAILURES: u32 = 6;
 /// Source messages whose tool steps the journal keeps (older ones are long answered).
 const JOURNAL_KEEP: usize = 200;
 
-// Match the existing Workers AI ModelBrain envelope/budgets (citizen/models.rs).
-// Clef returns typed question answers inside its JSON envelope, not binary data.
-const GATE_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
-const GATE_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const GATE_MAX_RESPONSE_BYTES: usize = 1024 * 1024;
-
-struct ReqwestTransport {
-    client: reqwest::Client,
-    max_response_bytes: usize,
-}
+use crate::gate_transport::ReqwestTransport;
+#[cfg(test)]
+use gate::HttpTransport;
 
 #[cfg(test)]
 #[path = "agent/gate_transport_tests.rs"]

@@ -1,7 +1,6 @@
 //! Dedicated device enrollment through the existing native pairing flow.
 //! This process never receives/installs an IdentityBox or copies a Client MLS
 //! workspace. The sponsor enrolls the exact new certificate in the SQL directory.
-use crate::config::Config;
 use crate::file_vault::FileVault;
 use event_log::{profile::AgreementKey, Signer};
 use serde::{Deserialize, Serialize};
@@ -9,6 +8,14 @@ use sha2::{Digest, Sha256};
 use std::io::IsTerminal;
 use zeroize::{Zeroize, Zeroizing};
 use zoen_runtime::RuntimeAuthority;
+
+/// Operator-selected device enrollment, independent of any model or App profile.
+pub(crate) struct EnrollmentScope {
+    pub namespace: String,
+    pub agent: String,
+    pub device: String,
+    pub key_version: u32,
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,7 +64,7 @@ fn read(vault: &FileVault, key: &str) -> Result<Option<Zeroizing<Vec<u8>>>, Stri
         Err(_) => Err("retained provisioning unreadable; nothing replaced".into()),
     }
 }
-pub(super) fn run(config: &Config, vault: &FileVault) -> Result<(), String> {
+pub(super) fn run(config: &EnrollmentScope, vault: &FileVault) -> Result<(), String> {
     if !std::io::stdout().is_terminal() {
         return Err("show pairing only in a trusted interactive terminal".into());
     }
@@ -70,7 +77,10 @@ pub(super) fn run(config: &Config, vault: &FileVault) -> Result<(), String> {
     );
     Ok(())
 }
-pub(super) fn validate_installed(config: &Config, vault: &FileVault) -> Result<(), String> {
+pub(super) fn validate_installed(
+    config: &EnrollmentScope,
+    vault: &FileVault,
+) -> Result<(), String> {
     let slot = slot(config)?;
     let bytes = read(vault, &slot)?.ok_or("dedicated runtime enrollment was not provisioned")?;
     let record: Enrollment =
@@ -106,7 +116,7 @@ pub(super) fn validate_installed(config: &Config, vault: &FileVault) -> Result<(
     }
     Ok(())
 }
-fn slot(config: &Config) -> Result<String, String> {
+fn slot(config: &EnrollmentScope) -> Result<String, String> {
     Ok(format!(
         "runtime_enroll_{}",
         hex::encode(Sha256::digest(
@@ -119,7 +129,10 @@ fn slot(config: &Config) -> Result<String, String> {
         ))
     ))
 }
-pub(super) fn prepare(config: &Config, vault: &FileVault) -> Result<device_link::LinkCode, String> {
+pub(super) fn prepare(
+    config: &EnrollmentScope,
+    vault: &FileVault,
+) -> Result<device_link::LinkCode, String> {
     RuntimeAuthority::native_capsule_vault_key(&config.namespace, config.key_version)
         .map_err(|_| "invalid provisioning scope")?;
     // Original material is retained before any derived key or code is exposed.

@@ -31,34 +31,20 @@ impl Drop for Home {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
-fn config(home: &Home) -> Config {
-    serde_json::from_value(serde_json::json!({
-        "namespace":"image-provision-test", "agent":"agent-test", "device":"", "home":home.0,
-        "continuity":home.0.join("anchor"), "postgres_key":"pg", "evidence_key":"evidence",
-        "fdb_cluster_file":null, "source_cell":"cell", "relay_url":"https://relay.invalid",
-        "relay_key":"relay", "key_version":1, "definition_version":"image-v1",
-        "image_credential_key":"image", "chat_credential_key":"chat",
-        "chat_price": {
-            "version":"chat-v1","endpoint":"https://api.openai.com/v1/chat/completions","model":"model",
-            "credential_ref":"chat","currency":"USD","scale":6,"input_units_per_million":1,
-            "output_units_per_million":1,"max_billable_input_tokens":1,"max_output_tokens":1,
-            "max_request_bytes":4096,"max_response_bytes":4096
-        },
-        "image_price": {
-            "version":"image-v1","endpoint":"https://api.openai.com/v1/images/generations",
-            "model":"gpt-image-fixture","credential_ref":"images","currency":"USD","scale":6,
-            "max_request_bytes":16384,"max_response_bytes":100000,"reservation_units":10,
-            "input_text_units_per_million":1,"input_image_units_per_million":1,
-            "output_text_units_per_million":1,"output_image_units_per_million":1,
-            "image":{"count":1,"format":"png","size":"1024x1024","quality":"low","background":"opaque","max_image_bytes":1000}
-        }
-    })).unwrap()
+fn config() -> EnrollmentScope {
+    EnrollmentScope {
+        namespace: "image-provision-test".into(),
+        agent: "agent-test".into(),
+        device: String::new(),
+        key_version: 1,
+    }
 }
+
 #[test]
 fn cold_retry_retains_the_same_dedicated_signer_code_and_capsule_without_client_state(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let home = Home::new()?;
-    let c = config(&home);
+    let c = config();
     let original = prepare(&c, &home.vault()).unwrap();
     let snapshot = home.snapshot();
     let retry = prepare(&c, &home.vault()).unwrap();
@@ -83,7 +69,7 @@ fn cold_retry_retains_the_same_dedicated_signer_code_and_capsule_without_client_
 fn foreign_device_and_malformed_original_never_replace_retained_setup(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let home = Home::new()?;
-    let mut c = config(&home);
+    let mut c = config();
     prepare(&c, &home.vault()).unwrap();
     let snapshot = home.snapshot();
     c.device = Signer::generate()?.id();
@@ -105,7 +91,7 @@ fn foreign_device_and_malformed_original_never_replace_retained_setup(
 fn unreadable_symlink_original_is_not_absence_and_is_not_reseeded(
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let home = Home::new()?;
-    let c = config(&home);
+    let c = config();
     prepare(&c, &home.vault()).unwrap();
     let snapshot = home.snapshot();
     let slot = snapshot
