@@ -77,6 +77,11 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     value["worker_bus_key"] = "bus".into();
     let config: config::Config = serde_json::from_value(value.clone())?;
     std::fs::create_dir(&config.home)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&config.home, std::fs::Permissions::from_mode(0o700))?;
+    }
     let vault = Arc::new(file_vault::FileVault {
         dir: config.home.join("vault"),
     });

@@ -106,8 +106,76 @@ pub(super) async fn run(
     );
     assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
+    // Control reaches this same custody owner while its OS lock is held.
+    assert!(call(
+        path,
+        "execute",
+        Some(json!({"command":"pending","after":null}))
+    )
+    .is_err());
+    assert_eq!(
+        call(
+            path,
+            "control",
+            Some(json!({"command":"pending","after":null}))
+        )?["status"],
+        "pending"
+    );
+    let config = config::Config::read(path)?;
+    let owner_id = account(w, "owner")?["identity"]
+        .as_str()
+        .ok_or("owner")?
+        .to_owned();
+    let original = signed_policy(w, "owner", &owner_id, config.chat_price.digest()?).await?;
+    let mut disabled = original.policy.clone();
+    disabled.version += 1;
+    disabled.previous_digest = event_log::owner_budget::digest(&original.policy);
+    disabled.enabled = false;
+    let author = policy_author(w, "owner")?;
+    let disabled = event_log::owner_budget::sign(&author, disabled).ok_or("disable signature")?;
+    assert_eq!(
+        call(
+            path,
+            "control",
+            Some(json!({"command":"policy_import","signed":disabled.clone()}))
+        )?["status"],
+        "policy_installed"
+    );
+    // Replaying the same control acknowledges one installation, without reset.
+    assert_eq!(
+        call(
+            path,
+            "control",
+            Some(json!({"command":"policy_import","signed":disabled.clone()}))
+        )?["status"],
+        "policy_installed"
+    );
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);
     let resumed = lifecycle(w, agent, "Resume").await?;
     assert_eq!(resumed["status"], "Active");
+    // Resuming the citizen does not bypass the owner's disabled budget.
+    assert!(call(
+        path,
+        "control",
+        Some(json!({"command":"discover","space":space}))
+    )
+    .is_err());
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
+    let mut enabled = disabled.policy.clone();
+    enabled.version += 1;
+    enabled.previous_digest = event_log::owner_budget::digest(&disabled.policy);
+    enabled.enabled = true;
+    let enabled = event_log::owner_budget::sign(&author, enabled).ok_or("enable signature")?;
+    assert_eq!(
+        call(
+            path,
+            "control",
+            Some(json!({"command":"policy_import","signed":enabled}))
+        )?["status"],
+        "policy_installed"
+    );
+    assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 3);
     let output = worker.wait("output").await?;
     assert_eq!(output["delivery"]["status"], "accepted");
     assert_eq!(provider.calls.load(Ordering::SeqCst), 2);

@@ -36,6 +36,7 @@ pub(super) async fn run(
     } else {
         None
     };
+    let controls = crate::control::Server::bind(&config.home)?;
     let mut shutdown = Shutdown::new()?;
     let mut worker = ReplyWorker::default();
     let mut interval = tokio::time::interval(Duration::from_secs(2));
@@ -67,6 +68,11 @@ pub(super) async fn run(
         tokio::select! {
             result=shutdown.wait()=>{ result?; return Ok(()) },
             _=interval.tick()=>{},
+            request=controls.accept()=>{
+                if crate::control::Server::respond(host, request?).await {
+                    worker.reconcile_soon();
+                }
+            },
             _=async { match hints.as_mut() {
                 Some(subscription)=>{if subscription.next().await.is_none(){ hints=None; }},
                 None=>std::future::pending::<()>().await,

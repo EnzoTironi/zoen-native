@@ -23,6 +23,12 @@ pub struct ReplyWorker {
     control: Option<Option<u64>>,
 }
 impl ReplyWorker {
+    /// Scheduling hint after a verified local owner-policy installation. This
+    /// changes no durable original, grant, receipt, financial state or permit.
+    pub fn reconcile_soon(&mut self) {
+        self.deferred.clear();
+    }
+
     pub async fn tick(
         &mut self,
         host: &ReplyRuntimeHost,

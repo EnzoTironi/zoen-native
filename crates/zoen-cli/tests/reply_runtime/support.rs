@@ -27,6 +27,14 @@ pub fn call(
     input: Option<Value>,
 ) -> Result<Value, Box<dyn std::error::Error>> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_zoen-reply-host"));
+    if action == "control" {
+        command.env_clear();
+        for name in ["DYLD_LIBRARY_PATH", "LD_LIBRARY_PATH"] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+    }
     command
         .args(["--config"])
         .arg(path)
@@ -68,20 +76,7 @@ pub async fn signed_policy(
     owner: &str,
     profile: String,
 ) -> Result<types::owner_budget::SignedOwnerPolicy, Box<dyn std::error::Error>> {
-    use event_log::{Author, Signer};
-    let vault = file_vault::FileVault {
-        dir: w.dir.join(who).join("vault"),
-    };
-    let key = |name: &str| -> Result<Signer, Box<dyn std::error::Error>> {
-        Ok(Signer::from_secret(
-            &vault
-                .load(name.into())
-                .ok_or("owner key")?
-                .try_into()
-                .map_err(|_| "owner key size")?,
-        ))
-    };
-    let author = Author::device(&key("zoen.identity.v1")?, key("zoen.device.v1")?);
+    let author = policy_author(w, who)?;
     assert_eq!(author.identity, owner);
     let date = w
         .scalar("SELECT to_char(now() AT TIME ZONE 'UTC','YYYY-MM')")
@@ -131,4 +126,27 @@ pub fn serve(path: &Path, commands: &[Value]) -> Result<Vec<Value>, Box<dyn std:
         .lines()
         .map(|line| serde_json::from_str(line).map_err(Into::into))
         .collect()
+}
+
+pub fn policy_author(
+    w: &World,
+    who: &str,
+) -> Result<event_log::Author, Box<dyn std::error::Error>> {
+    use event_log::{Author, Signer};
+    let vault = file_vault::FileVault {
+        dir: w.dir.join(who).join("vault"),
+    };
+    let key = |name: &str| -> Result<Signer, Box<dyn std::error::Error>> {
+        Ok(Signer::from_secret(
+            &vault
+                .load(name.into())
+                .ok_or("owner key")?
+                .try_into()
+                .map_err(|_| "owner key size")?,
+        ))
+    };
+    Ok(Author::device(
+        &key("zoen.identity.v1")?,
+        key("zoen.device.v1")?,
+    ))
 }
