@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -108,7 +108,7 @@ async function fixture(t, refuse = false) {
     fs.writeFileSync(artifact,body);
     prior.push({args:a,artifact,profile,architecture,sdk:process.env.SDKROOT,deployment:process.env.IPHONEOS_DEPLOYMENT_TARGET,resource:process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON,photo:process.env.ZOEN_PHOTOCRAFT_RESOURCE_MANIFEST_JSON,pdf:process.env.ZOEN_PDFCRAFT_RESOURCE_MANIFEST_JSON});
     fs.writeFileSync(log,JSON.stringify(prior));
-    fs.writeFileSync(receipt,JSON.stringify({status:'PASS',target,
+    fs.writeFileSync(receipt,JSON.stringify({status:'PASS',target:fs.realpathSync(target),
       before:{packages:{fixture:'stable'},context:{config:{fixture:'stable'},environment:Object.fromEntries(a.flatMap((v,i)=>v==='--input-env'?[[a[i+1],process.env[a[i+1]]===undefined?null:crypto.createHash('sha256').update(JSON.stringify(process.env[a[i+1]])).digest('hex')]]:[]))}},
       artifacts:[{manifest:p.join(root,${JSON.stringify(packagePaths)}[pkg]),path:artifact,
       sha256:crypto.createHash('sha256').update(body).digest('hex')}]}));
@@ -244,3 +244,40 @@ for (const [name, field, variable] of [
     assert(commands.slice(-3).every((command) => command[field] === last));
   });
 }
+
+test('symlinked default target requires shared-cache admission without CARGO_TARGET_DIR', async (t) => {
+  const { root, env } = await fixture(t);
+  await mkdir(env.CARGO_TARGET_DIR, { recursive: true });
+  await symlink(env.CARGO_TARGET_DIR, join(root, 'target'));
+  delete env.CARGO_TARGET_DIR;
+  await execute(process.execPath, ['scripts/build-expo-core.mjs', 'ios', '--release', '--simulator'], {
+    cwd: root,
+    env,
+  });
+  const stamp = JSON.parse(await readFile(join(root, 'apps/zoen/modules/zoen-core/generated/ios.json'), 'utf8'));
+  assert(stamp.cargoQualification, 'A symlinked target must not bypass the source guard');
+  const qualification = JSON.parse(await readFile(stamp.cargoQualification, 'utf8'));
+  assert.equal(qualification.builds.length, 3);
+  assert.equal(await realpath(qualification.target), await realpath(join(root, 'target')));
+  for (const build of qualification.builds) {
+    const receipt = JSON.parse(await readFile(build.receipt, 'utf8'));
+    assert.equal(receipt.target, await realpath(join(root, 'target')));
+  }
+});
+
+test('symlinked default target guard refusal preserves the prior iOS framework', async (t) => {
+  const { root, env } = await fixture(t, true);
+  await mkdir(env.CARGO_TARGET_DIR, { recursive: true });
+  await symlink(env.CARGO_TARGET_DIR, join(root, 'target'));
+  delete env.CARGO_TARGET_DIR;
+  const previous = join(root, 'apps/zoen/modules/zoen-core/ios/generated/keep');
+  await write(previous, 'prior framework');
+  await assert.rejects(
+    execute(process.execPath, ['scripts/build-expo-core.mjs', 'ios', '--simulator'], { cwd: root, env }),
+    /Guarded Cargo build failed/,
+  );
+  assert.equal(await readFile(previous, 'utf8'), 'prior framework');
+  await assert.rejects(readFile(join(root, 'apps/zoen/modules/zoen-core/generated/ios.json')), {
+    code: 'ENOENT',
+  });
+});

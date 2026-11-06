@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -17,9 +17,16 @@ const iosArchitectures = process.argv.includes('--simulator')
   : ['aarch64-apple-ios', 'aarch64-apple-ios-sim'];
 const androidAbis = process.env.ZOEN_ANDROID_ABIS ?? 'arm64-v8a,x86_64';
 const folder = profile === 'dev' ? 'debug' : 'release';
-const sharedTarget = process.env.CARGO_TARGET_DIR !== undefined;
+// Managed caches can expose the default target as a symlink without exporting
+// CARGO_TARGET_DIR. They need the same admission and private artifact copies.
+const sharedTarget = process.env.CARGO_TARGET_DIR !== undefined ||
+  await lstat(target).then((entry) => entry.isSymbolicLink(), (error) => {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  });
 const env = {
   ...process.env,
+  ...(sharedTarget ? { CARGO_TARGET_DIR: target } : {}),
   PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
   DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? '/Applications/Xcode.app/Contents/Developer',
   CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? '2',

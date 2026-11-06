@@ -19,7 +19,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: '0'
   CARGO_PROFILE_DEV_DEBUG: '0'
-  RUST_TOOLCHAIN: '1.99.0'
+  RUST_TOOLCHAIN: '1.99.1'
   ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
 
 jobs:
@@ -105,6 +105,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/tests -p 'test_ci*scope.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_ci_rust_shards.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_ci_toolchain.py' -v
 
       - name: Canonical acceptance composition and source writes
         run: python3 scripts/test-acceptance.py
