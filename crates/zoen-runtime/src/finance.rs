@@ -1,3 +1,4 @@
+mod reply_actor;
 use crate::{Binding, Capture, FinancialState, PeriodBalance, RuntimeError};
 #[cfg(test)]
 use chrono::Datelike;
@@ -141,6 +142,7 @@ impl NativeDirectoryGuard {
         mut self,
         scope: crate::native::ReplyOutputScope,
     ) -> Result<ReplyOutputAdmission, RuntimeError> {
+        self = self.active_reply_actor().await?;
         if !scope.matches_directory(
             &self.owner,
             &self.agent,

@@ -10,6 +10,7 @@ mod managed;
 mod owner_policy;
 mod packages;
 mod runs;
+pub(crate) use runs::output::ReplyOutputCheck;
 mod source;
 pub(crate) use image_tasks::ImageStep;
 pub use image_tasks::{

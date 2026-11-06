@@ -212,6 +212,11 @@ impl NativeCustody {
                 &credential.certificate,
             )
             .await?;
+        let guard = if live.is_some() {
+            guard.active_reply_actor().await?
+        } else {
+            guard
+        };
         #[cfg(test)]
         let guard = if live.is_some() {
             match runtime.fault.load(std::sync::atomic::Ordering::SeqCst) {

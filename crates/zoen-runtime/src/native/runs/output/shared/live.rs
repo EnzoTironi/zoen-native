@@ -5,6 +5,7 @@ pub(in crate::native) struct LivePublication<'a> {
     retained: &'a RetainedCapture,
     prepared: &'a PreparedReply,
     capability: &'a dyn NativeOutputAuthority,
+    gate: Option<&'a gate::AuditRecord>,
 }
 impl<'a> LivePublication<'a> {
     pub(in super::super) fn new(
@@ -12,12 +13,14 @@ impl<'a> LivePublication<'a> {
         retained: &'a RetainedCapture,
         prepared: &'a PreparedReply,
         capability: &'a dyn NativeOutputAuthority,
+        gate: Option<&'a gate::AuditRecord>,
     ) -> Self {
         Self {
             loaded,
             retained,
             prepared,
             capability,
+            gate,
         }
     }
     pub(in crate::native) fn inspection(&self, target: &Root) -> ReplyOutputInspection {
@@ -95,6 +98,7 @@ impl<'a> LivePublication<'a> {
             &runtime.custody,
             &format!("native-publication/1/{}", loaded.record.locator.run),
             PublicationRecord {
+                gate: self.gate.cloned(),
                 checkpoint: None,
                 shared_sequence: Some(sequence),
                 format: 1,

@@ -645,3 +645,6 @@ pub(crate) async fn retained_publication(
 
 mod retention;
 pub(crate) use retention::{collect_reply_images, retention_rows};
+
+mod policy;
+pub(crate) use policy::{policy_audit, policy_leases_released};

@@ -1,6 +1,8 @@
 //! Original output associations. Retained metadata grants no live permission.
 mod association;
 mod completed;
+mod policy;
+pub(crate) use policy::{ReplyOutputCheck, ReplyOutputReview};
 mod delivery;
 mod prepare;
 mod recovery;
@@ -176,6 +178,8 @@ impl RetainedCapture {
 #[serde(deny_unknown_fields)]
 struct PublicationRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    gate: Option<gate::AuditRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     checkpoint: Option<relay_admission::managed_images::Checkpoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shared_sequence: Option<u64>,
@@ -215,6 +219,13 @@ impl PublicationRecord {
             .context
             .validate(principal, record.original.context.key_version)?;
         if self.format != 1
+            || self.gate.as_ref().is_some_and(|audit| {
+                audit.point != gate::Point::Outbound.id()
+                    || audit.outcome != gate::Outcome::Allow.id()
+                    || !digest(&audit.input_hash)
+                    || audit.summary.chars().count() > 140
+                    || audit.answers.values().any(|value| !value.is_finite())
+            })
             || self.checkpoint.as_ref().is_some_and(|checkpoint| {
                 checkpoint.generation == 0
                     || checkpoint.sequence == 0

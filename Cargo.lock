@@ -8334,6 +8334,7 @@ dependencies = [
  "event-log",
  "foundationdb",
  "futures-util",
+ "gate",
  "getrandom 0.2.17",
  "hex",
  "mls",

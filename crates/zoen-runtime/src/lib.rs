@@ -25,8 +25,10 @@ pub use native::{
 mod pricing;
 mod relay_binding;
 mod reply_execution;
+mod reply_host;
 mod reply_output;
 pub use pricing::{ImageEndpointPolicy, ImagePriceProfile, ImagePriceQuote, PriceProfile};
+pub use reply_host::{ReplyHostConfig, ReplyHostProgress, ReplyRuntimeHost};
 pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
 use foundationdb::{tuple::Subspace, Database};

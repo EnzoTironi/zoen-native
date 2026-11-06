@@ -112,8 +112,14 @@ certified author, current grant, frontier and budget checks remain required.
 New output signs the same inline/thread reference as the ordinary client and
 retains it in reference format 2. Legacy profile/reference format 1 is read and
 recovered with its original unquoted output and original bytes; no retained
-financial result is migrated or dispatched again. This is not groups/tools or
-the complete Brain/Clef/iOS host integration.
+financial result is migrated or dispatched again.
+
+`ReplyRuntimeHost` composes this native API with the existing Gate: current input
+before inference, retained output before publication, fresh authority after
+remote decisions. Its encrypted publication retains the outbound audit bound to
+the original capture. Accepted historical receipts need no new decision or paid
+call. Held/invalid responses retain incurred financial state for recovery.
+Groups/tools and normal Brain/Clef/iOS host integration remain open.
 
 The native core retains discovery position inside that complete authenticated
 image and scans at most 64 events/16 eligible replies per call. It selects actual

@@ -216,6 +216,8 @@ impl NativeCustody {
                 &credential.certificate,
             )
             .await?
+            .active_reply_actor()
+            .await?
             .commit()
             .await?;
         let trx = runtime.execution.transaction().await?;

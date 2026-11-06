@@ -1,0 +1,190 @@
+//! Trusted conversation consumer over the existing native and financial authority.
+use crate::*;
+
+/// Operator configuration, never deserialized from a model tool call.
+pub struct ReplyHostConfig {
+    pub agent: String,
+    pub device: String,
+    pub target: ImageDeliveryTarget,
+}
+
+pub struct ReplyRuntimeHost {
+    runtime: Arc<RuntimeAuthority>,
+    gate: Arc<gate::Gate>,
+    config: ReplyHostConfig,
+}
+
+#[derive(Debug)]
+pub enum ReplyHostProgress {
+    CatchingUp {
+        run: String,
+        financial: Option<FinancialState>,
+    },
+    /// An observation of absence is not a zero-cost or non-dispatch witness.
+    Held {
+        run: String,
+        audit: gate::AuditRecord,
+        financial: Option<FinancialState>,
+    },
+    AwaitingRecovery {
+        run: String,
+        financial: FinancialState,
+    },
+    Output {
+        run: String,
+        output: ReplyOutputInspection,
+        delivery: ReplyReceiptProgress,
+        financial: FinancialState,
+        audit: gate::AuditRecord,
+    },
+    Completed {
+        run: String,
+        output: ReplyOutputInspection,
+        delivery: ReplyReceiptProgress,
+    },
+}
+
+impl ReplyRuntimeHost {
+    pub fn configured(
+        runtime: Arc<RuntimeAuthority>,
+        config: ReplyHostConfig,
+        gate: gate::Gate,
+    ) -> Result<Self, RuntimeError> {
+        if !id(&config.agent) || !id(&config.device) {
+            return Err(RuntimeError::InvalidProfile);
+        }
+        let scope = runtime.production_output_scope()?;
+        scope.check_context(&runtime)?;
+        scope.check_device(&config.agent, &config.device)?;
+        scope.check_target(&config.target)?;
+        Ok(Self {
+            runtime,
+            gate: Arc::new(gate),
+            config,
+        })
+    }
+
+    pub async fn discover(&self, space: &str) -> Result<ReplySync, RuntimeError> {
+        let scope = self.runtime.production_output_scope()?;
+        scope.check_context(&self.runtime)?;
+        scope.check_device(&self.config.agent, &self.config.device)?;
+        scope.check_target(&self.config.target)?;
+        self.runtime
+            .sync_reply_runs(&self.config.agent, &self.config.device, space)
+            .await
+    }
+
+    /// Recover one original; neither retained text nor a Gate decision replaces
+    /// current native authorization, the frozen binding or one-shot admission.
+    pub async fn advance(&self, run: &str) -> Result<ReplyHostProgress, RuntimeError> {
+        if !id(run) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let runtime = &self.runtime;
+        let scope = runtime.production_output_scope()?;
+        scope.check_context(runtime)?;
+        scope.check_device(&self.config.agent, &self.config.device)?;
+        scope.check_target(&self.config.target)?;
+        let native = runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
+        let state = native.reply_host_state(runtime, run, scope).await?;
+        if let Some(output) = state.output {
+            let delivery = runtime.reconcile_reply_receipt(run).await?;
+            match delivery {
+                ReplyReceiptProgress::Accepted { .. } | ReplyReceiptProgress::Refused { .. } => {
+                    return Ok(ReplyHostProgress::Completed {
+                        run: run.into(),
+                        output,
+                        delivery,
+                    });
+                }
+                ReplyReceiptProgress::CatchingUp { .. } => {
+                    return self.catching_up(run, &state.attempt).await
+                }
+                ReplyReceiptProgress::Waiting => {}
+            }
+        }
+        if !self.refresh(&state.space).await? {
+            return self.catching_up(run, &state.attempt).await;
+        }
+        if !state.captured {
+            let decision = native
+                .check_reply_input(runtime, run, scope, self.gate.clone())
+                .await?;
+            if decision.outcome != gate::Outcome::Allow {
+                return Ok(ReplyHostProgress::Held {
+                    run: run.into(),
+                    audit: decision.audit,
+                    financial: runtime.inspect_attempt(&state.attempt).await?,
+                });
+            }
+            // A remote policy provider may race revocation or source changes.
+            if !self.refresh(&state.space).await? {
+                return self.catching_up(run, &state.attempt).await;
+            }
+        }
+        let financial = match Box::pin(runtime.run_model(run)).await {
+            Ok(retained) => retained.financial,
+            Err(RuntimeError::Unavailable) => {
+                if let Some(financial) = runtime.inspect_attempt(&state.attempt).await? {
+                    return Ok(ReplyHostProgress::AwaitingRecovery {
+                        run: run.into(),
+                        financial,
+                    });
+                }
+                return Err(RuntimeError::Unavailable);
+            }
+            Err(error) => return Err(error),
+        };
+        let review = match native
+            .review_reply_output(runtime, run, scope, self.gate.clone())
+            .await?
+        {
+            native::ReplyOutputCheck::Allowed(review) => review,
+            native::ReplyOutputCheck::Held(audit) => {
+                return Ok(ReplyHostProgress::Held {
+                    run: run.into(),
+                    audit,
+                    financial: Some(financial),
+                })
+            }
+            native::ReplyOutputCheck::Unusable => {
+                return Ok(ReplyHostProgress::AwaitingRecovery {
+                    run: run.into(),
+                    financial,
+                })
+            }
+        };
+        if !self.refresh(&state.space).await? {
+            return self.catching_up(run, &state.attempt).await;
+        }
+        let output = Box::pin(native.prepare_reviewed_output(runtime, run, scope, &review)).await?;
+        let delivery =
+            Box::pin(runtime.deliver_reply_output(run, self.config.target.clone())).await?;
+        Ok(ReplyHostProgress::Output {
+            run: run.into(),
+            output,
+            delivery,
+            financial,
+            audit: review.audit().clone(),
+        })
+    }
+
+    async fn refresh(&self, space: &str) -> Result<bool, RuntimeError> {
+        let progress = self.discover(space).await?;
+        Ok(progress.caught_up && progress.discovery_complete)
+    }
+
+    async fn catching_up(
+        &self,
+        run: &str,
+        attempt: &str,
+    ) -> Result<ReplyHostProgress, RuntimeError> {
+        Ok(ReplyHostProgress::CatchingUp {
+            run: run.into(),
+            financial: self.runtime.inspect_attempt(attempt).await?,
+        })
+    }
+}
