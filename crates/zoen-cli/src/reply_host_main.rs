@@ -1,4 +1,6 @@
 //! Dedicated certified native reply executor; never opens a Client MLS workspace.
+#[path = "reply_host/admission.rs"]
+mod admission;
 mod agent_host_lock;
 #[path = "reply_host/config.rs"]
 mod config;
@@ -152,6 +154,13 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
                 .published
             {
                 return Err("initial key-package publication not confirmed".into());
+            }
+            if let Some(path) = &config.admission_config {
+                let deployment = authority
+                    .native_deployment(&config.agent, &config.device)
+                    .await
+                    .map_err(|_| "native admission scope unavailable")?;
+                admission::register(path, deployment, &config.continuity)?;
             }
             return emit(&serde_json::json!({"status":"initialized","device":config.device}));
         }

@@ -8,29 +8,13 @@
     clippy::expect_used
 )]
 use super::{AnchorReader, Deployment, ManagedDevice, ManagedDevices};
-use relay_admission::managed_images::RuntimeDeployment;
-use serde::Deserialize;
-use std::collections::BTreeSet;
-use std::{path::PathBuf, sync::Arc};
-
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ManagedPrincipal {
-    pub agent: String,
-    pub device: String,
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ManagedRuntime {
-    pub deployment: RuntimeDeployment,
-    pub anchor_directory: PathBuf,
-    pub principals: Vec<ManagedPrincipal>,
-}
+pub use relay_admission::managed_images::{ManagedPrincipal, ManagedRuntime};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 impl ManagedDevices {
     pub(super) fn add_runtimes(
-        &mut self,
+        devices: &mut BTreeMap<String, Arc<ManagedDevice>>,
         configured: impl IntoIterator<Item = ManagedRuntime>,
         namespaces: &mut BTreeSet<String>,
     ) -> anyhow::Result<()> {
@@ -42,7 +26,7 @@ impl ManagedDevices {
                     && protocol::runtime_binding::valid_namespace(&binding.source)
                     && namespaces.insert(binding.namespace.clone())
                     && !runtime.principals.is_empty()
-                    && self.devices.len().saturating_add(runtime.principals.len()) <= 256,
+                    && devices.len().saturating_add(runtime.principals.len()) <= 256,
                 "invalid managed runtime configuration"
             );
             let anchor = AnchorReader::open_runtime(&runtime.anchor_directory, binding.clone())?;
@@ -56,7 +40,7 @@ impl ManagedDevices {
                             .device
                             .bytes()
                             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-                        && !self.devices.contains_key(&principal.device),
+                        && !devices.contains_key(&principal.device),
                     "invalid or duplicate managed runtime principal"
                 );
                 let deployment = Deployment {
@@ -66,7 +50,7 @@ impl ManagedDevices {
                     agent: principal.agent,
                     device: principal.device,
                 };
-                self.devices.insert(
+                devices.insert(
                     deployment.device.clone(),
                     Arc::new(ManagedDevice {
                         deployment,

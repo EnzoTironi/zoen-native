@@ -1,24 +1,10 @@
-//! Read once from trusted operator startup. Never exposed as a request option.
+//! Trusted operator startup and optional monotonic live admission.
 use super::*;
-use serde::Deserialize;
+use relay_admission::managed_images::OperatorConfig;
 use std::{fs::File, io::Read, path::Path};
 
 pub const CONFIG_ENV: &str = "ZOEN_MANAGED_DEVICE_CONFIG";
 const MAX_CONFIG_BYTES: u64 = 65_536;
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OperatorConfig {
-    devices: Vec<OperatorDevice>,
-    #[serde(default)]
-    runtimes: Vec<ManagedRuntime>,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OperatorDevice {
-    deployment: Deployment,
-    anchor_directory: PathBuf,
-}
 
 fn invalid() -> anyhow::Error {
     anyhow::anyhow!("invalid or unavailable managed device operator configuration")
@@ -33,10 +19,8 @@ fn private_file(path: &Path) -> anyhow::Result<File> {
     {
         return Err(invalid());
     }
-    if !std::fs::symlink_metadata(path)
-        .map_err(|_| invalid())?
-        .is_file()
-    {
+    let before = std::fs::symlink_metadata(path).map_err(|_| invalid())?;
+    if !before.is_file() {
         return Err(invalid());
     }
     let parent = path.parent().ok_or_else(invalid)?;
@@ -48,8 +32,12 @@ fn private_file(path: &Path) -> anyhow::Result<File> {
     }
     #[cfg(unix)]
     let private = {
-        use std::os::unix::fs::PermissionsExt;
-        directory.permissions().mode() & 0o077 == 0 && metadata.permissions().mode() & 0o077 == 0
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        directory.permissions().mode() & 0o077 == 0
+            && before.permissions().mode() & 0o077 == 0
+            && metadata.permissions().mode() & 0o077 == 0
+            && before.dev() == metadata.dev()
+            && before.ino() == metadata.ino()
     };
     #[cfg(not(unix))]
     let private = false;
@@ -71,6 +59,7 @@ impl ManagedDevices {
         let Some(path) = path else {
             return Ok(Self::default());
         };
+        let observed = super::live::Stamp::read(path)?;
         let mut bytes = Vec::new();
         private_file(path)?
             .take(MAX_CONFIG_BYTES + 1)
@@ -83,14 +72,22 @@ impl ManagedDevices {
         if parsed.devices.len() > 256 || parsed.runtimes.len() > 256 {
             return Err(invalid());
         }
-        Self::open_with_runtimes(
+        let live = parsed.live;
+        let mut registry = Self::open_with_runtimes(
             parsed
                 .devices
                 .into_iter()
                 .map(|entry| (entry.deployment, entry.anchor_directory)),
             parsed.runtimes,
         )
-        .map_err(|_| invalid())
+        .map_err(|_| invalid())?;
+        if live {
+            if super::live::Stamp::read(path)? != observed {
+                return Err(invalid());
+            }
+            registry.live = Some(Arc::new(super::live::Source::new(path, observed)));
+        }
+        Ok(registry)
     }
 }
 

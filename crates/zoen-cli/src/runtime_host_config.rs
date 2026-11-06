@@ -8,15 +8,25 @@ use zoen_models::{EndpointPolicy, GatewayConfig, ModelLimits};
 use zoen_runtime::{PriceProfile, RuntimeConfig};
 
 pub(crate) fn read_private<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
+    read_private_limit(path, 32768)
+}
+
+pub(crate) fn read_private_limit<T: DeserializeOwned>(
+    path: &Path,
+    limit: u64,
+) -> Result<T, String> {
+    if limit == 0 || limit > 65536 {
+        return Err("invalid operator file profile".into());
+    }
     let before = std::fs::symlink_metadata(path).map_err(|_| "host configuration unavailable")?;
-    if !before.is_file() || before.len() > 32768 {
+    if !before.is_file() || before.len() > limit {
         return Err("invalid host configuration file".into());
     }
     let file = std::fs::File::open(path).map_err(|_| "host configuration unavailable")?;
     let actual = file
         .metadata()
         .map_err(|_| "host configuration unavailable")?;
-    if !actual.is_file() || actual.len() > 32768 {
+    if !actual.is_file() || actual.len() > limit {
         return Err("invalid host configuration file".into());
     }
     #[cfg(unix)]
@@ -31,10 +41,10 @@ pub(crate) fn read_private<T: DeserializeOwned>(path: &Path) -> Result<T, String
         }
     }
     let mut bytes = Zeroizing::new(Vec::new());
-    file.take(32769)
+    file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| "host configuration unavailable")?;
-    if bytes.len() > 32768 {
+    if bytes.len() as u64 > limit {
         return Err("host configuration too large".into());
     }
     serde_json::from_slice(&bytes).map_err(|_| "invalid host configuration".into())

@@ -18,6 +18,7 @@ pub(super) struct Config {
     /// Deployment owns the child process through the normal control service.
     #[serde(default)]
     pub supervised: bool,
+    pub admission_config: Option<PathBuf>,
     pub namespace: String,
     pub agent: String,
     pub device: String,
@@ -79,6 +80,13 @@ impl Config {
             || value.home == value.continuity
         {
             return Err("use distinct absolute host and continuity directories".into());
+        }
+        if value
+            .admission_config
+            .as_ref()
+            .is_some_and(|path| !path.is_absolute() || path.parent() == Some(value.home.as_path()))
+        {
+            return Err("use a separate absolute operator admission file".into());
         }
         value
             .chat_price
