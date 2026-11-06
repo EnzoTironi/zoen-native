@@ -1,9 +1,10 @@
 # Zoen runtime authority
 
 This library implements the Postgres financial ledger and fenced FoundationDB
-dispatch protocol. Public `run_model` and `cancel_model` remain closed until
-external restore continuity and a genuine retained certified MLS/core step are
-available. Verified steps have no public constructor, deserializer or injected verifier.
+dispatch protocol. Public `run_model` and `cancel_model` require external restore continuity
+and a genuine retained certified MLS/core step. Paid reply execution additionally
+requires its privately qualified native output route; managed vault loading alone
+does not open that boundary. Verified steps have no public constructor, deserializer or injected verifier.
 The host owns the process-wide FoundationDB network. Apply the relay migrations,
 including `0025_model_financial_authority.sql` and
 `0026_runtime_deployment_binding.sql`, before opening the library.
@@ -100,6 +101,20 @@ cursors, unsupported history and image bounds refuse progress. Partial catch-up
 can retain an image but creates no reply run until its native frontier matches
 the actual source head. The head is checked again inside the activation write.
 
+Native conversation input uses `owner-direct-text-reply/2`. Ordinary inline
+replies and threads retain their signed source; a thread receives its root and
+preceding messages from that thread, while main-chat context excludes thread
+messages. The input bound applies to that retained window; oversized candidates
+stay in history without spending and do not stall later supported requests.
+Unknown references, cross-thread source attribution and scoped App or
+selected-excerpt references are outside this profile. Existing Direct/Trust,
+certified author, current grant, frontier and budget checks remain required.
+New output signs the same inline/thread reference as the ordinary client and
+retains it in reference format 2. Legacy profile/reference format 1 is read and
+recovered with its original unquoted output and original bytes; no retained
+financial result is migrated or dispatched again. This is not groups/tools or
+the complete Brain/Clef/iOS host integration.
+
 The native core retains discovery position inside that complete authenticated
 image and scans at most 64 events/16 eligible replies per call. It selects actual
 opened owner messages under C1's supported Direct/Trust profile and SQL clock
@@ -139,8 +154,8 @@ references and active/staged images stay protected. Unknown usage retains its ho
 an empty page, and reset after each sweep: a cursor is not an insertion watermark.
 The compatibility read crosses completed prefixes within the 8,192-wake profile.
 Cancellation, billing reconciliation and other retention windows remain separate.
-Paid entry remains closed until external continuity is established. Managed loading alone does
-not supply that authority. The joined SQL/OpenMLS/FdbLog fixture validates this
+Paid entry requires external continuity and the qualified reply route. Managed
+loading alone does not supply that authority. The joined SQL/OpenMLS/FdbLog fixture validates this
 unit separately from financial core-scope fixtures; it does not qualify live WS
 provisioning, a deployed managed vault, external nonrollback continuity or
 guarded agent output.
@@ -231,7 +246,7 @@ per-entry acknowledgements. It never calls providers or publishes agent output.
 
 ## Verification and open integration
 
-Run `cargo test -p zoen-runtime --lib -- --nocapture` with `ZOEN_TEST_PG` and
+Run `scripts/cargo-local.sh test -p zoen-runtime --lib -- --nocapture` with `ZOEN_TEST_PG` and
 `FDB_CLUSTER_FILE` pointing at isolated real services. One Rust test owns the FDB
 network and executes named journeys on fresh Postgres databases, isolated FDB
 prefixes and actual local TCP/HTTP. Directory profiles, certificates and owner
@@ -273,28 +288,8 @@ attempts, and an actual deferred SQL commit failure are exercised. That failure
 leaves the independently committed FDB marker orphaned and closed. It is a real
 commit rejection, not DB wire-level commit-unknown testing.
 
-The paid retained-step admission, deployed managed vault, live relay provisioning,
-worker/JetStream
-recovery, typed tool approval/resume, signed output/usage, external continuity
-witness, live billing reconciliation and deployment drills remain open. These
-journeys do not complete runtime milestone 1 or Mastra/TextQL parity. See the
+The normal Brain/Clef/iOS host integration, deployed managed vault, live relay
+provisioning, worker/JetStream recovery, typed tool approval/resume, live provider
+billing reconciliation and deployment drills remain open. The qualified native
+reply API and local service journeys do not complete runtime milestone 1. See the
 [capability ledger](../../docs/agent-runtime-capabilities.md).
-
-## C3 branch validation
-
-The real-service runtime suite completes 2 Rust tests, including 26 new named
-native admission/cancellation outcomes, all 12 retained-discovery outcomes and
-all 30 financial regressions. It uses actual Postgres, FoundationDB, OpenMLS,
-relay FdbLog and loopback HTTP with explicit fixture custody. The real
-60,000,000-version lease expiry is observed without changing that bound.
-A separate forced-expiry takeover cut remains explicitly synthetic. Known
-commit ACK suppression is not wire-level database commit-unknown testing.
-
-Independent review found no blocker in the production delta; it did not execute
-these services independently. One local fixture bootstrap returned Unavailable;
-the identical binary passed on repetition, and the cause remains unproved.
-The implementation PR binds its exact source, binary and raw-log hashes and
-retains the unsuccessful attempts. Full integration CI on the refreshed stack,
-managed vault deployment, external nonrollback continuity, guarded publication
-and automatic worker/wake cleanup remain open. This is not backend completion or
-full Mastra/TextQL parity.

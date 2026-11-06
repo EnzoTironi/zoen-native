@@ -153,6 +153,8 @@ pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_r
         "missing-reference",
         "changed-message",
         "changed-digest",
+        "changed-reply",
+        "changed-thread",
         "future-reference",
     ] {
         let mut fixture = Fixture::new()?;
@@ -203,12 +205,27 @@ pub(super) fn receipt_refuses_different_duplicate_opening_and_missing_original_r
                     .unwrap();
             }
             "missing-reference" => fixture.core.engine.store.meta_delete(&key).unwrap(),
-            "changed-message" | "changed-digest" | "future-reference" => {
+            "changed-message" | "changed-digest" | "changed-reply" | "changed-thread"
+            | "future-reference" => {
                 let json = fixture.core.engine.store.meta(&key).unwrap().unwrap();
                 let changed = match case {
                     "changed-message" => json.replace(prepared.message(), "different-message"),
                     "changed-digest" => json.replace(prepared.event_digest(), &"00".repeat(32)),
-                    "future-reference" => json.replace("\"version\":1", "\"version\":2"),
+                    "changed-reply" => {
+                        let value: serde_json::Value = serde_json::from_str(&json)?;
+                        let source = value["reply"]["to"].as_str().ok_or("reply source")?;
+                        json.replacen(
+                            &format!("\"to\":\"{source}\""),
+                            "\"to\":\"different-source\"",
+                            1,
+                        )
+                    }
+                    "changed-thread" => json.replacen("\"thread\":false", "\"thread\":true", 1),
+                    "future-reference" => {
+                        let value: serde_json::Value = serde_json::from_str(&json)?;
+                        let version = value["version"].as_u64().ok_or("reference version")?;
+                        json.replacen(&format!("\"version\":{version}"), "\"version\":255", 1)
+                    }
                     _ => unreachable!(),
                 };
                 assert_ne!(json, changed);

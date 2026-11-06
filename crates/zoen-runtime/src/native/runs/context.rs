@@ -126,6 +126,9 @@ impl AgentContext {
 
 impl RunRecord {
     pub(super) fn validate_context(&self) -> Result<String, RuntimeError> {
+        if !matches!(self.intent.profile(), PROFILE | "owner-direct-text-reply/2") {
+            return Err(RuntimeError::InvalidBinding);
+        }
         match (self.format, &self.agent_context) {
             (1, None)
                 if matches!(
@@ -133,7 +136,7 @@ impl RunRecord {
                     [InputMessage::User { .. }]
                 ) =>
             {
-                Ok(PROFILE.into())
+                Ok(self.intent.profile().into())
             }
             (2, Some(context)) => {
                 let [InputMessage::System { text }, rest @ ..] = self.request.messages.as_slice()

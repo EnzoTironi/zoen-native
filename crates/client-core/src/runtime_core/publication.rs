@@ -99,6 +99,7 @@ impl DeviceCore {
                 .clone()
                 .ok_or(NativeError::Credential)?;
             let message = new_id("msg").map_err(|_| NativeError::Storage)?;
+            let reply = self.expected_reply(original)?;
             let event = self
                 .engine
                 .append_synced(
@@ -109,7 +110,7 @@ impl DeviceCore {
                         message: message.clone(),
                         text: text.into(),
                         attaches: None,
-                        reply: None,
+                        reply,
                         media: None,
                         forwarded: false,
                         forwarded_author: None,

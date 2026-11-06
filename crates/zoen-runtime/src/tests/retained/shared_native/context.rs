@@ -2,6 +2,7 @@
 use super::*;
 use crate::tests::retained::image_tasks::delivery::relay::Relay;
 use types::agent_behavior::{AgentKind, Definition, ModelTier};
+mod conversation;
 
 fn definition(version: u32) -> Definition {
     Definition {
@@ -61,6 +62,7 @@ async fn ready() -> Result<(Fixture, Relay, crate::ReplyRun), Box<dyn std::error
     Ok((f, relay, run))
 }
 pub(in crate::tests) async fn run() -> TestResult {
+    Box::pin(conversation::run()).await?;
     Box::pin(role_history_and_cold_recovery()).await?;
     for change in ["definition", "pause", "revoke"] {
         Box::pin(refuse_changed_before_call(change)).await?;

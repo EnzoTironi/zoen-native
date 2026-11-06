@@ -3,7 +3,7 @@
 use super::{
     direct_writers, evaluate_permission, ActionClass, Capability, DeviceCore, Event, EventBody,
     GrantScope, GrantState, NativeError, NativeFrontier, Policy, ReplyDiscovery, ReplyFacts,
-    ReplyIntent, ReplyMessage, Result, Seen, SpaceLog, State, Zeroizing, MAX_BATCH,
+    ReplyIntent, ReplyMessage, Result, Seen, SpaceLog, State, Zeroizing, LEGACY_PROFILE, MAX_BATCH,
     MAX_CONTEXT_BYTES, PROFILE,
 };
 
@@ -58,18 +58,13 @@ impl DeviceCore {
         let mut through = cursor;
         for event in log.events().iter().skip(from).take(MAX_BATCH) {
             if event.author == self.owner
-                && matches!(
-                    &event.body,
-                    EventBody::MessagePosted {
-                        attaches: None,
-                        reply: None,
-                        ..
-                    }
-                )
+                && matches!(&event.body, EventBody::MessagePosted { attaches: None, .. })
             {
                 match self.extract(space, &event.hash, at_ms) {
                     Ok(facts) => replies.push(facts),
-                    Err(NativeError::Permission) => {}
+                    // A bounded unsupported prompt is not a spend or an opaque
+                    // history failure. Retain it and continue the finite scan.
+                    Err(NativeError::Permission | NativeError::Bounds) => {}
                     Err(error) => return Err(error),
                 }
             }
@@ -100,7 +95,8 @@ impl DeviceCore {
     }
 
     pub fn refresh(&self, original: &ReplyIntent, at_ms: i64) -> Result<ReplyFacts> {
-        let current = self.extract(&original.space, &original.trigger, at_ms)?;
+        let current =
+            self.extract_profile(&original.space, &original.trigger, at_ms, &original.profile)?;
         if &current.intent != original {
             return Err(NativeError::Permission);
         }
@@ -108,6 +104,19 @@ impl DeviceCore {
     }
 
     pub(super) fn extract(&self, space: &str, trigger: &str, at_ms: i64) -> Result<ReplyFacts> {
+        self.extract_profile(space, trigger, at_ms, PROFILE)
+    }
+
+    fn extract_profile(
+        &self,
+        space: &str,
+        trigger: &str,
+        at_ms: i64,
+        profile: &str,
+    ) -> Result<ReplyFacts> {
+        if !matches!(profile, PROFILE | LEGACY_PROFILE) {
+            return Err(NativeError::Permission);
+        }
         if !self.usable {
             return Err(NativeError::History);
         }
@@ -115,6 +124,12 @@ impl DeviceCore {
             return Err(NativeError::Permission);
         }
         let log = self.engine.logs.get(space).ok_or(NativeError::History)?;
+        let source = log
+            .events()
+            .iter()
+            .find(|event| event.hash == trigger)
+            .ok_or(NativeError::Permission)?;
+        let thread = super::conversation::thread(source);
         let mut ordered = State::default();
         let mut selected: Option<(GrantState, &Event)> = None;
         let mut grant_events = std::collections::HashMap::new();
@@ -165,9 +180,12 @@ impl DeviceCore {
                 | EventBody::DeviceJoining { .. } => true,
                 EventBody::Sealed { kind } => kind == "Commit" || kind == "Welcome",
                 EventBody::GrantIssued { .. } | EventBody::GrantRevoked { .. } => opened.is_some(),
-                EventBody::MessagePosted {
-                    attaches, reply, ..
-                } => attaches.is_none() && reply.is_none() && (opened.is_some() || own_echo),
+                EventBody::MessagePosted { reply, .. } => {
+                    accepted
+                        && super::conversation::supported(&ordered, event)
+                        && (profile != LEGACY_PROFILE || original.is_some() || reply.is_none())
+                        && (opened.is_some() || own_echo)
+                }
                 _ => false,
             };
             if !supported {
@@ -182,18 +200,21 @@ impl DeviceCore {
             });
             if let EventBody::MessagePosted { text: message, .. } = &event.body {
                 if readable
+                    && accepted
                     && historical_writers
                     && original.is_none()
+                    && (profile == LEGACY_PROFILE || super::conversation::in_context(event, thread))
                     && (own_echo
                         || opened.as_ref().is_some_and(|from| {
                             from.identity == self.owner || from.identity == self.agent
                         }))
                 {
-                    if text
-                        .len()
-                        .checked_add(message.len())
-                        .and_then(|n| n.checked_add(1))
-                        .is_none_or(|n| n > MAX_CONTEXT_BYTES)
+                    if profile == LEGACY_PROFILE
+                        && text
+                            .len()
+                            .checked_add(message.len())
+                            .and_then(|n| n.checked_add(1))
+                            .is_none_or(|n| n > MAX_CONTEXT_BYTES)
                     {
                         return Err(NativeError::Bounds);
                     }
@@ -205,8 +226,10 @@ impl DeviceCore {
                         source: event.hash.clone(),
                         text: Zeroizing::new(message.clone()),
                     });
-                    text.push_str(message);
-                    text.push('\n');
+                    if profile == LEGACY_PROFILE {
+                        text.push_str(message);
+                        text.push('\n');
+                    }
                 }
                 if event.hash == trigger {
                     let (grant, grant_event) = selected.as_ref().ok_or(NativeError::Permission)?;
@@ -224,7 +247,7 @@ impl DeviceCore {
                         return Err(NativeError::Permission);
                     }
                     original = Some(ReplyIntent {
-                        profile: PROFILE.into(),
+                        profile: profile.into(),
                         agent: self.agent.clone(),
                         owner: self.owner.clone(),
                         space: space.into(),
@@ -267,6 +290,20 @@ impl DeviceCore {
             .ready_epoch_in(space, &ordered)
             .ok_or(NativeError::NotReady)?;
         let last = log.events().last().ok_or(NativeError::History)?;
+        if profile == PROFILE {
+            for entry in &native_context {
+                if text
+                    .len()
+                    .checked_add(entry.text.len())
+                    .and_then(|length| length.checked_add(1))
+                    .is_none_or(|length| length > MAX_CONTEXT_BYTES)
+                {
+                    return Err(NativeError::Bounds);
+                }
+                text.push_str(&entry.text);
+                text.push('\n');
+            }
+        }
         Ok(ReplyFacts {
             context: native_context,
             intent,

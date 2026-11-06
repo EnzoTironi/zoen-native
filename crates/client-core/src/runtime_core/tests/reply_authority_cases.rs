@@ -7,6 +7,13 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
     let mut fixture = Fixture::new()?;
     fixture.grant("publication-owner-trust", Some(1000))?;
     let trigger = fixture.message("Original reply request")?;
+    let source = fixture.owner.logs[SPACE]
+        .events()
+        .iter()
+        .find(|event| event.hash == trigger)
+        .ok_or("original source")?
+        .client_id
+        .clone();
     let facts = fixture.core.reply(SPACE, &trigger, 400).unwrap();
     let original = facts.intent().clone();
     let frontier = facts.frontier().clone();
@@ -41,8 +48,8 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
     );
     assert!(matches!(
         &pending[0].event.body,
-        EventBody::MessagePosted { message, text, attaches: None, reply: None, media: None, forwarded: false, forwarded_author: None, }
-            if message == prepared.message() && text == "Retained model result\n"
+        EventBody::MessagePosted { message, text, attaches: None, reply: Some(reply), media: None, forwarded: false, forwarded_author: None, }
+            if message == prepared.message() && text == "Retained model result\n" && reply == &types::ReplyRef::inline(&source)
     ));
     assert_eq!(cold.engine.outbox_envelopes(), vec![envelope.clone()]);
     assert_eq!(
@@ -57,8 +64,8 @@ pub(super) fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_
     let received = fixture.owner.logs[SPACE].events().last().unwrap();
     assert!(matches!(
         &received.body,
-        EventBody::MessagePosted { message, text, attaches: None, reply: None, media: None, forwarded: false, forwarded_author: None, }
-            if message == prepared.message() && text == "Retained model result\n"
+        EventBody::MessagePosted { message, text, attaches: None, reply: Some(reply), media: None, forwarded: false, forwarded_author: None, }
+            if message == prepared.message() && text == "Retained model result\n" && reply == &types::ReplyRef::inline(&source)
     ));
     cold.ingest(vec![frame.clone()]).unwrap();
     assert_eq!(cold.engine.store.outbox_len().unwrap(), 0);

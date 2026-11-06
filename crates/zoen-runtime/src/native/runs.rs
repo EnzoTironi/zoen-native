@@ -315,7 +315,7 @@ impl NativeCustody {
                                 .as_ref()
                                 .map(context::AgentContext::version)
                                 .transpose()?
-                                .unwrap_or_else(|| PROFILE.into()),
+                                .unwrap_or_else(|| facts.intent().profile().into()),
                             price_version: runtime.price.version.clone(),
                         },
                         operation: Operation::ChatCompletion,
