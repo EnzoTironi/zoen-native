@@ -84,6 +84,14 @@ impl OwnerPolicyImageSpec {
     }
 }
 
+/// Explicit service tag for new conversation quotes. Absent on historical
+/// image options so their authenticated serialized bytes remain unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OwnerPolicyService {
+    Conversation,
+}
+
 /// Internal Rust wire. UI consumers must project i64 values to decimal strings.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -101,6 +109,8 @@ pub struct OwnerPolicyOptions {
     // Management has no Request definition; only the actual host supplies this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_spec: Option<OwnerPolicyImageSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<OwnerPolicyService>,
 }
 impl OwnerPolicyOptions {
     pub fn valid_shape(&self) -> bool {
@@ -114,6 +124,7 @@ impl OwnerPolicyOptions {
                 .image_spec
                 .as_ref()
                 .is_none_or(OwnerPolicyImageSpec::valid_shape)
+            && (self.service.is_none() || self.image_spec.is_none())
             && (2000..=2200).contains(&self.year)
             && (1..=12).contains(&self.month)
             && match (&self.current_policy, &self.current_policy_digest) {
@@ -121,5 +132,30 @@ impl OwnerPolicyOptions {
                 (Some(signed), Some(digest)) => signed.policy.valid_shape() && digest_id(digest),
                 _ => false,
             }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn historical_options_omit_service_and_conversation_cannot_claim_image_specs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let legacy = serde_json::json!({"inquiry_digest":"ab".repeat(32),"currency":"USD","scale":6,
+            "reservation_units":110,"image_profile_digest":"cd".repeat(32),"observed_at_ms":1,
+            "year":2026,"month":11,"current_policy":null,"current_policy_digest":null});
+        let mut options: OwnerPolicyOptions = serde_json::from_value(legacy.clone())?;
+        assert_eq!(serde_json::to_value(&options)?, legacy);
+        options.service = Some(OwnerPolicyService::Conversation);
+        assert!(options.valid_shape());
+        options.image_spec = Some(OwnerPolicyImageSpec {
+            size: "1024x1024".into(),
+            quality: "low".into(),
+        });
+        assert!(!options.valid_shape());
+        let mut unknown = legacy;
+        unknown["service"] = "unrecognized".into();
+        assert!(serde_json::from_value::<OwnerPolicyOptions>(unknown).is_err());
+        Ok(())
     }
 }

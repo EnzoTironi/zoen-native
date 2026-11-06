@@ -106,8 +106,12 @@ export function OwnerPolicyControllerScreen({ target }: { target: PolicyTarget }
           profiles={review.allowed_profiles.map((digest) => ({
             digest,
             label:
-              digest === context?.image_profile_digest
-                ? t('ownerPolicy.imageService')
+              digest === context?.profile_digest
+                ? t(
+                    context?.service_kind === 'conversation'
+                      ? 'ownerPolicy.conversationService'
+                      : 'ownerPolicy.imageService',
+                  )
                 : t('ownerPolicy.previousService'),
           }))}
           phase={reviewPhase}

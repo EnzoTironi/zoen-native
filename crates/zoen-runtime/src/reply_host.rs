@@ -83,6 +83,31 @@ impl ReplyRuntimeHost {
             .await
     }
 
+    pub async fn owner_policy_options(
+        &self,
+        signed: &types::owner_policy_context::SignedOwnerPolicyInquiry,
+    ) -> Result<types::owner_policy_context::OwnerPolicyOptions, OwnerPolicyContextFailure> {
+        self.runtime
+            .native
+            .as_ref()
+            .ok_or(
+                OwnerPolicyContextStage::Credential.failed(RuntimeError::CoreAuthorityUnavailable),
+            )?
+            .owner_policy_options(
+                &self.runtime,
+                &self.config.agent,
+                &self.config.device,
+                &crate::pricing::BoundPrice::Chat(self.runtime.price.clone()),
+                None,
+                signed,
+            )
+            .await
+    }
+
+    pub fn configured_device(&self) -> &str {
+        &self.config.device
+    }
+
     /// Canonical owner lifecycle revision, never an execution permit.
     pub async fn control_revision(&self) -> Result<Option<u64>, RuntimeError> {
         self.runtime.check_reply_continuity().await?;

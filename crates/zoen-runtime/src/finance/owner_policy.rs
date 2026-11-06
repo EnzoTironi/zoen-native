@@ -63,7 +63,7 @@ impl NativeDirectoryGuard {
     pub(crate) async fn owner_policy_options(
         mut self,
         signed: &SignedOwnerPolicyInquiry,
-        price: &crate::ImagePriceProfile,
+        price: &crate::pricing::BoundPrice,
     ) -> Result<OwnerPolicyOptions, RuntimeError> {
         let inquiry = &signed.inquiry;
         let profile_digest = price.digest()?;
@@ -111,26 +111,42 @@ impl NativeDirectoryGuard {
             } else {
                 (None, None)
             };
-        fn image_setting(value: impl serde::Serialize) -> Result<String, RuntimeError> {
-            serde_json::to_value(value)
-                .ok()
-                .and_then(|value| value.as_str().map(str::to_owned))
-                .ok_or(RuntimeError::InvalidProfile)
-        }
-        let image_spec = if inquiry.purpose.is_some() {
-            Some(types::owner_policy_context::OwnerPolicyImageSpec {
-                size: image_setting(price.image.size)?,
-                quality: image_setting(price.image.quality)?,
-            })
-        } else {
-            None
+        let (image_spec, service, reservation_units) = match price {
+            crate::pricing::BoundPrice::Chat(profile) => {
+                if inquiry.purpose.is_none() {
+                    return Err(RuntimeError::Denied);
+                }
+                (
+                    None,
+                    Some(types::owner_policy_context::OwnerPolicyService::Conversation),
+                    profile.reserve(profile.max_output_tokens)?,
+                )
+            }
+            crate::pricing::BoundPrice::Image(profile) => {
+                fn setting(value: impl serde::Serialize) -> Result<String, RuntimeError> {
+                    serde_json::to_value(value)
+                        .ok()
+                        .and_then(|v| v.as_str().map(str::to_owned))
+                        .ok_or(RuntimeError::InvalidProfile)
+                }
+                let spec = inquiry
+                    .purpose
+                    .map(|_| {
+                        Ok::<_, RuntimeError>(types::owner_policy_context::OwnerPolicyImageSpec {
+                            size: setting(profile.image.size)?,
+                            quality: setting(profile.image.quality)?,
+                        })
+                    })
+                    .transpose()?;
+                (spec, None, profile.reservation_units)
+            }
         };
         let options = OwnerPolicyOptions {
             inquiry_digest: event_log::owner_policy_inquiry::digest(inquiry)
                 .ok_or(RuntimeError::InvalidBinding)?,
-            currency: price.currency.clone(),
-            scale: price.scale,
-            reservation_units: price.reservation_units,
+            currency: price.currency().into(),
+            scale: price.scale(),
+            reservation_units,
             image_profile_digest: profile_digest,
             observed_at_ms: now,
             year,
@@ -138,6 +154,7 @@ impl NativeDirectoryGuard {
             current_policy,
             current_policy_digest,
             image_spec,
+            service,
         };
         if !options.valid_shape() {
             return Err(RuntimeError::InvalidBinding);

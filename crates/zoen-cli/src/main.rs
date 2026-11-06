@@ -7,6 +7,7 @@
 //! ```
 //! Every command is a fresh process: open the database, load the key from the vault,
 //! connect, catch up, act, flush, exit. Killing it at any point loses nothing.
+mod owner_policy_protocol;
 
 mod agent;
 mod agent_enrollment;

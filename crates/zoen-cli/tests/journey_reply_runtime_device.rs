@@ -6,6 +6,8 @@ mod config;
 mod file_vault;
 #[path = "../src/gate_transport.rs"]
 mod gate_transport;
+#[path = "reply_runtime/owner_budget.rs"]
+mod owner_budget;
 #[path = "reply_runtime/provider.rs"]
 mod provider;
 #[path = "../src/image_host/provision.rs"]

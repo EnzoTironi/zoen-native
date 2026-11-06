@@ -59,6 +59,7 @@ fn account_inquiry_without_image_preserves_explicit_disable_version_and_pending_
     let signed = event_log::owner_budget::sign(&author, prior).ok_or("prior signing refused")?;
     let previous = event_log::owner_budget::digest(&signed.policy).ok_or("prior digest")?;
     let options = OwnerPolicyOptions {
+        service: None,
         inquiry_digest: query.digest().into(),
         currency: "USD".into(),
         scale: 6,
@@ -237,5 +238,117 @@ fn explicit_account_inquiry_queues_without_clear_fallback_while_private_mls_is_n
             .is_err(),
         "queued intent does not become readable/effective scope"
     );
+    Ok(())
+}
+
+#[test]
+fn conversation_account_quote_projects_generic_review_and_rejects_mixed_services() -> TestResult {
+    use types::owner_policy_context::OwnerPolicyService;
+    let (mut f, scope, _) = setup()?;
+    f.grant("budget-controls-preserve-conversation", None)?;
+    let trigger = f.message("Only this conversation text belongs in the model")?;
+    f.clear(EventBody::ProfileKeyShared {
+        version: 1,
+        shares: Vec::new(),
+    })?;
+    let request = f.owner.request_account_policy_options(&scope)?;
+    deliver_owner(&mut f)?;
+    let query = f
+        .core
+        .engine
+        .owner_policy_inquiry(&scope.space_id, &request.source)?;
+    let now = crate::engine::now_ms();
+    let date = chrono::DateTime::from_timestamp_millis(now).ok_or("clock")?;
+    let options = OwnerPolicyOptions {
+        inquiry_digest: query.digest().into(),
+        currency: "USD".into(),
+        scale: 6,
+        reservation_units: 110,
+        image_profile_digest: "ab".repeat(32),
+        observed_at_ms: now,
+        year: date.year(),
+        month: u8::try_from(date.month())?,
+        current_policy: None,
+        current_policy_digest: None,
+        image_spec: None,
+        service: Some(OwnerPolicyService::Conversation),
+    };
+    let mut mixed = options.clone();
+    mixed.image_spec = Some(OwnerPolicyImageSpec {
+        size: "1024x1024".into(),
+        quality: "low".into(),
+    });
+    assert!(f
+        .core
+        .engine
+        .report_owner_policy_options(&query, mixed)
+        .is_err());
+    let mut untagged = options.clone();
+    untagged.service = None;
+    assert!(f
+        .core
+        .engine
+        .report_owner_policy_options(&query, untagged)
+        .is_err());
+    f.core.engine.report_owner_policy_options(&query, options)?;
+    deliver_agent(&mut f)?;
+    let context = f
+        .owner
+        .owner_policy_options(&scope, &request.source)?
+        .context
+        .ok_or("context")?;
+    assert_eq!(context.service_kind, "conversation");
+    assert_eq!(context.profile_digest, "ab".repeat(32));
+    let review = f.owner.prepare_owner_policy(
+        &scope,
+        &request.source,
+        &context.options_digest,
+        "500",
+        "110",
+        true,
+    )?;
+    assert_eq!(review.allowed_profiles, vec![context.profile_digest]);
+    let head = f.core.retained_head(&scope.space_id)?.ok_or("head")?;
+    f.core.engine.store.set_meta(
+        &format!("runtime.reply-scan/1/{}", scope.space_id),
+        &serde_json::to_string(&head)?,
+    )?;
+    let image = f.core.image()?;
+    let mut cold = DeviceCore::restore(image, f.credential())?;
+    let scan = cold.discover_replies(&scope.space_id, now)?;
+    assert!(scan
+        .replies
+        .iter()
+        .any(|facts| facts.intent().trigger() == trigger));
+    let facts = cold.reply(&scope.space_id, &trigger, now)?;
+    assert_eq!(
+        facts.text(),
+        "Only this conversation text belongs in the model\n"
+    );
+    assert!(cold
+        .discover_replies(&scope.space_id, now)?
+        .replies
+        .is_empty());
+    // A genuinely signed but cross-space inquiry is still unsupported and must
+    // not preserve/open the readable baseline just because its tag is known.
+    let author = f.owner.net.author.clone().ok_or("owner signer")?;
+    let mut wrong = query.signed().inquiry.clone();
+    wrong.space = "other_private_dm".into();
+    let signed = event_log::owner_policy_inquiry::sign(&author, wrong).ok_or("wrong query")?;
+    f.owner.append_synced(
+        &scope.space_id,
+        &author,
+        now,
+        EventBody::OwnerPolicyOptionsRequested {
+            agent: scope.agent_id.clone(),
+            signed,
+        },
+    )?;
+    deliver_owner(&mut f)?;
+    assert!(matches!(
+        f.core.reply(&scope.space_id, &trigger, now),
+        Err(NativeError::Permission)
+    ));
+
     Ok(())
 }

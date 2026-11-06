@@ -16,6 +16,7 @@ fn first_account_disable_reviews_zero_only_and_retains_exact_receipt_after_cold(
     let date = chrono::DateTime::from_timestamp_millis(now).ok_or("invalid clock")?;
     let profile = "22".repeat(32);
     let mut options = OwnerPolicyOptions {
+        service: None,
         inquiry_digest: query.digest().into(),
         currency: "USD".into(),
         scale: 6,

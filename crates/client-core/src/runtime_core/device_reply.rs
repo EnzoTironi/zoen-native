@@ -24,35 +24,53 @@ impl DeviceCore {
         if !self.usable || space.is_empty() || space.len() > 256 || at_ms < 0 {
             return Err(NativeError::History);
         }
-        let key = format!("runtime.reply-scan/1/{space}");
+        // Version 1 could skip owner text after legitimate budget metadata.
+        // Re-scan verified history once; Runtime's immutable trigger index still
+        // deduplicates existing runs/paid results. No financial receipt is reset.
+        let key = format!("runtime.reply-scan/2/{space}");
         let cursor = self
             .engine
             .store
             .meta(&key)
             .map_err(|_| NativeError::Storage)?;
-        let cursor: Option<Seen> = cursor
-            .map(|value| {
-                if value.len() > 256 {
-                    return Err(NativeError::History);
-                }
-                serde_json::from_str(&value).map_err(|_| NativeError::History)
-            })
-            .transpose()?;
-        let log = self.engine.logs.get(space).ok_or(NativeError::History)?;
-        let from = match &cursor {
-            Some(cursor) => {
-                let index = usize::try_from(cursor.seq).map_err(|_| NativeError::History)?;
-                if log
-                    .events()
-                    .get(index)
-                    .is_none_or(|event| event.seq != cursor.seq || event.hash != cursor.hash)
-                {
-                    return Err(NativeError::History);
-                }
-                index.checked_add(1).ok_or(NativeError::History)?
-            }
-            None => 0,
+        let parse = |value: Option<String>| -> Result<Option<Seen>> {
+            value
+                .map(|value| {
+                    if value.len() > 256 {
+                        return Err(NativeError::History);
+                    }
+                    serde_json::from_str(&value).map_err(|_| NativeError::History)
+                })
+                .transpose()
         };
+        let cursor = parse(cursor)?;
+        let legacy = if cursor.is_none() {
+            parse(
+                self.engine
+                    .store
+                    .meta(&format!("runtime.reply-scan/1/{space}"))
+                    .map_err(|_| NativeError::Storage)?,
+            )?
+        } else {
+            None
+        };
+        let log = self.engine.logs.get(space).ok_or(NativeError::History)?;
+        let position = |cursor: &Seen| -> Result<usize> {
+            let index = usize::try_from(cursor.seq).map_err(|_| NativeError::History)?;
+            if log
+                .events()
+                .get(index)
+                .is_none_or(|event| event.seq != cursor.seq || event.hash != cursor.hash)
+            {
+                return Err(NativeError::History);
+            }
+            index.checked_add(1).ok_or(NativeError::History)
+        };
+        // An invalid legacy cursor is corruption, not permission to restart.
+        if let Some(legacy) = legacy {
+            position(&legacy)?;
+        }
+        let from = cursor.as_ref().map(position).transpose()?.unwrap_or(0);
         let mut replies = Vec::new();
         let mut examined = 0u16;
         let mut through = cursor;
@@ -178,8 +196,34 @@ impl DeviceCore {
                 | EventBody::SpaceEncrypted
                 | EventBody::Checkpoint { .. }
                 | EventBody::DeviceJoining { .. } => true,
+                // Profile-key boxes are encrypted per recipient and use the
+                // existing signed clear-envelope control plane (mls::stays_clear).
+                // They preserve a baseline, never create an MLS text opening.
+                EventBody::ProfileKeyShared { .. } => {
+                    accepted
+                        && historical_writers
+                        && (event.author == self.owner || event.author == self.agent)
+                        && event_log::verify_author(event).is_ok()
+                }
                 EventBody::Sealed { kind } => kind == "Commit" || kind == "Welcome",
                 EventBody::GrantIssued { .. } | EventBody::GrantRevoked { .. } => opened.is_some(),
+                EventBody::OwnerPolicyOptionsRequested { .. }
+                | EventBody::OwnerPolicyOptionsReported { .. }
+                | EventBody::OwnerPolicyOptionsRefused { .. }
+                | EventBody::OwnerPolicySubmitted { .. }
+                | EventBody::OwnerPolicyReported { .. } => {
+                    accepted
+                        && historical_writers
+                        && (own_echo
+                            || opened
+                                .as_ref()
+                                .is_some_and(|from| from.identity == event.author))
+                        && self.engine.owner_policy_conversation_control(
+                            event,
+                            &self.owner,
+                            &self.agent,
+                        )
+                }
                 EventBody::MessagePosted { reply, .. } => {
                     accepted
                         && super::conversation::supported(&ordered, event)

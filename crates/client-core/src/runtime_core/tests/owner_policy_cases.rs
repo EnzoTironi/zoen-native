@@ -396,6 +396,7 @@ fn authenticated_options_prepare_exact_money_and_successor_of_expired_disabled_p
     let now = crate::engine::now_ms();
     let date = chrono::DateTime::from_timestamp_millis(now).ok_or("invalid clock")?;
     let options = OwnerPolicyOptions {
+        service: None,
         inquiry_digest: query.digest().into(),
         currency: "USD".into(),
         scale: 6,
@@ -497,6 +498,7 @@ fn authenticated_options_prepare_exact_money_and_successor_of_expired_disabled_p
     let latest_digest =
         event_log::owner_budget::digest(&signed.policy).ok_or("policy digest refused")?;
     let options = OwnerPolicyOptions {
+        service: None,
         inquiry_digest: second.digest().into(),
         current_policy: Some(signed),
         current_policy_digest: Some(latest_digest.clone()),

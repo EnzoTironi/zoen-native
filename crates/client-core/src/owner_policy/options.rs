@@ -28,9 +28,8 @@ pub struct OwnerPolicyContext {
     pub current_expired: Option<bool>,
     pub current_policy_digest: Option<String>,
     pub existing_profile_count: u32,
-    pub image_profile_digest: String,
-    pub image_size: String,
-    pub image_quality: String,
+    pub profile_digest: String,
+    pub service_kind: String,
     pub observed_at_ms: String,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -58,7 +57,8 @@ pub(super) fn validate_options(
         || event_log::owner_policy_inquiry::digest(inquiry).as_deref()
             != Some(options.inquiry_digest.as_str())
         || (inquiry.purpose.is_none() && inquiry.price_digest != options.image_profile_digest)
-        || (inquiry.purpose.is_some() && options.image_spec.is_none())
+        || (inquiry.purpose.is_none() && options.service.is_some())
+        || (inquiry.purpose.is_some() && options.service.is_none() && options.image_spec.is_none())
         || options.observed_at_ms < inquiry.at_ms.saturating_sub(30_000)
         || options.observed_at_ms > at_ms.saturating_add(30_000)
         || at_ms.saturating_sub(options.observed_at_ms) > CONTEXT_TTL_MS
@@ -269,7 +269,7 @@ impl Engine {
             });
         }
         let (inquiry, options) = self.owner_policy_options_record(scope, source)?;
-        let input = self.owner_policy_context_input(&inquiry.inquiry, crate::engine::now_ms())?;
+        self.owner_policy_context_input(&inquiry.inquiry, crate::engine::now_ms())?;
         let digest =
             event_log::owner_policy_inquiry::digest(&inquiry.inquiry).ok_or_else(invalid)?;
         let context = options
@@ -295,20 +295,14 @@ impl Engine {
                         current.map_or(0, |policy| policy.allowed_profiles.len()),
                     )
                     .map_err(|_| invalid())?,
-                    image_profile_digest: options.image_profile_digest.clone(),
-                    image_size: match &input {
-                        Some(input) => input.definition.size.clone(),
-                        None => options.image_spec.as_ref().ok_or_else(denied)?.size.clone(),
-                    },
-                    image_quality: match &input {
-                        Some(input) => input.definition.quality.clone(),
-                        None => options
-                            .image_spec
-                            .as_ref()
-                            .ok_or_else(denied)?
-                            .quality
-                            .clone(),
-                    },
+                    profile_digest: options.image_profile_digest.clone(),
+                    service_kind: match options.service {
+                        Some(types::owner_policy_context::OwnerPolicyService::Conversation) => {
+                            "conversation"
+                        }
+                        None => "image",
+                    }
+                    .into(),
                     observed_at_ms: options.observed_at_ms.to_string(),
                 })
             })

@@ -37,19 +37,22 @@ impl NativeCustody {
     pub(crate) async fn owner_policy_options(
         &self,
         runtime: &RuntimeAuthority,
-        config: &crate::ImageHostConfig,
-        definition: &ImageTaskDefinition,
+        agent: &str,
+        device: &str,
+        price: &crate::pricing::BoundPrice,
+        definition: Option<&ImageTaskDefinition>,
         signed: &SignedOwnerPolicyInquiry,
     ) -> Result<OwnerPolicyOptions, OwnerPolicyContextFailure> {
         let credential = self
-            .credential(&config.agent, &config.device)
+            .credential(agent, device)
             .map_err(|error| Stage::Credential.failed(error))?;
-        if signed.inquiry.owner != credential.owner.id
-            || signed.inquiry.agent != config.agent
+        if (matches!(price, crate::pricing::BoundPrice::Chat(_))
+            && signed.inquiry.purpose.is_none())
+            || signed.inquiry.owner != credential.owner.id
+            || signed.inquiry.agent != agent
             || (signed.inquiry.purpose.is_none()
                 && signed.inquiry.price_digest
-                    != config
-                        .price
+                    != price
                         .digest()
                         .map_err(|error| Stage::Inquiry.failed(error))?)
             || !event_log::owner_policy_inquiry::verify(signed)
@@ -57,12 +60,7 @@ impl NativeCustody {
             return Err(Stage::Inquiry.failed(RuntimeError::Denied));
         }
         let progress = self
-            .refresh_source(
-                runtime,
-                &config.agent,
-                &config.device,
-                &signed.inquiry.space,
-            )
+            .refresh_source(runtime, agent, device, &signed.inquiry.space)
             .await
             .map_err(|error| Stage::Source.failed(error))?;
         if !progress.caught_up {
@@ -102,7 +100,7 @@ impl NativeCustody {
                 let input = core
                     .owner_policy_image_context(signed, now)
                     .map_err(|_| Stage::Admission.failed(RuntimeError::Denied))?;
-                if input.definition != *definition {
+                if definition != Some(&input.definition) {
                     return Err(Stage::Admission.failed(RuntimeError::InvalidBinding));
                 }
             }
@@ -111,12 +109,12 @@ impl NativeCustody {
                 .native_directory(
                     &credential.agent,
                     &credential.owner,
-                    &config.device,
+                    device,
                     &credential.certificate,
                 )
                 .await
                 .map_err(|error| Stage::Directory.failed(error))?
-                .owner_policy_options(signed, &config.price)
+                .owner_policy_options(signed, price)
                 .await
                 .map_err(|error| Stage::Finance.failed(error))
         })
