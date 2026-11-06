@@ -30,6 +30,38 @@ async fn question(
     .await
 }
 
+async fn discover(f: &Fixture) -> Result<Vec<crate::ReplyRun>, Box<dyn std::error::Error>> {
+    let mut runs = Vec::new();
+    for _ in 0..16 {
+        let sync = f.sync(false).await?;
+        runs.extend(sync.runs);
+        if sync.caught_up && sync.discovery_complete {
+            return Ok(runs);
+        }
+    }
+    Err("bounded fixture source did not finish discovery".into())
+}
+
+fn user_context(request: &serde_json::Value) -> Result<Vec<&str>, Box<dyn std::error::Error>> {
+    let messages = request["messages"].as_array().ok_or("messages")?;
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0]["role"], "system");
+    assert_eq!(text(&messages[0])?, definition(1).system_prompt());
+    assert_eq!(messages[1]["role"], "user");
+    // Rig preserves consecutive same-role turns as ordered content blocks.
+    messages[1]["content"]
+        .as_array()
+        .ok_or("user blocks")?
+        .iter()
+        .map(|block| {
+            assert_eq!(block["type"], "text");
+            block["text"]
+                .as_str()
+                .ok_or_else(|| "user block text".into())
+        })
+        .collect()
+}
+
 pub(super) async fn run() -> TestResult {
     let mut f = Box::pin(claimed()).await?;
     f.grant("conversation-thread-authority").await?;
@@ -37,18 +69,14 @@ pub(super) async fn run() -> TestResult {
     let root_id = source_id(&f, &root).await?;
     let other = f.message("Unrelated discussion").await?;
     let other_id = source_id(&f, &other).await?;
-    f.sync(false).await?;
+    assert_eq!(discover(&f).await?.len(), 2);
     question(&mut f, &other_id, "Unrelated thread content").await?;
-    f.sync(false).await?;
+    assert_eq!(discover(&f).await?.len(), 1);
     let source = question(&mut f, &root_id, "Question in this thread").await?;
     let source_id = source_id(&f, &source).await?;
-    let run = f
-        .sync(false)
-        .await?
-        .runs
-        .into_iter()
-        .next()
-        .ok_or("thread run")?;
+    let mut runs = discover(&f).await?;
+    assert_eq!(runs.len(), 1);
+    let run = runs.pop().ok_or("thread run")?;
     output_route::configured(&f, true).await?;
     let relay = Relay::start(&f).await?;
     f = Box::pin(execution::qualify(f, &relay)).await?;
@@ -56,10 +84,10 @@ pub(super) async fn run() -> TestResult {
     {
         let requests = f.world.http.requests.lock().map_err(|_| "requests")?;
         assert_eq!(requests.len(), 1);
-        let messages = requests[0]["messages"].as_array().ok_or("messages")?;
-        assert_eq!(messages.len(), 3);
-        assert_eq!(text(&messages[1])?, "Travel discussion");
-        assert_eq!(text(&messages[2])?, "Question in this thread");
+        assert_eq!(
+            user_context(&requests[0])?,
+            vec!["Travel discussion", "Question in this thread"]
+        );
     }
     // A cold executor resumes the paid original, not another model request.
     reopen(&mut f).await?;
@@ -123,22 +151,21 @@ pub(super) async fn run() -> TestResult {
     });
     // A main-chat continuation must not import either thread's conversation.
     f.message("Continue in main chat").await?;
-    let next = f
-        .sync(false)
-        .await?
-        .runs
-        .into_iter()
-        .next()
-        .ok_or("main run")?;
+    let mut runs = discover(&f).await?;
+    assert_eq!(runs.len(), 1);
+    let next = runs.pop().ok_or("main run")?;
     Box::pin(f.world.runtime.run_model(&next.run)).await?;
     {
         let requests = f.world.http.requests.lock().map_err(|_| "requests")?;
         assert_eq!(requests.len(), 2);
-        let messages = requests[1]["messages"].as_array().ok_or("messages")?;
-        assert_eq!(messages.len(), 4);
-        assert_eq!(text(&messages[1])?, "Travel discussion");
-        assert_eq!(text(&messages[2])?, "Unrelated discussion");
-        assert_eq!(text(&messages[3])?, "Continue in main chat");
+        assert_eq!(
+            user_context(&requests[1])?,
+            vec![
+                "Travel discussion",
+                "Unrelated discussion",
+                "Continue in main chat"
+            ]
+        );
     }
     reopen(&mut f).await?;
     f = Box::pin(execution::qualify(f, &relay)).await?;
