@@ -30,6 +30,7 @@ async fn private_poll_reopens_publishes_once_with_replies_and_delivers_the_same_
             expected_device_id: account.device_id.clone(),
             space_id: space.clone(),
             thread_root_id: (mode == "thread").then(|| root.id.clone()),
+            edit_message_id: None,
         };
         let mut value = serde_json::json!({"kind":"poll","reply_to":null,"question":format!("Question {mode} 雨"),"options":[{"id":"private_option_A","text":"First"},{"id":"private_option_B","text":"Second"}]});
         let source = if mode == "shared" { &secret } else { &root };

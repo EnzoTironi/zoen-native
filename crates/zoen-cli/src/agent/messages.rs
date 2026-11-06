@@ -37,6 +37,37 @@ pub(super) fn selected_reply(
     result.is_ok() && selection.check(e).is_ok()
 }
 
+/// Normal model replies keep the native input revision check atomic with sealing.
+pub(super) fn context_reply(
+    e: &Arc<Client>,
+    space: &str,
+    text: &str,
+    context: &client_core::AgentConversationContext,
+    selection: Option<&source_mode::Bound>,
+) -> bool {
+    if selection.is_some_and(|selection| selection.check(e).is_err()) {
+        return false;
+    }
+    fault("before-send");
+    let result = e.agent_conversation_reply(context, text);
+    trace::delivery(
+        space,
+        context.source().id(),
+        trace::Delivery::Reply,
+        result.is_ok(),
+    );
+    turn_note(
+        selection,
+        if result.is_ok() {
+            "agent_host_source_reply_queued"
+        } else {
+            "agent_host_source_reply_failed"
+        },
+        "agent reply delivery completed",
+    );
+    result.is_ok() && selection.is_none_or(|selection| selection.check(e).is_ok())
+}
+
 pub(super) fn selected_owner_note(
     e: &Arc<Client>,
     cx: &Ctx,
