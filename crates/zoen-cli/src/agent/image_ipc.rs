@@ -6,7 +6,7 @@ pub(super) use failure::Failure;
 use std::{path::PathBuf, process::Stdio};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-fn reply_paths() -> Result<Option<(PathBuf, PathBuf)>, String> {
+pub(super) fn reply_paths() -> Result<Option<(PathBuf, PathBuf)>, String> {
     match (env("ZOEN_REPLY_HOST_BIN"), env("ZOEN_REPLY_HOST_CONFIG")) {
         (None, None) => Ok(None),
         (Some(binary), Some(config)) => {
@@ -64,27 +64,59 @@ pub(super) async fn execute_observed<T: serde::de::DeserializeOwned>(
         Some(paths) => paths,
         None => paths().map_err(|_| Failure::Configuration)?,
     };
+    run_process(
+        binary,
+        config,
+        if is_reply { "owner-control" } else { "execute" },
+        &bytes,
+    )
+    .await
+}
+
+pub(super) async fn reply_setup<T: serde::de::DeserializeOwned>(
+    action: &str,
+    bytes: &[u8],
+) -> Result<T, String> {
+    if bytes.len() > MAX_INPUT {
+        return Err("reply setup too large".into());
+    }
+    let (binary, config) = reply_paths()?.ok_or("reply host unavailable")?;
+    run_process(binary, config, action, bytes)
+        .await
+        .map_err(|e| e.message().into())
+}
+
+pub(super) fn process(binary: PathBuf, config: PathBuf, action: &str) -> tokio::process::Command {
     let mut process = tokio::process::Command::new(binary);
     process
         .arg("--config")
         .arg(config)
-        .arg(if is_reply { "owner-control" } else { "execute" })
+        .arg(action)
         .env_clear()
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    // Local dylib lookup is infrastructure, not content or a provider credential.
     for name in ["DYLD_LIBRARY_PATH", "LD_LIBRARY_PATH"] {
         if let Some(path) = std::env::var_os(name) {
             process.env(name, path);
         }
     }
+    process
+}
+
+async fn run_process<T: serde::de::DeserializeOwned>(
+    binary: PathBuf,
+    config: PathBuf,
+    action: &str,
+    bytes: &[u8],
+) -> Result<T, Failure> {
+    let mut process = process(binary, config, action);
     let mut child = process.spawn().map_err(|_| Failure::Spawn)?;
     let operation = async {
         let mut input = child.stdin.take().ok_or(Failure::InputUnavailable)?;
         input
-            .write_all(&bytes)
+            .write_all(bytes)
             .await
             .map_err(|_| Failure::InputWrite)?;
         drop(input);

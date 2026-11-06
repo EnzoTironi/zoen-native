@@ -14,6 +14,7 @@ mod owner_policy_response;
 mod protocol;
 #[path = "image_host/provision.rs"]
 mod provision;
+mod reply_enrollment_protocol;
 mod runtime_host_config;
 #[path = "reply_host/worker.rs"]
 mod worker;
@@ -40,11 +41,37 @@ fn main() {
 fn run(path: &Path, action: &str) -> Result<(), String> {
     if !matches!(
         action,
-        "provision" | "initialize" | "execute" | "serve" | "watch" | "control" | "owner-control"
+        "provision"
+            | "prepare-managed"
+            | "initialize"
+            | "execute"
+            | "serve"
+            | "watch"
+            | "supervised-watch"
+            | "control"
+            | "owner-control"
     ) {
         return Err("unsupported reply host action".into());
     }
-    let config = config::Config::read(path)?;
+    let mut config = config::Config::read(path)?;
+    if action == "prepare-managed" {
+        let request: reply_enrollment_protocol::Request = serde_json::from_slice(&read_command()?)
+            .map_err(|_| "invalid managed enrollment request")?;
+        if request.agent != config.agent || request.relay_url != config.relay_url {
+            return Err("managed enrollment scope differs".into());
+        }
+        if !config.supervised {
+            return emit(&reply_enrollment_protocol::Response::External);
+        }
+        let _lock = agent_host_lock::HostLock::acquire(&config.home)?;
+        let vault = file_vault::FileVault {
+            dir: config.home.join("vault"),
+        };
+        let code = provision::prepare(&config.enrollment_scope(), &vault)?;
+        return emit(&reply_enrollment_protocol::Response::Prepared {
+            code: code.encode(),
+        });
+    }
     if action == "owner-control" {
         return emit(&owner_control::execute(&config, &read_command()?)?);
     }
@@ -58,7 +85,7 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
     if action == "provision" {
         return provision::run(&config.enrollment_scope(), &vault);
     }
-    provision::validate_installed(&config.enrollment_scope(), &vault)?;
+    config.resolve_device(&vault)?;
     let runtime_config = config.runtime(&vault)?;
     // SAFETY: this executable starts exactly one FDB network before its first
     // database call. All authorities and the executor end before the guard.
@@ -138,8 +165,8 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
         );
         let host = ReplyRuntimeHost::configured(authority.clone(), host_config, gate)
             .map_err(|e| e.to_string())?;
-        if action == "watch" {
-            return worker::run(&host, &config, &vault).await;
+        if matches!(action, "watch" | "supervised-watch") {
+            return worker::run(&host, &config, &vault, action == "supervised-watch").await;
         }
         if action == "execute" {
             let bytes = read_command()?;
@@ -183,7 +210,7 @@ async fn dispatch(host: &ReplyRuntimeHost, bytes: &[u8]) -> Result<(), String> {
     let command = serde_json::from_slice(bytes).map_err(|_| "invalid reply command")?;
     emit(&protocol::execute(host, command).await?)
 }
-fn emit(value: &serde_json::Value) -> Result<(), String> {
+fn emit(value: &impl serde::Serialize) -> Result<(), String> {
     let bytes = serde_json::to_vec(value).map_err(|_| "reply progress unavailable")?;
     if bytes.len() > protocol::MAX_OUTPUT {
         return Err("reply progress too large".into());

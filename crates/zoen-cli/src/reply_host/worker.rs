@@ -8,6 +8,7 @@ pub(super) async fn run(
     host: &ReplyRuntimeHost,
     config: &Config,
     vault: &FileVault,
+    supervised: bool,
 ) -> Result<(), String> {
     let mut hints = if let Some(key) = &config.worker_bus_key {
         let url = text(vault, key)?;
@@ -38,6 +39,7 @@ pub(super) async fn run(
     };
     let controls = crate::control::Server::bind(&config.home)?;
     let mut shutdown = Shutdown::new()?;
+    let mut parent = Box::pin(parent_lifetime(supervised)?);
     let mut worker = ReplyWorker::default();
     let mut interval = tokio::time::interval(Duration::from_secs(2));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -66,6 +68,7 @@ pub(super) async fn run(
         // Coalesce bursts and bound reconciliation even under hostile hints.
         tokio::time::sleep(Duration::from_millis(250)).await;
         tokio::select! {
+            _=&mut parent=>{ return Ok(()) },
             result=shutdown.wait()=>{ result?; return Ok(()) },
             _=interval.tick()=>{},
             request=controls.accept()=>{
@@ -79,6 +82,32 @@ pub(super) async fn run(
             }}=>{},
         }
     }
+}
+
+/// A pipe held only by the supervisor ends even if it is killed without running
+/// destructors. EOF requests graceful shutdown between durable worker ticks.
+fn parent_lifetime(supervised: bool) -> Result<impl std::future::Future<Output = ()>, String> {
+    let (send, receive) = tokio::sync::oneshot::channel();
+    if supervised {
+        std::thread::Builder::new()
+            .name("reply-parent".into())
+            .spawn(move || {
+                use std::io::Read;
+                let mut byte = [0];
+                // Any input, EOF or pipe error ends this lifetime; the pipe is never
+                // a command transport and cannot grant work or change authority.
+                let _ = std::io::stdin().read(&mut byte);
+                let _ = send.send(());
+            })
+            .map_err(|_| "parent lifetime unavailable")?;
+    }
+    Ok(async move {
+        if supervised {
+            let _ = receive.await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    })
 }
 
 struct Shutdown {
