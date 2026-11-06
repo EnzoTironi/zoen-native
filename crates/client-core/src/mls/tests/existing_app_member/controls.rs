@@ -372,7 +372,7 @@ fn shared_anchor_supports_the_same_scoped_agent_read_and_mutation_authority() ->
                 quote: None,
                 to: f.original_root.id.clone(),
                 thread: true,
-                artifact: Some(binding.clone()),
+                artifact: Some(Box::new(binding.clone())),
             },
         },
     )?;

@@ -243,7 +243,7 @@ pub(super) async fn fixture() -> R<Fixture> {
     let mut log = ordered(&owner_store, &space)?;
     let text = "Update this drawing with one reviewed text element";
     let mut reply = types::ReplyRef::thread(anchor);
-    reply.artifact = Some(types::ArtifactRequest {
+    reply.artifact = Some(Box::new(types::ArtifactRequest {
         item_id: item.clone(),
         version: document.version,
         sha256: document.sha256,
@@ -251,7 +251,7 @@ pub(super) async fn fixture() -> R<Fixture> {
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
         agent_id: None,
         intent_sha256: None,
-    });
+    }));
     let at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_millis() as i64;

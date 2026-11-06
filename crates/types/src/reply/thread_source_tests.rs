@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn scoped_reference_retains_its_signed_wire_bytes() -> Result<(), Box<dyn std::error::Error>> {
+    let original = concat!(
+        r#"{"to":"root","thread":true,"artifact":{"item_id":"item","version":1,"sha256":""#,
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        r#"","request_id":"request","text_sha256":""#,
+        "1111111111111111111111111111111111111111111111111111111111111111",
+        r#""}}"#,
+    );
+    let reply: ReplyRef = serde_json::from_str(original)?;
+    assert!(reply
+        .artifact
+        .as_ref()
+        .is_some_and(|request| request.is_well_formed()));
+    assert_eq!(serde_json::to_string(&reply)?, original);
+    Ok(())
+}
+
+#[test]
 fn old_thread_references_keep_their_exact_wire_shape() -> Result<(), Box<dyn std::error::Error>> {
     let original = r#"{"to":"root","thread":true}"#;
     let reply: ReplyRef = serde_json::from_str(original)?;

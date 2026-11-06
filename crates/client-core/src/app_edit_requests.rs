@@ -136,7 +136,7 @@ impl Engine {
                 || prior != text
                 || !reference.thread
                 || reference.to != root.id
-                || reference.artifact.as_ref() != Some(&expected)
+                || reference.artifact.as_deref() != Some(&expected)
                 || self.net.failed.contains_key(&entry.client_id)
             {
                 return Err(stale());
@@ -187,7 +187,7 @@ impl Engine {
                         quote: None,
                         to: root.id,
                         thread: true,
-                        artifact: Some(binding),
+                        artifact: Some(Box::new(binding)),
                     },
                 },
             )?;

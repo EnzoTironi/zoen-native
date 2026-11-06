@@ -59,7 +59,7 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
     }
     let text = "Only edit this App";
     let mut reply = types::ReplyRef::thread(root);
-    reply.artifact = Some(types::ArtifactRequest {
+    reply.artifact = Some(Box::new(types::ArtifactRequest {
         item_id: base.item_id.clone(),
         version: base.version,
         sha256: base.sha256.clone(),
@@ -67,7 +67,7 @@ fn scoped_discovery_and_dispatch_never_fall_back_to_other_space_tools_or_cached_
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
         agent_id: None,
         intent_sha256: None,
-    });
+    }));
     let source = types::new_id("source")?;
     let event = log.append(
         &event_log::Signer::from_secret(&key),

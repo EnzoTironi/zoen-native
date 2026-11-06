@@ -154,8 +154,9 @@ pub struct ReplyRef {
     /// `true` = in the thread under `to`; `false` = inline, quoting `to`.
     #[serde(default)]
     pub thread: bool,
+    /// Rare scoped requests stay off the ordinary message's inline allocation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifact: Option<ArtifactRequest>,
+    pub artifact: Option<Box<ArtifactRequest>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quote: Option<Box<SelectedQuote>>,
 }
@@ -238,7 +239,7 @@ mod tests {
             r#"{"to":"root","thread":true}"#
         );
         let mut reply = ReplyRef::thread("root");
-        reply.artifact = Some(ArtifactRequest {
+        reply.artifact = Some(Box::new(ArtifactRequest {
             item_id: "item".into(),
             version: 1,
             sha256: "ab".repeat(32),
@@ -246,7 +247,7 @@ mod tests {
             text_sha256: "cd".repeat(32),
             agent_id: None,
             intent_sha256: None,
-        });
+        }));
         assert!(reply.artifact.as_ref().unwrap().is_well_formed());
         let mut value = serde_json::to_value(&reply).unwrap();
         assert_eq!(
@@ -266,7 +267,7 @@ mod tests {
             MessagePosted { text: String },
         }
         let mut reply = ReplyRef::thread("root");
-        reply.artifact = Some(ArtifactRequest {
+        reply.artifact = Some(Box::new(ArtifactRequest {
             item_id: "item".into(),
             version: 1,
             sha256: "ab".repeat(32),
@@ -274,7 +275,7 @@ mod tests {
             text_sha256: "cd".repeat(32),
             agent_id: None,
             intent_sha256: None,
-        });
+        }));
         let scoped = serde_json::to_vec(&EventBody::AppEditRequested {
             message: "m".into(),
             text: "Only this App".into(),

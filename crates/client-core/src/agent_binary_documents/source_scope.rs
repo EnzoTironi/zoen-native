@@ -138,7 +138,7 @@ impl Engine {
         {
             return Err(denied());
         }
-        Ok(Some(request.clone()))
+        Ok(Some(request.as_ref().clone()))
     }
     pub(super) fn check_artifact_head(
         &self,

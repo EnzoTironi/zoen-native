@@ -16,7 +16,7 @@ pub(crate) fn scope(
         .unwrap()
         .id;
     let mut reference = types::ReplyRef::thread(root);
-    reference.artifact = Some(types::ArtifactRequest {
+    reference.artifact = Some(Box::new(types::ArtifactRequest {
         item_id: f.base.item_id.clone(),
         version: f.base.version,
         sha256: f.base.sha256.clone(),
@@ -24,7 +24,7 @@ pub(crate) fn scope(
         text_sha256: hex::encode(Sha256::digest(text.as_bytes())),
         agent_id: None,
         intent_sha256: None,
-    });
+    }));
     alter(&mut reference);
     let mut e = f.agent.lock();
     let event = e
