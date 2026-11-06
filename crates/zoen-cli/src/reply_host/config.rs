@@ -15,6 +15,9 @@ use zoen_runtime::{ImageDeliveryTarget, PriceProfile, ReplyHostConfig, RuntimeCo
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Config {
+    /// Deployment owns the child process through the normal control service.
+    #[serde(default)]
+    pub supervised: bool,
     pub namespace: String,
     pub agent: String,
     pub device: String,
@@ -52,6 +55,14 @@ pub(super) enum GateConfig {
     Offline,
 }
 impl Config {
+    pub(super) fn resolve_device(&mut self, vault: &FileVault) -> Result<(), String> {
+        if self.device.is_empty() {
+            self.device = crate::provision::installed_device(&self.enrollment_scope(), vault)?;
+        } else {
+            crate::provision::validate_installed(&self.enrollment_scope(), vault)?;
+        }
+        Ok(())
+    }
     pub(super) fn enrollment_scope(&self) -> crate::provision::EnrollmentScope {
         crate::provision::EnrollmentScope {
             namespace: self.namespace.clone(),

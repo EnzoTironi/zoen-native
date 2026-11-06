@@ -6,8 +6,8 @@ rules and controls. The existing SQL/FDB financial authority, encrypted native
 capsule and independent continuity anchor own durable state.
 
 The operator configures the host; product clients and model tools supply bounded
-conversation/run locators or an already signed owner budget. The iOS enrollment
-and normal Brain/tool host integration remain separate work in #175.
+conversation/run locators or an already signed owner budget. The existing owner-approved agent enrollment remains canonical. Public deployment
+provisioning and the normal Brain/tool host integration remain work in #175.
 
 ## Enrollment and startup
 
@@ -25,6 +25,25 @@ absolute `home` and `continuity` directories. The configuration fields are:
 Secrets use the existing `FileVault` adapter in `home/vault`. The evidence key is
 32 bytes. Config parsing rejects unknown fields, symlinks, public permissions,
 oversized input and changed file identity. Errors omit configuration content.
+
+For a service that owns the executor lifecycle, set `supervised: true`, leave
+`device` empty, and provide the existing absolute `ZOEN_REPLY_HOST_BIN` and
+`ZOEN_REPLY_HOST_CONFIG` paths to `zoen agent-controls`. The operator still
+provisions infrastructure credentials and the relay deployment binding below;
+these are service setup, not steps presented to a person creating an agent.
+
+After verifying the enrolled agent's current state, `agent-controls` automatically
+prepares retained device material through a private bounded pipe, certifies that
+device using the agent sponsor, initializes its original custody/continuity and
+starts the executor. It publishes readiness only after actual worker startup.
+The sponsor publishes only a deterministic public device certificate proof,
+never an IdentityBox, account root, agreement secret, profile key or MLS copy.
+Unknown acknowledgements retry the same certificate bytes through the existing
+relay admission transaction. Revoked targets remain refused by that transaction.
+The new device resolves from retained originals; recovery never reseeds it.
+
+A separately supervised executor remains supported with `supervised: false`
+(the default). Its existing explicit setup is:
 
 1. Set `device` to an empty string and run
    `zoen-reply-host --config /absolute/private.json provision` in a trusted
@@ -183,3 +202,19 @@ remain unsupported. Discovery cursor version 2 performs one bounded re-scan of
 verified history to recover messages skipped by the former classification;
 invalid legacy cursors still fail closed. The existing immutable trigger/run
 index and paid-result receipts continue to prevent a second inference/charge.
+
+## Supervised lifetime
+
+`prepare-managed` is a service startup action with a closed `{agent,relay_url}`
+request; both must exactly match the private operator config before any enrollment
+write. It is not a model/conversation command. In external mode it returns only
+`external` and leaves the worker untouched. In supervised mode its private pipe
+returns the retained pairing code to the agent sponsor. The interactive `provision`
+command keeps its terminal guard.
+
+`supervised-watch` uses the same single custody owner and worker as `watch`.
+Its stdin is a lifetime pipe, not a command channel: any byte, EOF or error asks
+it to retire between durable ticks. Thus killing the parent also closes the pipe,
+without depending on parent destructors. Normal termination closes the pipe and
+waits for actual child exit; startup/read errors and early child exit fail the
+control service. Existing native locks and financial/source fences remain intact.

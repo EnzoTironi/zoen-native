@@ -48,6 +48,7 @@ mod history_search;
 mod image_ipc;
 mod image_tools;
 mod journal;
+mod managed_reply;
 mod owner_policy;
 #[cfg(test)]
 mod page_tool_tests;

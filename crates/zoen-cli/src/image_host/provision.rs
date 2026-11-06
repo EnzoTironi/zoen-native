@@ -77,18 +77,20 @@ pub(super) fn run(config: &EnrollmentScope, vault: &FileVault) -> Result<(), Str
     );
     Ok(())
 }
-pub(super) fn validate_installed(
+/// Resolve and validate only retained material. Recovery never seeds a device.
+pub(super) fn installed_device(
     config: &EnrollmentScope,
     vault: &FileVault,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let slot = slot(config)?;
     let bytes = read(vault, &slot)?.ok_or("dedicated runtime enrollment was not provisioned")?;
     let record: Enrollment =
         serde_json::from_slice(&bytes).map_err(|_| "invalid retained runtime enrollment")?;
+    let device = Signer::from_secret(&record.device).id();
     if record.namespace != config.namespace
         || record.agent != config.agent
         || record.key_version != config.key_version
-        || Signer::from_secret(&record.device).id() != config.device
+        || (!config.device.is_empty() && device != config.device)
     {
         return Err(
             "configured runtime device is not this host's original dedicated enrollment".into(),
@@ -101,18 +103,23 @@ pub(super) fn validate_installed(
             &record.capsule,
         ),
         (
-            RuntimeAuthority::native_device_vault_key(
-                &config.namespace,
-                &config.agent,
-                &config.device,
-            )
-            .map_err(|_| "invalid device locator")?,
+            RuntimeAuthority::native_device_vault_key(&config.namespace, &config.agent, &device)
+                .map_err(|_| "invalid device locator")?,
             &record.device,
         ),
     ] {
         if read(vault, &key)?.as_deref().map(Vec::as_slice) != Some(expected.as_slice()) {
             return Err("managed runtime keys differ from original dedicated enrollment".into());
         }
+    }
+    Ok(device)
+}
+pub(super) fn validate_installed(
+    config: &EnrollmentScope,
+    vault: &FileVault,
+) -> Result<(), String> {
+    if installed_device(config, vault)? != config.device {
+        return Err("configured runtime device differs from retained enrollment".into());
     }
     Ok(())
 }

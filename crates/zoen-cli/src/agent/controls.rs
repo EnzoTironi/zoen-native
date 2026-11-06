@@ -66,7 +66,7 @@ pub(crate) async fn dispatch(
 ) -> Result<(), String> {
     match command {
         "agent-host" => super::host(client, home, readiness, for_secs, source).await,
-        COMMAND if source.is_none() => host(client, readiness, for_secs).await,
+        COMMAND if source.is_none() => host(client, home, readiness, for_secs).await,
         _ => Err("agent_controls_invalid_mode".into()),
     }
 }
@@ -119,6 +119,7 @@ impl Scope {
 
 pub(super) async fn host(
     client: &Arc<Client>,
+    home: &Path,
     readiness: &Readiness<'_>,
     for_secs: Option<u64>,
 ) -> Result<(), String> {
@@ -133,9 +134,10 @@ pub(super) async fn host(
     client
         .start_sync(None)
         .map_err(|_| "agent_controls_sync_unavailable")?;
-    // Read-only startup: never seed/advance content cursors or construct providers.
+    // Settle the primary leaf without seeding content cursors or constructing providers.
     startup::settled_cursors(client, 15_000).await?;
     scope.state(client).await?;
+    let mut executor = super::managed_reply::start(client, home).await?;
     readiness.publish()?;
     let mut worker = owner_policy::start(client, &scope.agent, &scope.device);
     let deadline = duration.and_then(|duration| Instant::now().checked_add(duration));
@@ -145,6 +147,9 @@ pub(super) async fn host(
                 return Ok(());
             }
             scope.state(client).await?;
+            if let Some(executor) = executor.as_mut() {
+                executor.check()?;
+            }
             let wait = deadline.map_or(Duration::from_secs(5), |deadline| {
                 deadline
                     .saturating_duration_since(Instant::now())
@@ -156,8 +161,13 @@ pub(super) async fn host(
     .await;
     // Complete cancellation before main drops the home lock or stops this channel.
     let stopped = worker.stop().await;
+    let executor_stopped = match executor.as_mut() {
+        Some(executor) => executor.stop().await,
+        None => Ok(()),
+    };
     outcome?;
-    stopped
+    stopped?;
+    executor_stopped
 }
 
 #[cfg(test)]

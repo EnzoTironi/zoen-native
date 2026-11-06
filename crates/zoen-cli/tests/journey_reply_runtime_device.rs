@@ -6,6 +6,8 @@ mod config;
 mod file_vault;
 #[path = "../src/gate_transport.rs"]
 mod gate_transport;
+#[path = "reply_runtime/managed_startup.rs"]
+mod managed_startup;
 #[path = "reply_runtime/owner_budget.rs"]
 mod owner_budget;
 #[path = "reply_runtime/provider.rs"]
@@ -77,7 +79,7 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     let provider = provider::Provider::start().await?;
     let mut value = configuration(&w, &agent, &provider.endpoint);
     value["worker_bus_key"] = "bus".into();
-    let config: config::Config = serde_json::from_value(value.clone())?;
+    let mut config: config::Config = serde_json::from_value(value.clone())?;
     std::fs::create_dir(&config.home)?;
     #[cfg(unix)]
     {
@@ -87,16 +89,6 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     let vault = Arc::new(file_vault::FileVault {
         dir: config.home.join("vault"),
     });
-    let code = provision::prepare(&config.enrollment_scope(), &vault)?;
-    assert_ne!(code.device, citizen_device);
-    assert_eq!(
-        provision::prepare(&config.enrollment_scope(), &vault)?,
-        code
-    );
-    w.zoen("citizen", &["link", &code.encode()]);
-    value["device"] = code.device.clone().into();
-    let config: config::Config = serde_json::from_value(value.clone())?;
-    provision::validate_installed(&config.enrollment_scope(), &vault)?;
     for (name, bytes) in [
         ("pg", w.db_url.as_bytes().to_vec()),
         ("evidence", vec![73; 32]),
@@ -106,18 +98,30 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     }
     assert!(vault.save("bus".into(), std::env::var("ZOEN_NATS_URL")?.into_bytes()));
     let path = w.dir.join("reply-host.json");
+    value["supervised"] = true.into();
     write_json(&path, &value)?;
-    let checked = config::Config::read(&path)?;
-    assert_eq!(checked.worker_bus_key.as_deref(), Some("bus"));
-    let _ = checked.runtime(&vault)?;
-    let _ = checked.host()?;
-    let _ = checked.gate(&vault)?;
-    use std::io::IsTerminal;
-    if !std::io::stdout().is_terminal() {
-        assert!(provision::run(&checked.enrollment_scope(), &vault).is_err());
-    }
-    assert_eq!(call(&path, "initialize", None)?["status"], "initialized");
-    assert_eq!(call(&path, "initialize", None)?["status"], "initialized");
+    assert!(call(
+        &path,
+        "prepare-managed",
+        Some(json!({"agent":agent,"relay_url":"http://wrong.invalid"}))
+    )
+    .is_err());
+    assert!(provision::installed_device(&config.enrollment_scope(), &vault).is_err());
+    let first = w
+        .cmd("citizen", &["agent-controls", "--for", "1"])
+        .env("ZOEN_REPLY_HOST_BIN", env!("CARGO_BIN_EXE_zoen-reply-host"))
+        .env("ZOEN_REPLY_HOST_CONFIG", &path)
+        .env_remove("ZOEN_IMAGE_HOST_BIN")
+        .env_remove("ZOEN_IMAGE_HOST_CONFIG")
+        .output()?;
+    assert!(
+        !first.status.success(),
+        "a deployment without relay admission cannot be ready"
+    );
+    let code = provision::prepare(&config.enrollment_scope(), &vault)?;
+    config.resolve_device(&vault)?;
+    // Public deployment provisioning is still an operator-owned boundary. It
+    // admits exactly the original principal, never an arbitrary new credential.
     let directory = w.dir.join("operator");
     std::fs::create_dir(&directory)?;
     #[cfg(unix)]
@@ -139,6 +143,65 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
     value["relay_key"] = w.relay_name().into();
     std::fs::remove_file(&path)?;
     write_json(&path, &value)?;
+    // The normal control service now owns preparation, certified enrollment,
+    // initialization, readiness and graceful worker retirement. No pairing UI,
+    // copied identity box, manually selected device or separate worker command.
+    for pass in 0..2 {
+        let output = w
+            .cmd("citizen", &["agent-controls", "--for", "1"])
+            .env("ZOEN_REPLY_HOST_BIN", env!("CARGO_BIN_EXE_zoen-reply-host"))
+            .env("ZOEN_REPLY_HOST_CONFIG", &path)
+            .env_remove("ZOEN_IMAGE_HOST_BIN")
+            .env_remove("ZOEN_IMAGE_HOST_CONFIG")
+            .output()?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        if pass == 0 {
+            managed_startup::killed_parent(&w, &path, &agent, &code).await?;
+        }
+    }
+    assert_eq!(
+        provision::prepare(&config.enrollment_scope(), &vault)?,
+        code
+    );
+    assert_ne!(code.device, citizen_device);
+    assert_eq!(
+        provision::installed_device(&config.enrollment_scope(), &vault)?,
+        code.device
+    );
+    assert_eq!(w.count("SELECT count(*) FROM link_boxes").await, 1);
+    let proof: String = w
+        .scalar("SELECT convert_from(sealed,'UTF8') FROM link_boxes")
+        .await;
+    assert!(proof.contains("zoen-runtime-device/1"));
+    assert!(!proof.contains("identity_secret"));
+    assert!(!proof.contains("agreement_secret"));
+    assert!(vault.load("zoen.identity.v1".into()).is_none());
+    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+    // Continue the same full reply/recovery cohort using its external worker.
+    // This mode remains available for a separately supervised production service.
+    value["supervised"] = false.into();
+    value["device"] = code.device.clone().into();
+    std::fs::remove_file(&path)?;
+    write_json(&path, &value)?;
+    let config: config::Config = serde_json::from_value(value.clone())?;
+    provision::validate_installed(&config.enrollment_scope(), &vault)?;
+    let checked = config::Config::read(&path)?;
+    assert!(!checked.supervised);
+    assert_eq!(checked.worker_bus_key.as_deref(), Some("bus"));
+    let _ = checked.runtime(&vault)?;
+    let _ = checked.host()?;
+    let _ = checked.gate(&vault)?;
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() {
+        assert!(provision::run(&checked.enrollment_scope(), &vault).is_err());
+    }
+    assert_eq!(call(&path, "initialize", None)?["status"], "initialized");
+    assert_eq!(call(&path, "initialize", None)?["status"], "initialized");
     // A valid unrelated owner signature is not authority to install a policy
     // through this configured agent. Rejection must precede financial writes.
     w.init("outsider", "Unrelated owner");
