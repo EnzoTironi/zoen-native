@@ -17,6 +17,7 @@ mod commands;
 mod deckcraft;
 mod file_import;
 mod file_vault;
+mod gate_transport;
 mod image_protocol;
 mod terminal;
 

@@ -14,6 +14,10 @@ path = "src/main.rs"
 name = "zoen-image-host"
 path = "src/image_host_main.rs"
 
+[[bin]]
+name = "zoen-reply-host"
+path = "src/reply_host_main.rs"
+
 [dependencies]
 zoen-runtime = { path = "../zoen-runtime" }
 zoen-models = { path = "../zoen-models" }

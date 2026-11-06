@@ -9,6 +9,8 @@ mod file_vault;
 mod host_journey;
 #[path = "../src/image_host/provision.rs"]
 mod provision;
+#[path = "../src/runtime_host_config.rs"]
+mod runtime_host_config;
 
 use client_core::{Client, SecretVault, TrustLevelDto};
 use common::World;
@@ -83,22 +85,22 @@ fn dedicated_runtime_and_citizen_open_the_same_source_from_their_own_welcome(
         assert_eq!(original_config.host().unwrap().agent, agent);
         use std::io::IsTerminal;
         if !std::io::stdout().is_terminal() {
-            assert!(provision::run(&original_config, &vault).is_err());
+            assert!(provision::run(&original_config.enrollment_scope(), &vault).is_err());
             assert!(!vault.dir.exists(), "non-interactive pairing wrote secrets");
         }
-        let pairing = provision::prepare(&original_config, &vault).unwrap();
+        let pairing = provision::prepare(&original_config.enrollment_scope(), &vault).unwrap();
         assert_ne!(pairing.device, citizen_device);
-        assert_eq!(provision::prepare(&original_config, &vault).unwrap(), pairing);
+        assert_eq!(provision::prepare(&original_config.enrollment_scope(), &vault).unwrap(), pairing);
         // The actual certified sponsor enrolls the exact dedicated device via
         // unchanged native link code. No IdentityBox is installed at the host.
         w.zoen("citizen", &["link", &pairing.encode()]);
         value["device"] = pairing.device.clone().into();
         let installed: config::Config = serde_json::from_value(value.clone()).unwrap();
-        provision::validate_installed(&installed, &vault).unwrap();
+        provision::validate_installed(&installed.enrollment_scope(), &vault).unwrap();
         let mut foreign_value = value.clone();
         foreign_value["device"] = citizen_device.clone().into();
         let foreign: config::Config = serde_json::from_value(foreign_value).unwrap();
-        assert!(provision::validate_installed(&foreign, &vault).is_err());
+        assert!(provision::validate_installed(&foreign.enrollment_scope(), &vault).is_err());
         let path = w.dir.join("image-host.json"); write_json(&path, &value);
         assert!(vault.save("pg".into(), w.db_url.as_bytes().to_vec()));
         assert!(vault.save("evidence".into(), vec![73;32]));
