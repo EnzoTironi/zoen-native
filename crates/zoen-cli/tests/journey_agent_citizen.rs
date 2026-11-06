@@ -4,6 +4,9 @@
 //! real-model run is `cargo run -p zoen-agentd --example creator_smoke`.
 
 mod common;
+#[cfg(unix)]
+#[path = "agent_citizen/real_codex.rs"]
+mod real_codex;
 use common::World;
 use std::path::{Path, PathBuf};
 use std::process::Child;

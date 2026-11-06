@@ -143,6 +143,10 @@ impl SharedReply {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ReplyRef {
+    /// Exact message answered inside a thread; `to` remains its root. This is a
+    /// signed locator, never permission to read a different conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shared: Option<Box<SharedReply>>,
     /// Event hash of the message being answered (the thread root for thread replies).
@@ -157,8 +161,18 @@ pub struct ReplyRef {
 }
 
 impl ReplyRef {
+    /// The exact answered message, including older explicit selected quotes.
+    #[must_use]
+    pub fn source_id(&self) -> &str {
+        self.source
+            .as_deref()
+            .or_else(|| self.quote.as_ref().map(|quote| quote.source_id.as_str()))
+            .unwrap_or(&self.to)
+    }
+
     pub fn inline(to: impl Into<String>) -> Self {
         Self {
+            source: None,
             shared: None,
             to: to.into(),
             thread: false,
@@ -168,6 +182,7 @@ impl ReplyRef {
     }
     pub fn thread(root: impl Into<String>) -> Self {
         Self {
+            source: None,
             shared: None,
             to: root.into(),
             thread: true,
@@ -354,3 +369,6 @@ mod selected_quote_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod thread_source_tests;

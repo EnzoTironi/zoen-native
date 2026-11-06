@@ -3,7 +3,8 @@
 use super::*;
 
 impl World {
-    pub(super) fn cmd(&self, who: &str, args: &[&str]) -> Command {
+    /// Configured fixture client, for tests needing fault injection and file-backed logs.
+    pub fn cmd(&self, who: &str, args: &[&str]) -> Command {
         self.cmd_at(self.port, who, args)
     }
 

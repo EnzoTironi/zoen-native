@@ -182,6 +182,7 @@ impl Engine {
                     message,
                     text: text.into(),
                     reply: ReplyRef {
+                        source: None,
                         shared: None,
                         quote: None,
                         to: root.id,

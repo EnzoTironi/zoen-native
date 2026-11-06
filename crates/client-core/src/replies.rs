@@ -9,6 +9,7 @@
 //! Threads are one level deep: replying in a thread to a thread reply re-points at the root.
 
 pub(crate) mod external;
+pub(crate) mod thread_source;
 
 use std::collections::HashMap;
 
@@ -114,23 +115,26 @@ impl Engine {
             });
             return (quote, thread);
         }
-        if r.thread {
+        if r.thread && r.source.is_none() {
             return (None, thread);
         }
         let quote = self.space_state(&e.space).ok().and_then(|s| {
-            let target = s.entries.iter().find(|x| x.id() == r.to)?;
+            let target = s.entries.iter().find(|x| x.id() == r.source_id())?;
+            if r.thread && !thread_source::matches_root(target, r) {
+                return None;
+            }
             if !self.visible_message(target) {
                 return None;
             }
             Some(ReplyQuote {
                 origin: None,
-                id: r.to.clone(),
+                id: r.source_id().into(),
                 author: self.persona(&target.author),
                 text: self.quote_text(target),
                 selection: None,
             })
         });
-        (quote, None)
+        (quote, thread)
     }
 
     pub(crate) fn quote_text(&self, e: &Entry) -> String {
@@ -309,15 +313,19 @@ impl Engine {
             });
         }
         // One level deep: a thread reply to a thread reply belongs to the same root.
-        let to = match target_reply {
+        let root = match target_reply {
             Some(r) if thread && r.thread => r.to.clone(),
             _ => to.to_string(),
         };
-        Ok(if thread {
-            ReplyRef::thread(to)
+        let mut reference = if thread {
+            ReplyRef::thread(root)
         } else {
-            ReplyRef::inline(to)
-        })
+            ReplyRef::inline(root)
+        };
+        if reference.to != to {
+            reference.source = Some(to.into());
+        }
+        Ok(reference)
     }
 
     /// The thread under `root`: the root message, then its replies oldest first.

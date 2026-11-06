@@ -371,6 +371,7 @@ fn unauthorized_mutations_are_rejected_and_signed_peer_mutations_do_not_fold() {
                 text: "theirs".into(),
                 attaches: None,
                 reply: Some(ReplyRef {
+                    source: None,
                     shared: None,
                     quote: None,
                     artifact: None,

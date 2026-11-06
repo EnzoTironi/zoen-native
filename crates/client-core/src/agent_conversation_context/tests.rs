@@ -1,6 +1,8 @@
 use crate::agent_binary_documents::tests::{fixture, Fixture};
 use types::{Annotation, EventBody};
 
+mod threads;
+
 type Result = std::result::Result<(), Box<dyn std::error::Error>>;
 
 fn post(f: &Fixture, text: &str) -> std::result::Result<String, crate::CoreError> {
