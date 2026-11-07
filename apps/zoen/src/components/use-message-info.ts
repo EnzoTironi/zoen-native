@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import type { MessageInfo } from '../core/generated/MessageInfo';
@@ -40,8 +41,25 @@ export function useMessageInfo(spaceId: string, messageId: string, expectedScope
   }, [store, spaceId, messageId, expectedScope]);
   useFocusEffect(
     useCallback(() => {
-      session.focus();
-      return () => session.blur();
+      let foreground = AppState.currentState === 'active';
+      let retired = false;
+      const activate = () => {
+        if (foreground) session.focus();
+        else session.blur();
+      };
+      activate();
+      const app = AppState.addEventListener('change', (next) => {
+        if (retired) return;
+        const active = next === 'active';
+        if (foreground === active) return;
+        foreground = active;
+        activate();
+      });
+      return () => {
+        retired = true;
+        app.remove();
+        session.blur();
+      };
     }, [session]),
   );
   useEffect(() => {
