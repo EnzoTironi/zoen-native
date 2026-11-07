@@ -1,3 +1,4 @@
+import * as messageLinks from './message-link.ts';
 import assert from 'node:assert/strict';
 import { createContext } from 'react';
 import { conversationTitle } from '../saved-messages/presentation.ts';
@@ -46,7 +47,7 @@ const compiled = Object.fromEntries(
             name: 'actual-chat-owner-and-view',
             setup(builder) {
               builder.onResolve({ filter: /./ }, ({ path }) =>
-                /\/(?:chat-screen|use-chat-controller|use-conversation-message-navigation|use-conversation-search|use-reply-destination-focus|conversation-hashtag-search|conversation-hashtag-provider|message-hashtag|search-launch|send-chat-message)$/.test(
+                /\/(?:chat-screen|use-chat-controller|use-conversation-message-navigation|use-thread-message-navigation|use-conversation-search|use-reply-destination-focus|conversation-hashtag-search|conversation-hashtag-provider|message-hashtag|search-launch|send-chat-message)$/.test(
                   path,
                 )
                   ? undefined
@@ -239,6 +240,7 @@ export function renderScreen(
         }),
       };
     if (path.endsWith('/core/conversation-timeline')) return { projectConversationTimeline };
+    if (path.endsWith('/core/message-link')) return messageLinks;
     if (path.endsWith('/core/message-presentation')) return { messageCard };
     if (path.endsWith('/core/presentation')) return { messageText: () => 'Drawing update' };
     if (path.endsWith('/core/use-message-draft')) return { useMessageDraft: () => draft };
@@ -255,7 +257,8 @@ export function renderScreen(
     )
       return { conversationScope };
     if (path.endsWith('/core/initial-timeline-end')) return { InitialTimelineEnd: LayoutPort };
-    if (path === './navigation-container') return { navigationMetricsAvailable: false };
+    if (path.endsWith('/navigation-container'))
+      return { navigationMetricsAvailable: false, NavigationContainer: 'NavigationContainer' };
     if (path.endsWith('/quote-layout-context')) return { QuoteMotionView: 'QuoteMotionView' };
     if (path.endsWith('/quote-layout-transition'))
       return { QuoteLayoutTransition: 'QuoteLayoutTransition' };
@@ -266,7 +269,7 @@ export function renderScreen(
     if (path.endsWith('/core/conversation-reveal')) return { ConversationReveal: LayoutPort };
     if (path.endsWith('/core/conversation-reveal-content')) return { conversationRevealContent };
     if (path.endsWith('/core/live-activity')) return { chatActivityLabel: () => '' };
-    if (path.endsWith('/components/keyboard-motion'))
+    if (path.endsWith('/components/keyboard-motion') || path === './keyboard-motion')
       return { useKeyboardMotion: () => ({ progress: { value: 0 } }) };
     if (path.endsWith('/use-message-selection'))
       return {

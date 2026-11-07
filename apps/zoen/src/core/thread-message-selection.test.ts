@@ -45,7 +45,7 @@ test('thread selection replaces composition and exposes native count and Cancel 
     unstable_headerRightItems(): Array<{ onPress(): void }>;
   };
   assert.equal(options.headerBackVisible, false);
-  assert.equal(options.headerTitle().props.count, 1);
+  assert.equal(find(options.headerTitle(), 'SelectionHeader')!.props.count, 1);
   assert.equal(options.unstable_headerLeftItems().length, 0);
   options.unstable_headerRightItems()[0]!.onPress();
   assert.deepEqual(f.calls, ['delete', 'copy', 'forward', 'cancel']);
@@ -67,7 +67,7 @@ test('ordinary thread keeps existing album projection, composer and message acti
   assert.equal(options.headerBackVisible, true);
 });
 
-test('thread quote navigation checks current source membership and session at the tap boundary', () => {
+test('thread quote navigation checks current source membership and session at the tap boundary', async () => {
   const f = fixture(false);
   const rows = f.list.props.data as unknown[];
   const rendered = (f.list.props.renderItem as (value: unknown) => unknown)({
@@ -77,23 +77,34 @@ test('thread quote navigation checks current source membership and session at th
   const message = find(rendered, 'Message')!;
   const open = message.props.onQuote as (messageId: string, sourceSpace: string) => void;
   open('source-message', 'source');
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(f.routes, [
     { pathname: '/chat/[id]', params: { id: 'source', jump: 'source-message' } },
   ]);
   f.state.snapshot.conversations[0]!.members = [];
   open('source-message', 'source');
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(f.routes.length, 1, 'A rendered quote must not retain revoked source access');
   f.state.snapshot.conversations[0]!.members = [{ id: 'alice' }];
   f.state.snapshot.account.unlocked = false;
   open('source-message', 'source');
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(f.routes.length, 1, 'Locking the account must prevent origin navigation');
 });
 
 test('message links reveal an album child and suppress automatic bottom following', () => {
   const separate = fixture(false, 'reply', true);
-  assert.equal(separate.list.props.initialScrollIndex, 1);
+  assert.equal(
+    separate.list.props.initialScrollIndex,
+    undefined,
+    'iOS waits for measured geometry',
+  );
   const f = fixture(false, 'reply');
-  assert.equal(f.list.props.initialScrollIndex, 0);
+  assert.equal(
+    f.list.props.initialScrollIndex,
+    undefined,
+    'album children use the same measured reveal',
+  );
   assert.equal(
     (f.list.props.maintainVisibleContentPosition as any).autoscrollToBottomThreshold,
     undefined,
@@ -119,10 +130,10 @@ test('thread send failure is hidden after reopening the same account', async () 
   (composer.props.onSend as () => void)();
   await new Promise<void>((resolve) => setImmediate(resolve));
   const failed = find(f.render(), 'Viewport')!;
-  assert.match(JSON.stringify(failed.props.composer), /chat.theReplyCouldNotBeSent/);
+  assert.match(JSON.stringify(failed.props.composer), /original send failure/);
   f.reopen();
   const reopened = find(f.render(), 'Viewport')!;
-  assert.doesNotMatch(JSON.stringify(reopened.props.composer), /chat.theReplyCouldNotBeSent/);
+  assert.doesNotMatch(JSON.stringify(reopened.props.composer), /original send failure/);
 });
 
 test('finishing an old send keeps the reopened session’s send pending', async () => {
@@ -155,7 +166,10 @@ test('an old send rejection cannot replace the current session’s alert', async
     undefined,
     false,
     () =>
-      new Promise<void>((_resolve, reject) => pending.push(() => reject(new Error('send failed')))),
+      new Promise<void>((_resolve, reject) => {
+        const message = pending.length === 0 ? 'old failure' : 'current failure';
+        pending.push(() => reject(new Error(message)));
+      }),
   );
   const composer = () => find(f.render(), 'Viewport')!.props.composer;
   const send = () => (find(composer(), 'Composer')!.props.onSend as () => void)();
@@ -164,10 +178,11 @@ test('an old send rejection cannot replace the current session’s alert', async
   send();
   pending[1]!();
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  assert.match(JSON.stringify(composer()), /current failure/);
   pending[0]!();
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  assert.match(JSON.stringify(composer()), /current failure/);
+  assert.doesNotMatch(JSON.stringify(composer()), /old failure/);
 });
 
 test('returning to a thread does not revive an alert from its earlier route scope', async () => {
@@ -175,9 +190,9 @@ test('returning to a thread does not revive an alert from its earlier route scop
   const composer = () => find(f.render(), 'Viewport')!.props.composer;
   (find(composer(), 'Composer')!.props.onSend as () => void)();
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.match(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  assert.match(JSON.stringify(composer()), /original send failure/);
   f.setRoot('another-root');
-  assert.doesNotMatch(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  assert.doesNotMatch(JSON.stringify(composer()), /original send failure/);
   f.setRoot('root-message');
-  assert.doesNotMatch(JSON.stringify(composer()), /chat.theReplyCouldNotBeSent/);
+  assert.doesNotMatch(JSON.stringify(composer()), /original send failure/);
 });

@@ -1,3 +1,4 @@
+import * as sending from './send-chat-message.ts';
 import type { useMessageDraft } from './use-message-draft';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -19,6 +20,36 @@ const compiled = await build({
   platform: 'node',
   format: 'cjs',
   write: false,
+});
+const navigationBundle = await build({
+  entryPoints: [
+    new URL('../components/use-thread-message-navigation.ts', import.meta.url).pathname,
+  ],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  write: false,
+  plugins: [
+    {
+      name: 'thread-navigation-native-ports',
+      setup(builder) {
+        builder.onResolve({ filter: /./ }, ({ path }) =>
+          [
+            'react',
+            'react/compiler-runtime',
+            'react/jsx-runtime',
+            'expo-router',
+            'react-native',
+          ].includes(path) ||
+          /\/(?:provider|keyboard-motion|navigation-container|mosaic-layout|conversation-timeline|i18n\/index.ts)$/.test(
+            path,
+          )
+            ? { path, external: true }
+            : undefined,
+        );
+      },
+    },
+  ],
 });
 export function find(value: unknown, type: string): Element | undefined {
   if (!value || typeof value !== 'object') return;
@@ -57,7 +88,10 @@ export function fixture(
         unlocked: true,
         setup_pending: false,
       },
-      conversations: [{ id: 'source', members: [{ id: 'alice' }] }],
+      conversations: [
+        { id: 'source', members: [{ id: 'alice' }] },
+        { id: 'space', members: [{ id: 'alice' }] },
+      ],
     },
   };
   const entries = ['original', 'reply'].map(
@@ -91,8 +125,24 @@ export function fixture(
     open() {},
     react() {},
   };
+  const store = {
+    get sessionEpoch() {
+      return sessionEpoch;
+    },
+    setTyping() {},
+    getSnapshot: () => state,
+    subscribe: () => () => {},
+    driver: {
+      request: async (command: { message_id: string }) => ({
+        id: command.message_id,
+        deleted: false,
+        in_thread: null,
+      }),
+    },
+  };
+  let navigationExports: unknown;
   const module = { exports: {} as { default(): unknown } };
-  runInNewContext(compiled.outputFiles[0]!.text, {
+  const environment = {
     module,
     exports: module.exports,
     process: { env: { EXPO_OS: 'ios' } },
@@ -109,22 +159,32 @@ export function fixture(
           router: { push: (route: unknown) => routes.push(JSON.parse(JSON.stringify(route))) },
           Stack: { Screen: 'Screen' },
           useFocusEffect: host.useFocusEffect,
+          useIsFocused: () => true,
           useLocalSearchParams: () => ({ space: 'space', root: routeRoot, jump }),
         };
       if (name === 'expo-router/react-navigation') return { useHeaderHeight: () => 44 };
       if (name === 'react-native-safe-area-context')
         return { useSafeAreaInsets: () => ({ top: 20 }) };
       if (name === '@shopify/flash-list') return { FlashList: 'FlashList' };
-      if (name === 'react-native') return { Text: 'Text', View: 'View' };
+      if (name === 'react-native')
+        return {
+          Text: 'Text',
+          View: 'View',
+          AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+        };
+      if (name.endsWith('/navigation-container'))
+        return { NavigationContainer: 'NavigationContainer', navigationMetricsAvailable: false };
+      if (name.endsWith('/keyboard-motion'))
+        return { useKeyboardMotion: () => ({ progress: { value: 0 }, height: { value: 0 } }) };
+      if (name.endsWith('/use-thread-message-navigation')) return navigationExports;
       if (name.endsWith('/i18n/index.ts')) return { t: (key: string) => key };
       if (name.endsWith('/core/query'))
         return { useCoreQuery: () => ({ data: entries, error: null, retry() {} }) };
       if (name.endsWith('/core/provider'))
         return {
           useClient: () => ({
-            store: { sessionEpoch, setTyping() {}, getSnapshot: () => state },
-            snapshot: { conversations: [{ id: 'space', kind: 'Group' }] },
-            mode: 'account',
+            ...state,
+            store,
           }),
         };
       if (name.endsWith('/home/access')) return homeAccess;
@@ -133,6 +193,7 @@ export function fixture(
         return { QuoteLayoutTransition: 'QuoteLayoutTransition' };
       if (name.endsWith('/quote-layout-context')) return { QuoteMotionView: 'QuoteMotionView' };
       if (name.endsWith('/mosaic-layout')) return { supportsMediaMosaic: true };
+      if (name.endsWith('/send-chat-message')) return sending;
       if (name.endsWith('/core/presentation')) return { messageText: () => '' };
       if (name.endsWith('/message-presentation')) return { messageCard: () => null };
       if (name.endsWith('/conversation-timeline'))
@@ -155,7 +216,8 @@ export function fixture(
         };
       if (name.endsWith('/primitives'))
         return { EmptyState: 'Empty', Loading: 'Loading', NativeButton: 'Button' };
-      if (name.endsWith('/theme')) return { useTheme: () => ({ colors: {} }) };
+      if (name.endsWith('/theme'))
+        return { useTheme: () => ({ colors: {}, presentation: { navigation: { text: '#fff' } } }) };
       if (name.endsWith('/home/provider')) return { useHome: () => ({ allItems: [] }) };
       if (name.endsWith('/thread-hashtag-provider'))
         return { ThreadHashtagProvider: 'ThreadHashtagProvider' };
@@ -186,7 +248,17 @@ export function fixture(
         };
       throw new Error(name);
     },
+  };
+  const navigationModule = { exports: {} };
+  runInNewContext(navigationBundle.outputFiles[0]!.text, {
+    ...environment,
+    module: navigationModule,
+    exports: navigationModule.exports,
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
   });
+  navigationExports = navigationModule.exports;
+  runInNewContext(compiled.outputFiles[0]!.text, environment);
   const render = () => host.render(() => module.exports.default());
   const tree = render();
   const viewport = find(tree, 'Viewport')!;

@@ -5,7 +5,7 @@ type Draft = Pick<
   'capture' | 'send' | 'sendEdit' | 'isCurrent'
 >;
 /** Existing draft/receipt authority owns delivery; the screen only owns busy feedback. */
-export async function sendChatMessage({
+export async function sendChatMessage<Scope>({
   draft,
   scope,
   blocked,
@@ -16,11 +16,11 @@ export async function sendChatMessage({
   inform,
 }: {
   draft: Draft;
-  scope: string;
+  scope: Scope;
   blocked: boolean;
   allowEmptyCaption: boolean;
-  flight: { current: { scope: string } | null };
-  setPending(value: string | null): void;
+  flight: { current: { scope: Scope } | null };
+  setPending(value: Scope | null): void;
   typing(): void;
   inform(title: string, detail: string): Promise<unknown>;
 }) {
