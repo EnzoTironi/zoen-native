@@ -1,5 +1,10 @@
+import {
+  submitRequestDecision,
+  type DecisionAttempt,
+  type DecisionTicket,
+} from './submit-request-decision';
 import { t, formatLocale } from '../i18n/index.ts';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
@@ -57,16 +62,17 @@ export function RequestCard({
   const { store } = client;
   const dialogs = useDialogs();
   const { colors } = useTheme();
-  const [busy, setBusy] = useState(false);
+  const [pendingTicket, setPendingTicket] = useState<DecisionTicket | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
-  const [expiryRevision, redrawExpiry] = useState(0);
-  const deciding = useRef(false);
+  const [expiryClock, observeExpiry] = useState(Date.now);
+  const deciding = useRef<DecisionAttempt | null>(null);
   const resetOutput = useCallback(() => {
     setFailure(null);
     setResult(null);
   }, []);
   const approval = useRequestDecisionLease(store, client, request, disabled, resetOutput);
+  const busy = pendingTicket !== null && approval.lease.continues(pendingTicket);
   const tool = request.tool_approval;
   const siteNeedsReview = tool?.preview_kind === 'site';
   const drawingNeedsReview =
@@ -74,7 +80,7 @@ export function RequestCard({
   const drawingOwner = accountScopeKey(accountScope(store, client));
   const reviewExpired = useCallback(() => {
     if (drawingOwner && accountScopeKey(accountScope(store)) === drawingOwner)
-      redrawExpiry((revision) => revision + 1);
+      observeExpiry(Date.now());
   }, [store, drawingOwner]);
   const drawingKey = `${request.id}:${tool?.content_hash ?? ''}:${drawingOwner}:${drawingReview?.key ?? ''}`;
   const drawingLease = useRef<string | null>(null);
@@ -100,13 +106,9 @@ export function RequestCard({
   const conversationRequest = tool != null && conversationSearchReview(tool);
   const image = imageRequest && imageToolReviewValid(tool.image) ? tool.image : null;
   const toolValid = tool == null || toolApprovalValid(tool);
-  // The session's existing deadline observation invalidates this presentation
-  // calculation even when the canonical request object has not changed.
-  const toolExpiry = useMemo(
-    () => ({ revision: expiryRevision, expired: tool != null && toolApprovalExpired(tool) }),
-    [tool, expiryRevision],
-  );
-  const toolExpired = toolExpiry.expired;
+  // The observed deadline is a real value dependency for compiler memoization.
+  // Core independently checks the signed expiry when a decision is submitted.
+  const toolExpired = tool != null && toolApprovalExpired(tool, expiryClock);
   const itemId =
     imageRequest || conversationRequest
       ? null
@@ -119,10 +121,9 @@ export function RequestCard({
   const pending = request.status === 'Pending' || request.status === 'Stale';
   const canDecide =
     pending && toolValid && request.agent.is_mine && !busy && !disabled && approval.available;
-  async function decide(decision: RequestCardDecision) {
+  function decide(decision: RequestCardDecision) {
     if (
       !canDecide ||
-      deciding.current ||
       !approval.lease.accepts(approval.ticket) ||
       (decision === 'ApproveOnce' &&
         ((siteNeedsReview && !siteReviewed) ||
@@ -135,49 +136,47 @@ export function RequestCard({
       return;
     const command = requestDecisionCommand(request, decision);
     if (!command) return;
-    deciding.current = true;
-    try {
-      const always = decision === 'AlwaysApprove' || decision === 'AlwaysDeny';
-      if (
-        always &&
-        !(await dialogs.confirm({
-          title:
-            decision === 'AlwaysApprove'
-              ? t('agents.alwaysAllowThisTypeOfAction')
-              : t('agents.alwaysDenyThisTypeOfAction'),
-          message: t('agents.standingDecisionConfirmation', {
-            name: request.agent.name,
-            chat: request.space_title,
-            action: request.action_label,
-          }),
-          confirmLabel:
-            decision === 'AlwaysApprove' ? t('agents.alwaysAllow') : t('agents.alwaysDeny'),
-          destructive: decision === 'AlwaysDeny',
-        }))
-      )
-        return;
-      if (!approval.lease.accepts(approval.ticket)) return;
-      setBusy(true);
-      setFailure(null);
-      setResult(null);
-      const outcome = await (onDecision ? onDecision(command) : store.request(command));
-      if (!approval.lease.continues(approval.ticket)) return;
-      setResult(
-        outcome.also_resolved
-          ? t('agents.alsoResolved', { message: outcome.message, count: outcome.also_resolved })
-          : outcome.message,
-      );
-      onResolved?.();
-    } catch (reason) {
-      if (!approval.lease.continues(approval.ticket)) return;
-      setFailure(
-        reason instanceof Error ? reason.message : t('agents.thisDecisionCouldNotBeSaved'),
-      );
-    } finally {
-      deciding.current = false;
-      setBusy(false);
-    }
+    const always = decision === 'AlwaysApprove' || decision === 'AlwaysDeny';
+    void submitRequestDecision({
+      ticket: approval.ticket,
+      flight: deciding,
+      confirm: always
+        ? () =>
+            dialogs.confirm({
+              title:
+                decision === 'AlwaysApprove'
+                  ? t('agents.alwaysAllowThisTypeOfAction')
+                  : t('agents.alwaysDenyThisTypeOfAction'),
+              message: t('agents.standingDecisionConfirmation', {
+                name: request.agent.name,
+                chat: request.space_title,
+                action: request.action_label,
+              }),
+              confirmLabel:
+                decision === 'AlwaysApprove' ? t('agents.alwaysAllow') : t('agents.alwaysDeny'),
+              destructive: decision === 'AlwaysDeny',
+            })
+        : undefined,
+      submit: () => (onDecision ? onDecision(command) : store.request(command)),
+      pending: (ticket) => {
+        setPendingTicket(ticket);
+        if (ticket) resetOutput();
+      },
+      accepted: (outcome) => {
+        setResult(
+          outcome.also_resolved
+            ? t('agents.alsoResolved', { message: outcome.message, count: outcome.also_resolved })
+            : outcome.message,
+        );
+        onResolved?.();
+      },
+      failed: (reason) =>
+        setFailure(
+          reason instanceof Error ? reason.message : t('agents.thisDecisionCouldNotBeSaved'),
+        ),
+    });
   }
+
   const IdentityHeader = embedded ? View : Pressable;
   return (
     <Surface>

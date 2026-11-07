@@ -1,3 +1,4 @@
+import { submitRequestDecision } from '../agents/submit-request-decision.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -68,16 +69,9 @@ const compiled = new Map(
             },
           }).code
         : source;
-      // RequestCard already falls back on b260 because its existing async
-      // decision handler uses try/finally. Exercise that normal output without
-      // hiding additional diagnostics or changing unrelated decision behavior.
-      assert.deepEqual(
-        diagnostics,
-        name === 'card'
-          ? ["(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"]
-          : [],
-      );
-      if (name === 'view' || name === 'hook') assert.match(transformed, /react\/compiler-runtime/);
+      assert.deepEqual(diagnostics, []);
+      if (name === 'view' || name === 'hook' || name === 'card')
+        assert.match(transformed, /react\/compiler-runtime/);
       const result = await build({
         stdin: { contents: transformed, loader: useCompiler ? 'js' : 'tsx' },
         bundle: true,
@@ -235,8 +229,9 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
               : { current: value },
           useState: (value: unknown) => {
             const index = stateCursor++;
-            if (name !== 'site') return [index === 2 ? resultMessage : value, () => {}];
-            if (!(index in siteState)) siteState[index] = value;
+            const initial = typeof value === 'function' ? value() : value;
+            if (name !== 'site') return [index === 2 ? resultMessage : initial, () => {}];
+            if (!(index in siteState)) siteState[index] = initial;
             return [
               siteState[index],
               (next: unknown) => {
@@ -299,6 +294,7 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
         };
       if (path.endsWith('/presentation')) return { money: () => '' };
       if (path.endsWith('/image-tool-review')) return { imageToolReviewValid };
+      if (path.endsWith('/submit-request-decision')) return { submitRequestDecision };
       if (path.endsWith('/tool-request-decision'))
         return {
           ...decision,

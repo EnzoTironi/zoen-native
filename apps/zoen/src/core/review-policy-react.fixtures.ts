@@ -1,3 +1,4 @@
+import { submitRequestDecision } from '../agents/submit-request-decision.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -52,8 +53,7 @@ const presentation = {
   action: compile(new URL('../agents/app-request-review-action.tsx', import.meta.url)),
 };
 assert.match(presentation.recovery, /react\/compiler-runtime/);
-// RequestCard's existing try/finally fallback is checked against its baseline
-// by tool-review-ui.fixture; this consumer still runs its actual Babel output.
+assert.match(presentation.card, /react\/compiler-runtime/);
 /** Actual compiled hooks, sessions, ports and Store lifecycle. Only native/Core
  * boundaries are synthetic; no financial operation or external service is used. */
 export async function reviewPolicyReactFixture(
@@ -225,6 +225,7 @@ export async function reviewPolicyReactFixture(
     process: { env: { NODE_ENV: 'production' } },
   });
   const ports: Record<string, unknown> = {
+    './submit-request-decision': { submitRequestDecision },
     react: React,
     'react/jsx-runtime': require('react/jsx-runtime'),
     'react/compiler-runtime': require('react/compiler-runtime'),

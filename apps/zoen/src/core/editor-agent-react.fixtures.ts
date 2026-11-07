@@ -1,3 +1,4 @@
+import { submitRequestDecision } from '../agents/submit-request-decision.ts';
 import { memberRoleLabelKey } from '../communities/member-role-label.ts';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -238,6 +239,7 @@ export async function editorAgentReactFixture(
     accent: '#0af',
   };
   const common: Record<string, any> = {
+    './submit-request-decision': { submitRequestDecision },
     react: React,
     'react/jsx-runtime': require('react/jsx-runtime'),
     'react/compiler-runtime': require('react/compiler-runtime'),
