@@ -190,27 +190,30 @@ async fn run(history: bool) -> TestResult {
             .join(&account.identity_id)
             .join(&request.operation)
             .join("executor/reply-config.json");
-        let signed = signed_policy(
-            &w,
-            "owner",
-            &account.identity_id,
-            config.chat_price.digest()?,
-        )
-        .await?;
-        assert_eq!(
-            call(
-                &executor,
-                "control",
-                Some(json!({"command":"policy_import","signed":signed}))
-            )?["status"],
-            "policy_installed"
-        );
+        let profile = config.chat_price.digest()?;
+        let budget_space = if history {
+            None
+        } else {
+            // Same exact owned-profile lookup as the iOS Budget action. The
+            // history variant below still tests first Chat with a cold directory.
+            let people = owner.find_people(request.handle.clone()).await?;
+            assert!(people.iter().any(|person| person.id == agent));
+            let space = super::managed_budget::install(&w, &owner, &mut process, &agent, &profile).await?;
+            assert!(trust_grants(&owner, &space)?.is_empty(), "Budget review must not grant conversation access");
+            Some(space)
+        };
         let context = json!({"operation_id":request.operation,"agent_id":agent});
         let space = bridge(&owner, "managed_agent_chat", context.clone())
             .await?
             .as_str()
             .ok_or("private chat")?
             .to_owned();
+        if let Some(budget_space) = budget_space {
+            assert_eq!(space, budget_space);
+        } else {
+            assert_eq!(super::managed_budget::install(&w, &owner, &mut process, &agent, &profile).await?, space);
+        }
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 0, "Consent and budget are not model work");
         // Chat must load its exact public agent profile itself. This later
         // People lookup must not prime the cache and hide a broken first tap.
         let people = owner.find_people(request.handle.clone()).await?;

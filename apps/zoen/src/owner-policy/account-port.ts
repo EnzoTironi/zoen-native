@@ -1,13 +1,13 @@
-import type { ClientStore } from '../core/store.ts';
+import type { ClientState, ClientStore } from '../core/store.ts';
 import { accountScope, accountScopeKey, type AccountScope } from '../core/account-scope.ts';
 import { policyAvailability } from './core-port.ts';
 import type { PolicyTarget } from './session.ts';
 
 /** Core repeats owned-agent validation inside the scoped command. */
-export function ownedBudgetAgents(store: ClientStore) {
-  const owner = accountScope(store);
+export function ownedBudgetAgents(store: ClientStore, state: ClientState = store.getSnapshot()) {
+  const owner = accountScope(store, state);
   return owner
-    ? (store.getSnapshot().snapshot?.agents ?? []).filter(
+    ? (state.snapshot?.agents ?? []).filter(
         ({ persona }) =>
           persona.kind === 'Agent' && persona.is_mine && persona.owner_id === owner.identity,
       )
