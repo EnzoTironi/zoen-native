@@ -19,6 +19,15 @@ impl DeviceCore {
         arguments: &serde_json::Value,
         at_ms: i64,
     ) -> Result<MessageSearchPage> {
+        self.search_history_page(original, arguments, at_ms)
+    }
+
+    pub(super) fn search_history_page(
+        &mut self,
+        original: &ReplyIntent,
+        arguments: &serde_json::Value,
+        at_ms: i64,
+    ) -> Result<MessageSearchPage> {
         let query = crate::agent_conversation_tools::parse(arguments).map_err(search_error)?;
         let facts = self.refresh(original, at_ms)?;
         let intent =
@@ -73,6 +82,22 @@ impl DeviceCore {
         Ok(page)
     }
 }
+pub(super) fn retained_cursor(original: &ReplyIntent, cursor: &str) -> Result<()> {
+    if cursor.len() > 4096 {
+        return Err(NativeError::Bounds);
+    }
+    let cursor: Cursor = serde_json::from_str(cursor).map_err(|_| NativeError::History)?;
+    let intent =
+        event_log::sha256_hex(&serde_json::to_vec(original).map_err(|_| NativeError::History)?);
+    if cursor.intent != intent
+        || cursor.frontier.len() != 64
+        || !cursor.frontier.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return Err(NativeError::History);
+    }
+    Ok(())
+}
+
 fn search_error(error: CoreError) -> NativeError {
     match error {
         CoreError::Storage { .. } => NativeError::Storage,

@@ -593,7 +593,7 @@ pub(crate) async fn retained_result(
         .await?;
     Ok((
         retained.association.value.evidence.clone(),
-        retained.text(&record)?.into(),
+        retained.text(&record)?,
     ))
 }
 

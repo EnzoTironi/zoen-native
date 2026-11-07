@@ -52,7 +52,8 @@ impl RunRecord {
             || self.request.operation != Operation::ChatCompletion
             || self.request.max_output_tokens != self.binding.requested_output_tokens
             || self.request.tools != turn::tools(self.format)
-            || (self.request.tool_mode == zoen_models::ToolMode::FinalAnswer) != (self.format == 4)
+            || (self.request.tool_mode == zoen_models::ToolMode::FinalAnswer)
+                != matches!(self.format, 4 | 6)
             || self.binding.hold_units
                 != self.binding.price.reserve(self.request.max_output_tokens)?
         {

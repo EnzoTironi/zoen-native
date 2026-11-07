@@ -151,14 +151,21 @@ struct RetainedCapture {
 }
 
 impl RetainedCapture {
-    fn text(&self, record: &RunRecord) -> Result<&str, RuntimeError> {
+    fn text(&self, record: &RunRecord) -> Result<String, RuntimeError> {
         let result = &self.capture.result;
         let Ok(blocks) = &result.output else {
             return Err(RuntimeError::Denied);
         };
-        let [OutputBlock::Text { text }] = blocks.as_slice() else {
-            return Err(RuntimeError::Denied);
-        };
+        let mut text = String::new();
+        for block in blocks {
+            let OutputBlock::Text { text: part } = block else {
+                return Err(RuntimeError::Denied);
+            };
+            if text.len().saturating_add(part.len()) > 32768 {
+                return Err(RuntimeError::Denied);
+            }
+            text.push_str(part);
+        }
         if !result.evidence.complete
             || !result
                 .receipt

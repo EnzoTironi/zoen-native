@@ -100,3 +100,98 @@ fn native_history_search_rechecks_expiry_replacement_and_revocation(
     }
     Ok(())
 }
+
+#[test]
+fn native_history_search_turns_replay_current_pages_without_relaxing_cursors(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
+    f.grant("turn-history", None)?;
+    for number in 0..7 {
+        f.message(&format!("needle memory {number}"))?;
+    }
+    let source = f.message("Find older details")?;
+    let intent = f.core.reply(SPACE, &source, 400)?.intent().clone();
+    let arguments = json!({"query":"needle","limit":2});
+    let first = DeviceCore::restore(f.core.image()?, f.credential())?.continue_reply_history(
+        &intent,
+        &[],
+        &arguments,
+        400,
+    )?;
+    let cursor = first.next_cursor.clone().ok_or("cursor")?;
+    let mut reads = vec![ReplyHistoryRead {
+        arguments,
+        page: first,
+    }];
+    f.message("An unrelated new message while the model thinks")?;
+    let image = f.core.image()?;
+    let arguments = json!({"query":"needle","limit":2,"cursor":cursor});
+    // The public paging contract still refuses stale source-bound cursors.
+    assert!(DeviceCore::restore(f.core.image()?, f.credential())?
+        .search_reply_history(&intent, &arguments, 400)
+        .is_err());
+    let second = DeviceCore::restore(f.core.image()?, f.credential())?
+        .continue_reply_history(&intent, &reads, &arguments, 400)?;
+    assert_eq!(second.hits.len(), 2);
+    assert!(reads[0]
+        .page
+        .hits
+        .iter()
+        .all(|hit| second.hits.iter().all(|other| other.ref_id != hit.ref_id)));
+    reads.push(ReplyHistoryRead {
+        arguments,
+        page: second,
+    });
+    DeviceCore::restore(f.core.image()?, f.credential())?
+        .verify_reply_history(&intent, &reads, 400)?;
+    assert_eq!(f.core.image()?.as_bytes(), image.as_bytes());
+    for arguments in [
+        json!({"query":"needle","cursor":"invented"}),
+        json!({"query":"different","cursor":cursor}),
+    ] {
+        assert!(DeviceCore::restore(f.core.image()?, f.credential())?
+            .continue_reply_history(&intent, &reads, &arguments, 400)
+            .is_err());
+    }
+    f.encrypted(
+        EventBody::MessageAnnotated {
+            target: reads[0].page.hits[0].ref_id.clone(),
+            note: types::Annotation::Delete,
+        },
+        450,
+    )?;
+    assert!(DeviceCore::restore(f.core.image()?, f.credential())?
+        .verify_reply_history(&intent, &reads, 400)
+        .is_err());
+    Ok(())
+}
+
+#[test]
+fn native_history_search_turns_reject_replaced_permission_and_forged_pages(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
+    f.grant("turn-original", None)?;
+    let source = f.message("needle detail")?;
+    let intent = f.core.reply(SPACE, &source, 400)?.intent().clone();
+    let arguments = json!({"query":"needle"});
+    let page = DeviceCore::restore(f.core.image()?, f.credential())?.continue_reply_history(
+        &intent,
+        &[],
+        &arguments,
+        400,
+    )?;
+    let mut reads = vec![ReplyHistoryRead { arguments, page }];
+    let original_ref = reads[0].page.hits[0].ref_id.clone();
+    reads[0].page.hits[0].ref_id = "forged-message".into();
+    assert!(DeviceCore::restore(f.core.image()?, f.credential())?
+        .verify_reply_history(&intent, &reads, 400)
+        .is_err());
+    reads[0].page.hits[0].ref_id = original_ref;
+    DeviceCore::restore(f.core.image()?, f.credential())?
+        .verify_reply_history(&intent, &reads, 400)?;
+    f.grant("turn-replacement", None)?;
+    assert!(DeviceCore::restore(f.core.image()?, f.credential())?
+        .verify_reply_history(&intent, &reads, 400)
+        .is_err());
+    Ok(())
+}

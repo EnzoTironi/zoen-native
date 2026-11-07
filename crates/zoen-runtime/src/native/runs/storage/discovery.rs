@@ -132,6 +132,7 @@ impl Execution {
         custody: &Custody,
         checks: &mut std::collections::BTreeMap<Vec<u8>, String>,
     ) -> Result<(), RuntimeError> {
+        Box::pin(self.verify_search_continuation_in(trx, record, custody)).await?;
         self.reply_binding_in(trx, record, custody).await?;
         let sealed = trx
             .get(&self.run(&record.locator.run, "record/1"), false)

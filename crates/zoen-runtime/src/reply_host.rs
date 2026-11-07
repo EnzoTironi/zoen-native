@@ -44,6 +44,20 @@ pub enum ReplyHostProgress {
     },
 }
 
+/// Iteration keeps the model/finance poll stack independent of chain length.
+enum HostAdvance {
+    Next(String),
+    Progress(Box<ReplyHostProgress>),
+}
+impl HostAdvance {
+    fn progress(value: ReplyHostProgress) -> Self {
+        Self::Progress(Box::new(value))
+    }
+}
+fn finished(value: ReplyHostProgress) -> Result<HostAdvance, RuntimeError> {
+    Ok(HostAdvance::progress(value))
+}
+
 impl ReplyRuntimeHost {
     pub fn configured(
         runtime: Arc<RuntimeAuthority>,
@@ -218,6 +232,21 @@ impl ReplyRuntimeHost {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
+        let mut current = run.to_owned();
+        // Three verified reads permit at most three child originals.
+        for _ in 0..4 {
+            match Box::pin(self.advance_current(&current)).await? {
+                HostAdvance::Next(next) => current = next,
+                HostAdvance::Progress(progress) => return Ok(*progress),
+            }
+        }
+        Err(RuntimeError::InvalidBinding)
+    }
+
+    async fn advance_current(&self, run: &str) -> Result<HostAdvance, RuntimeError> {
+        if !id(run) {
+            return Err(RuntimeError::InvalidBinding);
+        }
         let runtime = &self.runtime;
         let scope = runtime.production_output_scope()?;
         scope.check_context(runtime)?;
@@ -240,33 +269,39 @@ impl ReplyRuntimeHost {
             .next_search_reply(run, &runtime.custody)
             .await?
         {
-            return Box::pin(self.advance(&next)).await;
+            return Ok(HostAdvance::Next(next));
         }
         if let Some(output) = state.output {
             let delivery = runtime.reconcile_reply_receipt(run).await?;
             match delivery {
                 ReplyReceiptProgress::Accepted { .. } | ReplyReceiptProgress::Refused { .. } => {
-                    return Ok(ReplyHostProgress::Completed {
+                    return finished(ReplyHostProgress::Completed {
                         run: run.into(),
                         output,
                         delivery,
                     });
                 }
                 ReplyReceiptProgress::CatchingUp { .. } => {
-                    return self.catching_up(run, &state.attempt).await
+                    return self
+                        .catching_up(run, &state.attempt)
+                        .await
+                        .map(HostAdvance::progress)
                 }
                 ReplyReceiptProgress::Waiting => {}
             }
         }
         if !self.refresh(&state.space).await? {
-            return self.catching_up(run, &state.attempt).await;
+            return self
+                .catching_up(run, &state.attempt)
+                .await
+                .map(HostAdvance::progress);
         }
         if !state.captured {
             let decision = native
                 .check_reply_input(runtime, run, scope, self.gate.clone())
                 .await?;
             if decision.outcome != gate::Outcome::Allow {
-                return Ok(ReplyHostProgress::Held {
+                return finished(ReplyHostProgress::Held {
                     run: run.into(),
                     audit: decision.audit,
                     financial: runtime.inspect_attempt(&state.attempt).await?,
@@ -274,14 +309,17 @@ impl ReplyRuntimeHost {
             }
             // A remote policy provider may race revocation or source changes.
             if !self.refresh(&state.space).await? {
-                return self.catching_up(run, &state.attempt).await;
+                return self
+                    .catching_up(run, &state.attempt)
+                    .await
+                    .map(HostAdvance::progress);
             }
         }
         let financial = match Box::pin(runtime.run_model(run)).await {
             Ok(retained) => retained.financial,
             Err(RuntimeError::Unavailable) => {
                 if let Some(financial) = runtime.inspect_attempt(&state.attempt).await? {
-                    return Ok(ReplyHostProgress::AwaitingRecovery {
+                    return finished(ReplyHostProgress::AwaitingRecovery {
                         run: run.into(),
                         financial,
                     });
@@ -291,7 +329,7 @@ impl ReplyRuntimeHost {
             Err(error) => return Err(error),
         };
         if let Some(next) = Box::pin(native.continue_search_reply(runtime, run, scope)).await? {
-            return Box::pin(self.advance(&next)).await;
+            return Ok(HostAdvance::Next(next));
         }
         let review = match native
             .review_reply_output(runtime, run, scope, self.gate.clone())
@@ -299,26 +337,29 @@ impl ReplyRuntimeHost {
         {
             native::ReplyOutputCheck::Allowed(review) => review,
             native::ReplyOutputCheck::Held(audit) => {
-                return Ok(ReplyHostProgress::Held {
+                return finished(ReplyHostProgress::Held {
                     run: run.into(),
                     audit,
                     financial: Some(financial),
                 })
             }
             native::ReplyOutputCheck::Unusable => {
-                return Ok(ReplyHostProgress::AwaitingRecovery {
+                return finished(ReplyHostProgress::AwaitingRecovery {
                     run: run.into(),
                     financial,
                 })
             }
         };
         if !self.refresh(&state.space).await? {
-            return self.catching_up(run, &state.attempt).await;
+            return self
+                .catching_up(run, &state.attempt)
+                .await
+                .map(HostAdvance::progress);
         }
         let output = Box::pin(native.prepare_reviewed_output(runtime, run, scope, &review)).await?;
         let delivery =
             Box::pin(runtime.deliver_reply_output(run, self.config.target.clone())).await?;
-        Ok(ReplyHostProgress::Output {
+        finished(ReplyHostProgress::Output {
             run: run.into(),
             output,
             delivery,

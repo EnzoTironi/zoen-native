@@ -329,7 +329,7 @@ impl NativeCustody {
                                 text: facts.text().into(),
                             }],
                         },
-                        tools: turn::tools(if agent_context.is_some() { 3 } else { 1 }),
+                        tools: turn::tools(if agent_context.is_some() { 5 } else { 1 }),
                         max_output_tokens: runtime.price.max_output_tokens,
                     };
                     let dispatch = runtime
@@ -348,7 +348,7 @@ impl NativeCustody {
                         price: runtime.price.clone().into(),
                     };
                     let record = RunRecord {
-                        format: if agent_context.is_some() { 3 } else { 1 },
+                        format: if agent_context.is_some() { 5 } else { 1 },
                         continuation: None,
                         agent_context: agent_context.clone(),
                         source: effects.source.clone(),

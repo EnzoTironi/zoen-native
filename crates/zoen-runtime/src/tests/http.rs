@@ -7,6 +7,7 @@ use tokio::{
     sync::Notify,
 };
 
+pub(super) type Responder = Arc<dyn Fn(&Value) -> Value + Send + Sync>;
 pub(super) struct Provider {
     pub base: String,
     pub sends: Arc<AtomicUsize>,
@@ -16,6 +17,7 @@ pub(super) struct Provider {
     pub lost: Arc<AtomicBool>,
     pub body: Arc<Mutex<Value>>,
     pub requests: Arc<Mutex<Vec<Value>>>,
+    pub responder: Arc<Mutex<Option<Responder>>>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Drop for Provider {
@@ -34,6 +36,8 @@ impl Provider {
         let lost = Arc::new(AtomicBool::new(false));
         let body = Arc::new(Mutex::new(reply()));
         let requests = Arc::new(Mutex::new(Vec::new()));
+        let responder: Arc<Mutex<Option<Responder>>> = Arc::new(Mutex::new(None));
+        let scripted = responder.clone();
         let (counter, signal, gate, pause, drop_reply, response, inputs) = (
             sends.clone(),
             received.clone(),
@@ -54,6 +58,7 @@ impl Provider {
                     response.clone(),
                     inputs.clone(),
                 );
+                let scripted = scripted.clone();
                 tokio::spawn(async move {
                     let mut wire = Vec::new();
                     let end;
@@ -95,7 +100,7 @@ impl Provider {
                     }
                     let input: Value = serde_json::from_slice(&wire[end..end + length]).unwrap();
                     assert_eq!(input["model"], "fixture-model");
-                    inputs.lock().unwrap().push(input);
+                    inputs.lock().unwrap().push(input.clone());
                     counter.fetch_add(1, Ordering::SeqCst);
                     signal.notify_one();
                     if pause.load(Ordering::SeqCst) {
@@ -104,7 +109,14 @@ impl Provider {
                     if drop_reply.load(Ordering::SeqCst) {
                         return;
                     }
-                    let text = response.lock().unwrap().to_string();
+                    let script = match scripted.lock() {
+                        Ok(script) => script.clone(),
+                        Err(_) => return,
+                    };
+                    let text = match script {
+                        Some(script) => script(&input).to_string(),
+                        None => response.lock().unwrap().to_string(),
+                    };
                     let head = format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",text.len());
                     if stream.write_all(head.as_bytes()).await.is_ok() {
                         let _ = stream.write_all(text.as_bytes()).await;
@@ -121,6 +133,7 @@ impl Provider {
             lost,
             body,
             requests,
+            responder,
             task,
         }
     }

@@ -43,8 +43,12 @@ impl NativeCustody {
                     credential.unlocked()?,
                 )
                 .map_err(native_error)?;
-                core.refresh(&record.intent, observed)
-                    .map_err(native_error)?
+                let facts = core.refresh(&record.intent, observed).map_err(native_error)?;
+                if record.format >= 5 && record.continuation.is_some() {
+                    core.verify_reply_history(&record.intent, &record.history_reads()?, observed)
+                        .map_err(native_error)?;
+                }
+                facts
             };
             #[cfg(test)]
             println!(
@@ -53,9 +57,6 @@ impl NativeCustody {
                 facts.expires_at_ms().and_then(|expiry| expiry.checked_sub(observed))
             );
             record.verify_input(&facts)?;
-            let tx = runtime.execution.transaction().await?;
-            runtime.execution.verify_search_continuation_in(&tx, &record, &runtime.custody).await?;
-            drop(tx);
             let dispatch = runtime
                 .gateway
                 .preflight(&record.request)

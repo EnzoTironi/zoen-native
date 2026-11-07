@@ -37,6 +37,11 @@ impl Worker {
         Ok(worker)
     }
     async fn wait(&mut self, status: &str) -> Result<Value, Box<dyn std::error::Error>> {
+        eprintln!(
+            "worker wait: pid={} expected={status} log={}",
+            self.child.id(),
+            self.log.display()
+        );
         let until = Instant::now() + Duration::from_secs(20);
         loop {
             let body = std::fs::read_to_string(&self.log)?;
