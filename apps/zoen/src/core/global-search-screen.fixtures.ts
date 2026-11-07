@@ -5,7 +5,7 @@ import * as React from 'react';
 import { build } from 'esbuild';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { deferred, Driver, draftSession } from './store.fixtures.ts';
-import { ClientStore } from './store.ts';
+import { ClientStore, type ClientState } from './store.ts';
 import { compileExpoSource } from './expo-compiler.fixtures.ts';
 
 const require = createRequire(import.meta.url);
@@ -218,7 +218,11 @@ export async function fixture(
         return {
           useClient: () => ({
             store,
-            ...React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot),
+            ...React.useSyncExternalStore<ClientState>(
+              store.subscribe,
+              store.getSnapshot,
+              store.getSnapshot,
+            ),
           }),
         };
       if (name === '../theme') return { useTheme: () => ({ colors: {} }) };
