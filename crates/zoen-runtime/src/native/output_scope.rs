@@ -308,10 +308,24 @@ impl RuntimeAuthority {
         mut self,
         target: ImageDeliveryTarget,
     ) -> Result<Self, RuntimeError> {
+        self.qualify_shared_reply_output_in_place(target).await?;
+        Ok(self)
+    }
+
+    /// Qualify the first nonempty principal set before sharing this authority.
+    /// A failed handshake leaves the existing custody/continuity writer owned
+    /// by the caller; retries never open a parallel authority.
+    ///
+    /// # Errors
+    /// Refuses an existing output scope or any failed route/directory binding.
+    pub async fn qualify_shared_reply_output_in_place(
+        &mut self,
+        target: ImageDeliveryTarget,
+    ) -> Result<(), RuntimeError> {
         if self.reply_output.is_some() {
             return Err(RuntimeError::InvalidBinding);
         }
-        self.reply_output = Some(ManagedNativeOutput::qualify_shared(&self, target).await?);
-        Ok(self)
+        self.reply_output = Some(ManagedNativeOutput::qualify_shared(self, target).await?);
+        Ok(())
     }
 }

@@ -124,8 +124,26 @@ pub(in crate::tests) async fn run() -> TestResult {
     drop(managed);
     let relay = crate::tests::retained::image_tasks::delivery::relay::Relay::start(&f).await?;
     let target = relay.target(&f, relay.address);
-    let runtime = Arc::try_unwrap(f.world.runtime).map_err(|_| "bootstrap runtime shared")?;
-    f.world.runtime = Arc::new(runtime.qualify_shared_reply_output(target.clone()).await?);
+    let invalid_target = ImageDeliveryTarget::configured(
+        format!("http://{}", relay.address),
+        "wrong-relay".into(),
+        target_source(&f)?,
+    )?;
+    let mut runtime = Arc::try_unwrap(f.world.runtime).map_err(|_| "bootstrap runtime shared")?;
+    assert!(runtime
+        .qualify_shared_reply_output_in_place(invalid_target)
+        .await
+        .is_err());
+    assert!(runtime.reply_output.is_none());
+    assert!(runtime.runtime_continuity.is_some());
+    runtime
+        .qualify_shared_reply_output_in_place(target.clone())
+        .await?;
+    assert!(runtime
+        .qualify_shared_reply_output_in_place(target.clone())
+        .await
+        .is_err());
+    f.world.runtime = Arc::new(runtime);
     let live_first = host(f.world.runtime.clone(), &first, target.clone())?;
     f.world
         .runtime

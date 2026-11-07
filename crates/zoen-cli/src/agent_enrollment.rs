@@ -162,13 +162,25 @@ impl Action {
                 ))
             }
             Self::Wait { timeout_ms } => {
-                let progress = match client.resume_agent_enrollment(secrets.clone())
+                let supervised = match std::env::var_os("ZOEN_ENROLLMENT_PARENT_PIPE") {
+                    None => false,
+                    Some(value) if value == "1" => true,
+                    Some(_) => return Err(error("Invalid enrollment parent pipe.")),
+                };
+                let parent = crate::parent_lifetime::watch(supervised)?;
+                let enrollment = async {
+                    let progress = match client.resume_agent_enrollment(secrets.clone())
                     .map_err(|_| error("Enrollment recovery failed closed. Retained setup was preserved."))? {
                     Some(progress) => progress,
                     None => client.wait_agent_enrollment(secrets, timeout_ms).await
                         .map_err(|_| error("Enrollment was not confirmed. Resume the same retained setup; do not reset it."))?,
                 };
-                finish(client, progress, timeout_ms).await
+                    finish(client, progress, timeout_ms).await
+                };
+                tokio::select! {
+                    result = enrollment => result,
+                    _ = parent => Err(error("Enrollment supervisor retired. Retained setup was preserved.")),
+                }
             }
             Self::Cancel { digest } => {
                 let cancelled = client.cancel_agent_enrollment(secrets, digest).await

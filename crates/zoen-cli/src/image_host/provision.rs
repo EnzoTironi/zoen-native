@@ -140,6 +140,36 @@ pub(super) fn prepare(
     config: &EnrollmentScope,
     vault: &FileVault,
 ) -> Result<device_link::LinkCode, String> {
+    prepare_in_custody(config, vault, None)
+}
+
+/// A service shares capsule custody, never device keys, across its principals.
+/// The deployment key must already exist; an unreadable key never seeds a new one.
+pub(super) fn prepare_in_custody(
+    config: &EnrollmentScope,
+    vault: &FileVault,
+    custody: Option<&FileVault>,
+) -> Result<device_link::LinkCode, String> {
+    let Some(custody) = custody else {
+        return prepare_with_capsule(config, vault, None);
+    };
+    let key = RuntimeAuthority::native_capsule_vault_key(&config.namespace, config.key_version)
+        .map_err(|_| "invalid capsule locator")?;
+    let bytes = read(custody, &key)?.ok_or("shared capsule custody unavailable")?;
+    let capsule = Zeroizing::new(
+        bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| "invalid shared capsule custody")?,
+    );
+    prepare_with_capsule(config, vault, Some(&capsule))
+}
+
+fn prepare_with_capsule(
+    config: &EnrollmentScope,
+    vault: &FileVault,
+    shared: Option<&[u8; 32]>,
+) -> Result<device_link::LinkCode, String> {
     RuntimeAuthority::native_capsule_vault_key(&config.namespace, config.key_version)
         .map_err(|_| "invalid provisioning scope")?;
     // Original material is retained before any derived key or code is exposed.
@@ -155,7 +185,10 @@ pub(super) fn prepare(
                 device: random()?,
                 hpke: random()?,
                 pairing: random()?,
-                capsule: random()?,
+                capsule: match shared {
+                    Some(key) => *key,
+                    None => random()?,
+                },
             };
             let bytes = Zeroizing::new(
                 serde_json::to_vec(&record).map_err(|_| "enrollment encoding unavailable")?,
@@ -169,6 +202,9 @@ pub(super) fn prepare(
     }
     let record: Enrollment =
         serde_json::from_slice(&original).map_err(|_| "invalid retained enrollment")?;
+    if shared.is_some_and(|key| record.capsule != *key) {
+        return Err("shared custody differs from retained enrollment; nothing replaced".into());
+    }
     if record.namespace != config.namespace
         || record.agent != config.agent
         || record.key_version != config.key_version

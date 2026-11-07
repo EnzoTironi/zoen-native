@@ -26,7 +26,10 @@ pub(super) async fn run() -> TestResult {
             vec![|| Box::pin(retained::shared_native::context::policy_host::run())]
         }
         Ok(cohort) if cohort == "native-selected-source" => {
-            vec![|| Box::pin(retained::shared_native::context::selected_source::run())]
+            vec![
+                || Box::pin(retained::shared_native::context::worker_discovery::run()),
+                || Box::pin(retained::shared_native::context::selected_source::run()),
+            ]
         }
         Ok(cohort) if cohort == "native-tool-review-release" => {
             vec![

@@ -162,6 +162,12 @@ async fn host_source(
     readiness.publish()?;
     let mut worker = owner_policy::start(client, &scope.agent, &scope.device);
     let deadline = duration.and_then(|duration| Instant::now().checked_add(duration));
+    let supervised = match std::env::var_os("ZOEN_CONTROL_PARENT_PIPE") {
+        None => false,
+        Some(value) if value == "1" => true,
+        Some(_) => return Err("agent_controls_invalid_parent_pipe".into()),
+    };
+    let mut parent = Box::pin(crate::parent_lifetime::watch(supervised)?);
     let outcome: Result<(), String> = async {
         loop {
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
@@ -182,7 +188,10 @@ async fn host_source(
                     .saturating_duration_since(Instant::now())
                     .min(Duration::from_secs(5))
             });
-            tokio::time::sleep(wait).await;
+            tokio::select! {
+                _ = tokio::time::sleep(wait) => {},
+                _ = &mut parent => return Ok(()),
+            }
         }
     }
     .await;

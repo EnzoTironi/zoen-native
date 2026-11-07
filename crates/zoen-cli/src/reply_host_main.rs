@@ -8,10 +8,13 @@ mod config;
 mod control;
 mod file_vault;
 mod gate_transport;
+#[path = "reply_host/managed_service.rs"]
+mod managed_service;
 #[path = "reply_host/owner_control.rs"]
 mod owner_control;
 mod owner_policy_protocol;
 mod owner_policy_response;
+mod parent_lifetime;
 #[path = "reply_host/protocol.rs"]
 mod protocol;
 #[path = "image_host/provision.rs"]
@@ -53,6 +56,8 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
             | "supervised-source"
             | "control"
             | "owner-control"
+            | "manage"
+            | "initialize-service"
     ) {
         return Err("unsupported reply host action".into());
     }
@@ -105,7 +110,10 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
     if action == "provision" {
         return provision::run(&config.enrollment_scope(), &vault);
     }
-    config.resolve_device(&vault)?;
+    let service = matches!(action, "manage" | "initialize-service");
+    if !service {
+        config.resolve_device(&vault)?;
+    }
     let runtime_config = config.runtime(&vault)?;
     // SAFETY: this executable starts exactly one FDB network before its first
     // database call. All authorities and the executor end before the guard.
@@ -116,6 +124,16 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
         .build()
         .map_err(|_| "reply executor unavailable")?;
     let result = executor.block_on(async {
+        if service {
+            return tokio::task::LocalSet::new()
+                .run_until(managed_service::run(
+                    config,
+                    vault,
+                    runtime_config,
+                    action == "initialize-service",
+                ))
+                .await;
+        }
         let secrets: Arc<dyn SecretVault> = vault.clone();
         let authority = RuntimeAuthority::open_with_native_device(
             runtime_config,

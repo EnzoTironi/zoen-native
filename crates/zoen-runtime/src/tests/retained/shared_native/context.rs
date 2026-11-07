@@ -9,6 +9,7 @@ mod search_turn;
 pub(in crate::tests) mod selected_source;
 pub(in crate::tests) mod tool_reviews;
 mod tool_rounds;
+pub(in crate::tests) mod worker_discovery;
 
 fn definition(version: u32) -> Definition {
     Definition {
