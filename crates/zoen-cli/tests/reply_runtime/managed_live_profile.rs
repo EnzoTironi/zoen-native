@@ -148,6 +148,29 @@ fn live_reply_profile_refuses_other_origins_and_reused_dispatch_markers() -> Tes
     }
     profile.endpoint = valid;
     profile.validate()?;
+    let mut value = json!({});
+    profile.price(&mut value);
+    let price: zoen_runtime::PriceProfile = serde_json::from_value(value["chat_price"].clone())?;
+    let digest = price.digest()?;
+    let mut other = price.clone();
+    other.model = "another-provider/model:version".into();
+    assert_ne!(other.digest()?, digest);
+    for invalid in [
+        "".into(),
+        "model name".into(),
+        "model\nname".into(),
+        "模型".into(),
+        "x".repeat(257),
+    ] {
+        other.model = invalid;
+        assert!(other.digest().is_err());
+    }
+    other = price;
+    other.version = "@cf/version".into();
+    assert!(
+        other.digest().is_err(),
+        "provider syntax must not relax authority identifiers"
+    );
     profile.claim()?;
     assert!(profile.claim().is_err());
     let operator = dir.join("operator");

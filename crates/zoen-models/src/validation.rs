@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{GatewayError, InputMessage, ModelRequest, Operation, OutputBlock};
 
-pub(crate) fn identifier(value: &str) -> bool {
+/// Bounded opaque ASCII provider identifier; never an identity or tool name.
+pub fn identifier(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 256
         && value.is_ascii()

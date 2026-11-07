@@ -10,6 +10,7 @@ mod receipt;
 mod transport;
 mod validation;
 pub use contract::*;
+pub use validation::identifier as valid_model_identifier;
 
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::wire::{Body, Mode, Wire};
