@@ -14,8 +14,8 @@ export function AgentControlView({
   disabled?: boolean;
 }) {
   const { colors } = useTheme();
-  const ticket = session.ticket();
-  const retry = session.retryTicket();
+  const ticket = session.ticket(state);
+  const retry = session.retryTicket(state);
   const status = state.status;
   return (
     <View testID="agent-lifecycle-control" style={{ gap: 10 }}>

@@ -24,7 +24,7 @@ export default function Agent() {
   const { data: agent, error, retry } = useCoreQuery({ op: 'agent_profile', agent_id: id });
   const standing = useCoreQuery({ op: 'standing_decisions' });
   const control = useAgentControl(id, mode === 'account' && !!agent?.persona.is_mine);
-  const lifecycleTicket = control.session.ticket();
+  const lifecycleTicket = control.session.ticket(control.state);
   const activity = useCoreQuery({ op: 'agent_activity', agent_id: id });
   const [previewSpace, setPreviewSpace] = useState<string | null>(null);
   const selectedSpace = previewSpace ?? agent?.spaces[0]?.space_id;

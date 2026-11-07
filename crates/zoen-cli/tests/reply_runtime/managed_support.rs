@@ -50,7 +50,7 @@ impl ServiceProcess {
         status: &str,
         budget: Duration,
     ) -> Result<Value, Box<dyn std::error::Error>> {
-        self.observe(status, budget, false).await
+        self.observe(status, budget, false, 0).await
     }
     // A paid synthetic probe stops at the first policy hold/review rather than
     // waiting through another worker cycle and inferring a new decision.
@@ -58,19 +58,32 @@ impl ServiceProcess {
         &mut self,
         budget: Duration,
     ) -> Result<Value, Box<dyn std::error::Error>> {
-        self.observe("output", budget, true).await
+        self.observe("output", budget, true, 0).await
+    }
+    pub(super) fn observation_point(&self) -> Result<usize, Box<dyn std::error::Error>> {
+        Ok(std::fs::read_to_string(&self.log)?.lines().count())
+    }
+    pub(super) async fn frame_after(
+        &mut self,
+        status: &str,
+        after: usize,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        self.observe(status, Duration::from_secs(20), true, after)
+            .await
     }
     async fn observe(
         &mut self,
         status: &str,
         budget: Duration,
         stop_on_hold: bool,
+        after: usize,
     ) -> Result<Value, Box<dyn std::error::Error>> {
         let until = Instant::now() + budget;
         loop {
             let body = std::fs::read_to_string(&self.log)?;
             for frame in body
                 .lines()
+                .skip(after)
                 .filter_map(|line| serde_json::from_str::<Value>(line).ok())
             {
                 if frame["status"] == status {

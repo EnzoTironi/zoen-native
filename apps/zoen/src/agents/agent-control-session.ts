@@ -58,7 +58,12 @@ export class AgentControlSession {
   private revision: string | null = null;
   private operationId: string | null = null;
   private readGeneration = 0;
-  private readFlight: { generation: number; again: boolean; promise: Promise<void> } | null = null;
+  private readFlight: {
+    generation: number;
+    again: boolean;
+    passive: boolean;
+    promise: Promise<void>;
+  } | null = null;
   private active = false;
   private state: AgentControlState = emptyAgentControl;
   private readonly listeners = new Set<() => void>();
@@ -114,14 +119,33 @@ export class AgentControlSession {
     if (this.state.busy || (observed && observed !== this.state)) return;
     await this.readStatus();
   }
-  private readStatus(): Promise<void> {
+  async observe(observed: AgentControlState) {
+    if (observed !== this.state || this.state.phase !== 'ready' || this.state.busy) return false;
+    const generation = this.generation;
+    await this.readStatus(true);
+    return this.current(generation);
+  }
+  private requireFreshRead() {
+    if (this.readFlight) {
+      this.readFlight.again = true;
+      this.readFlight.passive = false;
+    }
+  }
+  private readStatus(passive = false): Promise<void> {
     if (!this.current() || !this.scope) return Promise.resolve();
     if (this.readFlight?.generation === this.generation) {
       this.readFlight.again = true;
-      if (this.state.phase !== 'loading') this.publish({ phase: 'loading' });
+      this.readFlight.passive &&= passive;
+      if (!this.readFlight.passive && this.state.phase !== 'loading')
+        this.publish({ phase: 'loading' });
       return this.readFlight.promise;
     }
-    const flight = { generation: this.generation, again: false, promise: Promise.resolve() };
+    const flight = {
+      generation: this.generation,
+      again: false,
+      passive,
+      promise: Promise.resolve(),
+    };
     this.readFlight = flight;
     // Install the shared flight before publishing loading or calling the port.
     flight.promise = Promise.resolve().then(async () => {
@@ -131,11 +155,22 @@ export class AgentControlSession {
           if (!this.current(flight.generation) || !this.scope) return;
           const scope = this.scope;
           const read = ++this.readGeneration;
-          if (this.state.phase !== 'loading') this.publish({ phase: 'loading' });
+          if (!flight.passive && this.state.phase !== 'loading') this.publish({ phase: 'loading' });
           try {
             const result = await this.port.read(this.agent, scope);
             if (!this.current(flight.generation) || read !== this.readGeneration) return;
             if (flight.again) continue;
+            // An unchanged passive observation is the same reviewed record,
+            // not a new UI activation. Keep buttons and open confirmations stable.
+            if (
+              flight.passive &&
+              this.state.phase === 'ready' &&
+              result.revision === this.revision &&
+              result.operation_id === this.operationId &&
+              result.status === this.state.status &&
+              result.pending === this.state.pending
+            )
+              continue;
             ++this.observation;
             // A canonical read reconciles the durable intent; it never resends.
             this.revision = result.revision;
@@ -150,10 +185,11 @@ export class AgentControlSession {
         if (this.readFlight === flight) this.readFlight = null;
       }
     });
-    this.publish({ phase: 'loading' });
+    if (!passive) this.publish({ phase: 'loading' });
     return flight.promise;
   }
-  ticket(): AgentControlTicket | null {
+  ticket(observed: AgentControlState = this.state): AgentControlTicket | null {
+    if (observed !== this.state) return null;
     const status = this.state.status;
     const revision = agentControlRevision(this.revision);
     return revision !== null &&
@@ -174,7 +210,8 @@ export class AgentControlSession {
         })
       : null;
   }
-  retryTicket(): AgentControlRetryTicket | null {
+  retryTicket(observed: AgentControlState = this.state): AgentControlRetryTicket | null {
+    if (observed !== this.state) return null;
     return this.current() &&
       this.state.phase === 'ready' &&
       !this.state.busy &&
@@ -207,6 +244,7 @@ export class AgentControlSession {
     )
       return;
     const scope = this.scope;
+    this.requireFreshRead();
     this.publish({ busy: true });
     try {
       await this.port.retry(this.agent, ticket.action, scope, ticket.revision, ticket.operationId);
@@ -247,6 +285,7 @@ export class AgentControlSession {
   private async dispatch(ticket: AgentControlTicket, action: AgentControl) {
     if (!this.accepts(ticket) || !this.scope) return;
     const scope = this.scope;
+    this.requireFreshRead();
     // Consume before dispatch; double taps and queued stale handlers cannot send twice.
     this.publish({ busy: true, pending: action });
     try {

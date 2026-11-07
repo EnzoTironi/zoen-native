@@ -33,6 +33,31 @@ export function useAgentControl(agent: string, enabled: boolean) {
     useCallback(() => {
       let alive = true;
       let foreground = AppState.currentState === 'active';
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const observe = () => {
+        clearTimeout(timer);
+        timer = undefined;
+        const observation = session.getSnapshot();
+        if (
+          !alive ||
+          !foreground ||
+          !key ||
+          observation.scopeKey !== key ||
+          observation.phase !== 'ready' ||
+          observation.busy ||
+          observation.status === 'Revoked'
+        )
+          return;
+        timer = setTimeout(() => {
+          if (alive && foreground && AppState.currentState === 'active')
+            void session.observe(observation).then((current) => {
+              if (current) observe();
+            });
+        }, 5000);
+      };
+      // SQL lifecycle controls are not conversation events. Read through the
+      // existing authority while visible; these observations never resend an action.
+      const observation = session.subscribe(observe);
       const activate = () => {
         if (!alive) return;
         const scope = enabled ? port.scope() : null;
@@ -59,6 +84,8 @@ export function useAgentControl(agent: string, enabled: boolean) {
       });
       return () => {
         alive = false;
+        observation();
+        clearTimeout(timer);
         owner();
         canonical();
         cleanup();
