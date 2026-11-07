@@ -26,7 +26,7 @@ import {
 import { composerExternalWidth } from '../core/telegram-composer-motion';
 import { ConversationComposerAccess } from './conversation-composer-access';
 import { ComposerTextField } from './composer-text-field';
-import { NativeButton } from './primitives';
+import { ComposerDraftStatus, type ComposerDraftState } from './composer-draft-status';
 import { useClient } from '../core/provider';
 import { homeOwnerFor } from '../home/access';
 import { ComposerGlyph } from './composer-control-surface';
@@ -122,7 +122,7 @@ export function MessageComposer({
     replyIntent?: string | null;
     onCancelCaptured?: (reply: AcceptedMediaReply) => void;
   };
-  draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
+  draft?: ComposerDraftState;
 }) {
   const { colors, scheme, presentation: p, reducedMotion } = useTheme();
   const client = useClient();
@@ -473,32 +473,7 @@ export function MessageComposer({
           process.env.EXPO_OS === 'ios' ? { paddingBottom: restingBottom } : keyboardPadding,
         ]}
       >
-        {draft?.error ? (
-          <View
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8 }}
-          >
-            <Text
-              accessibilityRole="alert"
-              style={{ flex: 1, color: colors.secondary, fontSize: 12 }}
-            >
-              {t(
-                draft.rejected
-                  ? editing
-                    ? 'chat.editCouldNotBeSaved'
-                    : 'chat.draftSendRejected'
-                  : draft.ready
-                    ? 'chat.draftSaveFailed'
-                    : 'chat.draftLoadFailed',
-              )}
-            </Text>
-            <NativeButton
-              testID="retry-message-draft"
-              label={t('chat.tryAgain2')}
-              secondary
-              onPress={draft.onRetry}
-            />
-          </View>
-        ) : null}
+        <ComposerDraftStatus draft={draft} editing={editing} />
         {mediaEnabled ? (
           <MediaComposer
             key={`${spaceId}:${threadRootId ?? 'chat'}`}

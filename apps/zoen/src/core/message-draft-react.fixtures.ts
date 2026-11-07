@@ -27,7 +27,7 @@ const compiled = transformSync(readFileSync(file, 'utf8'), {
 assert.match(compiled, /react\/compiler-runtime/);
 
 /** Real compiled hook and durable draft service with synthetic scoped Core IO. */
-export async function messageDraftReactFixture(open = true) {
+export async function messageDraftReactFixture(open = true, threadRootId: string | null = null) {
   const root = createReactTestRoot(),
     driver = new Driver(),
     snapshot = draftSession();
@@ -149,7 +149,7 @@ export async function messageDraftReactFixture(open = true) {
   });
   let current: ReturnType<typeof useMessageDraft> | null = null;
   function Surface() {
-    const value = module.exports.useMessageDraft(spaceId);
+    const value = module.exports.useMessageDraft(spaceId, threadRootId);
     React.useLayoutEffect(() => {
       current = value;
     }, [value]);

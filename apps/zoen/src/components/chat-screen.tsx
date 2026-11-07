@@ -180,16 +180,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                   editing={Boolean(editing) && !searchState.active}
                   allowEmptyEdit={Boolean(editing?.isCaption)}
                   replyTo={normalDraft.replyTo}
-                  draft={
-                    searchState.active || editing
-                      ? undefined
-                      : {
-                          ready: normalDraft.ready,
-                          error: Boolean(normalDraft.error),
-                          rejected: normalDraft.rejected,
-                          onRetry: normalDraft.retry,
-                        }
-                  }
+                  draft={searchState.active ? undefined : normalDraft}
                   onChangeText={(text) => {
                     if (searchState.active) {
                       search.setQuery(text);

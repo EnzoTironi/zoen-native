@@ -176,6 +176,10 @@ export async function composerSafeAreaFixture(searching = true, noResults = fals
   };
   Action = loadEditorAgent('../components/composer-action.ios.tsx', common).ComposerAction;
   common['./composer-action'] = { ComposerAction: Action };
+  common['./composer-draft-status'] = loadEditorAgent(
+    '../components/composer-draft-status.tsx',
+    common,
+  );
   const Composer = loadEditorAgent('../components/message-composer.tsx', common).MessageComposer;
   const Viewport = loadEditorAgent(
     '../components/conversation-viewport.tsx',

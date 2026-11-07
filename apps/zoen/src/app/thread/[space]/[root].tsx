@@ -210,16 +210,7 @@ export default function Thread() {
                   editing={Boolean(editing)}
                   allowEmptyEdit={Boolean(editing?.isCaption)}
                   value={editing ? editDraft : draft}
-                  draft={
-                    editing
-                      ? undefined
-                      : {
-                          ready: normalDraft.ready,
-                          error: Boolean(normalDraft.error),
-                          rejected: normalDraft.rejected,
-                          onRetry: normalDraft.retry,
-                        }
-                  }
+                  draft={normalDraft}
                   sending={busy}
                   onChangeText={(text) => {
                     updateDraft({ type: 'text', value: text });
