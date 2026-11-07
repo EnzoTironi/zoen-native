@@ -127,7 +127,7 @@ pub async fn registered(
         || retained.offer_digest != offer_digest
         || !matches!(
             retained.state.as_str(),
-            "offered" | "expired" | "registered"
+            "offered" | "expired" | "registered" | "cancel_requested"
         )
     {
         return Err(Error::Changed);

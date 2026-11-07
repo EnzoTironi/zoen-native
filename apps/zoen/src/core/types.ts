@@ -241,6 +241,7 @@ type Results = {
   managed_agent_status: ManagedEnrollmentDto | null;
   managed_agent_approve: ManagedEnrollmentDto;
   managed_agent_chat: string;
+  managed_agent_cancel: ManagedEnrollmentDto;
   managed_agent_discard: boolean;
   managed_agent_complete: boolean;
   agent_enrollment_preview: AgentEnrollmentPreviewDto;

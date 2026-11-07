@@ -175,6 +175,11 @@ async fn retained_offer_is_immutable_and_requires_actual_registered_identity() -
         bio: String::new(),
     };
     d.register(&profile, &agent).await;
+    let cancellation = provision::cancel(&d.pool, &owner.id, dev(&device), &request).await?;
+    assert_eq!(cancellation.state, "cancel_requested");
+    assert!(provision::cancel::confirmed(&d.pool, &owner.id, &request)
+        .await
+        .is_err());
     let registered = host::registered(&d.pool, &owner.id, &request, &id, &hash).await?;
     assert_eq!(registered.state, "registered");
     assert_eq!(registered.sealed_offer, sealed);
@@ -225,6 +230,123 @@ async fn capacity_never_replaces_pending_work_or_blocks_exact_recovery() -> Resu
         provision::heartbeat(&d.pool, &changed).await,
         Err(Error::Changed)
     ));
+    d.finish().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn managed_cancel_requires_owner_device_and_host_ack_before_releasing_capacity() -> Result {
+    let d = Database::new().await?;
+    let (owner, device) = d.person("cancel_owner").await?;
+    let (_, other_device) = d.person("cancel_other").await?;
+    let service = service();
+    provision::heartbeat(&d.pool, &service).await?;
+    for i in 0..16 {
+        provision::prepare(&d.pool, &owner.id, dev(&device), &new_request(&service, i)).await?;
+    }
+    let request = new_request(&service, 0);
+    assert!(
+        provision::cancel(&d.pool, &owner.id, dev(&other_device), &request)
+            .await
+            .is_err()
+    );
+    let mut changed = request.clone();
+    changed.name = "Changed".into();
+    assert!(
+        provision::cancel(&d.pool, &owner.id, dev(&device), &changed)
+            .await
+            .is_err()
+    );
+    let pending = provision::cancel(&d.pool, &owner.id, dev(&device), &request).await?;
+    assert_eq!(pending.state, "cancel_requested");
+    assert!(pending.agent.is_empty());
+    assert_eq!(
+        provision::prepare(&d.pool, &owner.id, dev(&device), &request).await?,
+        pending
+    );
+    assert!(matches!(
+        provision::prepare(&d.pool, &owner.id, dev(&device), &new_request(&service, 17)).await,
+        Err(Error::Capacity)
+    ));
+    let cancelled = provision::cancel::confirmed(&d.pool, &owner.id, &request).await?;
+    assert_eq!(cancelled.state, "cancelled");
+    assert_eq!(
+        provision::cancel(&d.pool, &owner.id, dev(&device), &request).await?,
+        cancelled
+    );
+    assert_eq!(
+        provision::cancel::confirmed(&d.pool, &owner.id, &request).await?,
+        cancelled
+    );
+    assert!(sqlx::query(
+        "UPDATE managed_agent_requests SET state='queued' WHERE owner=$1 AND operation=$2"
+    )
+    .bind(&owner.id)
+    .bind(&request.operation)
+    .execute(&d.pool)
+    .await
+    .is_err());
+    provision::prepare(&d.pool, &owner.id, dev(&device), &new_request(&service, 17)).await?;
+    d.finish().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn managed_cancel_serializes_publication_without_substituting_the_original_offer() -> Result {
+    let d = Database::new().await?;
+    let (owner, device) = d.person("cancel_publish").await?;
+    let service = service();
+    provision::heartbeat(&d.pool, &service).await?;
+    for i in 0..8 {
+        let request = new_request(&service, i);
+        provision::prepare(&d.pool, &owner.id, dev(&device), &request).await?;
+        let (now,): (i64,) =
+            sqlx::query_as("SELECT (extract(epoch FROM clock_timestamp())*1000)::bigint")
+                .fetch_one(&d.pool)
+                .await?;
+        let agent = "d2".repeat(32);
+        let digest = "d3".repeat(32);
+        let sealed = vec![71; 80];
+        let (cancel, offer) = tokio::join!(
+            provision::cancel(&d.pool, &owner.id, dev(&device), &request),
+            host::retain_offer(
+                &d.pool,
+                &owner.id,
+                &request,
+                host::Offer {
+                    agent: &agent,
+                    digest: &digest,
+                    sealed: &sealed,
+                    expires_ms: u64::try_from(now)? + 60000
+                }
+            )
+        );
+        let cancel = cancel?;
+        assert_eq!(cancel.state, "cancel_requested");
+        if offer.is_ok() {
+            assert_eq!(cancel.agent, agent);
+            assert_eq!(cancel.sealed_offer, sealed);
+        } else {
+            assert!(cancel.agent.is_empty());
+        }
+        assert!(
+            host::retain_offer(
+                &d.pool,
+                &owner.id,
+                &request,
+                host::Offer {
+                    agent: &agent,
+                    digest: &digest,
+                    sealed: &sealed,
+                    expires_ms: u64::try_from(now)? + 60000
+                }
+            )
+            .await
+            .is_err()
+                || !cancel.agent.is_empty()
+        );
+        provision::cancel::confirmed(&d.pool, &owner.id, &request).await?;
+    }
     d.finish().await;
     Ok(())
 }

@@ -119,13 +119,19 @@ export function CreateAgentScreen() {
                 }}
               />
             </View>
-          ) : view.state === 'expired' || view.state === 'rejected' ? (
+          ) : ['expired', 'rejected', 'cancelled'].includes(view.state) ? (
             <View style={{ gap: 16 }}>
               <Text accessibilityRole="alert" style={paragraph}>
-                {t(`managedAgent.${view.state}`)}
+                {t(
+                  view.state === 'cancelled'
+                    ? 'managedAgent.cancelled'
+                    : view.state === 'expired'
+                      ? 'managedAgent.expired'
+                      : 'managedAgent.rejected',
+                )}
               </Text>
               <NativeButton
-                label={t('managedAgent.retry')}
+                label={t(view.state === 'cancelled' ? 'managedAgent.again' : 'managedAgent.retry')}
                 disabled={state.busy}
                 onPress={() => {
                   void session.restart(ticket, view.operation_id);
@@ -135,12 +141,27 @@ export function CreateAgentScreen() {
           ) : (
             <Loading
               label={t(
-                view.state === 'installing' ? 'managedAgent.installing' : 'managedAgent.waiting',
+                view.state === 'cancelling'
+                  ? 'managedAgent.cancelling'
+                  : view.state === 'installing'
+                    ? 'managedAgent.installing'
+                    : 'managedAgent.waiting',
               )}
             />
           )}
         </>
       )}
+      {active && state.ready && view && ['queued', 'review'].includes(view.state) ? (
+        <NativeButton
+          label={t('managedAgent.cancel')}
+          secondary
+          testID="managed-agent-cancel"
+          disabled={state.busy}
+          onPress={() => {
+            void session.cancel(ticket, view.operation_id);
+          }}
+        />
+      ) : null}
       {active && state.error ? (
         <View style={{ gap: 16 }}>
           <Text accessibilityRole="alert" style={{ ...paragraph, color: p.destructive }}>

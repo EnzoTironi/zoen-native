@@ -12,6 +12,7 @@ mod reply_enrollment_protocol;
 
 mod agent;
 mod agent_enrollment;
+mod agent_enrollment_vault;
 mod agent_host_lock;
 mod agent_inspect;
 mod cli;

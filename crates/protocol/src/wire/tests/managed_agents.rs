@@ -22,6 +22,7 @@ fn managed_requests_and_ciphertext_receipts_roundtrip_without_grant_fields(
     for req in [
         AgentRequest::ManagedService,
         AgentRequest::PrepareManaged(request.clone()),
+        AgentRequest::CancelManaged(request.clone()),
         AgentRequest::ManagedStatus {
             service: "22".repeat(32),
             operation: request.operation.clone(),
@@ -50,7 +51,23 @@ fn managed_requests_and_ciphertext_receipts_roundtrip_without_grant_fields(
             service: request.service.clone(),
         }),
         Reply::ManagedService(Availability { service: None }),
-        Reply::ManagedAgent(receipt),
+        Reply::ManagedAgent(receipt.clone()),
+        Reply::ManagedAgent(Record {
+            state: "cancel_requested".into(),
+            ..receipt.clone()
+        }),
+        Reply::ManagedAgent(Record {
+            state: "cancelled".into(),
+            ..receipt.clone()
+        }),
+        Reply::ManagedAgent(Record {
+            state: "cancelled".into(),
+            agent: String::new(),
+            offer_digest: String::new(),
+            sealed_offer: vec![],
+            expires_ms: 0,
+            ..receipt
+        }),
     ] {
         let frame = ServerFrame::Res {
             id: 17,

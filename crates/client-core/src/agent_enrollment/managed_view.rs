@@ -48,6 +48,13 @@ impl Client {
         let Some(request) = self.pending_managed_enrollment(identity, device)? else {
             return Ok(None);
         };
+        if self.managed_enrollment_cancelling(identity, device)? {
+            return self
+                .cancel_managed_enrollment(&request.operation, identity, device)
+                .await
+                .and_then(|record| self.managed_enrollment_view(record, identity, device))
+                .map(Some);
+        }
         // Replay the retained creation intent, including when the original request
         // never reached the relay. This cannot remint an operation or spend money.
         let record = self
@@ -82,6 +89,18 @@ impl Client {
         self.managed_enrollment_view(record, identity, device)
     }
 
+    pub(crate) async fn managed_enrollment_cancel_view(
+        &self,
+        operation: &str,
+        identity: &str,
+        device: &str,
+    ) -> R<ManagedEnrollmentDto> {
+        let record = self
+            .cancel_managed_enrollment(operation, identity, device)
+            .await?;
+        self.managed_enrollment_view(record, identity, device)
+    }
+
     fn managed_enrollment_view(
         &self,
         record: Record,
@@ -103,6 +122,8 @@ impl Client {
         let mut preview = None;
         let state = match record.state.as_str() {
             "registered" => "registered",
+            "cancel_requested" => "cancelling",
+            "cancelled" => "cancelled",
             "offered" | "expired" if receipt.is_some() => "installing",
             "offered"
                 if record.expires_ms

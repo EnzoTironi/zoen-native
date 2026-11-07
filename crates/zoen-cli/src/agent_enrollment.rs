@@ -1,4 +1,5 @@
 //! Operator enrollment glue. The core owns consent, prepared keys and recovery.
+use crate::agent_enrollment_vault::preflight_slots;
 use crate::file_vault::FileVault;
 use client_core::{AgentEnrollmentHostProgress, AgentEnrollmentHostRequest, Client, SecretVault};
 use std::collections::BTreeMap;
@@ -6,7 +7,6 @@ use std::io::{IsTerminal, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use zeroize::Zeroizing;
 use zoen_agentd::{AgentKind, Definition, ModelTier};
 
 const REQUEST: &str = "agent-enroll-request";
@@ -194,51 +194,6 @@ impl Action {
             }
         }
     }
-}
-
-fn preflight_slots(vault: &FileVault) -> Result<(), String> {
-    for (key, limit, seed) in [
-        ("agent_root", 32, true),
-        ("zoen.identity.v1", 32, true),
-        ("zoen.device.v1", 32, true),
-        ("zoen.agreement.v1", 32, true),
-        ("agent.enrollment.pending.v1", FILE_LIMIT, false),
-        ("zoen.provider-setup.v1", 0, false),
-        ("link.pending", 0, false),
-    ] {
-        let metadata = match std::fs::symlink_metadata(vault.dir.join(key)) {
-            Ok(metadata) => metadata,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(_) => {
-                return Err(error(
-                    "Existing protected setup could not be read. Nothing was replaced.",
-                ));
-            }
-        };
-        if !metadata.is_file()
-            || metadata.len() == 0
-            || metadata.len() > limit
-            || (seed && metadata.len() != 32)
-        {
-            return Err(error(
-                "Existing protected setup is incompatible. Nothing was replaced.",
-            ));
-        }
-        let bytes = Zeroizing::new(vault.read_bytes(key).map_err(|_| {
-            error("Existing protected setup could not be read. Nothing was replaced.")
-        })?);
-        if (seed && bytes.len() != 32)
-            || (!seed
-                && (bytes.is_empty()
-                    || bytes.len() as u64 > limit
-                    || std::str::from_utf8(&bytes).is_err()))
-        {
-            return Err(error(
-                "Existing protected setup is malformed. Nothing was replaced.",
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn definition(bytes: &[u8]) -> Result<Vec<u8>, String> {

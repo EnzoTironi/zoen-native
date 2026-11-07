@@ -1,5 +1,7 @@
 //! Managed enrollment coordinates existing account and native-runtime contracts.
 //! One process owns one custody/continuity writer; each agent keeps separate keys.
+#[path = "managed_service/cancellation.rs"]
+mod cancellation;
 #[path = "managed_service/homes.rs"]
 mod homes;
 #[path = "managed_service/install.rs"]
@@ -18,6 +20,8 @@ use sqlx::PgPool;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 use zoen_relay::agents::provision;
 use zoen_runtime::{RuntimeAuthority, RuntimeConfig};
+
+const MAX_JOBS: usize = 256;
 
 fn service(config: &Config) -> Result<Service, String> {
     let settings = config
@@ -160,6 +164,39 @@ pub(super) async fn run(
         .await
         .map_err(|e| e.to_string())?;
         for record in &records {
+            if record.state == "cancel_requested" {
+                let request = record.request.as_ref().ok_or("request")?;
+                let key = (record.owner.clone(), request.operation.clone());
+                if let Some(job) = jobs.remove(&key) {
+                    if let Err(reason) = job.retire().await {
+                        crate::emit(
+                            &serde_json::json!({"status":"cancellation_deferred", "operation":request.operation, "reason":reason}),
+                        )?;
+                        continue;
+                    }
+                }
+                match cancellation::resolve(
+                    &config,
+                    &vault,
+                    &pool,
+                    &mut authority,
+                    record,
+                    jobs.len() < MAX_JOBS,
+                )
+                .await
+                {
+                    Ok(Some(job)) => {
+                        jobs.insert(key, job);
+                    }
+                    Ok(None) => {}
+                    Err(reason) => {
+                        crate::emit(
+                            &serde_json::json!({"status":"cancellation_deferred", "operation":request.operation, "reason":reason}),
+                        )?;
+                    }
+                }
+                continue;
+            }
             if !matches!(record.state.as_str(), "queued" | "offered" | "registered") {
                 continue;
             }
@@ -175,11 +212,16 @@ pub(super) async fn run(
                 false
             };
             jobs.remove(&key);
-            if jobs.len() >= 256 {
+            if jobs.len() >= MAX_JOBS {
                 continue;
             }
             match jobs::advance(&config, &vault, &pool, &mut authority, record, registered).await {
                 Ok(Some(job)) => {
+                    if matches!(&job, jobs::Job::Enrollment(_)) {
+                        crate::emit(
+                            &serde_json::json!({"status":"enrollment_waiting", "operation":request.operation}),
+                        )?;
+                    }
                     jobs.insert(key, job);
                 }
                 Ok(None) => {}

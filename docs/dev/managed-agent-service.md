@@ -59,10 +59,9 @@ Credentials are loaded before recovering pending native intents; revoked devices
 grant no effects. Unrecoverable history fails closed instead of being discarded.
 
 The public queue keeps its existing limit of 16 outstanding requests per owner.
-The service uses bounded keyset pages and at most 256 concurrent jobs/native
-principals. These are declared operating limits, not evidence of production scale.
-Active-request cancellation, cross-device request discovery, public deployment
-and iOS product acceptance remain open. Closing a sheet retains its request.
+The service uses bounded keyset pages and at most 256 concurrent jobs. These are declared operating limits, not evidence of production scale.
+Cross-device request discovery, public deployment and iOS product acceptance
+remain open. Closing a sheet retains its request; cancelling is a separate action.
 
 The automated `managed_service_owner_consent_first_reply_and_cold_recovery`
 journey exercises actual owner Core, WebSocket relay, PostgreSQL, FoundationDB,
@@ -88,7 +87,35 @@ Listen grant. Retries preserve existing grants, including revocation.
 intent, permitting cold replay without clearing a subsequent operation.
 
 An unapproved expired/rejected offer can be explicitly retired through
-`managed_agent_discard`. Any retained approval blocks retirement, even if its
-ACK is unknown. This does not cancel an active request or revoke an agent.
+`managed_agent_discard`. A retained approval blocks timeout-based retirement.
+After the host confirms the exact offer was unused, only its matching receipt
+can be retired; an unrelated or malformed receipt is preserved. This never
+revokes an installed agent.
 JS owns only display state: focus/background/account retirement drops pending
 callbacks and polling; reopening reads the same native operation.
+
+## Cancellation and consumed consent
+
+The scoped `managed_agent_cancel` command retains a cancellation disposition
+before sending the exact request. The final native receipt-save lock refuses
+new approval when that disposition exists. An existing approval instead blocks
+local cancellation. Lost dispatch/ACK replays the same disposition after restart;
+a read never creates a replacement agent.
+
+The relay accepts owner/device-authenticated `cancel_requested` transitions from
+queued/offered requests. It retains the original ciphertext and does not release
+outstanding capacity until the host confirms cancellation. Old replay cannot
+restart a cancelled row. Registered identities cannot be marked cancelled.
+
+The service retires and reaps its enrollment child before reacquiring the same
+home lock. It reuses the host's existing unused-offer cancellation and protects
+its root and a scoped recovery marker. A process cut between the cancelled guard
+and pending-file deletion finishes that deletion on retry; missing preparing
+material is an error, not proof of cancellation.
+
+Consumed consent wins: registration and the reviewed definition recover through
+the existing enrollment command, then the same native principal is activated.
+The parent lifetime pipe stays open during that recovery. Per-request retirement
+errors defer that request, preserving other agents and the service's 256-job
+limit. The UI shows cancellation in progress until the actual outcome arrives.
+A cancelled offer can then be retired to create another agent.

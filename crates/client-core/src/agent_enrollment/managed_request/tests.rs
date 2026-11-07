@@ -162,3 +162,112 @@ fn managed_intent_corruption_is_not_an_empty_slot_and_receipts_match_exactly() -
     assert_eq!(client.lock().store.meta(META)?.as_deref(), Some("{broken"));
     Ok(())
 }
+
+#[test]
+fn managed_cancellation_disposition_fences_signing_before_any_network_ack() -> TestResult {
+    let client = Client::open(":memory:".into(), "en".into())?;
+    client
+        .lock()
+        .create_account("Owner", "cancel_owner", "https://relay.example")?;
+    client.lock().set_registered(true)?;
+    let account = client.account().ok_or("account")?;
+    let engine = client.lock();
+    Intent::prepare(
+        &engine,
+        &service(),
+        "Helper",
+        "managed_helper",
+        &account.identity_id,
+        &account.device_id,
+    )?;
+    assert!(approval_allowed(&engine, &account.identity_id, &account.device_id).is_ok());
+    let mut intent =
+        Intent::load(&engine, &account.identity_id, &account.device_id)?.ok_or("intent")?;
+    intent.cancel_requested = true;
+    engine
+        .store
+        .set_meta(META, &serde_json::to_string(&intent)?)?;
+    assert!(approval_allowed(&engine, &account.identity_id, &account.device_id).is_err());
+    assert_eq!(
+        Intent::load(&engine, &account.identity_id, &account.device_id)?
+            .ok_or("retained")?
+            .request,
+        intent.request
+    );
+    Ok(())
+}
+
+#[test]
+fn managed_host_confirmed_unused_offer_retires_only_its_matching_unknown_receipt() -> TestResult {
+    let client = Client::open(":memory:".into(), "en".into())?;
+    client
+        .lock()
+        .create_account("Owner", "cancel_receipt", "https://relay.example")?;
+    client.lock().set_registered(true)?;
+    let account = client.account().ok_or("account")?;
+    let engine = client.lock();
+    let request = Intent::prepare(
+        &engine,
+        &service(),
+        "Helper",
+        "managed_helper",
+        &account.identity_id,
+        &account.device_id,
+    )?;
+    let context = owner_context(&engine, &account.identity_id, &account.device_id)?;
+    let receipt = OwnerReceipt {
+        owner: account.identity_id.clone(),
+        device: account.device_id.clone(),
+        certificate_sha256: context.certificate_sha256,
+        relay: context.relay,
+        status: AgentEnrollmentStatusDto {
+            preview: AgentEnrollmentPreviewDto {
+                agent_id: "11".repeat(32),
+                offer_digest: "12".repeat(32),
+                name: "Helper".into(),
+                handle: "managed_helper".into(),
+                persona: "Help".into(),
+                rules: vec![],
+                pairing_check: "123456".into(),
+                expires_ms: 1,
+            },
+            delivery: AgentEnrollmentDeliveryDto {
+                receipt_id: "receipt".into(),
+                agent_id: "11".repeat(32),
+                offer_digest: "12".repeat(32),
+                outcome: AgentEnrollmentDeliveryOutcome::Unknown,
+            },
+        },
+    };
+    engine
+        .store
+        .set_meta(RECEIPT_META, &serde_json::to_string(&receipt)?)?;
+    let mut record = Record {
+        request: Some(request),
+        owner: account.identity_id.clone(),
+        state: "expired".into(),
+        agent: "11".repeat(32),
+        offer_digest: "12".repeat(32),
+        sealed_offer: vec![1; 40],
+        expires_ms: 1,
+    };
+    assert!(
+        super::discard::retire(&engine, &record, &account.identity_id, &account.device_id).is_err()
+    );
+    record.state = "cancelled".into();
+    record.offer_digest = "13".repeat(32);
+    assert!(
+        super::discard::retire(&engine, &record, &account.identity_id, &account.device_id).is_err()
+    );
+    assert!(engine.store.meta(RECEIPT_META)?.is_some());
+    record.offer_digest = "12".repeat(32);
+    assert!(super::discard::retire(
+        &engine,
+        &record,
+        &account.identity_id,
+        &account.device_id
+    )?);
+    assert!(engine.store.meta(META)?.is_none());
+    assert!(engine.store.meta(RECEIPT_META)?.is_none());
+    Ok(())
+}

@@ -17,6 +17,31 @@ pub(super) enum Job {
     },
 }
 impl Job {
+    pub async fn retire(mut self) -> Result<(), String> {
+        let child = match &mut self {
+            Self::Enrollment(child) => child,
+            Self::Active { companion, worker } => {
+                worker.abort();
+                companion
+            }
+        };
+        if child
+            .try_wait()
+            .map_err(|_| "enrollment retirement unavailable")?
+            .is_none()
+        {
+            child
+                .kill()
+                .await
+                .map_err(|_| "enrollment retirement unconfirmed")?;
+        }
+        child
+            .wait()
+            .await
+            .map_err(|_| "enrollment reap unconfirmed")?;
+        Ok(())
+    }
+
     pub fn state(&mut self) -> Result<State, String> {
         match self {
             Self::Enrollment(child) => match child

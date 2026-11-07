@@ -43,7 +43,7 @@ export function useManagedAgent() {
         const delay =
           view?.state === 'review' && view.preview
             ? Math.max(250, Number(BigInt(view.preview.expires_ms) - BigInt(Date.now())) + 25)
-            : view && ['queued', 'installing'].includes(view.state)
+            : view && ['queued', 'installing', 'cancelling'].includes(view.state)
               ? 2000
               : null;
         if (delay !== null)

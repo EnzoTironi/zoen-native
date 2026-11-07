@@ -66,6 +66,16 @@ export function managedAgentPort(store: ClientStore): ManagedAgentPort {
       current(scope);
       return value;
     },
+    async cancel(view, scope) {
+      current(scope);
+      const value = await store.driver.request({
+        op: 'managed_agent_cancel',
+        operation_id: view.operation_id,
+        ...expected(scope),
+      });
+      current(scope);
+      return value;
+    },
     async discard(view, scope) {
       current(scope);
       const done = await store.driver.request({

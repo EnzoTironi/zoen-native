@@ -188,6 +188,7 @@ pub enum Op {
 pub enum AgentRequest {
     ManagedService,
     PrepareManaged(crate::managed_agents::Request),
+    CancelManaged(crate::managed_agents::Request),
     ManagedStatus {
         service: String,
         operation: String,
@@ -308,6 +309,7 @@ impl Op {
             Op::Agent(AgentRequest::State) => "agent_state",
             Op::Agent(AgentRequest::ManagedService) => "agent_managed_service",
             Op::Agent(AgentRequest::PrepareManaged(_)) => "agent_managed_prepare",
+            Op::Agent(AgentRequest::CancelManaged(_)) => "agent_managed_cancel",
             Op::Agent(AgentRequest::ManagedStatus { .. }) => "agent_managed_status",
             Op::Agent(AgentRequest::Advance { .. }) => "agent_advance",
             Op::Agent(AgentRequest::Define { .. }) => "agent_define",

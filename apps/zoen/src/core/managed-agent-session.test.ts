@@ -56,6 +56,10 @@ function fixture(initial: ManagedEnrollmentDto | null = null) {
       calls.push('chat');
       return 'space';
     },
+    cancel: async () => {
+      calls.push('cancel');
+      return view('cancelling');
+    },
     discard: async () => {
       calls.push('discard');
     },
@@ -211,4 +215,44 @@ test('callbacks from a rendered old owner or substituted offer cannot act on the
   };
   await f.session.approve(current, substituted);
   assert.deepEqual(f.calls, ['status', 'status']);
+});
+
+test('cancel waits for the host and cannot approve, restart or open a chat during resolution', async () => {
+  const f = fixture(view('review'));
+  await f.session.refresh();
+  await f.session.cancel();
+  await f.session.approve();
+  await f.session.restart();
+  assert.equal(await f.session.open('chat'), null);
+  assert.equal(f.session.getSnapshot().view?.state, 'cancelling');
+  assert.deepEqual(f.calls, ['status', 'cancel']);
+  f.port.status = async () => view('cancelled');
+  await f.session.refresh();
+  await f.session.restart();
+  assert.equal(f.session.getSnapshot().view, null);
+});
+test('lost cancellation ACK requires recovery, and a retired callback cannot cancel a new flow', async () => {
+  const f = fixture(view('review'));
+  await f.session.refresh();
+  const ticket = f.session.ticket();
+  f.port.cancel = async () => {
+    throw Error('lost ACK');
+  };
+  await f.session.cancel();
+  assert.equal(f.session.getSnapshot().ready, false);
+  await f.session.approve();
+  assert.deepEqual(f.calls, ['status']);
+  f.session.activate({ ...owner, epoch: 2 });
+  await f.session.refresh();
+  await f.session.cancel(ticket, 'operation');
+  assert.deepEqual(f.calls, ['status', 'status']);
+});
+test('accepted consent wins cancellation through canonical registration, never a phantom cancelled state', async () => {
+  const f = fixture(view('review'));
+  await f.session.refresh();
+  f.port.cancel = async () => view('registered');
+  await f.session.cancel();
+  assert.equal(f.session.getSnapshot().view?.state, 'registered');
+  await f.session.restart();
+  assert.equal(f.session.getSnapshot().view?.state, 'registered');
 });

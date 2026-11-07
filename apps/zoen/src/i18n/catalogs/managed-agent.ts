@@ -1,6 +1,10 @@
 import { defineFeature } from '../catalog.ts';
 export const managedAgent = defineFeature(
   {
+    cancel: 'Cancel creation',
+    cancelling: 'Cancelling…',
+    cancelled: 'Creation cancelled',
+    again: 'Create another agent',
     create: 'Create agent',
     name: 'Name',
     namePlaceholder: 'Your agent’s name',
@@ -22,6 +26,10 @@ export const managedAgent = defineFeature(
     unavailable: 'Agent creation is not available in this version.',
   },
   {
+    cancel: 'Cancelar criação',
+    cancelling: 'Cancelando…',
+    cancelled: 'Criação cancelada',
+    again: 'Criar outro agente',
     create: 'Criar agente',
     name: 'Nome',
     namePlaceholder: 'Nome do seu agente',

@@ -163,3 +163,99 @@ fn managed_offer_rejects_substitution_and_tampering() -> TestResult {
         .is_err());
     Ok(())
 }
+
+#[tokio::test]
+async fn managed_host_cancel_is_durable_before_ack_and_preserves_the_root() -> TestResult {
+    let owner = make_owner();
+    let vault = DiskVault::new()?;
+    let host = vault.client();
+    let captured = captured(&owner)?;
+    let account = owner.account().ok_or("owner")?;
+    let mut record = prepare(&owner, &host, &vault).seal_managed(
+        &account.identity_id,
+        &captured,
+        "https://relay.example",
+    )?;
+    record.state = "cancel_requested".into();
+    let original = vault.load(PENDING.into()).ok_or("pending")?;
+    assert!(
+        host.cancel_managed_agent_offer(&record, "https://relay.example", vault.vault())
+            .await?
+    );
+    assert!(vault.load(PENDING.into()).is_none());
+    assert!(host.account().is_none());
+    let root = vault.load(ROOT.into()).ok_or("retained root")?;
+    assert_eq!(
+        Signer::from_secret(root.as_slice().try_into()?).id(),
+        record.agent
+    );
+    // Process cut after the cancelled guard, before deleting the old pending file.
+    assert!(vault.save(PENDING.into(), original));
+    drop(host);
+    let cold = vault.client();
+    let writes = vault.writes.load(Ordering::SeqCst);
+    assert!(
+        cold.cancel_managed_agent_offer(&record, "https://relay.example", vault.vault())
+            .await?
+    );
+    assert!(vault.load(PENDING.into()).is_none());
+    assert_eq!(vault.writes.load(Ordering::SeqCst), writes);
+    assert_eq!(vault.load(ROOT.into()), Some(root));
+    let mut changed = record.clone();
+    changed.request.as_mut().ok_or("request")?.name = "Replacement".into();
+    assert!(cold
+        .cancel_managed_agent_offer(&changed, "https://relay.example", vault.vault())
+        .await
+        .is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn managed_host_cancel_does_not_mint_keys_and_never_erases_consumed_consent() -> TestResult {
+    let owner = make_owner();
+    let vault = DiskVault::new()?;
+    let host = vault.client();
+    let captured = captured(&owner)?;
+    let account = owner.account().ok_or("owner")?;
+    let mut record = protocol::managed_agents::Record {
+        request: Some(captured.clone()),
+        owner: account.identity_id.clone(),
+        state: "cancel_requested".into(),
+        agent: String::new(),
+        offer_digest: String::new(),
+        sealed_offer: vec![],
+        expires_ms: 0,
+    };
+    assert!(
+        host.cancel_managed_agent_offer(&record, "https://relay.example", vault.vault())
+            .await?
+    );
+    assert_eq!(vault.writes.load(Ordering::SeqCst), 0);
+    assert!(host.account().is_none());
+    let another = DiskVault::new()?;
+    let accepted_host = another.client();
+    record = prepare(&owner, &accepted_host, &another).seal_managed(
+        &account.identity_id,
+        &captured,
+        "https://relay.example",
+    )?;
+    record.state = "cancel_requested".into();
+    let accepted = accept(&owner, &another);
+    assert!(
+        !accepted_host
+            .cancel_managed_agent_offer(&record, "https://relay.example", another.vault())
+            .await?
+    );
+    let held = Pending::load(&another.vault())?.ok_or("held consent")?;
+    assert_eq!(held.code.offer.digest()?, accepted.code.offer.digest()?);
+    assert!(held.accepted.is_some());
+    assert!(accepted_host
+        .resume_agent_enrollment(another.vault())?
+        .is_some());
+    assert!(
+        !accepted_host
+            .cancel_managed_agent_offer(&record, "https://relay.example", another.vault())
+            .await?
+    );
+    Ok(())
+}

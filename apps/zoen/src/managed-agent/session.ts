@@ -7,6 +7,7 @@ export type ManagedAgentPort = {
   approve(view: ManagedEnrollmentDto, scope: AccountScope): Promise<ManagedEnrollmentDto>;
   verify(view: ManagedEnrollmentDto, scope: AccountScope): Promise<void>;
   chat(view: ManagedEnrollmentDto, scope: AccountScope): Promise<string>;
+  cancel(view: ManagedEnrollmentDto, scope: AccountScope): Promise<ManagedEnrollmentDto>;
   discard(view: ManagedEnrollmentDto, scope: AccountScope): Promise<void>;
   complete(view: ManagedEnrollmentDto, scope: AccountScope): Promise<void>;
 };
@@ -14,7 +15,7 @@ export type ManagedAgentState = Readonly<{
   ready: boolean;
   view: ManagedEnrollmentDto | null;
   busy: boolean;
-  error: 'status' | 'start' | 'approve' | 'open' | null;
+  error: 'status' | 'start' | 'approve' | 'open' | 'cancel' | null;
 }>;
 const empty = (): ManagedAgentState => ({ ready: false, view: null, busy: false, error: null });
 
@@ -118,10 +119,40 @@ export class ManagedAgentSession {
       if (this.accepts(ticket)) this.publish({ busy: false });
     }
   }
+  async cancel(observedTicket = this.ticket(), operation = this.state.view?.operation_id) {
+    const view = this.state.view;
+    if (
+      !this.accepts(observedTicket) ||
+      operation !== view?.operation_id ||
+      !this.owner ||
+      this.state.busy ||
+      !view ||
+      !['queued', 'review'].includes(view.state)
+    )
+      return;
+    const ticket = this.ticket(),
+      owner = this.owner;
+    this.publish({ busy: true, error: null });
+    try {
+      const next = await this.port.cancel(view, owner);
+      if (this.accepts(ticket)) this.publish({ view: next });
+    } catch {
+      // The native cancellation disposition may already be retained. Reconcile,
+      // never enable approval or remint an operation after a lost cancel ACK.
+      if (this.accepts(ticket)) this.publish({ ready: false, error: 'cancel' });
+    } finally {
+      if (this.accepts(ticket)) this.publish({ busy: false });
+    }
+  }
   async restart(observedTicket = this.ticket(), operation = this.state.view?.operation_id) {
     if (!this.accepts(observedTicket) || operation !== this.state.view?.operation_id) return;
     const view = this.state.view;
-    if (!this.owner || this.state.busy || !view || !['expired', 'rejected'].includes(view.state))
+    if (
+      !this.owner ||
+      this.state.busy ||
+      !view ||
+      !['expired', 'rejected', 'cancelled'].includes(view.state)
+    )
       return;
     const ticket = this.ticket(),
       owner = this.owner;

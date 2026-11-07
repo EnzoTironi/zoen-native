@@ -219,6 +219,10 @@ pub(super) fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
             pb.op = "managed_prepare".into();
             pb.managed = Some(request.clone());
         }
+        AgentRequest::CancelManaged(request) => {
+            pb.op = "managed_cancel".into();
+            pb.managed = Some(request.clone());
+        }
         AgentRequest::ManagedStatus { service, operation } => {
             pb.op = "managed_status".into();
             pb.agent.clone_from(service);
@@ -278,6 +282,13 @@ pub(super) fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError
                 return Err(bad("managed agent request"));
             }
             AgentRequest::PrepareManaged(request)
+        }
+        "managed_cancel" => {
+            let request = pb.managed.ok_or_else(|| bad("managed agent request"))?;
+            if !request.valid() {
+                return Err(bad("managed agent request"));
+            }
+            AgentRequest::CancelManaged(request)
         }
         "managed_status" => {
             if !crate::managed_agents::digest(&pb.agent)

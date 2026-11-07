@@ -36,7 +36,8 @@ pub struct Record {
     pub request: Option<Request>,
     #[prost(string, tag = "2")]
     pub owner: String,
-    /// queued/offered/registered/expired; registration is not runtime readiness.
+    /// `queued/offered/registered/expired/rejected/cancel_requested/cancelled`.
+    /// Registration is not runtime readiness.
     #[prost(string, tag = "3")]
     pub state: String,
     #[prost(string, tag = "4")]
@@ -82,7 +83,16 @@ impl Record {
         if !self.request.as_ref().is_some_and(Request::valid) || !digest(&self.owner) {
             return false;
         }
+        let empty = self.agent.is_empty()
+            && self.offer_digest.is_empty()
+            && self.sealed_offer.is_empty()
+            && self.expires_ms == 0;
+        let offered = digest(&self.agent)
+            && digest(&self.offer_digest)
+            && (40..=16384).contains(&self.sealed_offer.len())
+            && self.expires_ms > 0;
         match self.state.as_str() {
+            "cancel_requested" | "cancelled" => empty || offered,
             "queued" | "rejected" => {
                 self.agent.is_empty()
                     && self.offer_digest.is_empty()
