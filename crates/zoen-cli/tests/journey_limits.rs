@@ -24,6 +24,25 @@ fn refused_by(metrics: &str, scope: &str) -> u64 {
 /// outbox keeps the messages, and the client retries until each one is in.
 #[tokio::test]
 async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
+    recover_slowed_sender(false).await;
+}
+
+#[tokio::test]
+async fn a_rate_limited_sender_killed_before_confirmation_recovers_exact_queue_after_cold_reopen() {
+    recover_slowed_sender(true).await;
+}
+
+fn retained_queue(w: &World) -> rusqlite::Result<String> {
+    rusqlite::Connection::open_with_flags(
+        w.dir.join("ana/zoen.sqlite"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?.query_row(
+        "SELECT json_group_array(json_object('client_id',client_id,'space',space,'json',json,'created_ms',created_ms,'attempts',attempts,'last_error',last_error,'failed',failed)) FROM (SELECT * FROM outbox ORDER BY queue_order)",
+        [], |row| row.get(0),
+    )
+}
+
+async fn recover_slowed_sender(cold: bool) {
     let mut w = World::new("limits_send").await;
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
@@ -83,6 +102,20 @@ async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
             std::thread::sleep(Duration::from_millis(25));
         }
     })();
+    if cold && refused.is_ok() {
+        // Kill the actual sender while the server's refusal still holds its
+        // original signed intents. A fresh offline process must not resequence,
+        // acknowledge or replace those retained rows before reconnection.
+        sync.kill().expect("kill owned sender after actual refusal");
+        assert!(!sync.wait().expect("reap killed sender").success());
+        let retained = retained_queue(&w).expect("read retained original queue");
+        assert_ne!(retained, "[]");
+        let status = w.zoen("ana", &["status", "--offline"]);
+        assert!(!status.contains("pending=0"), "{status}");
+        let local = w.zoen("ana", &["read", "@bruno", "--offline"]);
+        assert!(local.contains("Ana: 6 (sending)"), "{local}");
+        assert_eq!(retained_queue(&w).expect("read reopened queue"), retained);
+    }
     // Only this fixture's relay changes; the same CLI and its signed pending
     // intents must recover after the observed refusal and reconnect.
     w.stop_relay();
@@ -91,9 +124,14 @@ async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
     if refused.is_err() || recovered.is_err() {
         let _ = sync.kill();
     }
-    let output = sync
-        .wait_with_output()
-        .expect("reap original sync consumer");
+    let output = if cold && refused.is_ok() && recovered.is_ok() {
+        w.spawn_zoen("ana", &["sync", "--timeout", "30000"])
+            .wait_with_output()
+            .expect("reap fresh cold sync consumer")
+    } else {
+        sync.wait_with_output()
+            .expect("reap original sync consumer")
+    };
     let diagnostic = diagnostic.join().expect("join consumer diagnostic reader");
     assert!(refused.is_ok(), "{refused:?}");
     assert!(recovered.is_ok(), "{recovered:?}");
@@ -110,6 +148,16 @@ async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
     assert!(
         refused.expect("observed real refusal") > 0,
         "the bucket did refuse"
+    );
+    assert_eq!(retained_queue(&w).expect("read drained queue"), "[]");
+    assert_eq!(
+        w.events()
+            .await
+            .iter()
+            .filter(|event| event.env.sealed_kind() == Some(protocol::SealedKind::Application))
+            .count(),
+        6,
+        "recovery must publish each original exactly once",
     );
 }
 
