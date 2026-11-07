@@ -109,3 +109,19 @@ test('status observation is single flight, discards late old data and stops on t
     await f.close();
   }
 });
+
+test('mounting a focused sheet while the app is backgrounded cannot start discovery or polling', async () => {
+  const f = await managedAgentHookFixture(null, 'background');
+  try {
+    assert.equal(f.current().active, false);
+    assert.equal(f.commands.length, 0);
+    assert.equal(f.timers.size, 0);
+    await f.app('active');
+    assert.equal(f.current().active, true);
+    assert.equal(f.current().state.ready, true);
+    assert.ok(f.commands.some((command) => command.op === 'managed_agent_discover'));
+    assert.equal(f.timers.size, 1);
+  } finally {
+    await f.close();
+  }
+});

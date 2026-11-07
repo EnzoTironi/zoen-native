@@ -42,7 +42,10 @@ export function managedView(state = 'review'): ManagedEnrollmentDto {
 }
 
 /** Actual hook, session and Core port; only native requests, navigation and time are synthetic. */
-export async function managedAgentHookFixture(initial: ManagedEnrollmentDto | null = null) {
+export async function managedAgentHookFixture(
+  initial: ManagedEnrollmentDto | null = null,
+  initialAppState = 'active',
+) {
   const root = createReactTestRoot();
   const owners = new Set<() => void>();
   const preflights = new Set<() => void>();
@@ -91,7 +94,7 @@ export async function managedAgentHookFixture(initial: ManagedEnrollmentDto | nu
     },
   };
   const app = {
-    currentState: 'active',
+    currentState: initialAppState,
     addEventListener: (_: string, callback: (next: string) => void) => {
       appListeners.add(callback);
       return { remove: () => appListeners.delete(callback) };

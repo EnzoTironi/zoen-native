@@ -23,7 +23,7 @@ export function useManagedAgent() {
         setActive(false);
       };
       const start = () => {
-        if (!focused) return;
+        if (!focused || AppState.currentState !== 'active') return;
         stop();
         if (process.env.EXPO_OS !== 'ios') return;
         const owner = accountScope(store);
@@ -65,6 +65,7 @@ export function useManagedAgent() {
           timer = setTimeout(() => {
             if (
               focused &&
+              AppState.currentState === 'active' &&
               session.accepts(observation) &&
               session.scopeMatches(accountScope(store))
             )
