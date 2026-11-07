@@ -327,6 +327,11 @@ impl NativeCustody {
         {
             return Err(RuntimeError::Unavailable);
         }
+        #[cfg(test)]
+        if live.is_some() && runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 189 {
+            runtime.native_cut_entered.notify_one();
+            runtime.native_cut_resume.notified().await;
+        }
         let tx = runtime.execution.transaction().await?;
         verify_source(runtime, &tx, intent.source.as_ref(), true).await?;
         if let Some(live) = live {

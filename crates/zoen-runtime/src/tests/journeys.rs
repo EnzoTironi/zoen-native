@@ -19,6 +19,9 @@ pub(super) async fn run() -> TestResult {
                 || Box::pin(retained::shared_native::discovery::run()),
             ]
         }
+        Ok(cohort) if cohort == "native-source-race" => {
+            vec![|| Box::pin(retained::shared_native::source_race::run())]
+        }
         Ok(cohort) if cohort == "native-service" => {
             vec![|| Box::pin(retained::shared_native::service::run()), || {
                 Box::pin(managed_custody::run())

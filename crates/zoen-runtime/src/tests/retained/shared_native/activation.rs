@@ -233,6 +233,7 @@ pub(in crate::tests) async fn run() -> TestResult {
         println!("shared reply activation fault={fault}: actual native original, one committed generation/checkpoint, cold exact ciphertext/wire hash, no new subject/claim/provider/charge, clean missing metadata/history refusal PASS");
     }
     Box::pin(denied_directory()).await?;
+    Box::pin(super::source_race::run()).await?;
     Ok(())
 }
 async fn denied_directory() -> TestResult {
