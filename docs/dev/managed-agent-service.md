@@ -135,7 +135,11 @@ approval, cancellation, creation, completion or funding.
 The visible lifecycle control separately observes the canonical control record
 every five seconds after its previous read completes: SQL Pause/Resume controls
 are not conversation events. It shares the existing coalesced read and exact
-revision checks, never resends an unknown action, and stops when hidden, failed,
+revision checks. Buttons and revocation menus acquire their ticket for the exact
+rendered snapshot, keeping React Compiler dependencies explicit. Unchanged
+passive reads preserve buttons and reviewed confirmations; explicit canonical
+refreshes still fence actions, and admitted controls supersede passive reads. It never
+resends an unknown action, and stops when hidden, failed,
 retired or revoked. The service journey queues a real encrypted source while
 paused, observes refusal with zero model attempts, resumes through the same
 native reviewed control, and recovers one reply without sending a new source.

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as React from 'react';
+import type { AgentControlView } from '../agents/agent-control-view';
 import type { useAgentControl } from '../agents/use-agent-control';
 import type { AgentControlDto } from './generated/AgentControlDto';
 import { deferred } from './store.fixtures.ts';
@@ -32,6 +33,8 @@ const compiled = await build({
     },
   ],
 });
+const viewCode = compileExpoSource(new URL('../agents/agent-control-view.tsx', import.meta.url));
+type Button = { testID: string; label: string; disabled?: boolean; onPress(): void };
 const record = (
   revision: string,
   status: AgentControlDto['status'] = 'Active',
@@ -50,6 +53,8 @@ async function fixture() {
     owners = new Set<() => void>(),
     canonical = new Set<() => void>();
   const appListeners = new Set<(value: string) => void>();
+  const buttons = new Map<string, Button>(),
+    actions: string[] = [];
   let sequence = 0,
     cursor = 0,
     writes = 0,
@@ -100,8 +105,9 @@ async function fixture() {
         return read.promise;
       },
     },
-    request: async () => {
+    request: async (command: { action?: string }) => {
       writes++;
+      if (command.action) actions.push(command.action);
     },
   };
   const app = {
@@ -134,9 +140,46 @@ async function fixture() {
       throw Error(name);
     },
   });
+  const view = { exports: {} as { AgentControlView: typeof AgentControlView } };
+  runInNewContext(viewCode, {
+    module: view,
+    exports: view.exports,
+    require: (name: string) => {
+      if (name === 'react') return React;
+      if (
+        name === 'react/compiler-runtime' ||
+        name === 'react/jsx-runtime' ||
+        name.startsWith('@babel/runtime/')
+      )
+        return require(name);
+      if (name === 'react-native')
+        return {
+          Text: () => null,
+          View: ({ children }: { children: React.ReactNode }) => children,
+        };
+      if (name === '../i18n/index.ts') return { t: (key: string) => key };
+      if (name === '../theme') return { useTheme: () => ({ colors: {} }) };
+      if (name === '../components/primitives')
+        return {
+          NativeButton: (props: Button) => {
+            React.useLayoutEffect(() => {
+              buttons.set(props.testID, props);
+              return () => {
+                buttons.delete(props.testID);
+              };
+            }, [props]);
+            return null;
+          },
+        };
+      throw Error(name);
+    },
+  });
   function Probe() {
     observed = module.exports.useAgentControl('agent', enabled);
-    return null;
+    return React.createElement(view.exports.AgentControlView, {
+      state: observed.state,
+      session: observed.session,
+    });
   }
   const render = () => root.render(React.createElement(Probe));
   const current = () => {
@@ -146,6 +189,8 @@ async function fixture() {
   await render();
   return {
     reads,
+    buttons,
+    actions,
     timers,
     appListeners,
     canonical,
@@ -297,6 +342,95 @@ test('disabling the control removes its observer until a fresh authorized read c
     assert.equal(f.timers.size, 0);
     await f.deliver(record('2'));
     assert.equal(f.timers.size, 1);
+    assert.equal(f.writes(), 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test('the optimized rendered lifecycle button changes from Pause to Resume and dispatches the current reviewed action', async () => {
+  const f = await fixture();
+  try {
+    await f.deliver(record('1'));
+    const button = () => {
+      const current = f.buttons.get('agent-lifecycle-change');
+      assert.ok(current);
+      return current;
+    };
+    assert.equal(button().label, 'agents.pauseAgent');
+    assert.equal(button().disabled, false);
+    await f.tick();
+    await f.deliver(record('2', 'Paused'));
+    assert.equal(button().label, 'agents.resumeAgent');
+    assert.equal(button().disabled, false);
+    await f.act(() => button().onPress());
+    assert.deepEqual(f.actions, ['Resume']);
+    await f.deliver(record('3'));
+    assert.equal(button().label, 'agents.pauseAgent');
+    assert.equal(button().disabled, false);
+    assert.equal(f.writes(), 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('an unchanged observation keeps rendered controls and a reviewed confirmation valid', async () => {
+  const f = await fixture();
+  try {
+    await f.deliver(record('1'));
+    const state = f.current().state,
+      ticket = f.current().session.ticket(state);
+    const button = f.buttons.get('agent-lifecycle-change');
+    assert.ok(ticket);
+    assert.ok(button);
+    await f.tick();
+    assert.equal(f.current().state, state);
+    await f.deliver(record('1'));
+    assert.equal(f.current().state, state);
+    assert.equal(f.current().session.accepts(ticket), true);
+    assert.equal(f.buttons.get('agent-lifecycle-change'), button);
+    assert.equal(f.timers.size, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('an admitted control supersedes a passive read before adopting its fresh receipt', async () => {
+  const f = await fixture();
+  try {
+    await f.deliver(record('1'));
+    const button = f.buttons.get('agent-lifecycle-change');
+    assert.ok(button);
+    await f.tick();
+    await f.act(() => button.onPress());
+    assert.deepEqual(f.actions, ['Pause']);
+    await f.deliver(record('1'));
+    assert.equal(f.reads.length, 3);
+    assert.equal(f.current().state.busy, true);
+    await f.deliver(record('2', 'Paused'));
+    assert.equal(f.current().state.status, 'Paused');
+    assert.equal(f.current().state.pending, null);
+    assert.equal(f.current().state.busy, false);
+    assert.equal(f.writes(), 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('an old passive completion cannot replace the next foreground observer', async () => {
+  const f = await fixture();
+  try {
+    await f.deliver(record('1'));
+    await f.tick();
+    await f.app('background');
+    await f.app('active');
+    assert.equal(f.reads.length, 3);
+    await f.act(() => f.reads[2]!.resolve(record('3', 'Paused')));
+    const timer = [...f.timers.keys()];
+    const current = f.current().state;
+    await f.act(() => f.reads[1]!.resolve(record('2')));
+    assert.deepEqual([...f.timers.keys()], timer);
+    assert.equal(f.current().state, current);
     assert.equal(f.writes(), 0);
   } finally {
     await f.close();

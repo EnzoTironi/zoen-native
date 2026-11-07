@@ -113,3 +113,27 @@ test('suspending before an admitted read starts cannot issue RPCs or revive its 
   assert.equal(f.session.getSnapshot().phase, 'inactive');
   assert.equal(f.session.ticket(), null);
 });
+
+test('rendered lifecycle state cannot borrow action or retry tickets from a later canonical observation', async () => {
+  const f = fixture();
+  const first = f.session.refresh();
+  await settle();
+  f.requests[0]!.resolve(record('1'));
+  await first;
+  const rendered = f.session.getSnapshot();
+  assert.ok(f.session.ticket(rendered));
+  const next = f.session.refresh();
+  assert.equal(f.session.ticket(rendered), null);
+  await settle();
+  f.requests[1]!.resolve({
+    ...record('2'),
+    pending: 'Pause',
+    operation_id: '11'.repeat(32),
+    outcome: 'Unknown',
+  });
+  await next;
+  assert.equal(f.session.ticket(rendered), null);
+  assert.equal(f.session.retryTicket(rendered), null);
+  assert.equal(f.session.retryTicket(f.session.getSnapshot())?.action, 'Pause');
+  assert.deepEqual(f.writes, []);
+});

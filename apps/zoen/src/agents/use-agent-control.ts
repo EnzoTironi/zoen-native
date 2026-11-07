@@ -50,7 +50,9 @@ export function useAgentControl(agent: string, enabled: boolean) {
           return;
         timer = setTimeout(() => {
           if (alive && foreground && AppState.currentState === 'active')
-            void session.refresh(observation);
+            void session.observe(observation).then((current) => {
+              if (current) observe();
+            });
         }, 5000);
       };
       // SQL lifecycle controls are not conversation events. Read through the
