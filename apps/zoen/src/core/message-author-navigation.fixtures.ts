@@ -1,4 +1,5 @@
 import { messageInfoNavigation } from './message-info-navigation.fixtures.ts';
+import { compileExpoSource } from './expo-compiler.fixtures.ts';
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -64,6 +65,11 @@ export const bundled = await build({
     {
       name: 'message-author-native-ports',
       setup(builder) {
+        builder.onLoad({ filter: /use-message-action-lifetime\.ts$/ }, ({ path }) => ({
+          contents: compileExpoSource(path, true),
+          loader: 'js',
+          resolveDir: dirname(path),
+        }));
         builder.onResolve({ filter: /./ }, ({ path }) =>
           externalPorts.has(path) ? { path, external: true } : undefined,
         );
@@ -146,7 +152,12 @@ export function deferred<T>() {
 }
 
 export type Effect = () => void | (() => void);
-export type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
+export type Slot = {
+  value?: unknown;
+  deps?: readonly unknown[];
+  cleanup?: () => void;
+  setter?: (next: unknown) => void;
+};
 export type Options = { spaceId: string; entries: readonly TimelineEntry[]; disabled: boolean };
 export type Actions = {
   busy: boolean;
@@ -194,6 +205,8 @@ export function fixture() {
   let cursor = 0;
   let compilerCursor = 0;
   let compiledHookCalls = 0;
+  let renderDirty = false;
+  const sessionCleanups = new Set<() => Promise<void>>();
   let layoutEffects: (() => void)[] = [];
   let effects: (() => void)[] = [];
   let focused = true;
@@ -234,6 +247,12 @@ export function fixture() {
         listeners.delete(listener);
       };
     },
+    registerSessionCleanup: (cleanup: () => Promise<void>) => {
+      sessionCleanups.add(cleanup);
+      return () => {
+        sessionCleanups.delete(cleanup);
+      };
+    },
     driver: {
       request: (command: Read) => {
         reads.push({ ...command });
@@ -255,13 +274,37 @@ export function fixture() {
       useState: (value: unknown) => {
         const current = slot();
         if (!Object.hasOwn(current, 'value')) current.value = value;
-        return [
-          current.value,
-          (next: unknown) => {
-            current.value = typeof next === 'function' ? next(current.value) : next;
-            writes.push(current.value);
-          },
-        ];
+        current.setter ??= (next: unknown) => {
+          const value = typeof next === 'function' ? next(current.value) : next;
+          if (!Object.is(value, current.value)) {
+            current.value = value;
+            renderDirty = true;
+          }
+          writes.push(current.value);
+        };
+        return [current.value, current.setter];
+      },
+      useMemo: (create: () => unknown, deps: readonly unknown[]) => {
+        const current = slot();
+        if (!depsEqual(current.deps, deps)) {
+          current.deps = deps;
+          current.value = create();
+        }
+        return current.value;
+      },
+      useSyncExternalStore: (
+        subscribe: (listener: () => void) => () => void,
+        getSnapshot: () => unknown,
+      ) => {
+        const value = getSnapshot();
+        effect(
+          () =>
+            subscribe(() => {
+              renderDirty = true;
+            }),
+          [subscribe],
+        );
+        return value;
       },
       useCallback: (callback: unknown, deps: readonly unknown[]) => {
         const current = slot();
@@ -374,17 +417,21 @@ export function fixture() {
   const render = (patch: Partial<Options> = {}) => {
     options = { ...options, ...patch };
     rendered = live;
-    cursor = 0;
-    compilerCursor = 0;
-    layoutEffects = [];
-    effects = [];
-    const result = module.exports.useMessageActions({ ...options, onReply() {}, onEdit() {} });
-    // Some hooks legitimately bail out of compiler memoization. If a later
-    // transform emits caches, keep them persistent rather than masking them.
-    if (compilerUsesCache) assert.ok(compiledHookCalls > 0);
-    for (const commit of layoutEffects) commit();
-    for (const commit of effects) commit();
-    return result;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      renderDirty = false;
+      cursor = 0;
+      compilerCursor = 0;
+      layoutEffects = [];
+      effects = [];
+      const result = module.exports.useMessageActions({ ...options, onReply() {}, onEdit() {} });
+      // Some hooks legitimately bail out of compiler memoization. If a later
+      // transform emits caches, keep them persistent rather than masking them.
+      if (compilerUsesCache) assert.ok(compiledHookCalls > 0);
+      for (const commit of layoutEffects) commit();
+      for (const commit of effects) commit();
+      if (!renderDirty) return result;
+    }
+    throw new Error('Message action fixture did not settle');
   };
   return {
     actions: render(),

@@ -1,8 +1,16 @@
 import { t } from '../i18n/index.ts';
-import { homeSpacesFor } from '../home/access';
+import { conversationScope } from '../core/conversation-scope';
 import { messageCanInteract, messageCanSelect } from '../core/message-presentation';
-import type { ClientStore } from '../core/store';
+import type { ClientState, ClientStore } from '../core/store';
 import type { TimelineEntry } from '../core/types';
+
+export function messageActionOwner(store: ClientStore, state: ClientState, space: string) {
+  const epoch = store.sessionEpoch;
+  return {
+    epoch,
+    scope: !store.isSessionRetiring ? (conversationScope(state, epoch, space) ?? '') : '',
+  };
+}
 
 export function currentMessageAction(
   store: ClientStore,
@@ -19,10 +27,8 @@ export function currentMessageAction(
     store.isSessionRetiring ||
     latest.disabled ||
     latest.scope !== scope ||
-    state.phase !== 'ready' ||
-    !homeSpacesFor(state).has(space) ||
-    `${state.mode}:${state.snapshot?.account?.identity_id ?? state.snapshot?.me?.id}:${state.snapshot?.account?.device_id}:${space}` !==
-      scope
+    !scope ||
+    messageActionOwner(store, state, space).scope !== scope
   )
     return undefined;
   const value = latest.entries.find((value) => value.id === entry.id);

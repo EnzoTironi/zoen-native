@@ -147,12 +147,14 @@ test('transient session or membership loss cannot revive a pending read after ac
       const oldAttempt = f.actions.profile(message());
       f.update(change);
       f.update(() => original);
+      await f.actions.profile(message());
+      assert.equal(f.reads.length, 1, 'Controls from before access loss stay retired');
       f.read(() => newRead.promise);
-      const newAttempt = f.actions.profile(message());
+      const newAttempt = f.render().profile(message());
       assert.equal(f.reads.length, 2, 'A restored session can start a fresh attempt');
       oldRead.resolve(message({ author: author('detached_author') }));
       await oldAttempt;
-      await f.actions.profile(message());
+      await f.render().profile(message());
       assert.equal(f.reads.length, 2, 'Detached finally cannot release the new attempt');
       assert.deepEqual(f.routes, []);
       assert.deepEqual(f.alerts, []);
