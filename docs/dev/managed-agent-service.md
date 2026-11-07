@@ -70,6 +70,13 @@ service/control processes, encrypted enrollment, native key packages, a signed
 budget and conversation grant. Its HTTP model fixture is deterministic; it does
 not prove an external provider or iPhone UI. It verifies one response with the
 owner closed and no second inference, charge or reply after process restart.
+Both managed-service journeys now obtain their first budget through the same
+native account-policy inquiry, review and confirmation commands as iOS, without
+operator policy import. The plain-reply case opens Budget before Chat and proves
+that budget management grants no conversation access; the history case preserves
+first Chat with a cold profile directory. Quotes wait for canonical MLS settlement;
+pending delivery never bypasses the ready-group guard. Replaying confirmation
+reuses its original, and installation consumes no model attempt.
 
 Shared discovery plans and validates its current-head effects before creating a
 native stage. A relay update during planning is refused without obstructing an

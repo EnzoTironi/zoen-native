@@ -8,6 +8,8 @@ mod file_vault;
 mod gate_transport;
 #[path = "reply_runtime/history_search.rs"]
 mod history_search;
+#[path = "reply_runtime/managed_budget.rs"]
+mod managed_budget;
 #[path = "reply_runtime/managed_live.rs"]
 mod managed_live;
 #[path = "reply_runtime/managed_receipt_recovery.rs"]

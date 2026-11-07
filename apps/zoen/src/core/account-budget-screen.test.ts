@@ -134,7 +134,8 @@ async function fixture() {
           }
         },
       };
-    if (name === '../core/provider') return { useClient: () => ({ store }) };
+    if (name === '../core/provider')
+      return { useClient: () => ({ store, ...store.getSnapshot() }) };
     if (name === '../core/account-scope') return scope;
     if (name === '../owner-policy/account-port') return port;
     if (name === './owner-policy-screen')

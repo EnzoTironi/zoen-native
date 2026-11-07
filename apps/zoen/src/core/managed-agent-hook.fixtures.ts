@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -10,9 +9,9 @@ import type { useManagedAgent } from '../managed-agent/use-managed-agent';
 import type { ManagedEnrollmentDto } from './generated/ManagedEnrollmentDto';
 import type { ManagedRecoveryPageDto } from './generated/ManagedRecoveryPageDto';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
+import { compileExpoSource } from './expo-compiler.fixtures.ts';
 
 const require = createRequire(import.meta.url);
-const { transformSync } = require('@babel/core');
 const compiled = await build({
   entryPoints: [fileURLToPath(new URL('../managed-agent/use-managed-agent.ts', import.meta.url))],
   bundle: true,
@@ -25,15 +24,7 @@ const compiled = await build({
       name: 'actual-expo-compiler',
       setup(build) {
         build.onLoad({ filter: /use-managed-agent\.ts$/ }, ({ path }) => {
-          const code = transformSync(readFileSync(path, 'utf8'), {
-            filename: path,
-            babelrc: false,
-            configFile: false,
-            presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
-            plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-            caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: true },
-          }).code as string;
-          assert.match(code, /react\/compiler-runtime/);
+          const code = compileExpoSource(path, true);
           return { contents: code, loader: 'js', resolveDir: dirname(path) };
         });
       },
