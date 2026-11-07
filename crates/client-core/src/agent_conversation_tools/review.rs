@@ -19,7 +19,7 @@ impl ApprovedConversationSearch {
 }
 
 impl Engine {
-    pub(super) fn conversation_search_permit(
+    pub(crate) fn conversation_search_permit(
         &self,
         request: &str,
         content_hash: &str,
@@ -54,15 +54,20 @@ impl Engine {
     }
 }
 
-impl Client {
-    pub fn stage_conversation_search_approval(
-        &self,
+impl Engine {
+    pub(crate) fn stage_conversation_search_approval_at(
+        &mut self,
         space: &str,
         source: &str,
         serving: &str,
         input: AgentToolApprovalInput,
+        at_ms: i64,
     ) -> R<AgentRequestDto> {
-        let mut e = self.lock();
+        let e = self;
+        let expires = at_ms
+            .checked_add(15 * 60 * 1000)
+            .filter(|_| at_ms >= 0)
+            .ok_or_else(invalid)?;
         let (device, owner, _, source_sha256) =
             e.agent_source_authority(space, source, serving, false)?;
         let actor = e.me_id()?;
@@ -92,7 +97,7 @@ impl Client {
             worker_binding: input.worker_binding,
             engine_revision: REVISION.into(),
             continuation_json: input.continuation_json,
-            expires_at_ms: crate::engine::now_ms() + 15 * 60 * 1000,
+            expires_at_ms: expires,
             gate_rule: input.gate_rule,
             review: None,
         };
@@ -153,8 +158,31 @@ impl Client {
             return Err(stale());
         }
         let id = req.id.clone();
-        e.append(space, &actor, EventBody::RequestOpened { request: req })?;
+        e.append_at(
+            space,
+            &actor,
+            at_ms,
+            EventBody::RequestOpened { request: req },
+        )?;
         Ok(e.request_dto(e.state.requests.get(&id).ok_or_else(stale)?))
+    }
+}
+
+impl Client {
+    pub fn stage_conversation_search_approval(
+        &self,
+        space: &str,
+        source: &str,
+        serving: &str,
+        input: AgentToolApprovalInput,
+    ) -> R<AgentRequestDto> {
+        self.lock().stage_conversation_search_approval_at(
+            space,
+            source,
+            serving,
+            input,
+            crate::engine::now_ms(),
+        )
     }
 
     pub fn approved_conversation_search(&self, request: &str) -> R<ApprovedConversationSearch> {

@@ -214,7 +214,7 @@ impl DeviceCore {
         Ok(Some(reference))
     }
 
-    fn verify_original_history(&self, original: &ReplyIntent) -> Result<()> {
+    pub(super) fn verify_original_history(&self, original: &ReplyIntent) -> Result<()> {
         let log = self
             .engine
             .logs

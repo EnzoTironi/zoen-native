@@ -1,8 +1,9 @@
 //! This producer's immutable original association; never inferred from a sealed copy.
 use super::{
-    image_tasks, DeviceCore, Event, EventBody, ItemContent, ItemKind, NativeError, Result,
+    DeviceCore, Event, EventBody, ItemContent, ItemKind, NativeError, ReplyIntent, Result,
     MAX_EVENT_BYTES,
 };
+use crate::image_tasks;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use protocol::{ClientFrame, Envelope};
 use serde::{Deserialize, Serialize};
@@ -14,13 +15,51 @@ struct Reference {
     content_hash: String,
     event_digest: String,
     wire: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    original: Option<ReplyIntent>,
 }
-fn key(client_id: &str) -> String {
-    format!("runtime.image-task.reference/1/{client_id}")
+#[derive(Clone, Copy)]
+enum Producer {
+    ImageTask,
+    ConversationReview,
+}
+impl Producer {
+    fn key(self, client_id: &str) -> String {
+        let prefix = match self {
+            Self::ImageTask => "runtime.image-task.reference/1/",
+            Self::ConversationReview => "runtime.conversation-review.reference/1/",
+        };
+        format!("{prefix}{client_id}")
+    }
 }
 impl DeviceCore {
     pub(super) fn retain_image_task_reference(
         &self,
+        request: &str,
+        event: &Event,
+        envelope: &Envelope,
+    ) -> Result<()> {
+        self.retain_producer_reference(Producer::ImageTask, None, request, event, envelope)
+    }
+    pub(super) fn retain_conversation_review_reference(
+        &self,
+        original: &ReplyIntent,
+        request: &str,
+        event: &Event,
+        envelope: &Envelope,
+    ) -> Result<()> {
+        self.retain_producer_reference(
+            Producer::ConversationReview,
+            Some(original.clone()),
+            request,
+            event,
+            envelope,
+        )
+    }
+    fn retain_producer_reference(
+        &self,
+        producer: Producer,
+        original: Option<ReplyIntent>,
         request: &str,
         event: &Event,
         envelope: &Envelope,
@@ -32,6 +71,7 @@ impl DeviceCore {
             .get(request)
             .ok_or(NativeError::History)?;
         let reference = Reference {
+            original,
             request: request.into(),
             content_hash: r.req.content_hash.clone(),
             event_digest: event_log::content_hash_of(event),
@@ -43,27 +83,52 @@ impl DeviceCore {
             ),
         };
         let bytes = serde_json::to_string(&reference).map_err(|_| NativeError::Storage)?;
-        if bytes.len() > super::super::reference::MAX_REFERENCE_BYTES {
+        if bytes.len() > super::reference::MAX_REFERENCE_BYTES {
             return Err(NativeError::Bounds);
+        }
+        let key = producer.key(&event.client_id);
+        if let Some(old) = self
+            .engine
+            .store
+            .meta(&key)
+            .map_err(|_| NativeError::Storage)?
+        {
+            if old != bytes {
+                return Err(NativeError::History);
+            }
+            return Ok(());
         }
         self.engine
             .store
-            .set_meta(&key(&event.client_id), &bytes)
+            .set_meta(&key, &bytes)
             .map_err(|_| NativeError::Storage)
     }
     pub(in crate::runtime_core) fn image_task_pending_envelope(
         &self,
         pending: &Event,
     ) -> Result<Option<Envelope>> {
+        self.producer_pending_envelope(Producer::ImageTask, pending)
+    }
+    pub(in crate::runtime_core) fn conversation_review_pending_envelope(
+        &self,
+        pending: &Event,
+    ) -> Result<Option<Envelope>> {
+        self.producer_pending_envelope(Producer::ConversationReview, pending)
+    }
+    fn producer_pending_envelope(
+        &self,
+        producer: Producer,
+        pending: &Event,
+    ) -> Result<Option<Envelope>> {
         let Some(raw) = self
             .engine
             .store
-            .meta(&key(&pending.client_id))
+            .meta(&producer.key(&pending.client_id))
             .map_err(|_| NativeError::Storage)?
         else {
             return Ok(None);
         };
-        if raw.len() > super::super::reference::MAX_REFERENCE_BYTES {
+        if raw.len() > super::reference::MAX_REFERENCE_BYTES {
             return Err(NativeError::Bounds);
         }
         let reference: Reference = serde_json::from_str(&raw).map_err(|_| NativeError::History)?;
@@ -74,7 +139,18 @@ impl DeviceCore {
             .get(&reference.request)
             .ok_or(NativeError::History)?;
         let p = r.req.tool_proposal.as_ref().ok_or(NativeError::History)?;
-        image_tasks::parsed(p).map_err(|_| NativeError::History)?;
+        match producer {
+            Producer::ImageTask => {
+                if reference.original.is_some() {
+                    return Err(NativeError::History);
+                }
+                image_tasks::parsed(p).map_err(|_| NativeError::History)?;
+            }
+            Producer::ConversationReview => {
+                let original = reference.original.as_ref().ok_or(NativeError::History)?;
+                self.review_record(original, &reference.request, &reference.content_hash)?;
+            }
+        }
         let bytes = STANDARD
             .decode(&reference.wire)
             .map_err(|_| NativeError::History)?;
@@ -93,7 +169,8 @@ impl DeviceCore {
                 content: ItemContent::File(file),
                 ..
             } => {
-                item == &p.artifact
+                matches!(producer, Producer::ImageTask)
+                    && item == &p.artifact
                     && file.mime == "image/png"
                     && self.engine.state.requests[&reference.request].status
                         == crate::engine::ReqStatus::Approved

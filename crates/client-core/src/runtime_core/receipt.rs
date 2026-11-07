@@ -237,6 +237,8 @@ impl DeviceCore {
             expected
         } else if let Some(expected) = self.image_task_pending_envelope(pending)? {
             expected
+        } else if let Some(expected) = self.conversation_review_pending_envelope(pending)? {
+            expected
         } else if let Some(expected) = self
             .engine
             .owner_policy_pending_envelope(pending)
