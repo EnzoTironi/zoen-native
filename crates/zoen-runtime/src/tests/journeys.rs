@@ -76,6 +76,8 @@ pub(super) async fn run() -> TestResult {
         Ok(cohort) if cohort == "shared-output" => {
             vec![
                 || Box::pin(retained::shared_native::activation::run()),
+                || Box::pin(retained::shared_native::activation::denied_directory()),
+                || Box::pin(retained::shared_native::source_race::run()),
                 || Box::pin(retained::shared_native::receipts::run()),
                 || Box::pin(retained::shared_native::execution::run()),
                 || Box::pin(retained::shared_native::context::run()),
@@ -95,7 +97,11 @@ pub(super) async fn run() -> TestResult {
             vec![|| Box::pin(retained::shared_native::receipts::run())]
         }
         Ok(cohort) if cohort == "shared-activation" => {
-            vec![|| Box::pin(retained::shared_native::activation::run())]
+            vec![
+                || Box::pin(retained::shared_native::activation::run()),
+                || Box::pin(retained::shared_native::activation::denied_directory()),
+                || Box::pin(retained::shared_native::source_race::run()),
+            ]
         }
         Ok(cohort) if cohort == "shared-output-route" => {
             vec![|| Box::pin(retained::shared_native::output_route::run())]
@@ -119,6 +125,8 @@ pub(super) async fn run() -> TestResult {
             || Box::pin(retained::shared_native::association::run()),
             || Box::pin(retained::shared_native::output_route::run()),
             || Box::pin(retained::shared_native::activation::run()),
+            || Box::pin(retained::shared_native::activation::denied_directory()),
+            || Box::pin(retained::shared_native::source_race::run()),
             || Box::pin(retained::shared_native::receipts::run()),
             || Box::pin(retained::shared_native::execution::run()),
             || Box::pin(retained::shared_native::context::run()),
