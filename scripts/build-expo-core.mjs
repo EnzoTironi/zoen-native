@@ -12,6 +12,14 @@ const moduleRoot = join(root, 'apps/zoen/modules/zoen-core');
 const target = process.env.CARGO_TARGET_DIR ?? join(root, 'target');
 const platform = process.argv[2] ?? 'types';
 const profile = process.argv.includes('--release') ? 'release' : 'dev';
+// Local builds may select the repository's managed Cargo wrapper. Keep this
+// explicit: Android owns a separate proxy and must not silently bypass it.
+const cargoDriver = process.env.ZOEN_NATIVE_CARGO
+  ? resolve(root, process.env.ZOEN_NATIVE_CARGO)
+  : null;
+if (cargoDriver && platform === 'android')
+  throw new Error('ZOEN_NATIVE_CARGO supports ios/types; Android uses its guarded Cargo proxy');
+const cargo = cargoDriver ?? 'cargo';
 const iosArchitectures = process.argv.includes('--simulator')
   ? ['aarch64-apple-ios-sim']
   : ['aarch64-apple-ios', 'aarch64-apple-ios-sim'];
@@ -44,13 +52,15 @@ function run(command, args, cwd = root, extra = {}) {
   });
 }
 
-const guarded = sharedTarget && platform !== 'android'
+const guarded = (sharedTarget || cargoDriver) && platform !== 'android'
   ? new ExpoCargoArtifacts({
       root,
       target,
       directory: join(moduleRoot, 'generated/cargo-source-guard'),
       run,
       python: process.env.ZOEN_CARGO_GUARD_PYTHON,
+      cargo: cargoDriver,
+      inputFiles: cargoDriver ? [cargoDriver] : [],
     })
   : null;
 
@@ -119,6 +129,7 @@ async function sourceInputs() {
     JSON.stringify({
       platform,
       profile,
+      cargoDriver,
       iosArchitectures,
       androidAbis,
       // The registry is compiled into Rust. A config-only change must not reuse
@@ -131,7 +142,7 @@ async function sourceInputs() {
   // The browser core evolves independently. Hash the actual native dependency
   // closure, including the binding generator, rather than every workspace crate.
   const { stdout } = await promisify(execFile)(
-    'cargo',
+    cargo,
     ['metadata', '--locked', '--offline', '--no-deps', '--format-version', '1'],
     { cwd: root, env, maxBuffer: 8 * 1024 * 1024 },
   );
@@ -162,6 +173,7 @@ async function sourceInputs() {
     ...(await Promise.all([...directories].map(inputs))).flat(),
     join(root, 'Cargo.toml'),
     join(root, 'Cargo.lock'),
+    ...(cargoDriver ? [cargoDriver] : []),
     ...cargoTooling.map((name) => join(root, 'scripts', name)),
     ...(platform === 'android'
       ? [
@@ -192,7 +204,7 @@ try {
   const previous = JSON.parse(await readFile(stamp, 'utf8'));
   // TypeScript is checked in and can drift independently from the Rust inputs.
   // Always rerun its inexpensive exporter; Cargo already caches the executable.
-  if (!sharedTarget && platform !== 'types' && previous.sha256 === hash) {
+  if (!sharedTarget && !guarded && platform !== 'types' && previous.sha256 === hash) {
     await Promise.all(previous.outputs.map((path) => stat(path)));
     await validateGeneratedInventory();
     process.exit(0);
@@ -219,7 +231,7 @@ if (platform === 'types') {
     );
     await run(exporter, [out]);
   } else
-    await run('cargo', [
+    await run(cargo, [
       'run',
       '--locked',
       '-p',
@@ -270,7 +282,7 @@ if (platform === 'types') {
     );
     hostLibrary = host.host;
   } else
-    await run('cargo', ['build', '--locked', '-p', 'client-core', '--profile', profile], root, {
+    await run(cargo, ['build', '--locked', '-p', 'client-core', '--profile', profile], root, {
       SDKROOT: hostSdk,
     });
   for (const architecture of iosArchitectures) {
@@ -287,7 +299,7 @@ if (platform === 'types') {
       libraries.set(architecture, library);
     } else
       await run(
-        'cargo',
+        cargo,
         ['build', '--locked', '-p', 'client-core', '--profile', profile, '--target', architecture],
         root,
         options,
@@ -314,7 +326,7 @@ if (platform === 'types') {
   await mkdir(join(binding, 'headers'), { recursive: true });
   await mkdir(out, { recursive: true });
   await run(
-    generator ?? 'cargo',
+    generator ?? cargo,
     [
       ...(generator ? [] : ['run', '--locked', '-p', 'uniffi-bindgen', '--']),
       'generate',
@@ -347,7 +359,7 @@ if (platform === 'types') {
   outputs = [join(framework, 'Info.plist'), join(out, 'ClientFFI.generated.swift')];
 }
 await validateGeneratedInventory();
-if (sharedTarget && (await sourceInputs()).sha256 !== hash)
+if ((sharedTarget || guarded) && (await sourceInputs()).sha256 !== hash)
   throw new Error('Build inputs changed; generated outputs remain unqualified');
 const cargoQualification = guarded
   ? await guarded.finish(hash)
@@ -355,7 +367,7 @@ const cargoQualification = guarded
     ? JSON.parse(await readFile(join(moduleRoot, 'generated/android/core-contract.json'), 'utf8'))
         .cargo_qualification?.path
     : undefined;
-if (sharedTarget && !cargoQualification)
+if ((sharedTarget || guarded) && !cargoQualification)
   throw new Error('Shared build produced no Cargo qualification');
 await writeFile(
   stamp,
