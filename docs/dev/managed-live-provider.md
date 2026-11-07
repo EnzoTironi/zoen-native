@@ -20,6 +20,7 @@ Git, the profile JSON, issue comments or test output. The profile contains only:
 ```json
 {
   "gate": "clef_flash",
+  "history_search": true,
   "endpoint": "https://api.cloudflare.com/client/v4/accounts/<32 hex account ID>/ai/v1/chat/completions",
   "output_directory": "/absolute/private/probe-output"
 }
@@ -40,6 +41,9 @@ The pinned model is `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, through the exis
 Rig/OpenAI-compatible gateway. `gate: "clef_flash"` selects the existing remote
 Clef Flash Gate for this isolated service; omitting `gate` preserves the earlier
 explicit offline-floor probe. This does not change product provider defaults.
+`history_search: true` explicitly requests a bounded conversation search and
+requires at least two settled turns before accepted output. Omitting it keeps
+the simpler answer probe.
 Clef uses the same validated Cloudflare account and a separate `live-clef` vault
 key. A real-mode success requires a parsed outbound `model:*` allowing audit
 with nonempty answers from `cloudflare:clef-flash`; a named provider alone is

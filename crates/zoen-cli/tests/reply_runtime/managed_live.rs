@@ -22,7 +22,7 @@ async fn managed_live_chat_provider() -> TestResult {
     // Declared after World so credentials retire before failed-fixture diagnostics.
     let credentials = profile::CredentialCopies(w.dir.join("reply-runtime"));
     let mut outcome = json!({"status":"incomplete","synthetic_only":true,"automatic_retry":false,
-        "configured_model":profile::MODEL,"gate":profile.gate.label(),"ui_qa":false});
+        "configured_model":profile::MODEL,"gate":profile.gate.label(),"history_search_requested":profile.history_search,"ui_qa":false});
     let result = run(&mut w, &profile, &token, &challenge, &mut outcome).await;
     outcome["observed_attempts"] = w
         .count("SELECT count(*) FROM runtime_attempts")
@@ -68,7 +68,11 @@ async fn run(
         persona:
             "Answer the owner briefly and accurately. This is a synthetic transport qualification."
                 .into(),
-        rules: vec!["Do not call tools or request private information.".into()],
+        rules: vec![if profile.history_search {
+            "Use only conversation history search when the owner requests it. Do not request private information."
+        } else {
+            "Do not call tools or request private information."
+        }.into()],
         state: json!({}),
         model_tier: zoen_agentd::ModelTier::Cheap,
     }
@@ -160,10 +164,12 @@ async fn run(
         .ok_or("conversation")?
         .to_owned();
     bridge(&owner, "managed_agent_complete", context).await?;
-    owner.send_message(
-        space.clone(),
-        format!("Reply with exactly this phrase and nothing else: {challenge}"),
-    )?;
+    let prompt = if profile.history_search {
+        format!("First use search_conversation_history to search for \"{challenge}\" in this conversation. Then reply with exactly this phrase and nothing else: {challenge}")
+    } else {
+        format!("Reply with exactly this phrase and nothing else: {challenge}")
+    };
+    owner.send_message(space.clone(), prompt)?;
     owner.wait_until_settled(20_000).await?;
     owner.stop_sync();
     drop(owner);
@@ -195,6 +201,9 @@ async fn run(
     let attempts = w.count("SELECT count(*) FROM runtime_attempts").await;
     // The existing agent may propose up to three authorized history searches.
     // These are distinct admitted turns, never retries of an incurred original.
+    if profile.history_search && attempts < 2 {
+        return Err("live model did not execute the requested history continuation".into());
+    }
     if !(1..=4).contains(&attempts) {
         return Err("live chat exceeded its bounded history continuation chain".into());
     }
@@ -236,6 +245,9 @@ async fn run(
     drop(restarted);
     outcome["status"] = "passed".into();
     outcome["attempts"] = attempts.into();
+    // This native source has no continuation other than its bounded, verified
+    // history tool chain. Every intermediate turn must settle before output.
+    outcome["history_continuation_observed"] = (attempts > 1).into();
     outcome["settled_microdollars"] = charge.into();
     outcome["delivery"] = "accepted".into();
     outcome["recovered_without_another_attempt"] = true.into();

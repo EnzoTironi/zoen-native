@@ -27,6 +27,8 @@ pub(super) fn challenge() -> Result<String, Box<dyn std::error::Error>> {
 pub(super) struct Profile {
     #[serde(default)]
     pub gate: GateMode,
+    #[serde(default)]
+    pub history_search: bool,
     pub endpoint: String,
     pub output_directory: PathBuf,
 }
@@ -97,7 +99,7 @@ impl Profile {
             &marker,
             &json!({
                 "synthetic_only":true,"automatic_retry":false,"model":MODEL,
-                "max_input_tokens":8192,"max_output_tokens":96,"max_request_bytes":32768,"max_model_attempts":4,
+                "max_input_tokens":8192,"max_output_tokens":96,"max_request_bytes":32768,"max_model_attempts":4,"history_search_requested":self.history_search,
                 "input_microdollars_per_million":293000,"output_microdollars_per_million":2253000,
                 "pricing_reference":"https://developers.cloudflare.com/workers-ai/models/llama-3.3-70b-instruct-fp8-fast/",
                 "pricing_observed":"2026-11-07","gate":self.gate.label()
@@ -186,6 +188,7 @@ fn live_reply_profile_refuses_other_origins_and_reused_dispatch_markers() -> Tes
     );
     let mut profile = Profile {
         gate: GateMode::OfflineFloor,
+        history_search: false,
         endpoint: valid.clone(),
         output_directory: dir.clone(),
     };
