@@ -97,7 +97,7 @@ impl Profile {
             &marker,
             &json!({
                 "synthetic_only":true,"automatic_retry":false,"model":MODEL,
-                "max_input_tokens":8192,"max_output_tokens":96,"max_request_bytes":4096,"max_model_attempts":4,
+                "max_input_tokens":8192,"max_output_tokens":96,"max_request_bytes":32768,"max_model_attempts":4,
                 "input_microdollars_per_million":293000,"output_microdollars_per_million":2253000,
                 "pricing_reference":"https://developers.cloudflare.com/workers-ai/models/llama-3.3-70b-instruct-fp8-fast/",
                 "pricing_observed":"2026-11-07","gate":self.gate.label()
@@ -123,7 +123,7 @@ impl Profile {
             "model":MODEL,"credential_ref":"live-chat","currency":"USD","scale":6,
             "input_units_per_million":293000,"output_units_per_million":2253000,
             "max_billable_input_tokens":8192,"max_output_tokens":96,
-            "max_request_bytes":4096,"max_response_bytes":32768});
+            "max_request_bytes":32768,"max_response_bytes":32768});
         Ok(())
     }
 }

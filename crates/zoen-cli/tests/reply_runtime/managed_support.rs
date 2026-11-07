@@ -79,7 +79,14 @@ impl ServiceProcess {
                 if stop_on_hold
                     && matches!(
                         frame["status"].as_str(),
-                        Some("held" | "review" | "recovery" | "deferred")
+                        Some(
+                            "held"
+                                | "review"
+                                | "recovery"
+                                | "deferred"
+                                | "worker_stopped"
+                                | "enrollment_deferred"
+                        )
                     )
                 {
                     return Err(format!("live probe stopped at {}", frame["status"]).into());
@@ -100,7 +107,14 @@ impl ServiceProcess {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn live_probe_stops_before_a_later_success_after_policy_hold(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for status in ["held", "review", "recovery", "deferred"] {
+    for status in [
+        "held",
+        "review",
+        "recovery",
+        "deferred",
+        "worker_stopped",
+        "enrollment_deferred",
+    ] {
         let log = std::env::temp_dir().join(types::new_id("live-observer")?);
         std::fs::write(
             &log,

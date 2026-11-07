@@ -78,3 +78,24 @@ fn managed_service_scope_and_homes_are_private_and_request_bound() -> TestResult
     std::fs::remove_dir_all(root)?;
     Ok(())
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn active_retirement_releases_the_worker_lock_before_replacement() -> TestResult {
+    let root = std::env::temp_dir().join(types::new_id("managed-retirement")?);
+    let guard = crate::agent_host_lock::HostLock::acquire(&root)?;
+    let worker = tokio::spawn(async move {
+        let _guard = guard;
+        std::future::pending::<()>().await;
+        Ok(())
+    });
+    let companion = tokio::process::Command::new("sleep")
+        .arg("10")
+        .kill_on_drop(true)
+        .spawn()?;
+    jobs::Job::Active { companion, worker }.retire().await?;
+    let replacement = crate::agent_host_lock::HostLock::acquire(&root)?;
+    drop(replacement);
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}

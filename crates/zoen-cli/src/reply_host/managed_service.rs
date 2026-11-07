@@ -211,7 +211,9 @@ pub(super) async fn run(
             } else {
                 false
             };
-            jobs.remove(&key);
+            if let Some(job) = jobs.remove(&key) {
+                job.retire().await?;
+            }
             if jobs.len() >= MAX_JOBS {
                 continue;
             }

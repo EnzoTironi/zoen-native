@@ -22,6 +22,21 @@ impl Job {
             Self::Enrollment(child) => child,
             Self::Active { companion, worker } => {
                 worker.abort();
+                // Reap before replacing the job: abort schedules cancellation,
+                // but does not synchronously release its host lock or socket.
+                match (&mut *worker).await {
+                    Ok(Err(reason)) => crate::emit(
+                        &serde_json::json!({"status":"worker_stopped","reason":reason}),
+                    )?,
+                    Err(error) => {
+                        if !error.is_cancelled() {
+                            crate::emit(
+                                &serde_json::json!({"status":"worker_stopped","reason":"worker task failed"}),
+                            )?;
+                        }
+                    }
+                    Ok(Ok(())) => {}
+                }
                 companion
             }
         };

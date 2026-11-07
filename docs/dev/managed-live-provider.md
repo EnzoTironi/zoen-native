@@ -46,7 +46,7 @@ with nonempty answers from `cloudflare:clef-flash`; a named provider alone is
 insufficient. Gate usage is not included in the chat settlement ledger or the
 signed chat price. This probe does not claim an aggregate provider invoice.
 The approved synthetic budget is USD 0.01 with USD 0.003 maximum per attempt.
-The finite request is capped at 4,096 bytes, the input admission at 8,192 tokens,
+The finite request is capped at 32,768 bytes, the input admission at 8,192 tokens,
 and output at 96 tokens. Pricing observed on 2026-11-07 is USD 0.293/M input and
 USD 2.253/M output, recorded in the marker. These are configured admission rates,
 not a provider invoice or a general-purpose token estimator.
@@ -64,7 +64,7 @@ recovery. Attempts and settlement must remain unchanged. The ordinary fixture's
 90-second chat transport budget plus 30 seconds of lifecycle overhead. Clef mode
 has a 240-second observation bound for the synthetic journey; this is not a
 worst-case bound for every allowed multi-turn conversation.
-The probe stops at its first hold, review, recovery or run deferral and retires its
+The probe stops at its first hold, review, recovery, run deferral or worker/enrollment failure and retires its
 owned service instead of waiting for a later automatic worker cycle. Decision
 transport rejects redirects/non-2xx responses and disables automatic HTTP retries.
 
