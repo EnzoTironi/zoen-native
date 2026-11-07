@@ -76,6 +76,16 @@ pub async fn signed_policy(
     owner: &str,
     profile: String,
 ) -> Result<types::owner_budget::SignedOwnerPolicy, Box<dyn std::error::Error>> {
+    signed_policy_limits(w, who, owner, profile, 500, 110).await
+}
+pub async fn signed_policy_limits(
+    w: &World,
+    who: &str,
+    owner: &str,
+    profile: String,
+    limit_units: i64,
+    max_attempt_units: i64,
+) -> Result<types::owner_budget::SignedOwnerPolicy, Box<dyn std::error::Error>> {
     let author = policy_author(w, who)?;
     assert_eq!(author.identity, owner);
     let date = w
@@ -93,8 +103,8 @@ pub async fn signed_policy(
             previous_digest: None,
             currency: "USD".into(),
             scale: 6,
-            limit_units: 500,
-            max_attempt_units: 110,
+            limit_units,
+            max_attempt_units,
             expires_at_ms: end,
             enabled: true,
             allowed_profiles: vec![profile],

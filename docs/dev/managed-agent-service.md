@@ -60,8 +60,9 @@ grant no effects. Unrecoverable history fails closed instead of being discarded.
 
 The public queue keeps its existing limit of 16 outstanding requests per owner.
 The service uses bounded keyset pages and at most 256 concurrent jobs. These are declared operating limits, not evidence of production scale.
-Cross-device request discovery, public deployment and iOS product acceptance
-remain open. Closing a sheet retains its request; cancelling is a separate action.
+Linked-device request discovery is implemented below; public deployment and iOS
+product acceptance remain open. Closing a sheet retains its request; cancelling
+is a separate action.
 
 The automated `managed_service_owner_consent_first_reply_and_cold_recovery`
 journey exercises actual owner Core, WebSocket relay, PostgreSQL, FoundationDB,
@@ -69,6 +70,15 @@ service/control processes, encrypted enrollment, native key packages, a signed
 budget and conversation grant. Its HTTP model fixture is deterministic; it does
 not prove an external provider or iPhone UI. It verifies one response with the
 owner closed and no second inference, charge or reply after process restart.
+
+Shared discovery plans and validates its current-head effects before creating a
+native stage. A relay update during planning is refused without obstructing an
+immediate retry. Discovery and tool continuations use this same path. Once the
+anchor prepares activation, the original fenced recovery protocol still applies;
+no timeout, retention window, authorization or financial check is bypassed.
+
+The separate [live-provider probe](managed-live-provider.md) exercises the same
+service with an explicitly selected external chat model and synthetic content.
 
 ## Native onboarding bridge
 

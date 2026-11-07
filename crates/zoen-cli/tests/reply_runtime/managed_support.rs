@@ -1,0 +1,142 @@
+//! Real service process, owner Core consent, dedicated native leaf and cold reply.
+use super::*;
+use std::{
+    process::{Child, Command, Stdio},
+    time::{Duration, Instant},
+};
+
+pub(super) struct ServiceProcess {
+    pub(super) child: Child,
+    pub(super) log: std::path::PathBuf,
+}
+impl Drop for ServiceProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+impl ServiceProcess {
+    pub(super) fn start(w: &World, path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        let log = w.dir.join(types::new_id("managed-service-log")?);
+        let output = std::fs::File::create(&log)?;
+        let child = Command::new(env!("CARGO_BIN_EXE_zoen-reply-host"))
+            .arg("--config")
+            .arg(path)
+            .arg("manage")
+            .stdout(Stdio::from(output.try_clone()?))
+            .stderr(Stdio::from(output))
+            .spawn()?;
+        Ok(Self { child, log })
+    }
+    #[cfg(unix)]
+    pub(super) fn signal(&self, signal: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if !Command::new("kill")
+            .args([signal, &self.child.id().to_string()])
+            .status()?
+            .success()
+        {
+            return Err("owned service signal failed".into());
+        }
+        Ok(())
+    }
+    pub(super) async fn frame(
+        &mut self,
+        status: &str,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        self.frame_for(status, Duration::from_secs(20)).await
+    }
+    pub(super) async fn frame_for(
+        &mut self,
+        status: &str,
+        budget: Duration,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        let until = Instant::now() + budget;
+        loop {
+            let body = std::fs::read_to_string(&self.log)?;
+            if let Some(frame) = body
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .find(|frame| frame["status"] == status)
+            {
+                return Ok(frame);
+            }
+            if let Some(exit) = self.child.try_wait()? {
+                return Err(format!("service exited {exit}: {body}").into());
+            }
+            if Instant::now() >= until {
+                return Err(format!("service missing {status}: {body}").into());
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+}
+
+pub(super) fn open_owner(w: &World) -> Result<Arc<Client>, Box<dyn std::error::Error>> {
+    let client = Client::open(
+        w.dir.join("owner/zoen.sqlite").to_string_lossy().into(),
+        "en".into(),
+    )?;
+    if !client.unlock(Arc::new(file_vault::FileVault {
+        dir: w.dir.join("owner/vault"),
+    }))? {
+        return Err("owner did not unlock".into());
+    }
+    Ok(client)
+}
+
+pub(super) async fn bridge(
+    owner: &Client,
+    op: &str,
+    mut input: Value,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let account = owner.account().ok_or("account")?;
+    input["op"] = op.into();
+    input["expected_identity_id"] = account.identity_id.into();
+    input["expected_device_id"] = account.device_id.into();
+    Ok(serde_json::from_str(
+        &owner.client_request(input.to_string()).await?,
+    )?)
+}
+
+// The log also receives legitimate key/device synchronization events. Compare
+// actual trust grant hashes, not the unrelated total event count.
+pub(super) fn trust_grants(
+    owner: &Client,
+    space: &str,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    Ok(owner
+        .log_events(space.into())?
+        .into_iter()
+        .filter(|event| event.label.starts_with("Grant: trust "))
+        .map(|event| event.hash)
+        .collect())
+}
+
+pub(super) async fn status(
+    owner: &Client,
+    process: &mut ServiceProcess,
+    wanted: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let until = Instant::now() + Duration::from_secs(20);
+    loop {
+        let record = bridge(owner, "managed_agent_status", json!({})).await?;
+        if record["state"] == wanted {
+            return Ok(record);
+        }
+        if let Some(exit) = process.child.try_wait()? {
+            return Err(format!(
+                "service stopped {exit}: {}",
+                std::fs::read_to_string(&process.log)?
+            )
+            .into());
+        }
+        if Instant::now() >= until {
+            return Err(format!(
+                "enrollment missing {wanted}: {}",
+                std::fs::read_to_string(&process.log)?
+            )
+            .into());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
