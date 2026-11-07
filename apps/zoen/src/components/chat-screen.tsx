@@ -37,7 +37,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     search,
     input,
     initialEnd,
-    searchReveal,
+    timelineReveal,
     navigationMetrics,
     onComposerLayout,
     onInsetRequested,
@@ -49,8 +49,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     composerText,
     sending,
     send,
-    searchRevealBusy,
-    searchRevealError,
+    timelineRevealBusy,
+    timelineRevealError,
     searchThread,
     headerHeight,
     setRailHeight,
@@ -73,7 +73,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     Math,
     noticeHeight,
     items,
-    selectedSearchId,
+    highlightedMessageId,
     actions,
     reveal,
     inform,
@@ -124,15 +124,15 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
           onInitialFooterLayout={initialEnd.onFooterLayout}
           onNativeScroll={(event) => {
             initialEnd.onNativeScroll(event.nativeEvent);
-            searchReveal.onScroll(event.nativeEvent);
+            timelineReveal.onScroll(event.nativeEvent);
           }}
           onNativeLayout={(height) => {
             bindNativeTimeline();
             initialEnd.onViewportLayout(height);
-            searchReveal.onLayout(height);
+            timelineReveal.onLayout(height);
           }}
           onNativeInset={(inset) => {
-            searchReveal.onInset(inset);
+            timelineReveal.onInset(inset);
             onInsetRequested(inset);
           }}
           onComposerLayout={onComposerLayout}
@@ -221,10 +221,10 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                           status: [
                             !conversationQueryFits(searchState.query.trim())
                               ? t('chat.searchQueryTooLong')
-                              : searchState.loading || searchRevealBusy
+                              : searchState.loading || timelineRevealBusy
                                 ? t('chat.searchingMessages')
                                 : searchState.error ||
-                                  searchRevealError ||
+                                  timelineRevealError ||
                                   (searchState.completed
                                     ? searchState.hits.length
                                       ? t('chat.searchPosition', {
@@ -347,12 +347,12 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                     }}
                     onContentSizeChange={(width, height) => {
                       initialEnd.onContentSizeChange(width, height);
-                      searchReveal.onContentSize(width, height);
+                      timelineReveal.onContentSize(width, height);
                     }}
                     onCommitLayoutEffect={() => {
                       quoteCommit();
                       initialEnd.onCommitLayoutEffect();
-                      searchReveal.onCommit(visibleEntries);
+                      timelineReveal.onCommit(visibleEntries);
                       // Preserve the native keyboard scroller when search changes the
                       // timeline, and address its new indices only after SDK commit.
                       if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
@@ -360,7 +360,8 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                     onScrollBeginDrag={() => {
                       quoteCancel();
                       cancelInitialEnd();
-                      searchReveal.cancel();
+                      timelineReveal.cancel();
+                      setScrollTarget(null);
                     }}
                     extraData={selection.ids}
                     data={rows}
@@ -378,7 +379,10 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                     maintainVisibleContentPosition={{
                       disabled: quoteTransitionActive,
                       startRenderingFromBottom: true,
-                      autoscrollToBottomThreshold: quoteReading ? undefined : 0.12,
+                      autoscrollToBottomThreshold:
+                        quoteReading || highlightedMessageId || searchState.active
+                          ? undefined
+                          : 0.12,
                     }}
                     onStartReached={() => {
                       if (!searchThread && page.has_more)
@@ -418,10 +422,10 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                         next={rows[index + 1]?.entry}
                         groupChat={chat.kind === 'Group' || chat.kind === 'Community'}
                         item={items.find((item) => item.id === messageCard(entry)?.item_id)}
-                        highlighted={entry.id === selectedSearchId}
-                        revealQuery={searchState.query}
+                        highlighted={entry.id === highlightedMessageId}
+                        revealQuery={searchState.active ? searchState.query : ''}
                         onRevealLayout={
-                          entry.id === selectedSearchId ? onSearchContentLayout : undefined
+                          entry.id === highlightedMessageId ? onSearchContentLayout : undefined
                         }
                         disabled={searchState.active || selection.active}
                         reactionPending={actions.busy}
@@ -442,7 +446,9 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                             return;
                           }
                           void reveal(messageId)
-                            .then((target) => setScrollTarget(target))
+                            .then((target) => {
+                              if (target) setScrollTarget(target);
+                            })
                             .catch(
                               () =>
                                 void inform(

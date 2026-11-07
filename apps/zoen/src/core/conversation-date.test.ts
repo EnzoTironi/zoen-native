@@ -157,3 +157,16 @@ test('invalid native date keeps the last valid day and never reads or reveals', 
   assert.equal(f.owner.getSnapshot().error, 'failed');
   assert.deepEqual(f.reads, []);
 });
+
+test('an interrupted history reveal leaves the calendar open without selecting the cancelled target', async () => {
+  const f = fixture();
+  f.owner.open();
+  const pending = f.owner.jump();
+  f.response.resolve('canonical-id');
+  f.revealed.resolve(null);
+  await pending;
+  assert.deepEqual(f.selected, []);
+  assert.equal(f.owner.getSnapshot().presented, true);
+  assert.equal(f.owner.getSnapshot().pending, false);
+  assert.equal(f.owner.getSnapshot().error, null);
+});

@@ -13,6 +13,7 @@ type Options = {
   reveal: ConversationReveal;
   focused: boolean;
   searchActive: boolean;
+  revealActive?: boolean;
   current(): boolean;
   list: { current: FlashListRef<ConversationTimelineRow> | null };
   rows: number;
@@ -38,10 +39,10 @@ function timelineMetrics(native: Options['list']['current'], rows: number) {
   }
 }
 
-/** The same bound UIKit observer used by search, extended only in QA builds to
- * observe the closed→search→restored path. It never changes scrolling or insets. */
+/** Bound UIKit geometry serves both search and ordinary message navigation.
+ * QA additionally observes closed→search→restored; this hook never moves content. */
 export function useChatNativeMetrics(options: Options) {
-  const { reveal, focused, searchActive } = options;
+  const { reveal, focused, searchActive, revealActive = searchActive } = options;
   const ref = useRef<NavigationMetricsHandle | null>(null);
   const latest = useRef(options);
   useLayoutEffect(() => {
@@ -112,15 +113,16 @@ export function useChatNativeMetrics(options: Options) {
   }, [observation, read, searchActive, options.reply, options.editing]);
   const navigationMetrics = useMemo(
     () => ({
-      binding: focused && (searchActive || observation) ? reveal.nativeBinding : '',
+      binding: focused && (revealActive || observation) ? reveal.nativeBinding : '',
       ref,
       changed: (packet: Parameters<ConversationReveal['nativeMetricsChanged']>[0]) => {
         if (!latest.current.current()) return;
-        if (latest.current.searchActive) reveal.nativeMetricsChanged(packet);
+        if (latest.current.revealActive ?? latest.current.searchActive)
+          reveal.nativeMetricsChanged(packet);
         observation?.receive(packet);
       },
     }),
-    [focused, searchActive, observation, reveal],
+    [focused, revealActive, observation, reveal],
   );
   return {
     navigationMetrics,

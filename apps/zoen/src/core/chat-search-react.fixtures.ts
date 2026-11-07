@@ -1,3 +1,4 @@
+import { loadEditorAgent } from './editor-agent-compile.fixtures.ts';
 import { messageActionOwner } from './message-action-current.fixtures.ts';
 import * as sendChat from './send-chat-message.ts';
 import * as searchLaunch from './search-launch.ts';
@@ -39,7 +40,7 @@ const compiled = transformSync(readFileSync(file, 'utf8'), {
 assert.ok(compiled.includes('useChatController'), 'Expo must transform the actual chat controller');
 
 /** Actual Expo-transformed chat controller and search; geometry/native views are host ports. */
-export async function chatSearchReactFixture(qa = false) {
+export async function chatSearchReactFixture(qa = false, native = qa) {
   const root = createReactTestRoot(),
     driver = new Driver(),
     snapshot = draftSession();
@@ -48,7 +49,7 @@ export async function chatSearchReactFixture(qa = false) {
   const calls: any[] = [];
   const restoreRecords: string[] = [];
   const pending = deferred<MessageSearchPage>();
-  let timeline = async (): Promise<TimelinePage> => ({
+  let timeline = async (_before?: string | null): Promise<TimelinePage> => ({
     entries: [],
     has_more: false,
     before: null,
@@ -57,7 +58,7 @@ export async function chatSearchReactFixture(qa = false) {
   driver.operation = async (command) => {
     calls.push(structuredClone(command));
     if (command.op === 'snapshot') return structuredClone(snapshot);
-    if (command.op === 'timeline') return timeline();
+    if (command.op === 'timeline') return timeline(command.before);
     if (command.op === 'mark_read') return null;
     if (command.op === 'search_messages') return pending.promise;
     if (command.op === 'message') throw Error('Synthetic search result has no loaded message');
@@ -116,7 +117,7 @@ export async function chatSearchReactFixture(qa = false) {
     '../components/use-message-actions': { useMessageActions: () => ({}) },
     './use-chat-native-metrics': chatNativeMetricsModule({
       qa,
-      native: qa,
+      native,
       emit: (line) => restoreRecords.push(line),
       appState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       useFocusEffect: focus.exports.useFocusEffect as (callback: () => void | (() => void)) => void,
@@ -186,8 +187,13 @@ export async function chatSearchReactFixture(qa = false) {
   runInNewContext(replyFocusCode, {
     module: replyFocus,
     exports: replyFocus.exports,
-    requestAnimationFrame: () => 1,
-    cancelAnimationFrame() {},
+    requestAnimationFrame: (work: () => void) => {
+      frames.set(++frameSerial, work);
+      return frameSerial;
+    },
+    cancelAnimationFrame: (id: number) => {
+      frames.delete(id);
+    },
     require(name: string) {
       if (name.startsWith('@babel/runtime/helpers/')) return require(name);
       assert.ok(name in ports, name);
@@ -223,7 +229,13 @@ export async function chatSearchReactFixture(qa = false) {
     },
   });
   ports['./use-message-selection'] = selection.exports;
+  ports['./use-conversation-message-navigation'] = loadEditorAgent(
+    '../components/use-conversation-message-navigation.ts',
+    ports,
+  );
 
+  let frameSerial = 0;
+  const frames = new Map<number, () => void>();
   const module = { exports: {} as { useChatController: typeof useChatController } };
   runInNewContext(compiled, {
     module,
@@ -231,8 +243,13 @@ export async function chatSearchReactFixture(qa = false) {
     setTimeout,
     clearTimeout,
     process: { env: { EXPO_OS: 'ios' } },
-    requestAnimationFrame: () => 1,
-    cancelAnimationFrame() {},
+    requestAnimationFrame: (work: () => void) => {
+      frames.set(++frameSerial, work);
+      return frameSerial;
+    },
+    cancelAnimationFrame: (id: number) => {
+      frames.delete(id);
+    },
     require(name: string) {
       if (name.startsWith('@babel/runtime/helpers/')) return require(name);
       assert.ok(name in ports, name);
@@ -254,6 +271,12 @@ export async function chatSearchReactFixture(qa = false) {
     restoreRecords,
     pending,
     errors: root.errors,
+    frame: () =>
+      root.act(() => {
+        const batch = [...frames.values()];
+        frames.clear();
+        for (const work of batch) work();
+      }),
     act: root.act,
     current() {
       assert.ok(current);

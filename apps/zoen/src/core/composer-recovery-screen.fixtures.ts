@@ -59,6 +59,8 @@ runInNewContext(source.outputFiles[0]!.text, {
     return Object.fromEntries(views[key]!.map((component) => [component, component]));
   },
 });
+export const renderChatScreen = module.exports.renderChatScreen;
+
 export function composerProps(
   surface: 'chat' | 'thread',
   draft: ReturnType<typeof useMessageDraft>,
@@ -76,7 +78,7 @@ export function composerProps(
     selection: { active: false },
     searchState: { active: searching, query: 'search' },
     initialEnd: {},
-    searchReveal: {},
+    timelineReveal: {},
     actions: {},
     colors: {},
     cards: {},
