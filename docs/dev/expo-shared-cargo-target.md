@@ -165,6 +165,21 @@ metadata and exact package `clean` pass through to Cargo itself: mbx's own
 the existing source guard can therefore invalidate the precise workspace packages
 without invoking mbx's whole-target cleanup.
 
+For local iOS/type generation, select that same wrapper explicitly:
+
+```sh
+ZOEN_NATIVE_CARGO="$PWD/scripts/cargo-local.sh" \
+ZOEN_CARGO_GUARD_PYTHON=/opt/homebrew/bin/python3.13 \
+node scripts/build-expo-core.mjs ios --simulator
+```
+
+Use a Python 3.13+ executable available on the machine. The explicit driver is
+hashed into the platform stamp and admitted as a source-guard input; SDK-specific
+builds and private qualified artifact copies remain mandatory. It also enables
+admission when the default target is not shared. Omit the option in CI to retain
+its existing toolchain path. Android rejects this option and keeps its dedicated
+guarded Cargo proxy. No new target directory is required.
+
 The current Mac configuration uses a shared 20 GiB collection budget, a 40 GiB
 free-space target, seven-day target retention and collection checks after builds
 at five-minute intervals. These are collection policies, not filesystem quotas:

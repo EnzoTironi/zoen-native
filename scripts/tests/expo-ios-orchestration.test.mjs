@@ -281,3 +281,34 @@ test('symlinked default target guard refusal preserves the prior iOS framework',
     code: 'ENOENT',
   });
 });
+
+test('explicit local Cargo driver is admitted, hashed and used for metadata without bypassing SDK guards', async (t) => {
+  const { root, env } = await fixture(t);
+  delete env.CARGO_TARGET_DIR;
+  const driver = join(root, 'managed-cargo');
+  await cp(join(root, 'home/.cargo/bin/cargo'), driver);
+  const metadataLog = join(root, 'metadata-driver.log');
+  await writeFile(driver, (await readFile(driver, 'utf8')) +
+    `\nrequire('node:fs').appendFileSync(${JSON.stringify(metadataLog)}, process.argv[2] + '\\n');\n`);
+  const build = () => execute(process.execPath, ['scripts/build-expo-core.mjs', 'ios', '--release', '--simulator'], {
+    cwd: root,
+    env: { ...env, ZOEN_NATIVE_CARGO: driver },
+  });
+  const stamp = () => readFile(join(root, 'apps/zoen/modules/zoen-core/generated/ios.json'), 'utf8').then(JSON.parse);
+  await build();
+  const before = await stamp();
+  await writeFile(driver, (await readFile(driver, 'utf8')) + '\n// changed driver\n');
+  await build();
+  assert.notEqual((await stamp()).sha256, before.sha256);
+  const commands = JSON.parse(await readFile(join(root, 'commands.json'), 'utf8'));
+  assert.equal(commands.length, 6);
+  assert.equal(await readFile(metadataLog, 'utf8'), 'metadata\nmetadata\nmetadata\nmetadata\n');
+  for (const { args } of commands) {
+    assert.equal(args[args.indexOf('--cargo') + 1], driver);
+    assert(args.some((value, index) => value === '--input-file' && args[index + 1] === driver));
+  }
+  await assert.rejects(execute(process.execPath, ['scripts/build-expo-core.mjs', 'android'], {
+    cwd: root,
+    env: { ...env, ZOEN_NATIVE_CARGO: driver },
+  }), /Android uses its guarded Cargo proxy/);
+});
