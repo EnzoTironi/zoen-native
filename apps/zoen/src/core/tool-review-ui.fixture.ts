@@ -229,8 +229,9 @@ export function fixture(locale: 'en' | 'pt-BR' = 'en') {
               : { current: value },
           useState: (value: unknown) => {
             const index = stateCursor++;
-            if (name !== 'site') return [index === 2 ? resultMessage : value, () => {}];
-            if (!(index in siteState)) siteState[index] = value;
+            const initial = typeof value === 'function' ? value() : value;
+            if (name !== 'site') return [index === 2 ? resultMessage : initial, () => {}];
+            if (!(index in siteState)) siteState[index] = initial;
             return [
               siteState[index],
               (next: unknown) => {
