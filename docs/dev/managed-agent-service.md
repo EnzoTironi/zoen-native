@@ -118,6 +118,13 @@ can be retired; an unrelated or malformed receipt is preserved. This never
 revokes an installed agent.
 JS owns only display state: focus/background/account retirement drops pending
 callbacks and polling; reopening reads the same native operation.
+While the creation sheet is foregrounded, pending reviews observe canonical
+status at the existing two-second installation cadence, including consent or
+completion from another authorized device. An empty recovery list checks for
+new requests every five seconds. A populated selection page stays stable;
+terminal states, transport errors, blur and session retirement stop polling.
+Expired callbacks cannot borrow a later activation. These reads never repeat
+approval, cancellation, creation, completion or funding.
 
 ## Cancellation and consumed consent
 
