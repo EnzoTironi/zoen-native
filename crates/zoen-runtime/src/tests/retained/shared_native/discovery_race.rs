@@ -37,13 +37,8 @@ async fn race(cut: u8) -> TestResult {
         change
     );
     changed?;
-    let expected = if cut == 187 {
-        RuntimeError::NativeSourceAdvanced
-    } else {
-        RuntimeError::Denied
-    };
     assert!(
-        matches!(&stale, Err(error) if *error == expected),
+        matches!(&stale, Err(RuntimeError::NativeSourceAdvanced)),
         "{stale:?}"
     );
     if cut == 187 {

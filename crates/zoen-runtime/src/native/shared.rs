@@ -285,10 +285,40 @@ async fn verify_source(
             .map_err(|_| RuntimeError::Denied)?
             .ok_or(RuntimeError::Denied)?;
         if head.seq() != source.expected.seq || head.hash() != source.expected.hash {
+            // A later head is transient only when the admitted head still
+            // exists verbatim in the authoritative log. Missing, rewound or
+            // inconsistent source evidence must not become a retry permit.
+            if head.seq() > source.expected.seq {
+                let expected = actual
+                    .position_in(tx, &source.space, source.expected.seq)
+                    .await
+                    .map_err(|_| RuntimeError::Denied)?;
+                if expected.hash != source.expected.hash {
+                    return Err(RuntimeError::InvalidBinding);
+                }
+                return Err(RuntimeError::NativeSourceAdvanced);
+            }
             return Err(RuntimeError::Denied);
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+pub(crate) async fn test_source_guard(
+    runtime: &RuntimeAuthority,
+    space: &str,
+    expected: types::Seen,
+    through: types::Seen,
+) -> Result<(), RuntimeError> {
+    let source = SharedSource {
+        cell: runtime.execution.reply_source()?.cell().into(),
+        space: space.into(),
+        expected,
+        through,
+    };
+    let tx = runtime.execution.transaction().await?;
+    verify_source(runtime, &tx, Some(&source), true).await
 }
 
 #[cfg(test)]

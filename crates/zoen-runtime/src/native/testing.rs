@@ -4,6 +4,7 @@ pub(crate) use super::image_tasks::testing as image_tasks;
 mod capture;
 pub(crate) use capture::complete_retained_for_capture;
 mod dispatch;
+pub(crate) use super::shared::test_source_guard;
 use super::*;
 pub(crate) use dispatch::dispatch_retained_reply;
 pub(crate) use runs::output::testing as output;

@@ -232,17 +232,16 @@ pub(in crate::tests) async fn run() -> TestResult {
         f.finish().await;
         println!("shared reply activation fault={fault}: actual native original, one committed generation/checkpoint, cold exact ciphertext/wire hash, no new subject/claim/provider/charge, clean missing metadata/history refusal PASS");
     }
-    Box::pin(denied_directory()).await?;
     Ok(())
 }
-async fn denied_directory() -> TestResult {
+pub(in crate::tests) async fn denied_directory() -> TestResult {
     for prepared in [false, true] {
-        let (mut f, relay, run) = ready().await?;
+        let (mut f, relay, run) = Box::pin(ready()).await?;
         let before = checkpoint(&f).await?;
         if prepared {
             f.world.runtime.fault.store(90, Ordering::SeqCst);
             assert_eq!(
-                f.world.runtime.prepare_reply_output(&run.run).await,
+                Box::pin(f.world.runtime.prepare_reply_output(&run.run)).await,
                 Err(RuntimeError::Unavailable)
             );
             f.world.runtime.fault.store(0, Ordering::SeqCst);
@@ -258,7 +257,7 @@ async fn denied_directory() -> TestResult {
             );
         } else {
             assert_eq!(
-                f.world.runtime.prepare_reply_output(&run.run).await,
+                Box::pin(f.world.runtime.prepare_reply_output(&run.run)).await,
                 Err(RuntimeError::Denied)
             );
             assert_eq!(checkpoint(&f).await?, before);

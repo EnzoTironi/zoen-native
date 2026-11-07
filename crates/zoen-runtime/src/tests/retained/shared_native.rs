@@ -14,6 +14,7 @@ pub(in crate::tests) mod output_route;
 pub(in crate::tests) mod receipts;
 mod reservation;
 pub(in crate::tests) mod service;
+pub(in crate::tests) mod source_race;
 pub(in crate::tests) mod terminal;
 use super::*;
 use relay_admission::managed_images::AnchorReader;
