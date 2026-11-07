@@ -40,11 +40,8 @@ function compileCard(path: string) {
     ],
     caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: true },
   }).code as string;
-  // Preserve the existing card's normal compiler fallback; the lease still
-  // must optimize. Do not suppress any new compiler diagnostic.
-  assert.deepEqual(diagnostics, [
-    "(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause",
-  ]);
+  assert.deepEqual(diagnostics, []);
+  assert.match(output, /react\/compiler-runtime/);
   return output;
 }
 const compiled = await build({

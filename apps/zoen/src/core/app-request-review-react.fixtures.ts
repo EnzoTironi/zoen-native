@@ -1,3 +1,4 @@
+import { submitRequestDecision } from '../agents/submit-request-decision.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -170,6 +171,7 @@ export async function appRequestReviewReactFixture(options: { canonicalFlush?: b
     accent: '#0af',
   };
   const common: Props = {
+    './submit-request-decision': { submitRequestDecision },
     react: React,
     'react/jsx-runtime': require('react/jsx-runtime'),
     'react/compiler-runtime': require('react/compiler-runtime'),

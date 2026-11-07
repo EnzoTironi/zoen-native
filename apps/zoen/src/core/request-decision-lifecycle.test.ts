@@ -219,3 +219,51 @@ test('admitted decision result cannot publish into a later focus activation', as
     await f.close();
   }
 });
+
+for (const stage of ['confirmation', 'submission'] as const)
+  test(`retired ${stage} cannot block fresh consent or clear its busy state`, async () => {
+    const oldConsent = deferred<boolean>();
+    const oldResponse = deferred<DecideOutcome>();
+    const freshResponse = deferred<DecideOutcome>();
+    let submissions = 0;
+    const f = await reviewPolicyReactFixture('card', {
+      confirm: () => oldConsent.promise,
+      submit: () =>
+        ++submissions === 1 && stage === 'submission' ? oldResponse.promise : freshResponse.promise,
+    });
+    const outcome = (message: string): DecideOutcome => ({
+      request: f.request,
+      message,
+      standing_grant_id: null,
+      also_resolved: 0,
+    });
+    try {
+      await f.render();
+      await f.act(() =>
+        f.buttons
+          .get(stage === 'confirmation' ? 'agents.alwaysAllowThisType' : 'agents.allowOnce')!
+          .onPress(),
+      );
+      await f.act(() => f.focus(false));
+      await f.act(() => f.focus(true));
+      const fresh = f.buttons.get('agents.allowOnce')!;
+      assert.ok(fresh, 'Fresh activation must offer its own approval');
+      assert.equal(!!fresh.disabled, false);
+      await f.act(() => fresh.onPress());
+      assert.equal(submissions, stage === 'submission' ? 2 : 1);
+      await f.act(() => {
+        oldConsent.resolve(true);
+        oldResponse.resolve(outcome('Retired receipt'));
+      });
+      assert.equal(f.buttons.get('agents.saving')?.disabled, true);
+      assert.equal(f.visibleText().includes('Retired receipt'), false);
+      await f.act(() => freshResponse.resolve(outcome('Fresh receipt')));
+      assert.ok(f.visibleText().includes('Fresh receipt'));
+      assert.deepEqual(f.errors, []);
+    } finally {
+      oldConsent.resolve(false);
+      oldResponse.resolve(outcome(''));
+      freshResponse.resolve(outcome(''));
+      await f.close();
+    }
+  });

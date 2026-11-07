@@ -1,3 +1,8 @@
+import {
+  submitRequestDecision,
+  type DecisionAttempt,
+  type DecisionTicket,
+} from './submit-request-decision';
 import { t, formatLocale } from '../i18n/index.ts';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
@@ -57,16 +62,17 @@ export function RequestCard({
   const { store } = client;
   const dialogs = useDialogs();
   const { colors } = useTheme();
-  const [busy, setBusy] = useState(false);
+  const [pendingTicket, setPendingTicket] = useState<DecisionTicket | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [expiryRevision, redrawExpiry] = useState(0);
-  const deciding = useRef(false);
+  const deciding = useRef<DecisionAttempt | null>(null);
   const resetOutput = useCallback(() => {
     setFailure(null);
     setResult(null);
   }, []);
   const approval = useRequestDecisionLease(store, client, request, disabled, resetOutput);
+  const busy = pendingTicket !== null && approval.lease.continues(pendingTicket);
   const tool = request.tool_approval;
   const siteNeedsReview = tool?.preview_kind === 'site';
   const drawingNeedsReview =
@@ -119,10 +125,9 @@ export function RequestCard({
   const pending = request.status === 'Pending' || request.status === 'Stale';
   const canDecide =
     pending && toolValid && request.agent.is_mine && !busy && !disabled && approval.available;
-  async function decide(decision: RequestCardDecision) {
+  function decide(decision: RequestCardDecision) {
     if (
       !canDecide ||
-      deciding.current ||
       !approval.lease.accepts(approval.ticket) ||
       (decision === 'ApproveOnce' &&
         ((siteNeedsReview && !siteReviewed) ||
@@ -135,49 +140,47 @@ export function RequestCard({
       return;
     const command = requestDecisionCommand(request, decision);
     if (!command) return;
-    deciding.current = true;
-    try {
-      const always = decision === 'AlwaysApprove' || decision === 'AlwaysDeny';
-      if (
-        always &&
-        !(await dialogs.confirm({
-          title:
-            decision === 'AlwaysApprove'
-              ? t('agents.alwaysAllowThisTypeOfAction')
-              : t('agents.alwaysDenyThisTypeOfAction'),
-          message: t('agents.standingDecisionConfirmation', {
-            name: request.agent.name,
-            chat: request.space_title,
-            action: request.action_label,
-          }),
-          confirmLabel:
-            decision === 'AlwaysApprove' ? t('agents.alwaysAllow') : t('agents.alwaysDeny'),
-          destructive: decision === 'AlwaysDeny',
-        }))
-      )
-        return;
-      if (!approval.lease.accepts(approval.ticket)) return;
-      setBusy(true);
-      setFailure(null);
-      setResult(null);
-      const outcome = await (onDecision ? onDecision(command) : store.request(command));
-      if (!approval.lease.continues(approval.ticket)) return;
-      setResult(
-        outcome.also_resolved
-          ? t('agents.alsoResolved', { message: outcome.message, count: outcome.also_resolved })
-          : outcome.message,
-      );
-      onResolved?.();
-    } catch (reason) {
-      if (!approval.lease.continues(approval.ticket)) return;
-      setFailure(
-        reason instanceof Error ? reason.message : t('agents.thisDecisionCouldNotBeSaved'),
-      );
-    } finally {
-      deciding.current = false;
-      setBusy(false);
-    }
+    const always = decision === 'AlwaysApprove' || decision === 'AlwaysDeny';
+    void submitRequestDecision({
+      ticket: approval.ticket,
+      flight: deciding,
+      confirm: always
+        ? () =>
+            dialogs.confirm({
+              title:
+                decision === 'AlwaysApprove'
+                  ? t('agents.alwaysAllowThisTypeOfAction')
+                  : t('agents.alwaysDenyThisTypeOfAction'),
+              message: t('agents.standingDecisionConfirmation', {
+                name: request.agent.name,
+                chat: request.space_title,
+                action: request.action_label,
+              }),
+              confirmLabel:
+                decision === 'AlwaysApprove' ? t('agents.alwaysAllow') : t('agents.alwaysDeny'),
+              destructive: decision === 'AlwaysDeny',
+            })
+        : undefined,
+      submit: () => (onDecision ? onDecision(command) : store.request(command)),
+      pending: (ticket) => {
+        setPendingTicket(ticket);
+        if (ticket) resetOutput();
+      },
+      accepted: (outcome) => {
+        setResult(
+          outcome.also_resolved
+            ? t('agents.alsoResolved', { message: outcome.message, count: outcome.also_resolved })
+            : outcome.message,
+        );
+        onResolved?.();
+      },
+      failed: (reason) =>
+        setFailure(
+          reason instanceof Error ? reason.message : t('agents.thisDecisionCouldNotBeSaved'),
+        ),
+    });
   }
+
   const IdentityHeader = embedded ? View : Pressable;
   return (
     <Surface>
