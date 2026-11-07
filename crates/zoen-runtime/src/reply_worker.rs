@@ -1,5 +1,7 @@
 //! Reusable bounded scheduler. Native wakes and receipts remain durable authority.
+mod selected;
 use crate::{ReplyHostProgress, ReplyReceiptProgress, ReplyRuntimeHost, RuntimeError};
+pub use selected::SelectedReplyWorker;
 use std::{
     collections::BTreeMap,
     time::{Duration, Instant},

@@ -2,13 +2,16 @@
 use crate::{config::Config, file_vault::FileVault, protocol, runtime_host_config::text};
 use futures_util::StreamExt;
 use std::time::Duration;
-use zoen_runtime::{ReplyRuntimeHost, ReplyWorker, ReplyWorkerEvent, RuntimeError};
+use zoen_runtime::{
+    ReplyRuntimeHost, ReplySource, ReplyWorker, ReplyWorkerEvent, RuntimeError, SelectedReplyWorker,
+};
 
 pub(super) async fn run(
     host: &ReplyRuntimeHost,
     config: &Config,
     vault: &FileVault,
     supervised: bool,
+    source: Option<ReplySource>,
 ) -> Result<(), String> {
     let mut hints = if let Some(key) = &config.worker_bus_key {
         let url = text(vault, key)?;
@@ -40,7 +43,7 @@ pub(super) async fn run(
     let controls = crate::control::Server::bind(&config.home)?;
     let mut shutdown = Shutdown::new()?;
     let mut parent = Box::pin(parent_lifetime(supervised)?);
-    let mut worker = ReplyWorker::default();
+    let mut worker = Worker::new(source)?;
     let mut interval = tokio::time::interval(Duration::from_secs(2));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     crate::emit(
@@ -48,7 +51,7 @@ pub(super) async fn run(
     )?;
     loop {
         match Box::pin(worker.tick(host)).await {
-            Ok(events) => {
+            Ok((events, complete)) => {
                 for event in events {
                     let value = match event {
                         ReplyWorkerEvent::Progress(progress) => protocol::progress(*progress),
@@ -60,6 +63,10 @@ pub(super) async fn run(
                         }
                     };
                     crate::emit(&value)?;
+                }
+                if complete {
+                    crate::emit(&serde_json::json!({"status":"source_completed"}))?;
+                    return Ok(());
                 }
             }
             Err(RuntimeError::Unavailable) => {}
@@ -80,6 +87,36 @@ pub(super) async fn run(
                 Some(subscription)=>{if subscription.next().await.is_none(){ hints=None; }},
                 None=>std::future::pending::<()>().await,
             }}=>{},
+        }
+    }
+}
+
+enum Worker {
+    All(ReplyWorker),
+    Source(SelectedReplyWorker),
+}
+impl Worker {
+    fn new(source: Option<ReplySource>) -> Result<Self, String> {
+        match source {
+            Some(source) => SelectedReplyWorker::new(source)
+                .map(Self::Source)
+                .map_err(|e| e.to_string()),
+            None => Ok(Self::All(ReplyWorker::default())),
+        }
+    }
+    async fn tick(
+        &mut self,
+        host: &ReplyRuntimeHost,
+    ) -> Result<(Vec<ReplyWorkerEvent>, bool), RuntimeError> {
+        match self {
+            Self::All(worker) => worker.tick(host).await.map(|events| (events, false)),
+            Self::Source(worker) => worker.tick(host).await,
+        }
+    }
+    fn reconcile_soon(&mut self) {
+        match self {
+            Self::All(worker) => worker.reconcile_soon(),
+            Self::Source(worker) => worker.reconcile_soon(),
         }
     }
 }

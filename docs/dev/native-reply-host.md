@@ -54,9 +54,9 @@ The configured standard host supervises the durable executor and the same signed
 owner-budget control channel. It never constructs `ModelBrain`/`CodexBrain`, starts
 editor workers, or seeds the old host's content cursors. Missing/relative/empty
 executor paths, failed enrollment, and non-supervised configurations fail before
-readiness; they never fall back to an unaccounted local model. `--source` is
-currently refused with a durable executor configured, rather than selecting the
-legacy execution path. Durable single-source selection remains work in #175.
+readiness; they never fall back to an unaccounted local model. `--source` uses
+the same durable executor for one exact owner message, preserving other work and
+scan cursors. See [selected-source hosting](agent-source-hosting.md).
 
 `agent-controls` remains available for control-only services and separately
 supervised executors; with `supervised: true` it uses the same lifecycle. With
@@ -110,7 +110,7 @@ owns waking and retries; serving does not poll or repeatedly evaluate held work.
 The first example abbreviates the typed signed policy; the full canonical object
 is required. Discovery returns bounded catch-up/completion flags and run IDs.
 Pending returns a bounded cursor page. Advance reports `catching_up`, `held`,
-`recovery`, `output` or `completed`, including actual delivery state. Financial
+`review`, `recovery`, `output` or `completed`, including actual delivery state. Financial
 `null` means unobserved/absent, rather than released or zero cost.
 
 Gate decisions run outside native leases/FDB transactions. Source, grant,

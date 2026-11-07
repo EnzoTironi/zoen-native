@@ -18,6 +18,8 @@ mod provider;
 mod provision;
 #[path = "../src/runtime_host_config.rs"]
 mod runtime_host_config;
+#[path = "reply_runtime/selected_source.rs"]
+mod selected_source;
 #[path = "reply_runtime/standard_host.rs"]
 mod standard_host;
 #[path = "reply_runtime/support.rs"]
@@ -349,6 +351,7 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
         std::fs::remove_file(&path)?;
         write_json(&path, &value)?;
         standard_host::run(&w, &path, &agent, &space, &code, &provider).await?;
+        selected_source::run(&w, &path, &space, &code, &agent, &provider).await?;
         println!("reply executable: actual sponsor/device pairing, canonical persona on dedicated leaf, owner-signed budget, closed clients, paid HTTP, owner MLS and repeated cold processes without duplicate inference/charge/output PASS");
         Ok(())
     }

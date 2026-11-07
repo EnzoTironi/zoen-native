@@ -68,10 +68,7 @@ pub(crate) async fn dispatch(
         "agent-host" if super::image_ipc::reply_paths()?.is_some() => {
             // One configured execution authority. A selected-source request must
             // not fall through to an unaccounted legacy provider/tool host.
-            if source.is_some() {
-                return Err("agent_host_durable_source_unavailable".into());
-            }
-            host(client, home, readiness, for_secs, true).await
+            host_source(client, home, readiness, for_secs, true, source).await
         }
         "agent-host" => super::host(client, home, readiness, for_secs, source).await,
         COMMAND if source.is_none() => host(client, home, readiness, for_secs, false).await,
@@ -132,6 +129,17 @@ pub(super) async fn host(
     for_secs: Option<u64>,
     executor_required: bool,
 ) -> Result<(), String> {
+    host_source(client, home, readiness, for_secs, executor_required, None).await
+}
+
+async fn host_source(
+    client: &Arc<Client>,
+    home: &Path,
+    readiness: &Readiness<'_>,
+    for_secs: Option<u64>,
+    executor_required: bool,
+    source: Option<Source>,
+) -> Result<(), String> {
     let scope = Scope::current(client)?;
     let duration = for_secs.map(Duration::from_secs);
     if duration.is_some_and(|duration| {
@@ -146,7 +154,8 @@ pub(super) async fn host(
     // Settle the primary leaf without seeding content cursors or constructing providers.
     startup::settled_cursors(client, 15_000).await?;
     scope.state(client).await?;
-    let mut executor = super::managed_reply::start(client, home).await?;
+    let source = source.map(|source| source.managed(client)).transpose()?;
+    let mut executor = super::managed_reply::start(client, home, source.as_ref()).await?;
     if executor_required && executor.is_none() {
         return Err("agent_host_managed_executor_required".into());
     }
@@ -156,11 +165,17 @@ pub(super) async fn host(
     let outcome: Result<(), String> = async {
         loop {
             if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                if source.is_some() {
+                    super::say("agent_host_source_wait_elapsed");
+                }
                 return Ok(());
             }
             scope.state(client).await?;
             if let Some(executor) = executor.as_mut() {
-                executor.check()?;
+                if executor.check()? {
+                    super::say("agent_host_source_reply_completed");
+                    return Ok(());
+                }
             }
             let wait = deadline.map_or(Duration::from_secs(5), |deadline| {
                 deadline

@@ -14,6 +14,13 @@ pub(super) enum Command {
         run: String,
         arguments: Value,
     },
+    DiscoverSource {
+        source: zoen_runtime::ReplySource,
+    },
+    AdvanceSource {
+        run: String,
+        source: zoen_runtime::ReplySource,
+    },
     Discover {
         space: String,
     },
@@ -39,6 +46,20 @@ pub(super) async fn execute(host: &ReplyRuntimeHost, command: Command) -> Result
                 .map_err(|e| e.to_string())?;
             Ok(json!({"status":"history","page":page}))
         }
+        Command::DiscoverSource { source } => {
+            let p = host
+                .discover_source(&source)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(
+                json!({"status":"discovered","caught_up":p.caught_up,"complete":p.discovery_complete,"runs":p.runs}),
+            )
+        }
+        Command::AdvanceSource { run, source } => Ok(progress(
+            Box::pin(host.advance_source(&run, &source))
+                .await
+                .map_err(|e| e.to_string())?,
+        )),
         Command::Discover { space } => {
             let p = host.discover(&space).await.map_err(|e| e.to_string())?;
             Ok(

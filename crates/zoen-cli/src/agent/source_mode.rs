@@ -56,6 +56,16 @@ pub(crate) struct Source {
     id: String,
 }
 impl Source {
+    pub(super) fn managed(self, client: &Client) -> Result<zoen_runtime::ReplySource, String> {
+        let bound = Bound::locate(client, self)?;
+        bound.check(client)?;
+        Ok(zoen_runtime::ReplySource {
+            space: bound.space,
+            message: bound.id,
+            author: bound.author,
+            text_sha256: hex::encode(bound.text_sha256),
+        })
+    }
     pub(crate) fn preflight(e: &Client) -> Result<(), String> {
         Scope::current(e).map(|_| ())
     }
