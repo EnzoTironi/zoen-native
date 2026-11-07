@@ -196,14 +196,16 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
             )?["status"],
             "policy_installed"
         );
-        let people = owner.find_people(request.handle.clone()).await?;
-        assert!(people.iter().any(|person| person.id == agent));
         let context = json!({"operation_id":request.operation,"agent_id":agent});
         let space = bridge(&owner, "managed_agent_chat", context.clone())
             .await?
             .as_str()
             .ok_or("private chat")?
             .to_owned();
+        // Chat must load its exact public agent profile itself. This later
+        // People lookup must not prime the cache and hide a broken first tap.
+        let people = owner.find_people(request.handle.clone()).await?;
+        assert!(people.iter().any(|person| person.id == agent));
         owner.wait_until_settled(20_000).await?;
         let before = trust_grants(&owner, &space)?;
         assert_eq!(before.len(), 1);

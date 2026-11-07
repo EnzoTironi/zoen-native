@@ -91,8 +91,11 @@ owner/device request; ambiguous delivery is reconciled through its native receip
 After registration the sheet reuses canonical owned-agent discovery and the
 existing account budget sheet. No money is granted by creating the agent.
 Explicit Chat invokes `managed_agent_chat`: canonical installation is checked
-under the current Net lease, then the private owned-agent DM gets its first
-Listen grant. Retries preserve existing grants, including revocation.
+under the current Net lease. The exact public agent profile is fetched through
+that same connection and its owner proof, retained intent and session are checked
+again before opening the private DM and its first Listen grant. First Chat does
+not depend on a previous People search or background profile discovery. Retries
+preserve existing grants, including revocation.
 `managed_agent_complete` first acknowledges the exact registered original in the
 relay, then retains a local completion receipt before retiring the exact intent.
 Cold replay cannot clear a subsequent operation. Done completes onboarding without
