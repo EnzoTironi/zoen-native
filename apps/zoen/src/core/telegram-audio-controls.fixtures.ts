@@ -21,6 +21,7 @@ export const sources = {
   microphone: '../media/voice-record-button.tsx',
   accessory: '../components/message-context.tsx',
   composer: '../components/message-composer.tsx',
+  draftStatus: '../components/composer-draft-status.tsx',
   composerMotion: '../components/composer-action-motion.tsx',
   composerAction: '../components/composer-action.ios.tsx',
 } as const;
@@ -258,6 +259,8 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
     });
     return module.exports;
   };
+  const status = load('draftStatus');
+  ports['./composer-draft-status'] = status;
   const actionMotion = load('composerMotion');
   ports['./composer-action-motion'] = actionMotion;
   const action = load('composerAction');
@@ -265,6 +268,7 @@ export function fixture(name: keyof typeof sources, dependencies: Record<string,
   const microphone = load('microphone');
   const exports = load(name);
   const components = new Set([
+    status.ComposerDraftStatus,
     actionMotion.ComposerMotionSlot,
     action.ComposerAction,
     microphone.VoiceRecordButton,

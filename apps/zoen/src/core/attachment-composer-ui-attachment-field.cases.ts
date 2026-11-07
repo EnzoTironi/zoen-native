@@ -130,7 +130,12 @@ test('a sent file caption can be cleared without allowing empty ordinary text ed
 
 test('an unread native draft cannot be overwritten by an initially empty field; retry stays visible', () => {
   const f = fixture();
-  const draft = { ready: false, error: true, onRetry: () => f.calls.push('retry-draft') };
+  const draft = {
+    ready: false,
+    error: new Error('draft unavailable'),
+    rejected: false,
+    retry: () => f.calls.push('retry-draft'),
+  };
   const root = f.render(undefined, { value: '', draft });
   assert.equal(find(root, byId('message-input')).props.editable, false);
   const status = f.renderRoot({ draft });
@@ -140,3 +145,26 @@ test('an unread native draft cannot be overwritten by an initially empty field; 
   assert.equal(find(loaded, byId('message-input')).props.editable, true);
   assert.equal(find(loaded, byId('message-input')).props.value, 'My unsent normal text');
 });
+
+for (const editing of [false, true]) {
+  test(`canonical ${editing ? 'edit' : 'message'} rejection keeps its accessible recovery action`, () => {
+    const f = fixture();
+    const draft = {
+      ready: true,
+      error: new Error('native refusal'),
+      rejected: true,
+      retry: () => f.calls.push('recover-exact-draft'),
+    };
+    const tree = f.renderRoot({ editing, draft });
+    const alert = find(tree, (node) => node.props.accessibilityRole === 'alert');
+    assert.equal(
+      alert.props.children,
+      editing ? 'chat.editCouldNotBeSaved' : 'chat.draftSendRejected',
+    );
+    (find(tree, byId('retry-message-draft')).props.onPress as Handler)();
+    assert.deepEqual(f.calls, ['recover-exact-draft']);
+    const loaded = f.render(undefined, { editing, draft: { ...draft, ready: false } });
+    assert.equal(find(loaded, byId('message-input')).props.editable, false);
+    assert.equal(find(loaded, byId('send-message')).props.disabled, true);
+  });
+}

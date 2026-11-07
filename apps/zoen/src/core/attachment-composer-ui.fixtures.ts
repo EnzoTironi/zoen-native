@@ -36,6 +36,15 @@ export const output = await build({
     },
   ],
 });
+const statusOutput = await build({
+  entryPoints: [new URL('../components/composer-draft-status.tsx', import.meta.url).pathname],
+  bundle: true,
+  external: ['*'],
+  jsx: 'automatic',
+  platform: 'node',
+  format: 'cjs',
+  write: false,
+});
 export const require = createRequire(import.meta.url);
 export const { transformSync } = require('@babel/core') as {
   transformSync(source: string, options: Record<string, unknown>): { code: string };
@@ -190,7 +199,11 @@ export function fixture(
   }
   const jsx = (type: unknown, props: Record<string, unknown>): Element => {
     if (type === fieldModule.exports.ComposerTextField) return renderField(props);
-    if (typeof type === 'function' && type.name === 'ComposerInputAccessory') return type(props);
+    if (
+      typeof type === 'function' &&
+      ['ComposerInputAccessory', 'ComposerDraftStatus'].includes(type.name)
+    )
+      return type(props);
     return { type, props };
   };
   const scope = {
@@ -354,6 +367,16 @@ export function fixture(
     './conversation-composer-access': { ConversationComposerAccess: 'ConversationComposerAccess' },
     './primitives': { NativeButton: 'NativeButton' },
   };
+  const statusModule = { exports: {} };
+  runInNewContext(statusOutput.outputFiles[0]!.text, {
+    module: statusModule,
+    exports: statusModule.exports,
+    require(path: string) {
+      assert.ok(path in ports, path);
+      return ports[path];
+    },
+  });
+  ports['./composer-draft-status'] = statusModule.exports;
   // The real Expo Web transform rewrites RN imports to individual default exports.
   for (const [name, value] of Object.entries(ports['react-native'] as Record<string, unknown>))
     ports[`react-native-web/dist/exports/${name}`] = { __esModule: true, default: value };
