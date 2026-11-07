@@ -20,4 +20,10 @@ case "$(uname -s)" in
     fi
     ;;
 esac
+# mbx owns compilation, but its own --version/clean commands are not Cargo's.
+# The source guard must query the pinned Cargo and invalidate exact packages,
+# never delete mbx's entire managed target via a command-name collision.
+case "${1:-}" in
+  -V|-Vv|--version|metadata|clean) exec cargo "$@" ;;
+esac
 exec mbx "$@"

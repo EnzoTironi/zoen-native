@@ -308,7 +308,12 @@ impl Engine {
 }
 
 impl State {
-    fn trust_baseline(&self, space: &str, owner: &str, agent: &str) -> Option<&GrantState> {
+    pub(crate) fn trust_baseline(
+        &self,
+        space: &str,
+        owner: &str,
+        agent: &str,
+    ) -> Option<&GrantState> {
         self.grants.iter().rev().find(|g| {
             g.grant.grantor == owner
                 && g.grant.grantee.as_deref() == Some(agent)

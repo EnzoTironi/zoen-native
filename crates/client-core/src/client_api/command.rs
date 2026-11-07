@@ -813,4 +813,6 @@ pub(super) enum Command {
     Forwarding(super::forwarding_command::ForwardingCommand),
     #[serde(untagged)]
     PrivateMedia(super::private_media_command::PrivateMediaCommand),
+    #[serde(untagged)]
+    ManagedAgent(super::managed_agent_command::ManagedAgentCommand),
 }

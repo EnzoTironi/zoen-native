@@ -32,7 +32,7 @@ mod agent_enrollment;
 pub use agent_enrollment::{
     AgentEnrollmentDeliveryDto, AgentEnrollmentDeliveryOutcome, AgentEnrollmentHostOffer,
     AgentEnrollmentHostProgress, AgentEnrollmentHostRequest, AgentEnrollmentPreviewDto,
-    AgentEnrollmentStatusDto,
+    AgentEnrollmentStatusDto, ManagedEnrollmentDto,
 };
 pub use miniapps::binary::agent_tools as binary_agent_tools;
 /// Closed, shared schema validation only; this module grants no execution authority.

@@ -148,6 +148,17 @@ function Navigation() {
                   }}
                 />
                 <Stack.Screen
+                  name="create-agent"
+                  options={{
+                    title: t('managedAgent.create'),
+                    presentation: process.env.EXPO_OS === 'web' ? 'modal' : 'formSheet',
+                    headerTransparent: false,
+                    sheetAllowedDetents: [0.75, 1],
+                    sheetGrabberVisible: true,
+                    sheetExpandsWhenScrolledToEdge: true,
+                  }}
+                />
+                <Stack.Screen
                   name="new-chat"
                   options={{
                     title: t('common.newChat'),

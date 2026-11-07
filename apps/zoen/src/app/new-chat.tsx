@@ -9,7 +9,7 @@ import { useTheme } from '../theme';
 import { Field, NativeButton } from '../components/primitives';
 
 export default function NewChat() {
-  const { store, snapshot } = useClient();
+  const { store, snapshot, mode } = useClient();
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
   const [people, setPeople] = useState<Persona[]>([]);
@@ -129,6 +129,13 @@ export default function NewChat() {
             />
           ))}
         </View>
+        {kind === 'direct' && mode === 'account' && Platform.OS === 'ios' ? (
+          <NativeButton
+            label={t('managedAgent.create')}
+            secondary
+            onPress={() => router.push('/create-agent')}
+          />
+        ) : null}
         {kind !== 'direct' ? (
           <Field
             label={kind === 'group' ? t('chat.groupName') : t('chat.communityName')}

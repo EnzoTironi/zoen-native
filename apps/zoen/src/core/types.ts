@@ -1,3 +1,4 @@
+import type { ManagedEnrollmentDto } from './generated/ManagedEnrollmentDto';
 import type { MediaPlaybackBookmark } from './generated/MediaPlaybackBookmark';
 import type { SharedReplyDraft } from './generated/SharedReplyDraft';
 import type { MessageInfo } from './generated/MessageInfo';
@@ -236,6 +237,12 @@ type Results = {
   agent_definition_update: AgentDefinitionUpdateDto;
   agent_definition_reconcile: AgentDefinitionUpdateDto | null;
   agent_definition_dismiss: boolean;
+  managed_agent_start: ManagedEnrollmentDto;
+  managed_agent_status: ManagedEnrollmentDto | null;
+  managed_agent_approve: ManagedEnrollmentDto;
+  managed_agent_chat: string;
+  managed_agent_discard: boolean;
+  managed_agent_complete: boolean;
   agent_enrollment_preview: AgentEnrollmentPreviewDto;
   agent_enrollment_approve: AgentEnrollmentDeliveryDto;
   agent_enrollment_status: AgentEnrollmentStatusDto | null;

@@ -159,7 +159,11 @@ Use `scripts/cargo-local.sh check`, `build`, `clippy` or `test` for ordinary loc
 Rust work. The thin wrapper finds the existing rustup toolchain and runs
 [Mr Boxington](https://mr-boxington.jdx.dev/installation); it does not upgrade
 Rust, alter compilation flags or configure a remote service. Direct `cargo`
-commands do not automatically use this route.
+commands do not automatically use this route. Cargo identity/version queries,
+metadata and exact package `clean` pass through to Cargo itself: mbx's own
+`--version` and `clean` have different semantics. Compilation still uses mbx;
+the existing source guard can therefore invalidate the precise workspace packages
+without invoking mbx's whole-target cleanup.
 
 The current Mac configuration uses a shared 20 GiB collection budget, a 40 GiB
 free-space target, seven-day target retention and collection checks after builds

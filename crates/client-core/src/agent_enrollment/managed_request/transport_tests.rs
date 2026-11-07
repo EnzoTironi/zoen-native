@@ -155,3 +155,72 @@ async fn managed_owner_transport_rejects_old_connection_completion() -> TestResu
     client.stop_sync();
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn managed_terminal_restart_preserves_ambiguous_approval_and_checks_canonical_state(
+) -> TestResult {
+    let dir = Directory::new()?;
+    let mut relay = relay().await;
+    let (client, _) = owner(dir.path(), &relay.url);
+    let account = client.account().ok_or("account")?;
+    online(&client).await;
+    let running = prepare(&client);
+    let sent = call(&mut relay.calls).await;
+    let AgentRequest::PrepareManaged(request) = sent.op else {
+        return Err("prepare request".into());
+    };
+    sent.response
+        .send(Ok(Reply::ManagedAgent(queued(
+            &request,
+            &account.identity_id,
+        ))))
+        .map_err(|_| "dropped response")?;
+    running.await??;
+    for state in ["queued", "offered", "registered", "expired", "rejected"] {
+        let mut record = queued(&request, &account.identity_id);
+        record.state = state.into();
+        if ["offered", "registered", "expired"].contains(&state) {
+            record.agent = "21".repeat(32);
+            record.offer_digest = "22".repeat(32);
+            record.sealed_offer = vec![1; 40];
+            record.expires_ms = 1;
+        }
+        // Presence alone is sufficient to preserve even an unreadable approval.
+        if state == "expired" {
+            client
+                .lock()
+                .store
+                .set_meta("agent.enrollment.owner-receipt.v1", "unknown")?;
+        }
+        let another = client.clone();
+        let operation = request.operation.clone();
+        let identity = account.identity_id.clone();
+        let device = account.device_id.clone();
+        let running = tokio::spawn(async move {
+            another
+                .discard_managed_enrollment(&operation, &identity, &device)
+                .await
+        });
+        let status = call(&mut relay.calls).await;
+        status
+            .response
+            .send(Ok(Reply::ManagedAgent(record)))
+            .map_err(|_| "dropped response")?;
+        if state == "rejected" {
+            assert!(running.await??);
+        } else {
+            assert!(running.await?.is_err());
+        }
+        if state == "expired" {
+            client
+                .lock()
+                .store
+                .meta_delete("agent.enrollment.owner-receipt.v1")?;
+        }
+    }
+    assert!(client
+        .pending_managed_enrollment(&account.identity_id, &account.device_id)?
+        .is_none());
+    client.stop_sync();
+    Ok(())
+}

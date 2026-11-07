@@ -27,7 +27,10 @@ export type EnrollmentPort = {
   ): Promise<{ receipt: string; agent: string; digest: string; outcome: 'Sent' | 'Unknown' }>;
   receipt(scope: EnrollmentScope): Promise<EnrollmentReceipt | null>;
   dismiss(receipt: string, review: EnrollmentReview, scope: EnrollmentScope): Promise<boolean>;
-  registration(review: EnrollmentReview, scope: EnrollmentScope): Promise<AgentStatus | null>;
+  registration(
+    review: Pick<EnrollmentReview, 'agent' | 'handle'>,
+    scope: EnrollmentScope,
+  ): Promise<AgentStatus | null>;
 };
 export type EnrollmentState = Readonly<{
   scope: string;

@@ -1,0 +1,46 @@
+import { defineFeature } from '../catalog.ts';
+export const managedAgent = defineFeature(
+  {
+    create: 'Create agent',
+    name: 'Name',
+    namePlaceholder: 'Your agent’s name',
+    review: 'Review agent',
+    confirm: 'Create this agent',
+    waiting: 'Preparing your agent…',
+    installing: 'Connecting your agent…',
+    ready: 'Your agent is ready',
+    scope:
+      'You choose its budget separately. Chatting lets it read and reply in your private conversation.',
+    budget: 'Set budget',
+    chat: 'Chat',
+    close: 'Close',
+    retry: 'Try again',
+    failed: 'Could not update your agent. Try again to recover this same connection.',
+    expired: 'This offer has expired.',
+    rejected: 'This agent could not be created.',
+    accountRequired: 'Sign in to create an agent.',
+    unavailable: 'Agent creation is not available in this version.',
+  },
+  {
+    create: 'Criar agente',
+    name: 'Nome',
+    namePlaceholder: 'Nome do seu agente',
+    review: 'Confira seu agente',
+    confirm: 'Criar este agente',
+    waiting: 'Preparando seu agente…',
+    installing: 'Conectando seu agente…',
+    ready: 'Seu agente está pronto',
+    scope:
+      'Você escolhe o orçamento separadamente. Conversar permite que ele leia e responda na conversa privada de vocês.',
+    budget: 'Definir orçamento',
+    chat: 'Conversar',
+    close: 'Fechar',
+    retry: 'Tentar novamente',
+    failed:
+      'Não foi possível atualizar seu agente. Tente novamente para recuperar esta mesma conexão.',
+    expired: 'Esta oferta expirou.',
+    rejected: 'Não foi possível criar este agente.',
+    accountRequired: 'Entre na sua conta para criar um agente.',
+    unavailable: 'A criação de agentes não está disponível nesta versão.',
+  },
+);

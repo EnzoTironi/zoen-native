@@ -33,6 +33,7 @@ impl Client {
         };
         match command {
             Command::PrivateMedia(input) => input.execute(self),
+            Command::ManagedAgent(input) => input.execute(self).await,
             MessageDateTarget(input) => encode(&self.lock().message_date_target(&input)?),
             AppCurrentShareContext { scope } => encode(&self.app_current_share_context(scope)?),
             ShareAppCurrent {

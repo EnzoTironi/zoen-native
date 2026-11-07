@@ -7,6 +7,9 @@ use protocol::{
 };
 
 const META: &str = "agent.enrollment.managed-intent.v1";
+mod chat;
+mod complete;
+mod discard;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
