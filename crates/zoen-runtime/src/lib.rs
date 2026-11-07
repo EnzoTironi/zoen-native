@@ -85,6 +85,8 @@ pub enum RuntimeError {
     Unavailable,
     #[error("bounded evidence cannot be retained")]
     EvidenceTooLarge,
+    #[error("native retirement capacity is temporarily full")]
+    NativeBackpressure,
 }
 impl From<sqlx::Error> for RuntimeError {
     fn from(error: sqlx::Error) -> Self {

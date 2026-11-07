@@ -27,7 +27,7 @@ fn category(error: zoen_runtime::RuntimeError) -> PolicyUnavailable {
         E::OverBudget => PolicyUnavailable::OverBudget,
         E::CoreAuthorityUnavailable => PolicyUnavailable::CoreAuthorityUnavailable,
         E::RestoreUnreconciled => PolicyUnavailable::RestoreUnreconciled,
-        E::Unavailable => PolicyUnavailable::Unavailable,
+        E::Unavailable | E::NativeBackpressure => PolicyUnavailable::Unavailable,
         E::EvidenceTooLarge => PolicyUnavailable::EvidenceTooLarge,
     }
 }
@@ -55,12 +55,14 @@ mod tests {
         for (stage, error) in [
             (S::AdmissionMlsGroup, E::Denied),
             (S::AdmissionMlsGroup, E::Unavailable),
+            (S::AdmissionMlsGroup, E::NativeBackpressure),
             (S::AdmissionMlsPending, E::Denied),
             (S::AdmissionMlsStorage, E::Denied),
             (S::AdmissionMlsCredential, E::Denied),
             (S::AdmissionFreshness, E::Denied),
             (S::AdmissionMembership, E::Denied),
             (S::Source, E::Denied),
+            (S::Source, E::NativeBackpressure),
         ] {
             let response =
                 context_failure(Failure { stage, error }, "exact-inquiry".into(), &device);
@@ -73,6 +75,31 @@ mod tests {
                 assert!(matches!(response, PolicyProgress::Unavailable { .. }));
             }
         }
+    }
+    #[test]
+    fn native_capacity_preserves_the_existing_unavailable_wire_contract(
+    ) -> Result<(), serde_json::Error> {
+        for operation in [PolicyOperation::Context, PolicyOperation::Import] {
+            let value = serde_json::to_value(unavailable(
+                operation,
+                zoen_runtime::RuntimeError::NativeBackpressure,
+                None,
+            ))?;
+            assert_eq!(value["status"], "unavailable");
+            assert_eq!(value["code"], "unavailable");
+            assert!(matches!(
+                serde_json::from_value::<PolicyProgress>(value)?,
+                PolicyProgress::Unavailable {
+                    code: PolicyUnavailable::Unavailable,
+                    ..
+                }
+            ));
+        }
+        assert_eq!(
+            category(zoen_runtime::RuntimeError::EvidenceTooLarge),
+            PolicyUnavailable::EvidenceTooLarge
+        );
+        Ok(())
     }
     #[test]
     fn actual_runtime_denial_is_unavailable_not_an_installed_or_refused_receipt() {

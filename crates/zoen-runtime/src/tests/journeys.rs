@@ -6,6 +6,13 @@ type Phase = fn() -> Journey;
 
 pub(super) async fn run() -> TestResult {
     let phases: Vec<Phase> = match std::env::var("ZOEN_RUNTIME_TEST_COHORT") {
+        Ok(cohort) if cohort == "native-backpressure" => {
+            vec![
+                || Box::pin(native_custody()),
+                || Box::pin(retained::shared_native::context::backpressure::run()),
+                || Box::pin(retained::shared_native::context::tool_reviews::sequential()),
+            ]
+        }
         Ok(cohort) if cohort == "native-discovery-race" => {
             vec![
                 || Box::pin(retained::shared_native::discovery_race::run()),

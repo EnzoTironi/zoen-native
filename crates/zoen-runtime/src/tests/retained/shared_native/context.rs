@@ -2,6 +2,7 @@
 use super::*;
 use crate::tests::retained::image_tasks::delivery::relay::Relay;
 use types::agent_behavior::{AgentKind, Definition, ModelTier};
+pub(in crate::tests) mod backpressure;
 mod conversation;
 mod history_search;
 pub(in crate::tests) mod policy_host;
@@ -74,6 +75,7 @@ pub(in crate::tests) async fn history_turns() -> TestResult {
     Ok(())
 }
 pub(in crate::tests) async fn run() -> TestResult {
+    Box::pin(backpressure::run()).await?;
     Box::pin(selected_source::run()).await?;
     Box::pin(tool_reviews::run()).await?;
     Box::pin(tool_reviews::boundaries()).await?;

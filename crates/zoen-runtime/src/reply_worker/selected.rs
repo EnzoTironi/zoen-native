@@ -71,7 +71,12 @@ impl SelectedReplyWorker {
             Err(error) if retryable(error) => {
                 self.schedule.defer(
                     key.into(),
-                    if self.original.is_none() || error == RuntimeError::Unavailable {
+                    if self.original.is_none()
+                        || matches!(
+                            error,
+                            RuntimeError::Unavailable | RuntimeError::NativeBackpressure
+                        )
+                    {
                         RETRY
                     } else {
                         REVIEW

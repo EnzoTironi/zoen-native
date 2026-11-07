@@ -304,7 +304,7 @@ async fn reviewed_chain(sequential: bool) -> TestResult {
     let mut ids = std::collections::BTreeSet::new();
     for count in 1..=3 {
         let consumer = host(&f, &relay, calls.clone())?;
-        let progress = Box::pin(consumer.advance(&run.run)).await?;
+        let progress = advance_with_capacity(&consumer, &run.run).await?;
         let ReplyHostProgress::Review {
             request,
             content_hash,
@@ -327,11 +327,14 @@ async fn reviewed_chain(sequential: bool) -> TestResult {
         decide(&mut f, &request, &content_hash, true).await?;
     }
     let consumer = host(&f, &relay, calls.clone())?;
-    let result = Box::pin(consumer.advance(&run.run)).await?;
+    let result = advance_with_capacity(&consumer, &run.run).await?;
     assert!(
         matches!(
             result,
             ReplyHostProgress::Output {
+                delivery: crate::ReplyReceiptProgress::Accepted { .. },
+                ..
+            } | ReplyHostProgress::Completed {
                 delivery: crate::ReplyReceiptProgress::Accepted { .. },
                 ..
             }
@@ -363,4 +366,22 @@ async fn reviewed_chain(sequential: bool) -> TestResult {
     f.finish().await;
     println!("journaled reviews sequential={sequential}: three independent cold owner approvals, exact captures and one final answer PASS");
     Ok(())
+}
+
+// A known full retirement window is scheduling pressure, not a new attempt.
+// Exercise real FDB time/normal collection; do not expire fixtures or widen the
+// production window to make a multi-approval conversation fit in a single tick.
+async fn advance_with_capacity(
+    host: &ReplyRuntimeHost,
+    run: &str,
+) -> Result<ReplyHostProgress, Box<dyn std::error::Error>> {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(90);
+    loop {
+        match Box::pin(host.advance(run)).await {
+            Err(RuntimeError::NativeBackpressure) if std::time::Instant::now() < until => {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            result => return result.map_err(Into::into),
+        }
+    }
 }

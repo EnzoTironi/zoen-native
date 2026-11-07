@@ -53,7 +53,7 @@ pub(super) async fn run(
             )
             .await;
         assert!(
-            matches!(result, Err(RuntimeError::EvidenceTooLarge)),
+            matches!(result, Err(RuntimeError::NativeBackpressure)),
             "full retired capacity must reject before persisting a candidate"
         );
         let trx = execution.transaction().await?;

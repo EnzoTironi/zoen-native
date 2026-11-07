@@ -100,7 +100,10 @@ impl ReplyWorker {
                 Err(error) if retryable(error) => {
                     self.defer(
                         run.run.clone(),
-                        if error == RuntimeError::Unavailable {
+                        if matches!(
+                            error,
+                            RuntimeError::Unavailable | RuntimeError::NativeBackpressure
+                        ) {
                             RETRY
                         } else {
                             REVIEW
@@ -141,7 +144,10 @@ impl ReplyWorker {
 fn retryable(error: RuntimeError) -> bool {
     matches!(
         error,
-        RuntimeError::Denied | RuntimeError::OverBudget | RuntimeError::Unavailable
+        RuntimeError::Denied
+            | RuntimeError::OverBudget
+            | RuntimeError::Unavailable
+            | RuntimeError::NativeBackpressure
     )
 }
 
@@ -180,5 +186,7 @@ mod tests {
         assert!(worker.defer("0".into(), REVIEW).is_ok());
         assert!(!retryable(RuntimeError::RestoreUnreconciled));
         assert!(!retryable(RuntimeError::InvalidBinding));
+        assert!(!retryable(RuntimeError::EvidenceTooLarge));
+        assert!(retryable(RuntimeError::NativeBackpressure));
     }
 }
