@@ -235,7 +235,7 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         assert!(bridge(&owner, "managed_agent_status", json!({}))
             .await?
             .is_null());
-        owner.send_message(space, "Can you answer with the client closed?".into())?;
+        owner.send_message(space.clone(), "Can you answer with the client closed?".into())?;
         owner.wait_until_settled(20_000).await?;
         owner.stop_sync();
         drop(owner);
@@ -274,6 +274,7 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         let primary = open_owner(&w)?;
         primary.start_sync(None)?;
         primary.wait_until_settled(20_000).await?;
+        assert_recovered_reply(&primary, &space, &agent, &output, provider::ANSWER).await?;
         assert!(bridge(&primary, "managed_agent_status", json!({})).await?.is_null());
         assert!(bridge(&primary, "managed_agent_discover", json!({"after_operation":""})).await?["requests"].as_array().ok_or("completed discovery")?.is_empty());
         primary.stop_sync();

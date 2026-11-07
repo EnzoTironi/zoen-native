@@ -140,3 +140,38 @@ pub(super) async fn status(
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
+
+/// The host reports locators, not plaintext. Validate the accepted client ID and
+/// actual authenticated text through the cold owner's native projection.
+pub(super) async fn assert_recovered_reply(
+    owner: &Client,
+    space: &str,
+    agent: &str,
+    output: &Value,
+    expected: &str,
+) -> TestResult {
+    let accepted = output["client_id"].as_str().ok_or("accepted client ID")?;
+    let until = Instant::now() + Duration::from_secs(20);
+    loop {
+        let history = owner.timeline(space.into())?;
+        let replies: Vec<_> = history
+            .iter()
+            .filter(|entry| {
+                entry.author.id == agent
+                    && matches!(&entry.kind, client_core::EntryKind::Message { .. })
+            })
+            .collect();
+        if !replies.is_empty() {
+            assert_eq!(replies.len(), 1);
+            assert_eq!(replies[0].id, accepted);
+            assert!(matches!(&replies[0].kind,
+                client_core::EntryKind::Message {text,..}
+                    if text.to_ascii_lowercase().contains(&expected.to_ascii_lowercase())));
+            return Ok(());
+        }
+        if Instant::now() >= until {
+            return Err("cold owner did not recover the accepted encrypted reply".into());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}

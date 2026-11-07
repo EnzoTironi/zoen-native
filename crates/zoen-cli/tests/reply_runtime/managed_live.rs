@@ -167,12 +167,8 @@ async fn run(
     let output = service
         .frame_for("output", Duration::from_secs(120))
         .await?;
-    if output["delivery"]["status"] != "accepted"
-        || !output["message"]
-            .as_str()
-            .is_some_and(|s| s.contains(challenge))
-    {
-        return Err("live reply missing its synthetic identifier or delivery receipt".into());
+    if output["delivery"]["status"] != "accepted" {
+        return Err("live reply missing its delivery receipt".into());
     }
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
     assert_eq!(
@@ -198,29 +194,7 @@ async fn run(
     assert!(bridge(&cold, "managed_agent_status", json!({}))
         .await?
         .is_null());
-    let answer = output["message"].as_str().ok_or("reply text")?;
-    let until = std::time::Instant::now() + Duration::from_secs(20);
-    loop {
-        let history = cold.timeline(space.clone())?;
-        let count = history
-            .iter()
-            .filter(|entry| {
-                entry.author.id == agent
-                    && matches!(
-                        &entry.kind,
-                        client_core::EntryKind::Message { text, .. } if text == answer
-                    )
-            })
-            .count();
-        if count > 0 {
-            assert_eq!(count, 1);
-            break;
-        }
-        if std::time::Instant::now() >= until {
-            return Err("cold owner did not recover the same encrypted reply".into());
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    assert_recovered_reply(&cold, &space, &agent, &output, challenge).await?;
     assert_eq!(
         w.count("SELECT count(*) FROM runtime_attempts").await,
         attempts
