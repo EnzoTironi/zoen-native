@@ -77,6 +77,11 @@ impl ReplyWorker {
                             delivery: ReplyReceiptProgress::Accepted { .. },
                             ..
                         } => None,
+                        ReplyHostProgress::Review { status, .. }
+                            if *status != client_core::RequestStatus::Pending =>
+                        {
+                            Some(REVIEW)
+                        }
                         ReplyHostProgress::Held { .. }
                         | ReplyHostProgress::AwaitingRecovery { .. } => Some(REVIEW),
                         _ => Some(RETRY),

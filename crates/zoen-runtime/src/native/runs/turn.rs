@@ -9,6 +9,8 @@ use zoen_models::{OutputBlock, ToolDefinition};
 #[serde(deny_unknown_fields)]
 pub(super) struct Continuation {
     pub(super) parent: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(super) gated: bool,
     original: String,
     capture: String,
     #[serde(default, skip_serializing_if = "zero")]

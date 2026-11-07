@@ -3,8 +3,21 @@ enum NativeEffect<'a> {
     Maintenance(Option<SharedSource>),
     Discovery(Batch),
     Publication(&'a runs::output::LivePublication<'a>),
+    Tool(&'a runs::reviews::LiveToolDecision<'a>),
 }
 impl NativeCustody {
+    pub(in crate::native) async fn activate_tool_decision(
+        &self,
+        runtime: &RuntimeAuthority,
+        credential: &Credential,
+        staged: storage::Staged,
+        fence: &crate::execution::Fence,
+        live: &runs::reviews::LiveToolDecision<'_>,
+    ) -> Result<(), RuntimeError> {
+        self.activate_native(runtime, credential, staged, fence, NativeEffect::Tool(live))
+            .await?;
+        Ok(())
+    }
     pub(in crate::native) async fn activate_maintenance(
         &self,
         runtime: &RuntimeAuthority,
@@ -68,8 +81,8 @@ impl NativeCustody {
         fence: &crate::execution::Fence,
         effect: NativeEffect<'_>,
     ) -> Result<(Root, Vec<crate::ReplyRun>), RuntimeError> {
-        let (source, batch, live) = match effect {
-            NativeEffect::Maintenance(source) => (source, None, None),
+        let (source, batch, live, tool) = match effect {
+            NativeEffect::Maintenance(source) => (source, None, None, None),
             NativeEffect::Discovery(batch) => (
                 Some(SharedSource {
                     cell: batch.source.clone(),
@@ -79,8 +92,12 @@ impl NativeCustody {
                 }),
                 Some(batch),
                 None,
+                None,
             ),
-            NativeEffect::Publication(live) => (Some(live.source(runtime)?), None, Some(live)),
+            NativeEffect::Publication(live) => {
+                (Some(live.source(runtime)?), None, Some(live), None)
+            }
+            NativeEffect::Tool(tool) => (Some(tool.source(runtime)?), None, None, Some(tool)),
         };
         let mut intent = Intent {
             format: 1,
@@ -89,9 +106,10 @@ impl NativeCustody {
             source,
             discovery: None,
             publication: None,
+            tool: None,
         };
         let Some(shared) = &runtime.runtime_continuity else {
-            if batch.is_some() || live.is_some() {
+            if batch.is_some() || live.is_some() || tool.is_some() {
                 return Err(RuntimeError::CoreAuthorityUnavailable);
             }
             let scope = intent.scope(runtime, fence)?;
@@ -172,6 +190,21 @@ impl NativeCustody {
                 )?,
             );
         }
+        if let Some(tool) = tool {
+            tool.verify(runtime, &tx).await?;
+            intent.tool = Some(
+                tool.retain(
+                    runtime,
+                    &staged.root,
+                    &managed.deployment.namespace,
+                    previous
+                        .sequence
+                        .checked_add(1)
+                        .ok_or(RuntimeError::InvalidBinding)?,
+                    &before,
+                )?,
+            );
+        }
         let scope = intent.scope(runtime, fence)?;
         let updates = intent.updates()?;
         if updates
@@ -200,7 +233,9 @@ impl NativeCustody {
             .await?;
         tx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         #[cfg(test)]
-        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 90 {
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst)
+            == if tool.is_some() { 181 } else { 90 }
+        {
             return Err(RuntimeError::Unavailable);
         }
         let guard = runtime
@@ -212,7 +247,7 @@ impl NativeCustody {
                 &credential.certificate,
             )
             .await?;
-        let guard = if live.is_some() {
+        let guard = if live.is_some() || tool.is_some() {
             guard.active_reply_actor().await?
         } else {
             guard
@@ -235,17 +270,23 @@ impl NativeCustody {
                 intent
                     .publication
                     .as_ref()
-                    .and_then(|value| value.expires()),
+                    .and_then(|value| value.expires())
+                    .or_else(|| intent.tool.as_ref().and_then(|value| value.expires())),
             )
             .await?;
         #[cfg(test)]
-        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 91 {
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst)
+            == if tool.is_some() { 182 } else { 91 }
+        {
             return Err(RuntimeError::Unavailable);
         }
         let tx = runtime.execution.transaction().await?;
         verify_source(runtime, &tx, intent.source.as_ref(), true).await?;
         if let Some(live) = live {
             live.verify(runtime, &tx).await?;
+        }
+        if let Some(tool) = tool {
+            tool.verify(runtime, &tx).await?;
         }
         runtime
             .execution
@@ -259,26 +300,39 @@ impl NativeCustody {
         } else {
             Vec::new()
         };
-        if let Some(publication) = &intent.publication {
+        if intent.publication.is_some() || intent.tool.is_some() {
             let capsule = runtime
                 .execution
                 .read_native_in(&tx, &credential.principal(), Some(fence))
                 .await?;
-            let core = DeviceCore::restore(
+            let mut core = DeviceCore::restore(
                 self.open_image(&credential.principal(), capsule)?,
                 credential.unlocked()?,
             )
             .map_err(|_| RuntimeError::InvalidBinding)?;
-            publication
-                .apply(
+            if let Some(publication) = &intent.publication {
+                publication
+                    .apply(
+                        runtime,
+                        &tx,
+                        &staged.root,
+                        publication.retained(&runtime.custody, &core)?,
+                        &managed.deployment.namespace,
+                        &prepared,
+                    )
+                    .await?;
+            }
+            if let Some(tool) = &intent.tool {
+                tool.apply(
                     runtime,
                     &tx,
                     &staged.root,
-                    publication.retained(&runtime.custody, &core)?,
+                    &mut core,
                     &managed.deployment.namespace,
                     &prepared,
                 )
                 .await?;
+            }
         }
         managed.write_fdb(runtime, &tx, &prepared).await?;
         tx.clear(
@@ -286,7 +340,7 @@ impl NativeCustody {
                 .execution
                 .image_activation_pin(&credential.principal()),
         );
-        if live.is_some()
+        if (live.is_some() || tool.is_some())
             && inventory(
                 runtime,
                 &mut runtime.finance.continuity_transaction().await?,
@@ -304,7 +358,9 @@ impl NativeCustody {
         admission.consume(&scope)?;
         tx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
         #[cfg(test)]
-        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 92 {
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst)
+            == if tool.is_some() { 183 } else { 92 }
+        {
             return Err(RuntimeError::Unavailable);
         }
         Box::pin(managed.reconcile(runtime)).await?;

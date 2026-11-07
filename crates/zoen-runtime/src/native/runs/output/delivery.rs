@@ -159,7 +159,7 @@ impl NativeCustody {
                     },
                     run: loaded.record.locator.run.clone(),
                     attempt: loaded.record.locator.attempt.clone(),
-                    expires_at_ms: loaded.facts.expires_at_ms(),
+                    expires_at_ms: loaded.deadline(),
                 },
             )
             .await?;
@@ -188,6 +188,7 @@ impl NativeCustody {
         capture: &RetainedCapture,
         capability: &dyn NativeOutputAuthority,
     ) -> Result<(), RuntimeError> {
+        loaded.check_deadline(runtime).await?;
         #[cfg(test)]
         if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 72 {
             runtime.native_cut_entered.notify_one();
@@ -256,6 +257,7 @@ impl NativeCustody {
         drop(trx);
         // Directory/FDB work can also wait; observe the SQL clock once more
         // after it, so that work cannot consume the last grant interval.
+        loaded.check_deadline(runtime).await?;
         core.pending_reply(
             &loaded.record.intent,
             &publication.value.client_id,

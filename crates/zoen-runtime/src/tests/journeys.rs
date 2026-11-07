@@ -20,6 +20,26 @@ pub(super) async fn run() -> TestResult {
         Ok(cohort) if cohort == "native-reply-host" => {
             vec![|| Box::pin(retained::shared_native::context::policy_host::run())]
         }
+        Ok(cohort) if cohort == "native-tool-review-release" => {
+            vec![
+                || Box::pin(retained::shared_native::context::history_turns()),
+                || Box::pin(retained::shared_native::context::tool_reviews::run()),
+                || Box::pin(retained::shared_native::context::tool_reviews::boundaries()),
+                || Box::pin(retained::shared_native::context::tool_reviews::sequential()),
+            ]
+        }
+        Ok(cohort) if cohort == "native-tool-review-chain" => {
+            vec![|| Box::pin(retained::shared_native::context::tool_reviews::sequential())]
+        }
+        Ok(cohort) if cohort == "native-history-turns" => {
+            vec![|| Box::pin(retained::shared_native::context::history_turns())]
+        }
+        Ok(cohort) if cohort == "native-tool-review-boundaries" => {
+            vec![|| Box::pin(retained::shared_native::context::tool_reviews::boundaries())]
+        }
+        Ok(cohort) if cohort == "native-tool-reviews" => {
+            vec![|| Box::pin(retained::shared_native::context::tool_reviews::run())]
+        }
         Ok(cohort) if cohort == "native-agent-context" => {
             vec![|| Box::pin(retained::shared_native::context::run())]
         }

@@ -42,7 +42,7 @@ pub(crate) async fn recover_shared_native(
         if capsule.root != intent.target {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        let core = DeviceCore::restore(
+        let mut core = DeviceCore::restore(
             custody.open_image(principal, capsule)?,
             credential.unlocked()?,
         )
@@ -58,6 +58,17 @@ pub(crate) async fn recover_shared_native(
                     prepared,
                 )
                 .await?;
+        }
+        if let Some(tool) = &intent.tool {
+            tool.apply(
+                runtime,
+                &tx,
+                &intent.target,
+                &mut core,
+                &managed.deployment.namespace,
+                prepared,
+            )
+            .await?;
         }
         sql.commit().await?;
         if managed
@@ -110,7 +121,7 @@ pub(crate) async fn recover_shared_native(
             .execution
             .recover_image_stage(&tx, &staged, &fence)
             .await?;
-        let core = DeviceCore::restore(
+        let mut core = DeviceCore::restore(
             custody.open_image(principal, image)?,
             credential.unlocked()?,
         )
@@ -165,8 +176,19 @@ pub(crate) async fn recover_shared_native(
                 )
                 .await?;
         }
+        if let Some(tool) = &intent.tool {
+            tool.apply(
+                runtime,
+                &tx,
+                &intent.target,
+                &mut core,
+                &managed.deployment.namespace,
+                prepared,
+            )
+            .await?;
+        }
         managed.write_fdb(runtime, &tx, prepared).await?;
-        if intent.publication.is_some() {
+        if intent.publication.is_some() || intent.tool.is_some() {
             let mut sql = runtime.finance.continuity_transaction().await?;
             if inventory(runtime, &mut sql, &tx).await? != expected {
                 return Err(RuntimeError::RestoreUnreconciled);

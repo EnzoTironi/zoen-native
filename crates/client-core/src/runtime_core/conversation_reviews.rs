@@ -236,6 +236,42 @@ impl DeviceCore {
         self.continue_reply_history(original, &reads, arguments, at_ms)
     }
 
+    /// Validate this exact owner decision without performing a read. The cloud
+    /// caller must still prove its capture, Gate, continuity and current source.
+    pub fn reply_search_review_approved(
+        &self,
+        original: &ReplyIntent,
+        request: &str,
+        content_hash: &str,
+        arguments: &Value,
+        at_ms: i64,
+    ) -> Result<()> {
+        self.refresh(original, at_ms)?;
+        self.approved_review_args(original, request, content_hash, arguments, at_ms)
+    }
+
+    /// Inert captured-call correspondence; this does not approve the query.
+    pub fn reply_search_review_bound(
+        &self,
+        original: &ReplyIntent,
+        request: &str,
+        content_hash: &str,
+        native: &Value,
+    ) -> Result<()> {
+        let record = self.review_record(original, request, content_hash)?;
+        let proposal = record
+            .req
+            .tool_proposal
+            .as_ref()
+            .ok_or(NativeError::History)?;
+        let ask: Value =
+            serde_json::from_str(&proposal.continuation_json).map_err(|_| NativeError::History)?;
+        if ask["version"] != 2 || ask["native"] != *native {
+            return Err(NativeError::History);
+        }
+        Ok(())
+    }
+
     /// Revalidate each original owner decision and actual page before further
     /// inference/publication. Historical read text never renews expired consent.
     pub fn verify_approved_reply_history(

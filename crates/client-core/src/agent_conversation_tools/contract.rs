@@ -6,6 +6,42 @@ use crate::{
 use serde_json::json;
 use types::{ActionClass, AgentRequest, ToolProposal};
 
+/// Independent captured calls share source authority, not approval identity.
+pub(super) fn task(ask: &Value, space: &str, actor: &str, source: &str) -> R<String> {
+    let bytes = if ask["version"] == 1 {
+        serde_json::to_vec(&("zoen.tool-task.v1", space, actor, source))
+    } else if ask["version"] == 2 {
+        let native = ask["native"].as_object().ok_or_else(invalid)?;
+        if native.len() != 3
+            || !["original", "capture"].into_iter().all(|key| {
+                native
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .is_some_and(hash::valid_digest)
+            })
+            || native
+                .get("call")
+                .and_then(Value::as_u64)
+                .is_none_or(|index| index >= 3)
+            || ask["steps"].as_array().is_none_or(|v| !v.is_empty())
+            || ask["remaining"].as_array().is_none_or(|v| !v.is_empty())
+            || ask["round"] != 0
+        {
+            return Err(invalid());
+        }
+        serde_json::to_vec(&(
+            "zoen.native-tool-task.v1",
+            space,
+            actor,
+            source,
+            &ask["native"],
+        ))
+    } else {
+        return Err(invalid());
+    };
+    Ok(hash::digest(&bytes.map_err(|_| invalid())?))
+}
+
 pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
     if p.schema != SCHEMA
         || p.canonical_tool != TOOL
@@ -36,7 +72,7 @@ pub(crate) fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
     if ask["policy_sha256"]
         .as_str()
         .is_none_or(|v| !hash::valid_digest(v))
-        || ask["version"] != 1
+        || !matches!(ask["version"].as_u64(), Some(1 | 2))
         || ask["rule"].as_str() != Some(&p.gate_rule)
         || ask["steps"]
             .as_array()
@@ -67,7 +103,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
     let Some((source, inbound)) = shared::source_hash(state, space, &p.source, &p.serving) else {
         return false;
     };
-    let Ok(task) = serde_json::to_vec(&("zoen.tool-task.v1", space, &req.agent, &p.source)) else {
+    let Ok(task) = task(&ask, space, &req.agent, &p.source) else {
         return false;
     };
     req.proposal.is_none()
@@ -80,7 +116,7 @@ pub(crate) fn matches(state: &State, req: &AgentRequest, space: &str) -> bool {
         && p.serving != req.agent
         && source == p.source_sha256
         && req.tool_proposal_hash(space).as_deref() == Some(&req.content_hash)
-        && p.task_sha256 == hash::digest(&task)
+        && p.task_sha256 == task
         && ask["envelope"]
             == json!({"agent":req.agent,"device":p.device,"owner":p.owner,"space":space,"from":p.serving,"inbound_sha256":inbound})
 }

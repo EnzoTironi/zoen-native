@@ -41,7 +41,7 @@ fn host(f: &Fixture, relay: &Relay) -> Result<ReplyRuntimeHost, RuntimeError> {
                 .ok_or(RuntimeError::InvalidBinding)?,
             target: relay.target(f, relay.address),
         },
-        gate::Gate::default(),
+        super::tool_reviews::policy(false, Arc::new(std::sync::atomic::AtomicUsize::new(0))),
     )
 }
 async fn freeze(f: &Fixture, run: &str) -> Result<String, Box<dyn std::error::Error>> {

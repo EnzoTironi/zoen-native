@@ -4,6 +4,7 @@ pub(in crate::continuity) struct CaptureInventory {
     pub(in crate::continuity) publications: BTreeMap<String, String>,
     pub(in crate::continuity) receipts: BTreeMap<String, String>,
     pub(in crate::continuity) associations: BTreeMap<String, String>,
+    pub(in crate::continuity) tools: BTreeMap<String, Vec<String>>,
     pub(in crate::continuity) attempts: std::collections::BTreeSet<String>,
     pub(in crate::continuity) bytes: usize,
 }
@@ -31,6 +32,7 @@ pub(in crate::continuity) async fn commitments(
     let mut publications = BTreeMap::new();
     let mut receipts = BTreeMap::new();
     let mut attempts = std::collections::BTreeSet::new();
+    let mut tools = BTreeMap::new();
     for (key, bytes) in rows {
         let pointer: Pointer =
             serde_json::from_slice(&bytes).map_err(|_| RuntimeError::InvalidBinding)?;
@@ -71,6 +73,18 @@ pub(in crate::continuity) async fn commitments(
             }
         }
         attempts.insert(pointer.attempt.clone());
+        let decisions = runtime
+            .execution
+            .shared_tool_digests_in(
+                runtime,
+                tx,
+                &binding,
+                associations.get(&pointer.subject()?).map(String::as_str),
+            )
+            .await?;
+        if !decisions.is_empty() {
+            tools.insert(pointer.subject()?, decisions);
+        }
         if result
             .insert(pointer.subject()?, crate::hash(&bytes))
             .is_some()
@@ -81,6 +95,7 @@ pub(in crate::continuity) async fn commitments(
     Ok(CaptureInventory {
         commitments: result,
         associations,
+        tools,
         publications,
         receipts,
         attempts,

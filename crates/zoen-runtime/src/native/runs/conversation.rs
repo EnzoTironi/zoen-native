@@ -8,6 +8,7 @@ impl LoadedReply {
         runtime: &RuntimeAuthority,
         scope: &dyn NativeOutputAuthority,
     ) -> Result<foundationdb::Transaction, RuntimeError> {
+        self.check_deadline(runtime).await?;
         runtime.check_reply_continuity().await?;
         scope.check_context(runtime)?;
         let principal = &self.record.original.context.principal;

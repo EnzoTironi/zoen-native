@@ -294,8 +294,9 @@ attempts, and an actual deferred SQL commit failure are exercised. That failure
 leaves the independently committed FDB marker orphaned and closed. It is a real
 commit rejection, not DB wire-level commit-unknown testing.
 
-The normal Brain/Clef/iOS host integration, deployed managed vault, live relay
-provisioning, worker/JetStream recovery, typed tool approval/resume, live provider
-billing reconciliation and deployment drills remain open. The qualified native
-reply API and local service journeys do not complete runtime milestone 1. See the
+Configured `agent-host` uses the supervised durable executor. History-search
+reviews retain captured-call decisions in the shared journal and resume after
+signed owner consent. General tool effects, iOS service integration, managed
+vault/relay provisioning, live provider billing and deployment drills remain
+open. Local service journeys do not complete runtime milestone 1. See the
 [capability ledger](../../docs/agent-runtime-capabilities.md).

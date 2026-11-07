@@ -68,6 +68,16 @@ Every acceptance entry labelled **Planned** below is missing executable evidence
 | Drain, fairness, provider throttling and upgrades | agentd / operations | specified | **Planned:** restart/drain preserves attempts; owner fairness, quotas, migration compatibility and throttling under real service load. |
 | Custody, backup/restore, retention and reconciliation | agentd / FDB / Postgres | specified | **Planned:** seal/unseal authorization, partial restore blocks paid dispatch until inventories reconcile; dedupe-horizon publication recovery and retention drills. |
 
+Captured conversation-history reviews use the shared native activation journal:
+Gate decisions bind each actual captured call, policy and immutable original.
+The same retained MLS review request survives cold restarts; only the exact
+owner-signed approval permits reads and continuation. Descendant model dispatch
+and publication retain the earliest consent deadline. Recovery metadata never
+creates another paid attempt or fabricates a final receipt. Local automated
+Postgres/FDB/HTTP/relay fixtures cover approval, denial and three activation
+cuts; commercial provider billing and final iPhone/service acceptance remain
+separate. Other tools are not covered by this closed history-search contract.
+
 ## Integrated dependencies and milestone acceptance
 
 | Dependency | Current source integration | Remaining boundary |

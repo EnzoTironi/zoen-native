@@ -121,6 +121,15 @@ pub(super) fn progress(p: ReplyHostProgress) -> Value {
             audit,
             financial: state,
         } => json!({"status":"held","run":run,"audit":audit,"financial":financial(state)}),
+        ReplyHostProgress::Review {
+            run,
+            request,
+            content_hash,
+            status,
+            financial: state,
+        } => {
+            json!({"status":"review","run":run,"request":request,"content_hash":content_hash,"review_status":status,"financial":financial(Some(state))})
+        }
         ReplyHostProgress::AwaitingRecovery {
             run,
             financial: state,

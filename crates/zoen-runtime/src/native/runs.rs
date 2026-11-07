@@ -10,6 +10,7 @@ mod search;
 mod turn;
 use records::{PreparedRun, RunRecord, Wake};
 pub(crate) mod output;
+pub(in crate::native) mod reviews;
 mod storage;
 pub(crate) use cancellation::{cancel_commitments, cancel_intent, recover_shared_cancel};
 pub(crate) use cancellation::{CleanupAcquisition, CleanupStep};
@@ -79,7 +80,24 @@ struct LoadedReply {
     record_digest: String,
     current: Root,
     facts: ReplyFacts,
+    review_deadline: Option<i64>,
     fences: ReplyFences,
+}
+
+impl LoadedReply {
+    fn deadline(&self) -> Option<i64> {
+        match (self.facts.expires_at_ms(), self.review_deadline) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+    async fn check_deadline(&self, runtime: &RuntimeAuthority) -> Result<(), RuntimeError> {
+        let now = runtime.finance.reply_clock().await?;
+        if self.deadline().is_some_and(|expiry| now >= expiry) {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(())
+    }
 }
 
 /// Owns one actually loaded original and separately refreshed authorization.
@@ -109,7 +127,7 @@ impl ReplyStep {
     }
 
     pub(crate) fn grant_deadline(&self) -> Option<i64> {
-        self.loaded.facts.expires_at_ms()
+        self.loaded.deadline()
     }
 
     pub(crate) async fn scope_in(

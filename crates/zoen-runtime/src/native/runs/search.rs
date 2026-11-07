@@ -51,9 +51,18 @@ impl NativeCustody {
             return Err(RuntimeError::Denied);
         }
         let observed = runtime.finance.reply_clock().await?;
-        let core =
+        let mut core =
             DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
                 .map_err(native_error)?;
+        let consent_deadline = if reads.is_some() {
+            runtime
+                .execution
+                .approved_tools_in(runtime, &_snapshot, &loaded.record, &mut core, false, None)
+                .await?
+                .1
+        } else {
+            None
+        };
         let page = match reads {
             Some(reads) => {
                 core.continue_reply_history(&loaded.record.intent, reads, arguments, observed)
@@ -79,7 +88,12 @@ impl NativeCustody {
         let mut definition = runtime.finance.continuity_transaction().await?;
         loaded.record.current_definition_in(&mut definition).await?;
         definition.commit().await?;
-        if let Some(expires) = loaded.facts.expires_at_ms() {
+        if let Some(expires) = consent_deadline {
+            if runtime.finance.reply_clock().await? >= expires {
+                return Err(RuntimeError::Denied);
+            }
+        }
+        if let Some(expires) = loaded.deadline() {
             if runtime.finance.reply_clock().await? >= expires {
                 return Err(RuntimeError::Denied);
             }

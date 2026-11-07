@@ -37,18 +37,21 @@ impl NativeCustody {
             let observed = runtime.finance.reply_clock().await?;
             #[cfg(test)]
             println!("native paid load: stage=refresh_start observed_sql_ms={observed}");
-            let facts = {
+            let (facts, review_deadline) = {
                 let core = DeviceCore::restore(
                     self.open_image(&principal, capsule)?,
                     credential.unlocked()?,
                 )
                 .map_err(native_error)?;
                 let facts = core.refresh(&record.intent, observed).map_err(native_error)?;
+                let tx = runtime.execution.transaction().await?;
+                let mut core = core;
+                let deadline = Box::pin(runtime.execution.tool_ancestor_deadline_in(runtime, &tx, &record, &mut core, None)).await?;
                 if record.format >= 5 && record.continuation.is_some() {
                     core.verify_reply_history(&record.intent, &record.history_reads()?, observed)
                         .map_err(native_error)?;
                 }
-                facts
+                (facts, deadline)
             };
             #[cfg(test)]
             println!(
@@ -88,15 +91,16 @@ impl NativeCustody {
                 .await?
                 .commit()
                 .await?;
-            Ok((facts, current))
+            Ok((facts, current, review_deadline))
         }
         .await;
         match result {
-            Ok((facts, current)) => Ok(LoadedReply {
+            Ok((facts, current, review_deadline)) => Ok(LoadedReply {
                 record,
                 record_digest,
                 current,
                 facts,
+                review_deadline,
                 fences,
             }),
             Err(error) => {
