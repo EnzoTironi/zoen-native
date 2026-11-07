@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as React from 'react';
@@ -8,13 +11,33 @@ import type { ManagedEnrollmentDto } from './generated/ManagedEnrollmentDto';
 import type { ManagedRecoveryPageDto } from './generated/ManagedRecoveryPageDto';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 
+const require = createRequire(import.meta.url);
+const { transformSync } = require('@babel/core');
 const compiled = await build({
   entryPoints: [fileURLToPath(new URL('../managed-agent/use-managed-agent.ts', import.meta.url))],
   bundle: true,
   platform: 'node',
   format: 'cjs',
   write: false,
-  external: ['react', 'react-native', 'expo-router', '../core/provider'],
+  external: ['react', 'react/compiler-runtime', 'react-native', 'expo-router', '../core/provider'],
+  plugins: [
+    {
+      name: 'actual-expo-compiler',
+      setup(build) {
+        build.onLoad({ filter: /use-managed-agent\.ts$/ }, ({ path }) => {
+          const code = transformSync(readFileSync(path, 'utf8'), {
+            filename: path,
+            babelrc: false,
+            configFile: false,
+            presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
+            plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+            caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: true },
+          }).code as string;
+          return { contents: code, loader: 'js', resolveDir: dirname(path) };
+        });
+      },
+    },
+  ],
   define: { 'process.env.EXPO_OS': '"ios"' },
 });
 
@@ -41,7 +64,7 @@ export function managedView(state = 'review'): ManagedEnrollmentDto {
   };
 }
 
-/** Actual hook, session and Core port; only native requests, navigation and time are synthetic. */
+/** Actual Expo/React Compiler hook, session and Core port; only native requests, navigation and time are synthetic. */
 export async function managedAgentHookFixture(
   initial: ManagedEnrollmentDto | null = null,
   initialAppState = 'active',
@@ -113,6 +136,7 @@ export async function managedAgentHookFixture(
     },
     require: (name: string) => {
       if (name === 'react') return React;
+      if (name === 'react/compiler-runtime') return require(name);
       if (name === 'react-native') return { AppState: app };
       if (name === '../core/provider') return { useClient: () => ({ store, ...state }) };
       if (name === 'expo-router')
@@ -171,6 +195,7 @@ export async function managedAgentHookFixture(
     },
     async close() {
       await root.close();
+      assert.deepEqual(root.errors, []);
     },
   };
 }

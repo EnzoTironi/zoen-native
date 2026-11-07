@@ -7,8 +7,10 @@ import { ManagedAgentSession } from './session';
 import { managedAgentPort } from './core-port';
 
 export function useManagedAgent() {
-  const { store } = useClient();
-  const key = accountScopeKey(accountScope(store));
+  const client = useClient();
+  const { store } = client;
+  const renderedOwner = accountScope(store, client);
+  const key = accountScopeKey(renderedOwner);
   const session = useMemo(() => new ManagedAgentSession(managedAgentPort(store)), [store]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const [active, setActive] = useState(false);
@@ -114,7 +116,7 @@ export function useManagedAgent() {
     ticket: renderedTicket,
     ownerKey: key,
     available: !!key && process.env.EXPO_OS === 'ios',
-    active: active && session.scopeMatches(accountScope(store)),
+    active: active && session.scopeMatches(renderedOwner),
     open,
   };
 }
