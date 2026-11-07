@@ -151,6 +151,7 @@ export function render(
   const calls: { mode: string; entry: TimelineEntry }[] = [];
   const routes: unknown[] = [];
   const quotes: unknown[] = [];
+  const quoteOrigins: (string | undefined)[] = [];
   const previews: unknown[] = [];
   let didPan = false;
   let compilerCursor = 0;
@@ -263,7 +264,8 @@ export function render(
       },
       onAuthor() {},
       onReact() {},
-      onQuote(id: string, sourceSpace?: string) {
+      onQuote(id: string, sourceSpace?: string, originId?: string) {
+        quoteOrigins.push(originId);
         quotes.push(sourceSpace ? { id, sourceSpace } : id);
       },
       onMenu: (value: TimelineEntry, mode: string) => {
@@ -279,6 +281,7 @@ export function render(
     tree,
     routes,
     quotes,
+    quoteOrigins,
     previews,
     rerender: draw,
     caption,

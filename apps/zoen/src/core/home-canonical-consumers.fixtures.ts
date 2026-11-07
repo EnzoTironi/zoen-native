@@ -47,7 +47,7 @@ const compiled = Object.fromEntries(
             name: 'actual-chat-owner-and-view',
             setup(builder) {
               builder.onResolve({ filter: /./ }, ({ path }) =>
-                /\/(?:chat-screen|use-chat-controller|use-conversation-message-navigation|use-thread-message-navigation|use-conversation-search|use-reply-destination-focus|conversation-hashtag-search|conversation-hashtag-provider|message-hashtag|search-launch|send-chat-message)$/.test(
+                /\/(?:chat-screen|open-chat-quote|use-chat-controller|use-conversation-message-navigation|use-thread-message-navigation|use-conversation-search|use-reply-destination-focus|conversation-hashtag-search|conversation-hashtag-provider|message-hashtag|search-launch|send-chat-message)$/.test(
                   path,
                 )
                   ? undefined
@@ -298,6 +298,8 @@ export function renderScreen(
     if (path.endsWith('/media/message-audio-provider')) return { useMessageAudioFocus: noop };
     if (path.endsWith('/components/primitives'))
       return components(['EmptyState', 'Loading', 'NativeButton', 'Surface']);
+    if (path.endsWith('/conversation-return-button'))
+      return { ConversationReturnButton: 'ConversationReturnButton' };
     if (path.endsWith('/components/message-composer'))
       return { MessageComposer: 'MessageComposer' };
     if (path.endsWith('/components/conversation-viewport'))

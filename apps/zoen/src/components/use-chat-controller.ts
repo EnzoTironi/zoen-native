@@ -114,12 +114,7 @@ export function useChatController() {
     [id, owner],
   );
   const timelineReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
-  const {
-    target: scrollTarget,
-    select: setScrollTarget,
-    reveal,
-    current: navigationCurrent,
-  } = useConversationMessageNavigation({
+  const messageNavigation = useConversationMessageNavigation({
     store,
     space: id,
     owner,
@@ -127,6 +122,12 @@ export function useChatController() {
     scroller: timelineReveal,
     cancelInitialEnd: initialEnd.cancel,
   });
+  const {
+    target: scrollTarget,
+    select: setScrollTarget,
+    reveal,
+    current: navigationCurrent,
+  } = messageNavigation;
   const highlightedMessageId = searchState.active ? selectedHit?.ref_id : scrollTarget;
   const rows = useMemo<ConversationTimelineRow[]>(
     () =>
@@ -440,6 +441,7 @@ export function useChatController() {
   );
   useEffect(() => {
     if (
+      messageNavigation.returning ||
       !scrollTarget ||
       loadedSpace !== timelineKey ||
       !page ||
@@ -476,6 +478,7 @@ export function useChatController() {
     return () => cancelAnimationFrame(frame);
   }, [
     scrollTarget,
+    messageNavigation.returning,
     setScrollTarget,
     timelineReveal,
     loadedSpace,
@@ -545,6 +548,7 @@ export function useChatController() {
     cancelInitialEnd,
     store,
     setScrollTarget,
+    messageNavigation,
     search,
     input,
     initialEnd,

@@ -87,7 +87,11 @@ async function fixture(initialBottom = 20, sourceY = 300) {
       reveal.onLayout(700);
       reveal.onContentSize(402, 1800);
       reveal.onInset(geometry.contentInset);
-      f.current().onSearchContentLayout('source', { y: 0, width: 402, height: 100 });
+      f.current().onSearchContentLayout(f.current().highlightedMessageId ?? 'source', {
+        y: 0,
+        width: 402,
+        height: 100,
+      });
       reveal.onCommit(f.current().visibleEntries);
     });
   return {
@@ -95,8 +99,10 @@ async function fixture(initialBottom = 20, sourceY = 300) {
     offsets,
     indices,
     commit,
-    async tapQuote(id = 'source') {
-      await f.act(() => (quotedMessage(f.current()).message.props.onQuote as any)(id));
+    async tapQuote(id = 'source', origin?: string) {
+      await f.act(() =>
+        (quotedMessage(f.current()).message.props.onQuote as any)(id, undefined, origin),
+      );
     },
     async keyboard(bottom: number) {
       geometry = { ...geometry, contentInset: { top: 0, bottom } };
@@ -223,6 +229,78 @@ test('a newer quote wins when two taps share an outstanding history page', async
     assert.deepEqual(f.errors, []);
   } finally {
     older.resolve({ entries: [], before: null, has_more: false });
+    await f.close();
+  }
+});
+
+test('return from a Chat quote reveals the original message without sending or consuming the draft', async () => {
+  const { f, commit, tapQuote, offsets } = await fixture(300, 600);
+  try {
+    f.draft.messageDraft.text = '**Unsent** answer';
+    await tapQuote();
+    await commit();
+    for (let i = 0; i < 8; ++i) await f.frame();
+    assert.equal(f.current().messageNavigation.canReturn, true);
+    await f.act(() => f.current().messageNavigation.restore());
+    await commit();
+    for (let i = 0; i < 8; ++i) await f.frame();
+    assert.equal(f.current().highlightedMessageId, 'latest');
+    assert.equal(f.current().messageNavigation.canReturn, false);
+    assert.deepEqual(offsets, [528, 1400]);
+    assert.equal(f.current().composerText, '**Unsent** answer');
+    assert.equal(f.calls.filter((c) => c.op.startsWith('send_')).length, 0);
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});
+
+test('nested Chat quote returns unwind one origin per fresh action', async () => {
+  const { f, tapQuote } = await fixture();
+  try {
+    await tapQuote('source', 'latest');
+    await tapQuote('latest', 'source');
+    const old = f.current().messageNavigation.restore;
+    await f.act(() => old());
+    assert.equal(f.current().highlightedMessageId, 'source');
+    assert.equal(f.current().messageNavigation.canReturn, true);
+    await f.act(() => old());
+    assert.equal(f.current().highlightedMessageId, 'source');
+    assert.equal(f.current().messageNavigation.canReturn, true);
+    await f.act(() => f.current().messageNavigation.restore());
+    assert.equal(f.current().highlightedMessageId, 'latest');
+    assert.equal(f.current().messageNavigation.canReturn, false);
+  } finally {
+    await f.close();
+  }
+});
+
+test('user drag ends the Chat seek while preserving its explicit return origin', async () => {
+  const { f, tapQuote } = await fixture();
+  try {
+    await tapQuote();
+    await f.act(() => (quotedMessage(f.current()).list.props.onScrollBeginDrag as () => void)());
+    assert.equal(f.current().highlightedMessageId, null);
+    assert.equal(f.current().messageNavigation.canReturn, true);
+    await f.act(() => f.current().messageNavigation.restore());
+    assert.equal(f.current().highlightedMessageId, 'latest');
+  } finally {
+    await f.close();
+  }
+});
+
+test('reopening the account retires the previous Chat return control', async () => {
+  const { f, tapQuote } = await fixture();
+  try {
+    await tapQuote();
+    const old = f.current().messageNavigation.restore;
+    await f.reopen();
+    const count = f.calls.length;
+    await f.act(() => old());
+    assert.equal(f.calls.length, count);
+    assert.equal(f.current().messageNavigation.canReturn, false);
+    assert.equal(f.current().highlightedMessageId, null);
+  } finally {
     await f.close();
   }
 });

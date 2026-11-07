@@ -71,6 +71,15 @@ export function useThreadMessageNavigation({
       };
     }, []),
   );
+  const sources = useRef(entries);
+  useLayoutEffect(() => {
+    sources.current = entries;
+  }, [entries]);
+  const locate = useCallback(
+    async (id: string, admitted: () => boolean) =>
+      admitted() && sources.current?.some((entry) => entry.id === id) === true,
+    [],
+  );
   const navigation = useConversationMessageNavigation({
     store,
     space,
@@ -78,6 +87,7 @@ export function useThreadMessageNavigation({
     focused,
     scroller,
     cancelInitialEnd: noAction,
+    locate,
   });
   const { target, current, select } = navigation;
   const rows = useMemo<ConversationTimelineRow[]>(
@@ -179,9 +189,15 @@ export function useThreadMessageNavigation({
     return () => scroller.cancel();
   }, [scroller, current, disabled, list, metrics.observe]);
   useEffect(() => {
-    if (process.env.EXPO_OS === 'ios' && target && loaded === scroller && !disabled)
+    if (
+      process.env.EXPO_OS === 'ios' &&
+      target &&
+      loaded === scroller &&
+      !disabled &&
+      !navigation.returning
+    )
       scroller.request(target);
-  }, [target, loaded, scroller, disabled, visible]);
+  }, [target, loaded, scroller, disabled, visible, navigation.returning]);
   const bind = useCallback(() => {
     if (!current()) return;
     const tag = list.current?.getScrollableNode();
@@ -197,11 +213,11 @@ export function useThreadMessageNavigation({
     setFailure(null);
   }, [scroller, select, current]);
   const quote = useCallback(
-    (id: string, sourceSpace?: string) => {
+    (id: string, sourceSpace?: string, originId?: string) => {
       if (disabled || !current()) return;
       cancel();
       if ((!sourceSpace || sourceSpace === space) && entries?.some((entry) => entry.id === id)) {
-        select(id);
+        select(id, originId);
         if (process.env.EXPO_OS !== 'ios') {
           const index = rows.findIndex(
             (row) => row.entry.id === id || row.album?.entries.some((entry) => entry.id === id),
@@ -230,6 +246,7 @@ export function useThreadMessageNavigation({
   return {
     rows,
     target,
+    returnNavigation: navigation,
     error: failure?.scroller === scroller ? failure.message : null,
     metrics: metrics.navigationMetrics,
     scrollViewTag: native?.scroller === scroller ? native.tag : 0,

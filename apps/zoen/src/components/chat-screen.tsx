@@ -1,5 +1,6 @@
+import { ConversationReturnButton } from './conversation-return-button';
 import { ConversationHashtagProvider } from './conversation-hashtag-provider';
-import { homeSpacesFor } from '../home/access';
+import { openChatQuote } from './open-chat-quote';
 import { router } from 'expo-router';
 import { QuoteMotionView } from './quote-layout-context';
 import { QuoteLayoutTransition } from './quote-layout-transition';
@@ -34,6 +35,7 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
     cancelInitialEnd,
     store,
     setScrollTarget,
+    messageNavigation,
     search,
     input,
     initialEnd,
@@ -136,6 +138,16 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
             onInsetRequested(inset);
           }}
           onComposerLayout={onComposerLayout}
+          navigation={
+            searchState.active || selection.active ? undefined : (
+              <ConversationReturnButton
+                navigation={messageNavigation}
+                onError={() => {
+                  void inform(t('chat.messageUnavailable'), t('chat.tryAgain'));
+                }}
+              />
+            )
+          }
           composer={
             <>
               {selection.active ? (
@@ -436,27 +448,15 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                         onReact={(message, emoji) => {
                           void actions.react(message, emoji);
                         }}
-                        onQuote={(messageId, sourceSpace) => {
-                          if (sourceSpace) {
-                            if (homeSpacesFor(store.getSnapshot()).has(sourceSpace))
-                              router.push({
-                                pathname: '/chat/[id]',
-                                params: { id: sourceSpace, jump: messageId },
-                              });
-                            return;
-                          }
-                          void reveal(messageId)
-                            .then((target) => {
-                              if (target) setScrollTarget(target);
-                            })
-                            .catch(
-                              () =>
-                                void inform(
-                                  t('chat.theMessageCouldNotBeOpened'),
-                                  t('chat.tryAgainInAMoment'),
-                                ),
-                            );
-                        }}
+                        onQuote={(messageId, sourceSpace, originId) =>
+                          openChatQuote(
+                            context,
+                            router,
+                            messageId,
+                            sourceSpace,
+                            originId ?? entry.id,
+                          )
+                        }
                       />
                     )}
                   />

@@ -100,6 +100,7 @@ type ViewportProps = {
     ScrollComponent?: typeof NativeConversationScrollView,
   ) => ReactNode;
   composer: ReactNode;
+  navigation?: ReactNode;
   overlay?: ReactNode;
   initialFooterKey?: string;
   onInitialFooterLayout?: (height: number) => void;
@@ -129,6 +130,7 @@ export function ConversationContainer({
 function NativeConversationViewport({
   children,
   composer,
+  navigation,
   overlay,
   initialFooterKey,
   onInitialFooterLayout,
@@ -178,6 +180,7 @@ function NativeConversationViewport({
         pointerEvents="box-none"
         style={[{ position: 'absolute', left: 0, right: 0, zIndex: 2 }, composerPosition]}
       >
+        {navigation}
         <View
           pointerEvents="box-none"
           onLayout={({ nativeEvent }) => {
@@ -233,6 +236,7 @@ function ComposerSpacer({
 function FallbackConversationViewport({
   children,
   composer,
+  navigation,
   overlay,
   initialFooterKey,
   onInitialFooterLayout,
@@ -270,6 +274,7 @@ function FallbackConversationViewport({
           backgroundColor: 'transparent',
         }}
       >
+        {navigation}
         {composer}
       </View>
     </View>

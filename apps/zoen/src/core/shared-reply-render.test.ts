@@ -40,4 +40,5 @@ test('opening the original passes the exact source to the parent navigation boun
   assert.ok(quote);
   (quote.props.onPress as () => void)();
   assert.deepEqual(view.quotes, [{ id: 'private-message', sourceSpace: 'private-chat' }]);
+  assert.deepEqual(view.quoteOrigins, [message.id]);
 });
