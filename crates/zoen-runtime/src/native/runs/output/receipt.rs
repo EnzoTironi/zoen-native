@@ -220,11 +220,21 @@ impl NativeCustody {
             "load_historical_receipt",
             self.load_receipt(runtime, run, capability).await
         )?;
-        let result = receipt_stage!(
-            "receive_fenced_receipt",
-            // Keep native image/proof processing off each caller's inline future.
-            Box::pin(self.receive_output_fenced(runtime, &loaded, capability)).await
-        );
+        let result = Box::pin(async {
+            // Historical receipt progress may stage another image without going
+            // through discovery/source hydration. Run the same reference-aware
+            // GC here; waiting alone cannot free an already expired window.
+            // The active root/fences and pending originals remain protected.
+            runtime
+                .collect_reply_retired(&loaded.record.original.context.principal)
+                .await?;
+            receipt_stage!(
+                "receive_fenced_receipt",
+                // Keep native image/proof processing off each caller's inline future.
+                Box::pin(self.receive_output_fenced(runtime, &loaded, capability)).await
+            )
+        })
+        .await;
         let _ = runtime
             .execution
             .release_reply(&loaded.record, &loaded.fences)

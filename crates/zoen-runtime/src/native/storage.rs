@@ -316,7 +316,7 @@ impl Execution {
         )
         .await?;
         if retained.len() >= MAX_RETIRED {
-            return Err(RuntimeError::EvidenceTooLarge);
+            return Err(RuntimeError::NativeBackpressure);
         }
         Ok(())
     }

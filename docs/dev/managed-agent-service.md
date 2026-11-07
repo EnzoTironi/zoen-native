@@ -77,6 +77,16 @@ immediate retry. Discovery and tool continuations use this same path. Once the
 anchor prepares activation, the original fenced recovery protocol still applies;
 no timeout, retention window, authorization or financial check is bypassed.
 
+An intact but full native retirement window reports `NativeBackpressure`, separate
+from oversized/corrupt evidence. Both conversation schedulers keep the same
+original and use their ordinary transient retry cycle while normal GC preserves
+current, staged and original-task references. Pressure does not terminate the
+worker or authorize another model/effect. Review, revocation and restore failures
+retain their existing behavior; capacity and retention limits are unchanged.
+Historical receipt reconciliation also invokes this normal, reference-aware
+collection before processing its next image. It can progress without requiring
+an unrelated discovery call or a service restart to collect expired versions.
+
 The separate [live-provider probe](managed-live-provider.md) exercises the same
 service with an explicitly selected external chat model and synthetic content.
 
