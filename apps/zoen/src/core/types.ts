@@ -1,3 +1,4 @@
+import type { ManagedRecoveryPageDto } from './generated/ManagedRecoveryPageDto';
 import type { ManagedEnrollmentDto } from './generated/ManagedEnrollmentDto';
 import type { MediaPlaybackBookmark } from './generated/MediaPlaybackBookmark';
 import type { SharedReplyDraft } from './generated/SharedReplyDraft';
@@ -237,6 +238,8 @@ type Results = {
   agent_definition_update: AgentDefinitionUpdateDto;
   agent_definition_reconcile: AgentDefinitionUpdateDto | null;
   agent_definition_dismiss: boolean;
+  managed_agent_discover: ManagedRecoveryPageDto;
+  managed_agent_recover: ManagedEnrollmentDto;
   managed_agent_start: ManagedEnrollmentDto;
   managed_agent_status: ManagedEnrollmentDto | null;
   managed_agent_approve: ManagedEnrollmentDto;

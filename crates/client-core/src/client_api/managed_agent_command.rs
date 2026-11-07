@@ -4,6 +4,18 @@ use super::{encode, Client, CoreError, Deserialize};
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum ManagedAgentCommand {
+    #[serde(rename = "managed_agent_discover")]
+    Discover {
+        after_operation: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    #[serde(rename = "managed_agent_recover")]
+    Recover {
+        operation_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
     #[serde(rename = "managed_agent_start")]
     Start {
         name: String,
@@ -52,6 +64,32 @@ pub(super) enum ManagedAgentCommand {
 impl ManagedAgentCommand {
     pub(super) async fn execute(self, client: &Client) -> Result<String, CoreError> {
         match self {
+            Self::Discover {
+                after_operation,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &client
+                    .discover_managed_enrollments(
+                        &after_operation,
+                        &expected_identity_id,
+                        &expected_device_id,
+                    )
+                    .await?,
+            ),
+            Self::Recover {
+                operation_id,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &client
+                    .recover_managed_enrollment_view(
+                        &operation_id,
+                        &expected_identity_id,
+                        &expected_device_id,
+                    )
+                    .await?,
+            ),
             Self::Start {
                 name,
                 expected_identity_id,

@@ -214,6 +214,19 @@ impl Sequenced {
 pub(super) fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
     let mut pb = PbAgentReq::default();
     match a {
+        AgentRequest::DiscoverManaged { after } => {
+            pb.op = "managed_discover".into();
+            pb.operation.clone_from(after);
+        }
+        AgentRequest::RecoverManaged { operation } => {
+            pb.op = "managed_recover".into();
+            pb.operation.clone_from(operation);
+        }
+        AgentRequest::CompleteManaged { request, agent } => {
+            pb.op = "managed_complete".into();
+            pb.managed = Some(request.clone());
+            pb.agent.clone_from(agent);
+        }
         AgentRequest::ManagedService => pb.op = "managed_service".into(),
         AgentRequest::PrepareManaged(request) => {
             pb.op = "managed_prepare".into();
@@ -275,6 +288,32 @@ pub(super) fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
 
 pub(super) fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError> {
     Ok(match pb.op.as_str() {
+        "managed_discover" => {
+            if !pb.operation.is_empty() && !crate::managed_agents::digest(&pb.operation) {
+                return Err(bad("managed cursor"));
+            }
+            AgentRequest::DiscoverManaged {
+                after: pb.operation,
+            }
+        }
+        "managed_recover" => {
+            if !crate::managed_agents::digest(&pb.operation) {
+                return Err(bad("managed operation"));
+            }
+            AgentRequest::RecoverManaged {
+                operation: pb.operation,
+            }
+        }
+        "managed_complete" => {
+            let request = pb.managed.ok_or_else(|| bad("managed request"))?;
+            if !request.valid() || !crate::managed_agents::digest(&pb.agent) {
+                return Err(bad("managed completion"));
+            }
+            AgentRequest::CompleteManaged {
+                request,
+                agent: pb.agent,
+            }
+        }
         "managed_service" => AgentRequest::ManagedService,
         "managed_prepare" => {
             let request = pb.managed.ok_or_else(|| bad("managed agent request"))?;

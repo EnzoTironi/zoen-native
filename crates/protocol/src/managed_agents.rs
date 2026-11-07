@@ -48,6 +48,8 @@ pub struct Record {
     pub sealed_offer: Vec<u8>,
     #[prost(uint64, tag = "7")]
     pub expires_ms: u64,
+    #[prost(bool, tag = "8")]
+    pub onboarding_completed: bool,
 }
 
 #[must_use]
@@ -80,7 +82,10 @@ impl Request {
 impl Record {
     #[must_use]
     pub fn valid(&self) -> bool {
-        if !self.request.as_ref().is_some_and(Request::valid) || !digest(&self.owner) {
+        if !self.request.as_ref().is_some_and(Request::valid)
+            || !digest(&self.owner)
+            || self.onboarding_completed && self.state != "registered"
+        {
             return false;
         }
         let empty = self.agent.is_empty()
@@ -107,5 +112,43 @@ impl Record {
             }
             _ => false,
         }
+    }
+}
+
+/// Owner-scoped unfinished onboarding, ordered by the immutable operation key.
+#[derive(Clone, PartialEq, Eq, prost::Message)]
+pub struct Page {
+    #[prost(message, repeated, tag = "1")]
+    pub records: Vec<Record>,
+    #[prost(string, tag = "2")]
+    pub next_operation: String,
+}
+impl Page {
+    #[must_use]
+    pub fn valid(&self) -> bool {
+        self.records.len() <= 32
+            && (self.next_operation.is_empty()
+                || self.records.len() == 32
+                    && self
+                        .records
+                        .last()
+                        .and_then(|r| r.request.as_ref())
+                        .is_some_and(|r| r.operation == self.next_operation))
+            && self.records.iter().all(|r| {
+                r.valid()
+                    && !r.onboarding_completed
+                    && matches!(
+                        r.state.as_str(),
+                        "queued" | "offered" | "cancel_requested" | "registered"
+                    )
+            })
+            && self.records.windows(2).all(|rows| {
+                rows[0].owner == rows[1].owner
+                    && rows[0]
+                        .request
+                        .as_ref()
+                        .zip(rows[1].request.as_ref())
+                        .is_some_and(|(a, b)| a.operation < b.operation)
+            })
     }
 }

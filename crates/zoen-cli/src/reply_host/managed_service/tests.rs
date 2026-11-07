@@ -43,6 +43,7 @@ fn managed_service_scope_and_homes_are_private_and_request_bound() -> TestResult
         offer_digest: String::new(),
         sealed_offer: vec![],
         expires_ms: 0,
+        onboarding_completed: false,
     };
     let homes = homes::Homes::prepare(&config, &record)?;
     let stored = std::fs::read(homes.root.join("request.json"))?;

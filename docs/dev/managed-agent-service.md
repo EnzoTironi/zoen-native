@@ -83,8 +83,10 @@ existing account budget sheet. No money is granted by creating the agent.
 Explicit Chat invokes `managed_agent_chat`: canonical installation is checked
 under the current Net lease, then the private owned-agent DM gets its first
 Listen grant. Retries preserve existing grants, including revocation.
-`managed_agent_complete` retains a completion receipt before retiring the exact
-intent, permitting cold replay without clearing a subsequent operation.
+`managed_agent_complete` first acknowledges the exact registered original in the
+relay, then retains a local completion receipt before retiring the exact intent.
+Cold replay cannot clear a subsequent operation. Done completes onboarding without
+opening a conversation or changing budget, grants or runtime state.
 
 An unapproved expired/rejected offer can be explicitly retired through
 `managed_agent_discard`. A retained approval blocks timeout-based retirement.
@@ -119,3 +121,24 @@ The parent lifetime pipe stays open during that recovery. Per-request retirement
 errors defer that request, preserving other agents and the service's 256-job
 limit. The UI shows cancellation in progress until the actual outcome arrives.
 A cancelled offer can then be retired to create another agent.
+
+## Linked-device recovery
+
+`managed_agent_discover` returns bounded, owner/device-authenticated keyset pages
+of unfinished requests. The native boundary validates every original and exposes
+only operation, name and state to the sheet. Selection uses
+`managed_agent_recover`; it rereads the relay original, validates the linked
+owner's existing agreement key, and retains an intent bound to the current
+certificate before showing review. It never imports the agent's root or creates
+another request. Foreign responses, replaced sessions and unrelated receipts are
+refused without deleting retained state. The normal sealed device-link protocol
+already transfers the owner's agreement key; no additional key-sharing store is
+introduced.
+
+Migration 0050 adds monotonic onboarding completion independently of citizen
+state. Completed rows leave discovery but stay available for exact status and
+completion replay. An original device receiving that canonical completion
+retires only its matching local intent/receipt. Cancellation recovery follows the
+same rule when consumed consent registered the agent. Previous rows are retained
+as unfinished until explicitly completed; migration does not infer user intent or
+silently remove legacy work. No state flag stops a running agent or grants access.

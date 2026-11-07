@@ -22,7 +22,7 @@ pub async fn page(
     let (owner, operation) = after.unwrap_or(("", ""));
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT owner,operation,service,template_sha256,name,handle,recipient_public_key,
-        state,agent,offer_digest,sealed_offer,expires_ms FROM managed_agent_requests
+        state,agent,offer_digest,sealed_offer,expires_ms,onboarding_completed FROM managed_agent_requests
         WHERE service=$1 AND template_sha256=$2 AND (owner,operation)>($3,$4)
         ORDER BY owner,operation LIMIT 32",
     )

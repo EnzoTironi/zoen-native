@@ -34,6 +34,7 @@ fn queued(request: &ManagedRequest, owner: &str) -> ManagedRecord {
         offer_digest: String::new(),
         sealed_offer: vec![],
         expires_ms: 0,
+        onboarding_completed: false,
     }
 }
 

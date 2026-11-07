@@ -11,6 +11,8 @@ mod cancel;
 mod chat;
 mod complete;
 mod discard;
+mod recovery;
+pub use recovery::{ManagedRecoveryDto, ManagedRecoveryPageDto};
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -215,4 +217,32 @@ pub(super) fn approval_allowed(engine: &crate::Engine, identity: &str, device: &
         return Err(changed());
     }
     Ok(())
+}
+
+impl Client {
+    pub(super) fn retire_completed_managed_enrollment(
+        &self,
+        record: &Record,
+        identity: &str,
+        device: &str,
+    ) -> R<()> {
+        let engine = self.lock();
+        let request = record.request.as_ref().ok_or_else(changed)?;
+        managed_record(
+            &engine,
+            request,
+            Reply::ManagedAgent(record.clone()),
+            identity,
+            device,
+        )?;
+        complete::complete(
+            &engine,
+            record,
+            &request.operation,
+            &record.agent,
+            identity,
+            device,
+        )?;
+        Ok(())
+    }
 }

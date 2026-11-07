@@ -247,6 +247,7 @@ fn result_to(result: &Result<Reply, String>) -> pb_res::R {
         }),
         Ok(Reply::AgentControl(a)) => pb_res::R::AgentControl(a.clone()),
         Ok(Reply::ManagedService(a)) => pb_res::R::ManagedService(a.clone()),
+        Ok(Reply::ManagedAgents(a)) => pb_res::R::ManagedAgents(a.clone()),
         Ok(Reply::ManagedAgent(a)) => pb_res::R::ManagedAgent(a.clone()),
         Ok(Reply::AgentState(a)) => pb_res::R::AgentState(agent_state_to(a)),
         Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
@@ -327,6 +328,12 @@ fn result_from(result: pb_res::R) -> Result<Result<Reply, String>, DecodeError> 
                 return Err(bad("managed service"));
             }
             Ok(Reply::ManagedService(a))
+        }
+        pb_res::R::ManagedAgents(a) => {
+            if !a.valid() {
+                return Err(bad("managed discovery"));
+            }
+            Ok(Reply::ManagedAgents(a))
         }
         pb_res::R::ManagedAgent(a) => {
             if !a.valid() {

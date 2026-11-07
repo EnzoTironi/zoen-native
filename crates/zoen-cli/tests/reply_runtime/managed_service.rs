@@ -205,6 +205,30 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
             .pending_managed_enrollment(&account.identity_id, &account.device_id)?
             .ok_or("request")?;
         assert_eq!(started["operation_id"], request.operation);
+        // The linked device receives the identity through the production sealed
+        // pairing protocol, not a copied database or a fixture-injected secret.
+        let linked_home = w.dir.join("owner-linked");
+        std::fs::create_dir(&linked_home)?;
+        let linked = Client::open(linked_home.join("zoen.sqlite").to_string_lossy().into(), "en".into())?;
+        let vault: Arc<dyn client_core::SecretVault> = Arc::new(file_vault::FileVault { dir: linked_home.join("vault") });
+        let code = linked.link_request(account.relay_url.clone(), vault.clone())?;
+        let waiting = { let client = linked.clone(); let vault = vault.clone(); tokio::spawn(async move { client.link_wait(vault, 20_000).await }) };
+        let linked_device = owner.link_device(code.code, Arc::new(file_vault::FileVault { dir: w.dir.join("owner/vault") })).await?;
+        let linked_account = waiting.await??;
+        assert_eq!(linked_account.identity_id, account.identity_id);
+        assert_ne!(linked_account.device_id, account.device_id);
+        linked.start_sync(None)?;
+        linked.wait_until_settled(20_000).await?;
+        owner.send_history(linked_device.device_id, None).await?;
+        linked.receive_history(20_000, None).await?;
+        assert!(bridge(&linked, "managed_agent_status", json!({})).await?.is_null());
+        let discovery = bridge(&linked, "managed_agent_discover", json!({"after_operation":""})).await?;
+        assert_eq!(discovery["requests"].as_array().ok_or("recovery page")?.len(), 1);
+        assert_eq!(discovery["requests"][0]["operation_id"], request.operation);
+        bridge(&linked, "managed_agent_recover", json!({"operation_id":request.operation})).await?;
+        owner.stop_sync();
+        drop(owner);
+        let owner = linked;
         let offered = status(&owner, &mut process, "review").await?;
         for secret_field in [
             "pairing_secret",
@@ -370,7 +394,15 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         );
         let history = w.zoen("owner", &["read", &format!("@{}", request.handle)]);
         assert_eq!(history.matches(provider::ANSWER).count(), 1);
-        let owner = open_owner(&w)?;
+        let primary = open_owner(&w)?;
+        primary.start_sync(None)?;
+        primary.wait_until_settled(20_000).await?;
+        assert!(bridge(&primary, "managed_agent_status", json!({})).await?.is_null());
+        assert!(bridge(&primary, "managed_agent_discover", json!({"after_operation":""})).await?["requests"].as_array().ok_or("completed discovery")?.is_empty());
+        primary.stop_sync();
+        drop(primary);
+        let owner = Client::open(w.dir.join("owner-linked/zoen.sqlite").to_string_lossy().into(), "en".into())?;
+        assert!(owner.unlock(Arc::new(file_vault::FileVault { dir: w.dir.join("owner-linked/vault") }))?);
         owner.start_sync(None)?;
         owner.wait_until_settled(20_000).await?;
         assert_eq!(

@@ -5,6 +5,7 @@ mod managed;
 mod managed_request;
 mod managed_view;
 pub use host::{AgentEnrollmentHostOffer, AgentEnrollmentHostProgress, AgentEnrollmentHostRequest};
+pub use managed_request::{ManagedRecoveryDto, ManagedRecoveryPageDto};
 pub use managed_view::ManagedEnrollmentDto;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};

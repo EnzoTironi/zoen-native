@@ -225,6 +225,7 @@ async fn managed_host_cancel_does_not_mint_keys_and_never_erases_consumed_consen
         offer_digest: String::new(),
         sealed_offer: vec![],
         expires_ms: 0,
+        onboarding_completed: false,
     };
     assert!(
         host.cancel_managed_agent_offer(&record, "https://relay.example", vault.vault())

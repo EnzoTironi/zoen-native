@@ -21,6 +21,19 @@ fn managed_requests_and_ciphertext_receipts_roundtrip_without_grant_fields(
     assert!(request.valid());
     for req in [
         AgentRequest::ManagedService,
+        AgentRequest::DiscoverManaged {
+            after: String::new(),
+        },
+        AgentRequest::DiscoverManaged {
+            after: "01".repeat(32),
+        },
+        AgentRequest::RecoverManaged {
+            operation: request.operation.clone(),
+        },
+        AgentRequest::CompleteManaged {
+            request: request.clone(),
+            agent: "66".repeat(32),
+        },
         AgentRequest::PrepareManaged(request.clone()),
         AgentRequest::CancelManaged(request.clone()),
         AgentRequest::ManagedStatus {
@@ -45,12 +58,17 @@ fn managed_requests_and_ciphertext_receipts_roundtrip_without_grant_fields(
         offer_digest: "77".repeat(32),
         sealed_offer: vec![81; 256],
         expires_ms: 1234,
+        onboarding_completed: false,
     };
     for reply in [
         Reply::ManagedService(Availability {
             service: request.service.clone(),
         }),
         Reply::ManagedService(Availability { service: None }),
+        Reply::ManagedAgents(Page {
+            records: vec![receipt.clone()],
+            next_operation: String::new(),
+        }),
         Reply::ManagedAgent(receipt.clone()),
         Reply::ManagedAgent(Record {
             state: "cancel_requested".into(),
@@ -108,11 +126,71 @@ fn invalid_managed_metadata_and_receipt_states_fail_closed() {
             offer_digest: String::new(),
             sealed_offer: Vec::new(),
             expires_ms: 0,
+            onboarding_completed: false,
         };
         let frame = ServerFrame::Res {
             id: 17,
             result: Ok(Reply::ManagedAgent(receipt)),
         };
         assert!(ServerFrame::decode(&frame.encode()).is_err(), "{state}");
+    }
+}
+
+#[test]
+fn managed_discovery_rejects_ambiguous_pages_and_bad_cursors() {
+    let r = Record {
+        request: Some(request()),
+        owner: "55".repeat(32),
+        state: "queued".into(),
+        agent: String::new(),
+        offer_digest: String::new(),
+        sealed_offer: vec![],
+        expires_ms: 0,
+        onboarding_completed: false,
+    };
+    for page in [
+        Page {
+            records: vec![r.clone(), r.clone()],
+            next_operation: String::new(),
+        },
+        Page {
+            records: vec![r.clone(); 33],
+            next_operation: String::new(),
+        },
+        Page {
+            records: vec![r],
+            next_operation: "11".repeat(32),
+        },
+    ] {
+        assert!(!page.valid());
+        assert!(ServerFrame::decode(
+            &ServerFrame::Res {
+                id: 1,
+                result: Ok(Reply::ManagedAgents(page))
+            }
+            .encode()
+        )
+        .is_err());
+    }
+    for req in [
+        AgentRequest::DiscoverManaged {
+            after: "bad".into(),
+        },
+        AgentRequest::RecoverManaged {
+            operation: String::new(),
+        },
+        AgentRequest::CompleteManaged {
+            request: request(),
+            agent: "bad".into(),
+        },
+    ] {
+        assert!(ClientFrame::decode(
+            &ClientFrame::Req {
+                id: 1,
+                op: Op::Agent(req)
+            }
+            .encode()
+        )
+        .is_err());
     }
 }

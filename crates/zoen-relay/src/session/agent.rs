@@ -8,6 +8,30 @@ impl Session {
         let pool = &self.st.pool;
         let me = &self.identity;
         let r = match req {
+            AgentRequest::DiscoverManaged { after } => {
+                return agents::provision::recovery::discover(pool, me, &self.device, &after)
+                    .await
+                    .map(Reply::ManagedAgents)
+                    .map_err(|e| e.to_string());
+            }
+            AgentRequest::RecoverManaged { operation } => {
+                return agents::provision::recovery::recover(pool, me, &self.device, &operation)
+                    .await
+                    .map(Reply::ManagedAgent)
+                    .map_err(|e| e.to_string());
+            }
+            AgentRequest::CompleteManaged { request, agent } => {
+                return agents::provision::recovery::complete(
+                    pool,
+                    me,
+                    &self.device,
+                    &request,
+                    &agent,
+                )
+                .await
+                .map(Reply::ManagedAgent)
+                .map_err(|e| e.to_string());
+            }
             AgentRequest::ManagedService => {
                 return agents::provision::availability(pool)
                     .await

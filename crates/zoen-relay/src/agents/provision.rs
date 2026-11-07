@@ -1,6 +1,7 @@
 //! Owner-authenticated bootstrap queue. Enrollment/citizens remain identity authority.
 pub mod cancel;
 pub mod host;
+pub mod recovery;
 pub use cancel::cancel;
 use protocol::managed_agents::{digest, Availability, Record, Request, Service};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -8,11 +9,11 @@ use sqlx::{PgPool, Postgres, Transaction};
 const MAX_OUTSTANDING: i64 = 16;
 const SELECT: &str =
     "SELECT owner,operation,service,template_sha256,name,handle,recipient_public_key,
- state,agent,offer_digest,sealed_offer,expires_ms FROM managed_agent_requests
+ state,agent,offer_digest,sealed_offer,expires_ms,onboarding_completed FROM managed_agent_requests
  WHERE owner=$1 AND operation=$2";
 const LOCKED: &str =
     "SELECT owner,operation,service,template_sha256,name,handle,recipient_public_key,
- state,agent,offer_digest,sealed_offer,expires_ms FROM managed_agent_requests
+ state,agent,offer_digest,sealed_offer,expires_ms,onboarding_completed FROM managed_agent_requests
  WHERE owner=$1 AND operation=$2 FOR UPDATE";
 #[derive(sqlx::FromRow)]
 struct Row {
@@ -28,6 +29,7 @@ struct Row {
     offer_digest: String,
     sealed_offer: Vec<u8>,
     expires_ms: i64,
+    onboarding_completed: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -60,6 +62,7 @@ fn record(row: Row) -> Result<Record, Error> {
         offer_digest: row.offer_digest,
         sealed_offer: row.sealed_offer,
         expires_ms: u64::try_from(row.expires_ms).map_err(|_| Error::Changed)?,
+        onboarding_completed: row.onboarding_completed,
     };
     if !value.valid() {
         return Err(Error::Changed);

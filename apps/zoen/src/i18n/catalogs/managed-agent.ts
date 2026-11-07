@@ -1,6 +1,9 @@
 import { defineFeature } from '../catalog.ts';
 export const managedAgent = defineFeature(
   {
+    done: 'Done',
+    resume: 'Continue creation',
+    more: 'Show more',
     cancel: 'Cancel creation',
     cancelling: 'Cancelling…',
     cancelled: 'Creation cancelled',
@@ -12,7 +15,7 @@ export const managedAgent = defineFeature(
     confirm: 'Create this agent',
     waiting: 'Preparing your agent…',
     installing: 'Connecting your agent…',
-    ready: 'Your agent is ready',
+    ready: 'Agent created',
     scope:
       'You choose its budget separately. Chatting lets it read and reply in your private conversation.',
     budget: 'Set budget',
@@ -26,6 +29,9 @@ export const managedAgent = defineFeature(
     unavailable: 'Agent creation is not available in this version.',
   },
   {
+    done: 'Concluir',
+    resume: 'Continuar criação',
+    more: 'Mostrar mais',
     cancel: 'Cancelar criação',
     cancelling: 'Cancelando…',
     cancelled: 'Criação cancelada',
@@ -37,7 +43,7 @@ export const managedAgent = defineFeature(
     confirm: 'Criar este agente',
     waiting: 'Preparando seu agente…',
     installing: 'Conectando seu agente…',
-    ready: 'Seu agente está pronto',
+    ready: 'Agente criado',
     scope:
       'Você escolhe o orçamento separadamente. Conversar permite que ele leia e responda na conversa privada de vocês.',
     budget: 'Definir orçamento',

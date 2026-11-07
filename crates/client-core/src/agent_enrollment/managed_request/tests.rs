@@ -118,6 +118,7 @@ fn managed_intent_corruption_is_not_an_empty_slot_and_receipts_match_exactly() -
         offer_digest: String::new(),
         sealed_offer: vec![],
         expires_ms: 0,
+        onboarding_completed: false,
     };
     assert_eq!(
         managed_record(
@@ -250,6 +251,7 @@ fn managed_host_confirmed_unused_offer_retires_only_its_matching_unknown_receipt
         offer_digest: "12".repeat(32),
         sealed_offer: vec![1; 40],
         expires_ms: 1,
+        onboarding_completed: false,
     };
     assert!(
         super::discard::retire(&engine, &record, &account.identity_id, &account.device_id).is_err()

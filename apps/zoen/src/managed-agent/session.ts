@@ -1,7 +1,11 @@
 import { accountScopeKey, type AccountScope } from '../core/account-scope.ts';
+import type { ManagedRecoveryDto } from '../core/generated/ManagedRecoveryDto.ts';
+import type { ManagedRecoveryPageDto } from '../core/generated/ManagedRecoveryPageDto.ts';
 import type { ManagedEnrollmentDto } from '../core/generated/ManagedEnrollmentDto.ts';
 
 export type ManagedAgentPort = {
+  discover(after: string, scope: AccountScope): Promise<ManagedRecoveryPageDto>;
+  recover(operation: string, scope: AccountScope): Promise<ManagedEnrollmentDto>;
   status(scope: AccountScope): Promise<ManagedEnrollmentDto | null>;
   start(name: string, scope: AccountScope): Promise<ManagedEnrollmentDto>;
   approve(view: ManagedEnrollmentDto, scope: AccountScope): Promise<ManagedEnrollmentDto>;
@@ -12,12 +16,21 @@ export type ManagedAgentPort = {
   complete(view: ManagedEnrollmentDto, scope: AccountScope): Promise<void>;
 };
 export type ManagedAgentState = Readonly<{
+  recoveries: ManagedRecoveryDto[];
+  next: string | null;
   ready: boolean;
   view: ManagedEnrollmentDto | null;
   busy: boolean;
   error: 'status' | 'start' | 'approve' | 'open' | 'cancel' | null;
 }>;
-const empty = (): ManagedAgentState => ({ ready: false, view: null, busy: false, error: null });
+const empty = (): ManagedAgentState => ({
+  recoveries: [],
+  next: null,
+  ready: false,
+  view: null,
+  busy: false,
+  error: null,
+});
 
 /** UI projection only. Native Core retains the operation, offer and approval. */
 export class ManagedAgentSession {
@@ -65,9 +78,66 @@ export class ManagedAgentSession {
     this.publish({ busy: true, error: null });
     try {
       const view = await this.port.status(owner);
-      if (this.accepts(ticket)) this.publish({ ready: true, view });
+      if (!this.accepts(ticket)) return;
+      const page = view ? null : await this.port.discover('', owner);
+      if (this.accepts(ticket))
+        this.publish({
+          ready: true,
+          view,
+          recoveries: page?.requests ?? [],
+          next: page?.next_operation ?? null,
+        });
     } catch {
-      if (this.accepts(ticket)) this.publish({ error: 'status' });
+      if (this.accepts(ticket)) this.publish({ error: 'status', ready: false });
+    } finally {
+      if (this.accepts(ticket)) this.publish({ busy: false });
+    }
+  }
+  async more(observedTicket = this.ticket()) {
+    if (
+      !this.accepts(observedTicket) ||
+      !this.owner ||
+      !this.state.ready ||
+      this.state.busy ||
+      this.state.view ||
+      !this.state.next
+    )
+      return;
+    const ticket = this.ticket(),
+      owner = this.owner,
+      after = this.state.next;
+    this.publish({ busy: true, error: null });
+    try {
+      const page = await this.port.discover(after, owner);
+      if (this.accepts(ticket))
+        this.publish({
+          recoveries: [...this.state.recoveries, ...page.requests],
+          next: page.next_operation,
+        });
+    } catch {
+      if (this.accepts(ticket)) this.publish({ error: 'status', ready: false });
+    } finally {
+      if (this.accepts(ticket)) this.publish({ busy: false });
+    }
+  }
+  async recover(operation: string, observedTicket = this.ticket()) {
+    if (
+      !this.accepts(observedTicket) ||
+      !this.owner ||
+      !this.state.ready ||
+      this.state.busy ||
+      this.state.view ||
+      !this.state.recoveries.some((r) => r.operation_id === operation)
+    )
+      return;
+    const ticket = this.ticket(),
+      owner = this.owner;
+    this.publish({ busy: true, error: null });
+    try {
+      const view = await this.port.recover(operation, owner);
+      if (this.accepts(ticket)) this.publish({ view, recoveries: [], next: null });
+    } catch {
+      if (this.accepts(ticket)) this.publish({ error: 'status', ready: false });
     } finally {
       if (this.accepts(ticket)) this.publish({ busy: false });
     }
@@ -163,6 +233,35 @@ export class ManagedAgentSession {
     } catch {
       // An ACK loss requires status recovery before enabling another intent.
       if (this.accepts(ticket)) this.publish({ error: 'status', ready: false });
+    } finally {
+      if (this.accepts(ticket)) this.publish({ busy: false });
+    }
+  }
+  async finish(
+    observedTicket = this.ticket(),
+    operation = this.state.view?.operation_id,
+  ): Promise<boolean> {
+    const view = this.state.view;
+    if (
+      !this.accepts(observedTicket) ||
+      !this.owner ||
+      !this.state.ready ||
+      this.state.busy ||
+      view?.state !== 'registered' ||
+      operation !== view.operation_id
+    )
+      return false;
+    const ticket = this.ticket(),
+      owner = this.owner;
+    this.publish({ busy: true, error: null });
+    try {
+      await this.port.complete(view, owner);
+      if (!this.accepts(ticket)) return false;
+      this.publish({ view: null, ready: false });
+      return true;
+    } catch {
+      if (this.accepts(ticket)) this.publish({ error: 'status', ready: false });
+      return false;
     } finally {
       if (this.accepts(ticket)) this.publish({ busy: false });
     }
