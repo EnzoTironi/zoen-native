@@ -14,6 +14,26 @@ export function managedAgentPort(store: ClientStore): ManagedAgentPort {
   });
   const registration = createEnrollmentPort(store);
   return {
+    async discover(after, scope) {
+      current(scope);
+      const value = await store.driver.request({
+        op: 'managed_agent_discover',
+        after_operation: after,
+        ...expected(scope),
+      });
+      current(scope);
+      return value;
+    },
+    async recover(operation, scope) {
+      current(scope);
+      const value = await store.driver.request({
+        op: 'managed_agent_recover',
+        operation_id: operation,
+        ...expected(scope),
+      });
+      current(scope);
+      return value;
+    },
     async status(scope) {
       current(scope);
       const value = await store.driver.request({ op: 'managed_agent_status', ...expected(scope) });

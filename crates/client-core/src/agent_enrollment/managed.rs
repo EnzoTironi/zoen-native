@@ -66,6 +66,7 @@ impl AgentEnrollmentHostOffer {
             offer_digest: self.offer_digest,
             sealed_offer,
             expires_ms: self.expires_ms,
+            onboarding_completed: false,
         };
         if !record.valid() {
             return Err(malformed());

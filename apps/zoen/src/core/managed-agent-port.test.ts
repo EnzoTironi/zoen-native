@@ -142,3 +142,29 @@ test('chat and completion pass the exact operation and agent with scoped native 
     await f.store.close();
   }
 });
+
+test('recovery binds both sides of the native call to the current account without exposing ciphertext', async () => {
+  const f = await fixture();
+  try {
+    f.handle(async () => ({ requests: [], next_operation: null }));
+    await f.port.discover('cursor', f.owner);
+    f.handle(async () => installed);
+    await f.port.recover('operation', f.owner);
+    assert.deepEqual(f.calls, [
+      {
+        op: 'managed_agent_discover',
+        after_operation: 'cursor',
+        expected_identity_id: f.owner.identity,
+        expected_device_id: f.owner.device,
+      },
+      {
+        op: 'managed_agent_recover',
+        operation_id: 'operation',
+        expected_identity_id: f.owner.identity,
+        expected_device_id: f.owner.device,
+      },
+    ]);
+  } finally {
+    await f.store.close();
+  }
+});

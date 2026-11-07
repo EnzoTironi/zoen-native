@@ -4,7 +4,7 @@ import { Keyboard, Text, View } from 'react-native';
 import { Field, Loading, NativeButton } from '../components/primitives';
 import { SettingsScreen } from '../components/settings-screen';
 import { ProfileHeader } from '../profile/profile-header';
-import { ProfileSection } from '../profile/profile-section';
+import { ProfileInfoRow, ProfileSection } from '../profile/profile-section';
 import { useTheme } from '../theme';
 import { t } from '../i18n';
 import { useManagedAgent } from './use-managed-agent';
@@ -16,6 +16,7 @@ export function CreateAgentScreen() {
   const name = input.owner === ownerKey ? input.value : '';
   const view = state.view,
     preview = view?.preview;
+  const canFinish = state.ready && !state.error && view?.state === 'registered';
   const paragraph = { color: p.secondary, fontSize: 15, lineHeight: 21 };
   const create = () => {
     Keyboard.dismiss();
@@ -39,6 +40,29 @@ export function CreateAgentScreen() {
         )
       ) : !view ? (
         <View style={{ gap: 20 }}>
+          {state.recoveries.length ? (
+            <ProfileSection title={t('managedAgent.resume')}>
+              {state.recoveries.map((request) => (
+                <ProfileInfoRow
+                  key={request.operation_id}
+                  label={request.name}
+                  disabled={state.busy}
+                  onPress={() => {
+                    void session.recover(request.operation_id, ticket);
+                  }}
+                />
+              ))}
+              {state.next ? (
+                <ProfileInfoRow
+                  label={t('managedAgent.more')}
+                  disabled={state.busy}
+                  onPress={() => {
+                    void session.more(ticket);
+                  }}
+                />
+              ) : null}
+            </ProfileSection>
+          ) : null}
           <Field
             label={t('managedAgent.name')}
             placeholder={t('managedAgent.namePlaceholder')}
@@ -46,7 +70,7 @@ export function CreateAgentScreen() {
             value={name}
             onChangeText={(value) => setInput({ owner: ownerKey, value })}
             maxLength={64}
-            autoFocus
+            autoFocus={!state.recoveries.length}
             editable={!state.busy}
             returnKeyType="done"
             onSubmitEditing={create}
@@ -177,7 +201,18 @@ export function CreateAgentScreen() {
           />
         </View>
       ) : null}
-      <NativeButton label={t('managedAgent.close')} secondary onPress={() => router.back()} />
+      <NativeButton
+        label={t(canFinish ? 'managedAgent.done' : 'managedAgent.close')}
+        secondary
+        disabled={canFinish && state.busy}
+        onPress={() => {
+          if (canFinish && view) {
+            void session.finish(ticket, view.operation_id).then((done) => {
+              if (done && session.accepts(ticket)) router.back();
+            });
+          } else router.back();
+        }}
+      />
     </SettingsScreen>
   );
 }

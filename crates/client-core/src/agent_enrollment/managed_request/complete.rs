@@ -60,9 +60,9 @@ impl Client {
         };
         let response = channel
             .clone()
-            .send(Op::Agent(AgentRequest::ManagedStatus {
-                service: request.service.as_ref().ok_or_else(changed)?.id.clone(),
-                operation: operation.into(),
+            .send(Op::Agent(AgentRequest::CompleteManaged {
+                request: request.clone(),
+                agent: agent.into(),
             }))
             .await
             .map_err(invalid)?;
@@ -73,7 +73,7 @@ impl Client {
     }
 }
 
-fn complete(
+pub(super) fn complete(
     engine: &crate::Engine,
     record: &Record,
     operation: &str,
@@ -81,7 +81,8 @@ fn complete(
     identity: &str,
     device: &str,
 ) -> R<bool> {
-    if record.state != "registered"
+    if !record.onboarding_completed
+        || record.state != "registered"
         || record.agent != agent
         || record
             .request

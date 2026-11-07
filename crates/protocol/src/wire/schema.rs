@@ -516,7 +516,7 @@ pub struct PbRes {
     pub id: u64,
     #[prost(
         oneof = "pb_res::R",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
     )]
     pub r: Option<pb_res::R>,
 }
@@ -570,6 +570,8 @@ pub mod pb_res {
         ManagedService(crate::managed_agents::Availability),
         #[prost(message, tag = "21")]
         ManagedAgent(crate::managed_agents::Record),
+        #[prost(message, tag = "22")]
+        ManagedAgents(crate::managed_agents::Page),
     }
 }
 

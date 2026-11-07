@@ -187,6 +187,16 @@ pub enum Op {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentRequest {
     ManagedService,
+    DiscoverManaged {
+        after: String,
+    },
+    RecoverManaged {
+        operation: String,
+    },
+    CompleteManaged {
+        request: crate::managed_agents::Request,
+        agent: String,
+    },
     PrepareManaged(crate::managed_agents::Request),
     CancelManaged(crate::managed_agents::Request),
     ManagedStatus {
@@ -307,6 +317,9 @@ impl Op {
             Op::Unlink { .. } => "unlink",
             Op::SendDevice { .. } => "send_device",
             Op::Agent(AgentRequest::State) => "agent_state",
+            Op::Agent(AgentRequest::DiscoverManaged { .. }) => "agent_managed_discover",
+            Op::Agent(AgentRequest::RecoverManaged { .. }) => "agent_managed_recover",
+            Op::Agent(AgentRequest::CompleteManaged { .. }) => "agent_managed_complete",
             Op::Agent(AgentRequest::ManagedService) => "agent_managed_service",
             Op::Agent(AgentRequest::PrepareManaged(_)) => "agent_managed_prepare",
             Op::Agent(AgentRequest::CancelManaged(_)) => "agent_managed_cancel",
@@ -348,6 +361,7 @@ pub struct SealedProfile {
 pub enum Reply {
     ManagedService(crate::managed_agents::Availability),
     ManagedAgent(crate::managed_agents::Record),
+    ManagedAgents(crate::managed_agents::Page),
     VoipConsent(bool),
     SavedMessages(crate::saved_messages::Receipt),
     /// Register: the profile as stored (handle normalized).

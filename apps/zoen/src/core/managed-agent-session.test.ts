@@ -37,6 +37,8 @@ function deferred<T>() {
 function fixture(initial: ManagedEnrollmentDto | null = null) {
   const calls: string[] = [];
   const port: ManagedAgentPort = {
+    discover: async () => ({ requests: [], next_operation: null }),
+    recover: async () => view(),
     status: async () => {
       calls.push('status');
       return initial;
@@ -127,7 +129,14 @@ test('same-account reopen rejects every old asynchronous completion', async () =
   await old;
   assert.equal(f.session.accepts(ticket), false);
   assert.equal(f.session.scopeMatches(owner), false);
-  assert.deepEqual(f.session.getSnapshot(), { ready: false, view: null, busy: false, error: null });
+  assert.deepEqual(f.session.getSnapshot(), {
+    recoveries: [],
+    next: null,
+    ready: false,
+    view: null,
+    busy: false,
+    error: null,
+  });
 });
 test('closing restores native installation without approving or funding again', async () => {
   const f = fixture(view('installing'));
@@ -255,4 +264,129 @@ test('accepted consent wins cancellation through canonical registration, never a
   assert.equal(f.session.getSnapshot().view?.state, 'registered');
   await f.session.restart();
   assert.equal(f.session.getSnapshot().view?.state, 'registered');
+});
+
+test('discovery is read-only, paginates exact native cursors, and resumes only a displayed operation', async () => {
+  const f = fixture();
+  f.port.discover = async (after) => {
+    f.calls.push(`discover:${after}`);
+    return {
+      requests: [
+        { operation_id: after ? 'second' : 'first', name: 'Existing agent', state: 'queued' },
+      ],
+      next_operation: after ? null : 'first',
+    };
+  };
+  f.port.recover = async (operation) => {
+    f.calls.push(`recover:${operation}`);
+    return { ...view(), operation_id: operation };
+  };
+  await f.session.refresh();
+  assert.equal(f.session.getSnapshot().view, null);
+  assert.deepEqual(f.calls, ['status', 'discover:']);
+  await f.session.recover('unobserved');
+  assert.equal(f.calls.length, 2);
+  await f.session.more();
+  assert.deepEqual(
+    f.session.getSnapshot().recoveries.map((r) => r.operation_id),
+    ['first', 'second'],
+  );
+  assert.equal(f.session.getSnapshot().next, null);
+  await f.session.recover('second');
+  assert.equal(f.session.getSnapshot().view?.operation_id, 'second');
+  assert.deepEqual(f.session.getSnapshot().recoveries, []);
+  assert.deepEqual(f.calls, ['status', 'discover:', 'discover:first', 'recover:second']);
+});
+
+test('a late discovery or recovery cannot attach to a replaced account session', async () => {
+  for (const phase of ['discover', 'recover']) {
+    const f = fixture();
+    const gate = deferred<void>();
+    const entered = deferred<void>();
+    f.port.discover = async () => {
+      entered.resolve();
+      if (phase === 'discover') await gate.promise;
+      return {
+        requests: [{ operation_id: 'operation', name: 'Existing', state: 'queued' }],
+        next_operation: null,
+      };
+    };
+    const refresh = f.session.refresh();
+    if (phase === 'discover') await entered.promise;
+    if (phase === 'recover') await refresh;
+    let recovering: Promise<void> | undefined;
+    if (phase === 'recover') {
+      f.port.recover = async () => {
+        await gate.promise;
+        return view();
+      };
+      recovering = f.session.recover('operation');
+    }
+    f.session.activate({ ...owner, device: 'other-device', epoch: 2 });
+    gate.resolve();
+    await refresh;
+    await recovering;
+    assert.equal(f.session.getSnapshot().view, null);
+    assert.deepEqual(f.session.getSnapshot().recoveries, []);
+    assert.equal(f.session.getSnapshot().ready, false);
+  }
+});
+
+test('unknown recovery acknowledgement blocks a new creation until native status returns the retained original', async () => {
+  const f = fixture();
+  f.port.discover = async () => ({
+    requests: [{ operation_id: 'operation', name: 'Existing', state: 'queued' }],
+    next_operation: null,
+  });
+  f.port.recover = async () => {
+    throw Error('ACK lost after native adoption');
+  };
+  await f.session.refresh();
+  await f.session.recover('operation');
+  assert.equal(f.session.getSnapshot().ready, false);
+  await f.session.start('Different');
+  assert(!f.calls.some((s) => s.startsWith('start:')));
+  f.port.status = async () => view();
+  await f.session.refresh();
+  assert.equal(f.session.getSnapshot().view?.operation_id, 'operation');
+});
+
+test('failed discovery cannot leave the new-creation form authorized by a previous empty observation', async () => {
+  const f = fixture();
+  await f.session.refresh();
+  f.port.discover = async () => {
+    throw Error('directory offline');
+  };
+  await f.session.refresh();
+  await f.session.start('Different');
+  assert.equal(f.session.getSnapshot().ready, false);
+  assert(!f.calls.some((s) => s.startsWith('start:')));
+});
+
+test('Done completes onboarding without granting a conversation or budget', async () => {
+  const f = fixture(view('registered'));
+  await f.session.refresh();
+  assert.equal(await f.session.finish(), true);
+  assert.deepEqual(f.calls, ['status', 'complete']);
+  assert.equal(f.session.getSnapshot().view, null);
+  assert.equal(f.session.getSnapshot().ready, false);
+});
+
+test('lost finish acknowledgement and retired completion never enable a different creation', async () => {
+  for (const retired of [false, true]) {
+    const f = fixture(view('registered'));
+    await f.session.refresh();
+    const gate = deferred<void>();
+    f.port.complete = async () => {
+      await gate.promise;
+      if (!retired) throw Error('ACK lost');
+    };
+    const finishing = f.session.finish();
+    if (retired) f.session.retire();
+    gate.resolve();
+    assert.equal(await finishing, false);
+    await f.session.start('Different');
+    assert.equal(f.session.getSnapshot().ready, false);
+    assert(!f.calls.some((s) => s.startsWith('start:')));
+  }
 });

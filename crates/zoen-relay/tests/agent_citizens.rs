@@ -548,3 +548,6 @@ async fn cursor_advance_respects_concurrent_revocation() -> Result<(), Box<dyn s
     d.finish().await;
     Ok(())
 }
+
+#[path = "agent_citizens/managed_recovery.rs"]
+mod managed_recovery;

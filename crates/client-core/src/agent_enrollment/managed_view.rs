@@ -48,24 +48,24 @@ impl Client {
         let Some(request) = self.pending_managed_enrollment(identity, device)? else {
             return Ok(None);
         };
-        if self.managed_enrollment_cancelling(identity, device)? {
-            return self
-                .cancel_managed_enrollment(&request.operation, identity, device)
-                .await
-                .and_then(|record| self.managed_enrollment_view(record, identity, device))
-                .map(Some);
-        }
-        // Replay the retained creation intent, including when the original request
-        // never reached the relay. This cannot remint an operation or spend money.
-        let record = self
-            .prepare_managed_enrollment(
+        let record = if self.managed_enrollment_cancelling(identity, device)? {
+            self.cancel_managed_enrollment(&request.operation, identity, device)
+                .await?
+        } else {
+            // Exact replay also recovers a creation that never reached the relay.
+            self.prepare_managed_enrollment(
                 request.service.as_ref().ok_or_else(changed)?,
                 &request.name,
                 &request.handle,
                 identity,
                 device,
             )
-            .await?;
+            .await?
+        };
+        if record.onboarding_completed {
+            self.retire_completed_managed_enrollment(&record, identity, device)?;
+            return Ok(None);
+        }
         self.managed_enrollment_view(record, identity, device)
             .map(Some)
     }
@@ -101,7 +101,7 @@ impl Client {
         self.managed_enrollment_view(record, identity, device)
     }
 
-    fn managed_enrollment_view(
+    pub(super) fn managed_enrollment_view(
         &self,
         record: Record,
         identity: &str,

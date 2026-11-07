@@ -437,3 +437,6 @@ mod reconcile_cases;
 mod control_cases;
 #[path = "../agent_enrollment/managed_request/transport_tests.rs"]
 mod managed_transport;
+
+#[path = "../agent_enrollment/managed_request/recovery_tests.rs"]
+mod managed_recovery;
