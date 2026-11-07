@@ -4,22 +4,23 @@ import type { ClientStore } from '../core/store';
 import { conversationScope } from '../core/conversation-scope';
 
 type Launch = Readonly<{ spaceId: string; query: string; scope: string }>;
-const launches = new Map<string, Launch>();
+const launches = new Map<string, Launch & { unregister(): void }>();
 
 /** Only an opaque handoff enters navigation; private search text stays in memory. */
 export function launchConversationAssistant(spaceId: string, query: string, store: ClientStore) {
   const scope = conversationScope(store.getSnapshot(), store.sessionEpoch, spaceId);
   if (!scope || store.isSessionRetiring || !query.trim()) return;
   const ticket = randomUUID();
-  launches.set(ticket, { spaceId, query: query.trim(), scope });
+  const unregister = store.registerSessionCleanup(async () => releaseAssistantLaunch(ticket));
+  launches.set(ticket, { spaceId, query: query.trim(), scope, unregister });
   try {
     router.push({ pathname: '/ask/[space]', params: { space: spaceId, ticket } });
   } catch (error) {
-    launches.delete(ticket);
+    releaseAssistantLaunch(ticket);
     throw error;
   }
   const oldest = launches.keys().next();
-  if (launches.size > 4 && !oldest.done) launches.delete(oldest.value);
+  if (launches.size > 4 && !oldest.done) releaseAssistantLaunch(oldest.value);
 }
 export function readAssistantLaunch(
   ticket: string | undefined,
@@ -34,5 +35,9 @@ export function readAssistantLaunch(
     : null;
 }
 export function releaseAssistantLaunch(ticket: string | undefined) {
-  if (ticket) launches.delete(ticket);
+  if (ticket) {
+    const launch = launches.get(ticket);
+    launches.delete(ticket);
+    launch?.unregister();
+  }
 }

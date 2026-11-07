@@ -246,3 +246,31 @@ test('concurrent asks admit one native generation and retain only the accepted q
   ]);
   await f.conversation.close();
 });
+
+test('a changed source discards the temporary transcript without silently repeating its question', async () => {
+  const f = fixture();
+  await f.conversation.open('canonical-space', 'en');
+  assert.equal(await f.conversation.ask('First question'), true);
+  let resets = 0;
+  f.port.ask = async () => {
+    resets++;
+    return { reset: 'source_changed', contextMessages: 1 };
+  };
+  assert.equal(await f.conversation.ask('Question after an edit'), false);
+  const state = f.conversation.getSnapshot();
+  assert.equal(state.phase, 'ready');
+  assert.equal(state.failure, 'source_changed');
+  assert.equal(state.failed, true);
+  assert.equal(state.contextMessages, 1);
+  assert.deepEqual(state.turns, []);
+  assert.equal(state.pending, null);
+  assert.equal(resets, 1, 'the owner never retries by itself');
+  f.port.ask = async () => ({ text: 'Answer using the new source' });
+  assert.equal(await f.conversation.ask('Explicit retry'), true);
+  assert.equal(f.conversation.getSnapshot().failure, undefined);
+  assert.deepEqual(
+    f.conversation.getSnapshot().turns.map((turn) => turn.text),
+    ['Explicit retry', 'Answer using the new source'],
+  );
+  await f.conversation.close();
+});

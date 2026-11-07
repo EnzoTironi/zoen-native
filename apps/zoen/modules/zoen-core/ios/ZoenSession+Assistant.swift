@@ -52,6 +52,10 @@ extension ZoenSession {
     // Re-read the current canonical text slice for every turn. The model is never
     // handed an arbitrary JavaScript transcript or an old/deleted context snapshot.
     let context = try ZoenAssistantModel.context(core: core, spaceId: lease.spaceId)
+    if try !ZoenAssistantModel.sourcesAreCurrent(core: core, spaceId: lease.spaceId,
+      sources: lease.turns.map { $0.source } + [context.source]) {
+      return try resetAssistantContext(id: id, lease: lease, messages: context.messages)
+    }
     let instructions = ZoenAssistantModel.instructions(locale: lease.locale)
     let prompt = try ZoenAssistantPrompt.pack(instructions: instructions, question: question,
       history: lease.turns.map { ["question": $0.question, "answer": $0.answer] }, context: context.value)
@@ -78,9 +82,21 @@ extension ZoenSession {
     try Task.checkCancellation()
     guard var current = assistants[id], current.attempt == attempt,
           assistantIsCurrent(current, core: core) else { throw ZoenAssistantFailure.closed }
-    current.turns.append(.init(question: question, answer: text))
+    if try !ZoenAssistantModel.sourcesAreCurrent(core: core, spaceId: current.spaceId,
+      sources: current.turns.map { $0.source } + [context.source]) {
+      let fresh = try ZoenAssistantModel.context(core: core, spaceId: current.spaceId)
+      return try resetAssistantContext(id: id, lease: current, messages: fresh.messages)
+    }
+    current.turns.append(.init(question: question, answer: text, source: context.source))
     assistants[id] = current
     return try ZoenMediaFiles.json(["text": text])
+  }
+
+  private func resetAssistantContext(id: String, lease: ZoenAssistantLease, messages: Int) throws -> String {
+    var current = lease
+    current.turns.removeAll()
+    assistants[id] = current
+    return try ZoenMediaFiles.json(["reset": "source_changed", "contextMessages": messages])
   }
 
   func closeAssistant(id: String) async {
@@ -103,7 +119,7 @@ extension ZoenSession {
 }
 
 struct ZoenAssistantLease {
-  struct Turn { let question: String; let answer: String }
+  struct Turn { let question: String; let answer: String; let source: ZoenAssistantContextSnapshot }
   let generation: UInt64
   let mode: String
   let identity: String
@@ -226,20 +242,38 @@ private enum ZoenAssistantModel {
     """
   }
 
-  static func context(core: Client, spaceId: String) throws -> (value: [String: Any], messages: Int) {
+  static func context(core: Client, spaceId: String) throws -> (value: [String: Any], messages: Int, source: ZoenAssistantContextSnapshot) {
     let space = try core.space(spaceId: spaceId)
     let entries = try core.timeline(spaceId: spaceId)
-    var messages: [[String: String]] = []
+    let title = ZoenAssistantPrompt.prefix(space.title, bytes: 96)
+    var sources: [ZoenAssistantContextSnapshot.Message] = []
     for entry in entries.reversed() where !entry.deleted {
       guard case let .message(text, _) = entry.kind, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-      let message = ["author": ZoenAssistantPrompt.prefix(entry.author.name, bytes: 48), "text": ZoenAssistantPrompt.prefix(text, bytes: 384)]
-      let candidate = [message] + messages
-      let encoded = try ZoenMediaFiles.json(["title": ZoenAssistantPrompt.prefix(space.title, bytes: 96), "messages": candidate])
-      if encoded.utf8.count > 1_600 { break }
-      messages = candidate
-      if messages.count == 12 { break }
+      let source = ZoenAssistantContextSnapshot.Message(id: entry.id, authorId: entry.author.id,
+        authorName: ZoenAssistantPrompt.prefix(entry.author.name, bytes: 48),
+        text: ZoenAssistantPrompt.prefix(text, bytes: 384))
+      let candidate = [source] + sources
+      let snapshot = ZoenAssistantContextSnapshot(title: title, messages: candidate)
+      if try ZoenMediaFiles.json(snapshot.value).utf8.count > 1_600 { break }
+      sources = candidate
+      if sources.count == 12 { break }
     }
-    return (["title": ZoenAssistantPrompt.prefix(space.title, bytes: 96), "messages": messages], messages.count)
+    let source = ZoenAssistantContextSnapshot(title: title, messages: sources)
+    return (source.value, sources.count, source)
+  }
+
+  static func sourcesAreCurrent(core: Client, spaceId: String, sources: [ZoenAssistantContextSnapshot]) throws -> Bool {
+    let title = ZoenAssistantPrompt.prefix(try core.space(spaceId: spaceId).title, bytes: 96)
+    let wanted = Set(sources.flatMap { $0.messages.map { $0.id } })
+    var current: [String: ZoenAssistantContextSnapshot.Message] = [:]
+    for entry in try core.timeline(spaceId: spaceId) where wanted.contains(entry.id) && !entry.deleted {
+      guard case let .message(text, _) = entry.kind else { continue }
+      guard current[entry.id] == nil else { return false }
+      current[entry.id] = .init(id: entry.id, authorId: entry.author.id,
+        authorName: ZoenAssistantPrompt.prefix(entry.author.name, bytes: 48),
+        text: ZoenAssistantPrompt.prefix(text, bytes: 384))
+    }
+    return sources.allSatisfy { $0.isCurrent(title: title, messages: current) }
   }
 
   static func answer(instructions: String, prompt: String) async throws -> String {

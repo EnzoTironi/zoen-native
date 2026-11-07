@@ -6,6 +6,7 @@ export type AssistantState = Readonly<{
   turns: readonly AssistantTurn[];
   pending: string | null;
   failed: boolean;
+  failure?: 'source_changed';
   reason?: AssistantUnavailableReason;
   contextMessages: number;
   limited: boolean;
@@ -69,11 +70,29 @@ export class EphemeralConversation {
     if (this.closed || !this.id || this.state.phase !== 'ready' || this.asking || !text)
       return Promise.resolve(false);
     const id = this.id;
-    this.update({ ...this.state, phase: 'asking', pending: text, failed: false });
+    this.update({
+      ...this.state,
+      phase: 'asking',
+      pending: text,
+      failed: false,
+      failure: undefined,
+    });
     const task = (async () => {
       try {
         const result = await this.port.ask(id, text);
         if (this.closed) return false;
+        if ('reset' in result) {
+          this.update({
+            ...this.state,
+            phase: 'ready',
+            turns: [],
+            pending: null,
+            failed: true,
+            failure: 'source_changed',
+            contextMessages: result.contextMessages,
+          });
+          return false;
+        }
         if (!result.text.trim()) throw new Error('empty');
         this.update({
           ...this.state,

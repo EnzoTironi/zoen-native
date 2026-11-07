@@ -9,6 +9,7 @@ export const agents = defineFeature(
       'Uses a recent text excerpt from this conversation. Replies stay out of your chat history.',
     temporaryPreparing: 'Preparing your conversation…',
     temporaryThinking: 'Thinking…',
+    temporarySourceChanged: 'The conversation changed. Send your question again.',
     temporaryFailed: 'Zoen could not answer. Your question is ready to try again.',
     temporaryUnavailable: 'AI is not available on this iPhone',
     temporaryNotEligible: 'This iPhone does not support Apple Intelligence.',
@@ -142,6 +143,7 @@ export const agents = defineFeature(
       'Usa um trecho recente de texto desta conversa. As respostas não entram no seu histórico.',
     temporaryPreparing: 'Preparando sua conversa…',
     temporaryThinking: 'Pensando…',
+    temporarySourceChanged: 'A conversa mudou. Envie sua pergunta novamente.',
     temporaryFailed:
       'O Zoen não conseguiu responder. Sua pergunta está pronta para tentar novamente.',
     temporaryUnavailable: 'IA indisponível neste iPhone',
