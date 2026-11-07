@@ -98,7 +98,7 @@ impl NativeCustody {
                 .await?;
             self.activate_maintenance(
                 runtime,
-                credential,
+                &credential,
                 staged,
                 &fence,
                 Some(shared::SharedSource {

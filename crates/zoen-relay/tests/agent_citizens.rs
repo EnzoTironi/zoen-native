@@ -6,6 +6,8 @@ use sqlx::{Connection, PgConnection, PgPool};
 use types::{Identity, IdentityKind};
 use zoen_relay::agents::{self, AgentCitizenError, CitizenClaim};
 use zoen_relay::db;
+#[path = "agent_citizens/managed.rs"]
+mod managed;
 
 struct Database {
     pool: PgPool,

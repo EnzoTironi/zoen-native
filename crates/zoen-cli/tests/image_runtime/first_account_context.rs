@@ -24,7 +24,8 @@ pub(super) async fn run(
     let pending = owner.request_account_policy_options(scope.clone())?;
     let mut host = Host::start(w, path).await?;
     let first = account_controls::options(&owner, &scope, &pending.source, &mut host).await;
-    assert_eq!(first.image_profile_digest, config.image_price.digest()?);
+    assert_eq!(first.profile_digest, config.image_price.digest()?);
+    assert_eq!(first.service_kind, "image");
     assert_eq!(first.current_policy_digest, None);
     assert_eq!(first.current_enabled, None);
     drop(host);
@@ -33,7 +34,7 @@ pub(super) async fn run(
     let next = owner.request_account_policy_options(scope.clone())?;
     assert_ne!(next.source, pending.source);
     let current = account_controls::options(&owner, &scope, &next.source, &mut cold).await;
-    assert_eq!(current.image_profile_digest, first.image_profile_digest);
+    assert_eq!(current.profile_digest, first.profile_digest);
     assert_eq!(current.current_policy_digest, None);
     assert_eq!(current.current_enabled, None);
     assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 0);

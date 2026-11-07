@@ -168,7 +168,7 @@ impl NativeCustody {
                 runtime,
                 custody: self,
                 capability,
-                credential,
+                credential: &credential,
                 fence: &fence,
                 run,
                 record,

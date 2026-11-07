@@ -6,6 +6,11 @@ type Phase = fn() -> Journey;
 
 pub(super) async fn run() -> TestResult {
     let phases: Vec<Phase> = match std::env::var("ZOEN_RUNTIME_TEST_COHORT") {
+        Ok(cohort) if cohort == "native-service" => {
+            vec![|| Box::pin(retained::shared_native::service::run()), || {
+                Box::pin(managed_custody::run())
+            }]
+        }
         Ok(cohort) if cohort == "conversation-budget" => {
             vec![|| Box::pin(owner_policy_controls::run()), || {
                 Box::pin(retained::shared_native::context::run())

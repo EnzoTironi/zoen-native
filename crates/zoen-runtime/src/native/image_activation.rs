@@ -178,9 +178,13 @@ impl RuntimeAuthority {
         }
         drop(transaction);
         let fence = self.execution.acquire_native_device(&principal).await?;
-        let result = Box::pin(
-            self.recover_image_activation_fenced(deployment, credential, &fence, &intent, &sealed),
-        )
+        let result = Box::pin(self.recover_image_activation_fenced(
+            deployment,
+            &credential,
+            &fence,
+            &intent,
+            &sealed,
+        ))
         .await;
         let release = self
             .execution

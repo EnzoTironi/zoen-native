@@ -30,7 +30,7 @@ pub(crate) trait NativeOutputAuthority: Send + Sync {
 pub(crate) struct ManagedNativeOutput {
     anchor: OutputAnchor,
     target: ImageDeliveryTarget,
-    principals: BTreeMap<(String, String), Principal>,
+    principals: RwLock<BTreeMap<(String, String), Principal>>,
 }
 
 impl ManagedNativeOutput {
@@ -73,14 +73,19 @@ impl ManagedNativeOutput {
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
         // Same configured-principal bound as the existing relay registry.
-        if custody.credentials.is_empty() || custody.credentials.len() > 256 {
-            return Err(RuntimeError::InvalidBinding);
-        }
-        let principals = custody
-            .credentials
-            .iter()
-            .map(|(key, credential)| (key.clone(), credential.principal()))
-            .collect();
+        let principals = {
+            let credentials = custody
+                .credentials
+                .read()
+                .map_err(|_| RuntimeError::Unavailable)?;
+            if credentials.is_empty() || credentials.len() > MAX_CONFIGURED_DEVICES {
+                return Err(RuntimeError::InvalidBinding);
+            }
+            credentials
+                .iter()
+                .map(|(key, credential)| (key.clone(), credential.principal()))
+                .collect()
+        };
         Self::qualify_principals(runtime, OutputAnchor::Shared(anchor), target, principals).await
     }
 
@@ -148,7 +153,7 @@ impl ManagedNativeOutput {
         let scope = Self {
             anchor,
             target,
-            principals,
+            principals: RwLock::new(principals),
         };
         scope.check_context(runtime)?;
         let tx = runtime.execution.transaction().await?;
@@ -207,7 +212,11 @@ impl NativeOutputAuthority for ManagedNativeOutput {
             .native
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
-        for ((agent, device), principal) in &self.principals {
+        let principals = self
+            .principals
+            .read()
+            .map_err(|_| RuntimeError::Unavailable)?;
+        for ((agent, device), principal) in &*principals {
             if native.credential(agent, device)?.principal() != *principal {
                 return Err(RuntimeError::InvalidBinding);
             }
@@ -215,7 +224,12 @@ impl NativeOutputAuthority for ManagedNativeOutput {
         self.execution(&runtime.execution)
     }
     fn check_device(&self, agent: &str, device: &str) -> Result<(), RuntimeError> {
-        if self.principals.contains_key(&(agent.into(), device.into())) {
+        if self
+            .principals
+            .read()
+            .map_err(|_| RuntimeError::Unavailable)?
+            .contains_key(&(agent.into(), device.into()))
+        {
             Ok(())
         } else {
             Err(RuntimeError::InvalidBinding)
@@ -230,6 +244,64 @@ impl NativeOutputAuthority for ManagedNativeOutput {
 }
 
 impl RuntimeAuthority {
+    /// Qualify one newly attached device through the actual relay while keeping
+    /// the same live financial runtime, source route and generation anchor.
+    /// Attaching a vault credential alone cannot add this output capability.
+    ///
+    /// # Errors
+    /// Refuses unregistered/revoked devices, changed target/deployment/generation,
+    /// failed relay handshake or the existing configured-principal capacity.
+    pub async fn qualify_shared_reply_device(
+        &self,
+        target: ImageDeliveryTarget,
+        agent: &str,
+        device: &str,
+    ) -> Result<(), RuntimeError> {
+        let scope = self
+            .reply_output
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
+        if !matches!(&scope.anchor, OutputAnchor::Shared(_)) {
+            return Err(RuntimeError::InvalidBinding);
+        };
+        scope.check_target(&target)?;
+        let principal = self
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .credential(agent, device)?
+            .principal();
+        let key = (agent.to_owned(), device.to_owned());
+        let candidate = ManagedNativeOutput::qualify_principals(
+            self,
+            OutputAnchor::Shared(self.shared_output_anchor().await?),
+            target,
+            BTreeMap::from([(key.clone(), principal.clone())]),
+        )
+        .await?;
+        if candidate.anchor.checkpoint().generation != scope.anchor.checkpoint().generation {
+            return Err(RuntimeError::RestoreUnreconciled);
+        }
+        scope.check_context(self)?;
+        let tx = self.execution.transaction().await?;
+        scope.check_in(&self.execution, &tx).await?;
+        let mut principals = scope
+            .principals
+            .write()
+            .map_err(|_| RuntimeError::Unavailable)?;
+        if let Some(retained) = principals.get(&key) {
+            if retained != &principal {
+                return Err(RuntimeError::InvalidBinding);
+            };
+        } else {
+            if principals.len() >= MAX_CONFIGURED_DEVICES {
+                return Err(RuntimeError::InvalidBinding);
+            };
+            principals.insert(key, principal);
+        }
+        Ok(())
+    }
+
     /// Qualify the actual managed relay route for every configured native
     /// principal. This alone cannot authorize a run, activation or publication.
     pub async fn qualify_shared_reply_output(

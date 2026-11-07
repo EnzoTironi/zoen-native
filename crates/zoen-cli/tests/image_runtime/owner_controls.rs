@@ -59,14 +59,12 @@ pub(super) async fn run(
     };
     assert_eq!(context.currency, config.image_price.currency);
     assert_eq!(context.scale, config.image_price.scale);
+    assert_eq!(context.service_kind, "image");
     assert_eq!(
         context.reservation_units,
         config.image_price.reservation_units.to_string()
     );
-    assert_eq!(
-        context.image_profile_digest,
-        config.image_price.digest().unwrap()
-    );
+    assert_eq!(context.profile_digest, config.image_price.digest().unwrap());
     assert_eq!(context.current_limit_units.as_deref(), Some("100"));
     assert!(context.current_policy_digest.is_some());
     assert_eq!(w.count("SELECT count(*) FROM runtime_policies").await, 2);

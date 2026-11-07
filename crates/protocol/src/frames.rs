@@ -186,10 +186,19 @@ pub enum Op {
 /// What an agent runtime or its owner asks the relay about an agent citizen.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentRequest {
+    ManagedService,
+    PrepareManaged(crate::managed_agents::Request),
+    ManagedStatus {
+        service: String,
+        operation: String,
+    },
     /// The signed-in agent: its status, current definition and per-Space cursors.
     State,
     /// The signed-in agent handled its Space through `seq` (inclusive).
-    Advance { space: SpaceId, seq: u64 },
+    Advance {
+        space: SpaceId,
+        seq: u64,
+    },
     /// A new definition version. The owner may always; the agent only for its first.
     Define {
         agent: IdentityId,
@@ -198,9 +207,13 @@ pub enum AgentRequest {
         definition: Vec<u8>,
     },
     /// Owner only: one of your agents' status ("active", "paused" or "revoked").
-    Status { agent: IdentityId },
+    Status {
+        agent: IdentityId,
+    },
     /// Owner only: canonical lifecycle revision and last operation.
-    ControlStatus { agent: IdentityId },
+    ControlStatus {
+        agent: IdentityId,
+    },
     /// Owner only: apply once at exactly the observed lifecycle revision.
     ControlReviewed {
         agent: IdentityId,
@@ -293,6 +306,9 @@ impl Op {
             Op::Unlink { .. } => "unlink",
             Op::SendDevice { .. } => "send_device",
             Op::Agent(AgentRequest::State) => "agent_state",
+            Op::Agent(AgentRequest::ManagedService) => "agent_managed_service",
+            Op::Agent(AgentRequest::PrepareManaged(_)) => "agent_managed_prepare",
+            Op::Agent(AgentRequest::ManagedStatus { .. }) => "agent_managed_status",
             Op::Agent(AgentRequest::Advance { .. }) => "agent_advance",
             Op::Agent(AgentRequest::Define { .. }) => "agent_define",
             Op::Agent(AgentRequest::Control { .. } | AgentRequest::ControlReviewed { .. }) => {
@@ -328,6 +344,8 @@ pub struct SealedProfile {
 /// The typed answer to each [`Op`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reply {
+    ManagedService(crate::managed_agents::Availability),
+    ManagedAgent(crate::managed_agents::Record),
     VoipConsent(bool),
     SavedMessages(crate::saved_messages::Receipt),
     /// Register: the profile as stored (handle normalized).

@@ -49,7 +49,7 @@ pub(crate) async fn original(
         .envelope(
             runtime.execution.reply_source().unwrap().cell(),
             &hash(&serde_json::to_vec(&intent.input).unwrap()),
-            credential,
+            &credential,
             &intent.space,
         )
         .unwrap();

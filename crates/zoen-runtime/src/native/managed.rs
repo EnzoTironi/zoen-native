@@ -2,7 +2,6 @@
 //! vault. It grants neither restore continuity nor permission to send output.
 use super::*;
 use client_core::SecretVault;
-use sqlx::types::Json;
 use std::sync::Arc;
 
 fn vault_key(
@@ -23,7 +22,10 @@ fn vault_key(
         )
     ))
 }
-fn secret(vault: &dyn SecretVault, key: String) -> Result<Zeroizing<[u8; 32]>, RuntimeError> {
+pub(super) fn secret(
+    vault: &dyn SecretVault,
+    key: String,
+) -> Result<Zeroizing<[u8; 32]>, RuntimeError> {
     let bytes = Zeroizing::new(
         vault
             .load(key)
@@ -116,54 +118,9 @@ impl RuntimeAuthority {
         device: &str,
         key_version: u32,
     ) -> Result<Self, RuntimeError> {
-        let namespace = config.namespace.clone();
-        let capsule_key = Self::native_capsule_vault_key(&namespace, key_version)?;
-        let device_key = Self::native_device_vault_key(&namespace, agent, device)?;
-        let mut runtime = Self::open(config).await?;
-        let row: Option<(Json<Identity>, Json<Identity>, String)> = sqlx::query_as(
-            "SELECT a.profile,o.profile,d.cert FROM identities a JOIN identities o ON o.id=a.owner JOIN devices d ON d.identity=a.id WHERE a.id=$1 AND d.device=$2 AND d.revoked_at IS NULL"
-        ).bind(agent).bind(device).fetch_optional(&runtime.finance.pool).await?;
-        let Some((Json(profile), Json(owner), certificate)) = row else {
-            return Err(RuntimeError::Denied);
-        };
-        // This read validates the actual registered profile, parent and device;
-        // activation later needs a separate fresh directory authorization.
-        runtime
-            .finance
-            .native_directory(&profile, &owner, device, &certificate)
-            .await?
-            .commit()
-            .await?;
-        let key = secret(&*vault, capsule_key)?;
-        let credential = Credential {
-            agent: profile,
-            owner,
-            certificate,
-            secret: secret(&*vault, device_key)?,
-        };
-        credential.unlocked()?;
-        let principal = credential.principal();
-        if principal.agent != agent || principal.device != device {
-            return Err(RuntimeError::Denied);
-        }
-        let custody = NativeCustody {
-            cipher: Custody::new(*key, format!("native-capsule/1/{namespace}")),
-            key_version,
-            credentials: BTreeMap::from([((agent.into(), device.into()), credential)]),
-        };
-        // An existing capsule must authenticate before returning a configured
-        // runtime. A changed vault cannot silently bootstrap over retained state.
-        let trx = runtime.execution.transaction().await?;
-        let exists = runtime
-            .execution
-            .native_root(&trx, &principal)
-            .await?
-            .is_some();
-        drop(trx);
-        if exists {
-            custody.inspect(&runtime, agent, device).await?;
-        }
-        runtime.native = Some(custody);
+        Self::native_device_vault_key(&config.namespace, agent, device)?;
+        let runtime = Self::open_native_service(config, vault.clone(), key_version).await?;
+        runtime.attach_native_device(vault, agent, device).await?;
         Ok(runtime)
     }
 
@@ -209,7 +166,7 @@ impl NativeCustody {
         runtime.collect_reply_retired(&principal).await?;
         let fence = runtime.execution.acquire_native_device(&principal).await?;
         let result = self
-            .initialize_fenced(runtime, credential, &principal, &fence)
+            .initialize_fenced(runtime, &credential, &principal, &fence)
             .await;
         let released = runtime
             .execution

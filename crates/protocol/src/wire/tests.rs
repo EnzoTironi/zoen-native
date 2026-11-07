@@ -300,3 +300,4 @@ fn reviewed_lifecycle_frames_preserve_identity_and_revision(
     );
     Ok(())
 }
+mod managed_agents;

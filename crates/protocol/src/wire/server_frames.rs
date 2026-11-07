@@ -246,6 +246,8 @@ fn result_to(result: &Result<Reply, String>) -> pb_res::R {
             device: None,
         }),
         Ok(Reply::AgentControl(a)) => pb_res::R::AgentControl(a.clone()),
+        Ok(Reply::ManagedService(a)) => pb_res::R::ManagedService(a.clone()),
+        Ok(Reply::ManagedAgent(a)) => pb_res::R::ManagedAgent(a.clone()),
         Ok(Reply::AgentState(a)) => pb_res::R::AgentState(agent_state_to(a)),
         Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
             devices: ds
@@ -320,6 +322,18 @@ fn result_from(result: pb_res::R) -> Result<Result<Reply, String>, DecodeError> 
         )),
         pb_res::R::Link(b) => Ok(Reply::Link((!b.sealed.is_empty()).then_some(b.sealed))),
         pb_res::R::AgentControl(a) => Ok(Reply::AgentControl(a)),
+        pb_res::R::ManagedService(a) => {
+            if a.service.as_ref().is_some_and(|s| !s.valid()) {
+                return Err(bad("managed service"));
+            }
+            Ok(Reply::ManagedService(a))
+        }
+        pb_res::R::ManagedAgent(a) => {
+            if !a.valid() {
+                return Err(bad("managed agent"));
+            }
+            Ok(Reply::ManagedAgent(a))
+        }
         pb_res::R::AgentState(a) => Ok(Reply::AgentState(AgentStateRecord {
             status: a.status,
             kind: a.kind,

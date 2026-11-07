@@ -114,7 +114,7 @@ pub(super) async fn run(
     assert_eq!(current.current_limit_units.as_deref(), Some("0"));
     assert_eq!(current.current_max_attempt_units.as_deref(), Some("0"));
     assert_eq!(current.existing_profile_count, 1);
-    assert_eq!(current.image_profile_digest, config.image_price.digest()?);
+    assert_eq!(current.profile_digest, config.image_price.digest()?);
     assert_eq!(
         w.count("SELECT count(*) FROM runtime_policies").await,
         1,
