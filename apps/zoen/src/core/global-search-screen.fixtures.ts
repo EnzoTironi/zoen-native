@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
@@ -6,10 +5,10 @@ import * as React from 'react';
 import { build } from 'esbuild';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { deferred, Driver, draftSession } from './store.fixtures.ts';
-import { ClientStore } from './store.ts';
+import { ClientStore, type ClientState } from './store.ts';
+import { compileExpoSource } from './expo-compiler.fixtures.ts';
 
 const require = createRequire(import.meta.url);
-const { transformSync } = require('@babel/core');
 const ports = new Set([
   'react',
   'react/jsx-runtime',
@@ -43,14 +42,7 @@ const compiled = await build({
           ports.has(path) ? { path, external: true } : undefined,
         );
         builder.onLoad({ filter: /search\.tsx$/ }, ({ path }) => ({
-          contents: transformSync(readFileSync(path, 'utf8'), {
-            filename: path,
-            babelrc: false,
-            configFile: false,
-            presets: [['babel-preset-expo', { jsxRuntime: 'automatic' }]],
-            plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-            caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: false },
-          }).code,
+          contents: compileExpoSource(path),
           loader: 'js',
         }));
       },
@@ -223,7 +215,16 @@ export async function fixture(
           },
         };
       if (name === '../core/provider' || name === './provider')
-        return { useClient: () => ({ store, ...(canonicalStore ? store.getSnapshot() : state) }) };
+        return {
+          useClient: () => ({
+            store,
+            ...React.useSyncExternalStore<ClientState>(
+              store.subscribe,
+              store.getSnapshot,
+              store.getSnapshot,
+            ),
+          }),
+        };
       if (name === '../theme') return { useTheme: () => ({ colors: {} }) };
       if (name === '../i18n/index.ts') return { t: (key: string) => key };
       if (name === '../profile/profile-avatar') return { ProfileAvatar: () => null };

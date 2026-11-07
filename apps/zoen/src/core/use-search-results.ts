@@ -3,10 +3,13 @@ import { useFocusEffect } from 'expo-router';
 import { homeOwnerFor, homeSpacesFor } from '../home/access';
 import { ConversationSearch, conversationQueryFits } from './conversation-search';
 import type { SearchPageInput } from './generated/SearchPageInput';
-import type { ClientStore } from './store';
+import type { ClientState, ClientStore } from './store';
 
-export function searchScope(store: ClientStore, space?: string) {
-  const state = store.getSnapshot();
+export function searchScope(
+  store: ClientStore,
+  space?: string,
+  state: ClientState = store.getSnapshot(),
+) {
   const owner = homeOwnerFor(state);
   const spaces = homeSpacesFor(state);
   return !owner || store.isSessionRetiring || (space && !spaces.has(space))
