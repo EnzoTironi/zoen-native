@@ -195,3 +195,24 @@ fn native_history_search_turns_reject_replaced_permission_and_forged_pages(
         .is_err());
     Ok(())
 }
+
+#[test]
+fn pending_reply_does_not_invalidate_its_own_retained_history_read(
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut f = Fixture::new()?;
+    f.grant("history-self-reply", None)?;
+    let source = f.message("needle detail")?;
+    let intent = f.core.reply(SPACE, &source, 400)?.intent().clone();
+    let arguments = json!({"query":"needle","limit":1});
+    let page = DeviceCore::restore(f.core.image()?, f.credential())?
+        .search_reply_history(&intent, &arguments, 400)?;
+    let reads = vec![ReplyHistoryRead { arguments, page }];
+    let mut core = DeviceCore::restore(f.core.image()?, f.credential())?;
+    let prepared = core.prepare_reply(&intent, "needle result", 401)?;
+    DeviceCore::restore(
+        NativeImage::decode_bounded(prepared.image().as_bytes().to_vec())?,
+        f.credential(),
+    )?
+    .verify_reply_history(&intent, &reads, 402)?;
+    Ok(())
+}

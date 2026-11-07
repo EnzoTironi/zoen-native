@@ -6,6 +6,15 @@ use zoen_runtime::RuntimeAuthority;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestResult {
+    run(false).await
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn managed_service_history_search_reply_and_cold_recovery() -> TestResult {
+    run(true).await
+}
+async fn run(history: bool) -> TestResult {
+    let expected_calls = if history { 2 } else { 1 };
+    let expected_units = (expected_calls * 6).to_string();
     let mut w = World::new_with("managed_service", None, &[]).await;
     let result: TestResult = async {
         w.init("owner", "Owner");
@@ -21,7 +30,7 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         w.stop_relay();
         w.configure_relay_env("ZOEN_MANAGED_DEVICE_CONFIG", registry.to_str());
         w.start_relay();
-        let provider = provider::Provider::start().await?;
+        let provider = provider::Provider::with_history(history).await?;
         let definition = zoen_agentd::Definition {
             version: 1,
             kind: zoen_agentd::AgentKind::User,
@@ -235,18 +244,18 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         assert!(bridge(&owner, "managed_agent_status", json!({}))
             .await?
             .is_null());
-        owner.send_message(space.clone(), "Can you answer with the client closed?".into())?;
+        owner.send_message(space.clone(), if history { "Can you answer with the client closed? conversa" } else { "Can you answer with the client closed?" }.into())?;
         owner.wait_until_settled(20_000).await?;
         owner.stop_sync();
         drop(owner);
-        let output = process.frame("output").await?;
+        let output = process.live_output(Duration::from_secs(40)).await?;
         assert_eq!(output["delivery"]["status"], "accepted");
-        assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
-        assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
+        assert_eq!(provider.calls.load(Ordering::SeqCst), expected_calls);
+        assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, i64::try_from(expected_calls)?);
         assert_eq!(
             w.scalar("SELECT sum(spent_units)::text FROM runtime_periods")
                 .await,
-            "6"
+            expected_units
         );
         drop(process);
         let mut restarted = ServiceProcess::start(&w, &path)?;
@@ -257,12 +266,12 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
             Some(json!({"command":"pending","after":null})),
         )?;
         assert_eq!(pending["status"], "pending");
-        assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
-        assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
+        assert_eq!(provider.calls.load(Ordering::SeqCst), expected_calls);
+        assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, i64::try_from(expected_calls)?);
         assert_eq!(
             w.scalar("SELECT sum(spent_units)::text FROM runtime_periods")
                 .await,
-            "6"
+            expected_units
         );
         assert_eq!(
             w.scalar("SELECT sum(held_units)::text FROM runtime_periods")

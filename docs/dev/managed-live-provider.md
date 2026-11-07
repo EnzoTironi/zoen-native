@@ -91,3 +91,21 @@ nonce is unsuitable: a real model can return it correctly while the secret rule
 correctly withholds publication. Such a paid original stays retained and is not
 re-inferred; inspect its attempt/settlement separately. Failure outcomes also
 record observed attempt and settlement totals, rather than implying no charge.
+
+## Recover an already prepared synthetic reply
+
+The ignored `managed_receipt_recovery::recover_prepared_managed_reply_without_inference`
+test takes `ZOEN_RETAINED_REPLY_FIXTURE`, `ZOEN_RETAINED_REPLY_RUN` and a fresh
+`ZOEN_RETAINED_REPLY_RESULT` path. It accepts only the retained synthetic fixture
+under this user's temporary directory, with one certified executor and the
+original local relay port available. It starts and reaps only its own relay.
+
+This path calls prepared-output recovery directly, using an invalid placeholder
+instead of a provider credential. It never invokes model completion or Gate,
+checks that attempts/settlement do not change, and verifies the same client ID
+and decrypted response through the cold owner. Keep all original evidence.
+
+A prepared reply may repeat its search term. Its unordered local row must not
+change the search page that authorized it. The native scratch search index omits
+rows without an ordered source hash; the pending envelope stays durable. Confirmed
+source edits, revocation, changed pages and forged references still invalidate reads.

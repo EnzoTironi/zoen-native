@@ -53,6 +53,27 @@ impl DeviceCore {
             .ok_or(NativeError::History)?
             .id()
             .to_owned();
+        // A prepared reply is visible locally before the relay orders it. It
+        // cannot change the source page that authorized that same reply. Only
+        // this consumed scratch index changes; the pending envelope stays intact.
+        if self.engine.index_dirty {
+            self.engine.reindex().map_err(search_error)?;
+        }
+        let pending: Vec<_> = self
+            .engine
+            .space_state(original.space())
+            .map_err(search_error)?
+            .entries
+            .iter()
+            .filter(|entry| entry.hash.is_empty())
+            .map(|entry| entry.id().to_owned())
+            .collect();
+        for pending in pending {
+            self.engine
+                .store
+                .index_remove_message(original.space(), &pending)
+                .map_err(|_| NativeError::Storage)?;
+        }
         let mut page = self
             .engine
             .agent_search_messages(
