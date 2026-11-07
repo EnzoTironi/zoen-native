@@ -390,3 +390,17 @@ test('lost finish acknowledgement and retired completion never enable a differen
     assert(!f.calls.some((s) => s.startsWith('start:')));
   }
 });
+
+test('a rendered state can obtain a ticket only for its exact current observation', async () => {
+  const f = fixture(view('review'));
+  const inactive = f.session.getSnapshot();
+  await f.session.refresh();
+  assert.equal(f.session.ticket(inactive), null);
+  const rendered = f.session.getSnapshot();
+  assert.notEqual(f.session.ticket(rendered), null);
+  f.session.retire();
+  f.session.activate({ ...owner, epoch: 2 });
+  await f.session.refresh();
+  assert.equal(f.session.ticket(rendered), null);
+  assert.notEqual(f.session.ticket(f.session.getSnapshot()), null);
+});

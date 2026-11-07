@@ -96,7 +96,7 @@ export function useManagedAgent() {
       };
     }, [session, store, key]),
   );
-  const renderedTicket = session.ticket();
+  const renderedTicket = session.ticket(state);
   const renderedOperation = state.view?.operation_id;
   const open = async (destination: 'budget' | 'chat') => {
     const ticket = renderedTicket;

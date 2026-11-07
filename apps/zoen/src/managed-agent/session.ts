@@ -49,8 +49,8 @@ export class ManagedAgentSession {
       this.listeners.delete(listener);
     };
   };
-  ticket() {
-    return this.owner ? this.generation : null;
+  ticket(observed: ManagedAgentState = this.state) {
+    return observed === this.state && this.owner ? this.generation : null;
   }
   accepts(ticket: number | null) {
     return ticket !== null && !!this.owner && ticket === this.generation;

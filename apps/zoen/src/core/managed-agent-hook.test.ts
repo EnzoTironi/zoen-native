@@ -125,3 +125,16 @@ test('mounting a focused sheet while the app is backgrounded cannot start discov
     await f.close();
   }
 });
+
+test('the compiled hook exposes a live approval ticket after its first status read', async () => {
+  const f = await managedAgentHookFixture(managedView());
+  try {
+    const rendered = f.current();
+    assert.notEqual(rendered.ticket, null);
+    await f.act(() => rendered.session.approve(rendered.ticket, rendered.state.view));
+    assert.equal(f.commands.filter((command) => command.op === 'managed_agent_approve').length, 1);
+    assert.equal(f.current().state.view?.state, 'installing');
+  } finally {
+    await f.close();
+  }
+});

@@ -10,6 +10,7 @@ import type { ManagedEnrollmentDto } from './generated/ManagedEnrollmentDto';
 import type { ManagedRecoveryPageDto } from './generated/ManagedRecoveryPageDto';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 import { compileExpoSource } from './expo-compiler.fixtures.ts';
+import { managedAgentScreen } from './managed-agent-screen.fixtures.ts';
 
 const require = createRequire(import.meta.url);
 const compiled = await build({
@@ -60,6 +61,7 @@ export function managedView(state = 'review'): ManagedEnrollmentDto {
 export async function managedAgentHookFixture(
   initial: ManagedEnrollmentDto | null = null,
   initialAppState = 'active',
+  renderScreen = false,
 ) {
   const root = createReactTestRoot();
   const owners = new Set<() => void>();
@@ -67,6 +69,8 @@ export async function managedAgentHookFixture(
   const appListeners = new Set<(next: string) => void>();
   const timers = new Map<number, { callback(): void; delay: number }>();
   const commands: { op: string; [key: string]: unknown }[] = [];
+  const navigation: unknown[] = [];
+  const refreshed: string[][] = [];
   let sequence = 0;
   let status: () => Promise<ManagedEnrollmentDto | null> = async () => initial;
   let page: ManagedRecoveryPageDto = { requests: [], next_operation: null };
@@ -98,11 +102,26 @@ export async function managedAgentHookFixture(
       preflights.add(callback);
       return () => preflights.delete(callback);
     },
+    request: async (command: { op: string }) => {
+      commands.push(command);
+      if (command.op === 'find_people')
+        return [
+          { id: 'agent', handle: 'assistant', kind: 'Agent', owner_id: 'owner', is_mine: true },
+        ];
+      throw Error(`Unexpected store command ${command.op}`);
+    },
+    refresh: async (spaces: string[]) => {
+      refreshed.push(Array.from(spaces));
+    },
     driver: {
       request: async (command: { op: string }) => {
         commands.push(command);
         if (command.op === 'managed_agent_status') return status();
         if (command.op === 'managed_agent_discover') return page;
+        if (command.op === 'managed_agent_start') return managedView('queued');
+        if (command.op === 'managed_agent_complete') return true;
+        if (command.op === 'managed_agent_chat') return 'conversation';
+        if (command.op === 'agent_status') return 'Active';
         if (command.op === 'managed_agent_approve') return managedView('installing');
         throw Error(`Unexpected command ${command.op}`);
       },
@@ -135,18 +154,27 @@ export async function managedAgentHookFixture(
         return {
           useFocusEffect: (effect: React.EffectCallback) => React.useEffect(effect, [effect]),
           router: {
-            push: () => assert.fail('No navigation expected'),
-            dismissAll: () => assert.fail('No navigation expected'),
+            push: (target: unknown) => navigation.push(structuredClone(target)),
+            dismissAll: () => navigation.push('dismissAll'),
           },
         };
       throw Error(name);
     },
   });
+  const screen = managedAgentScreen(
+    () => {
+      observed = module.exports.useManagedAgent();
+      return observed;
+    },
+    () => {
+      navigation.push('back');
+    },
+  );
   function Probe() {
     observed = module.exports.useManagedAgent();
     return null;
   }
-  const render = () => root.render(React.createElement(Probe));
+  const render = () => root.render(React.createElement(renderScreen ? screen.Screen : Probe));
   const current = () => {
     assert.ok(observed);
     return observed;
@@ -154,6 +182,9 @@ export async function managedAgentHookFixture(
   await render();
   return {
     commands,
+    navigation,
+    refreshed,
+    screen,
     timers,
     appListeners,
     preflights,
@@ -188,6 +219,7 @@ export async function managedAgentHookFixture(
     async close() {
       await root.close();
       assert.deepEqual(root.errors, []);
+      if (!renderScreen) assert.deepEqual(navigation, []);
     },
   };
 }
