@@ -34,6 +34,7 @@ use crate::{
     Shared,
 };
 
+mod agent;
 mod authentication;
 mod complete_reads;
 mod ephemeral;

@@ -11,6 +11,7 @@ mod membership;
 mod owner_policy;
 mod packages;
 mod runs;
+mod service;
 pub(crate) use runs::output::ReplyOutputCheck;
 pub(crate) use runs::reviews::commitment as tool_decision_commitment;
 mod source;
@@ -35,6 +36,7 @@ pub(crate) use shared::{recover_shared_native, shared_commitments, shared_intent
 pub(crate) use storage::bounded_rows;
 
 use std::collections::BTreeMap;
+use std::sync::{Arc, RwLock};
 
 use client_core::runtime_core::{DeviceCore, NativeImage, UnlockedDevice};
 use serde::{Deserialize, Serialize};
@@ -47,6 +49,7 @@ const IMAGE_BYTES: usize = 4 * 1024 * 1024;
 const CHUNK_BYTES: usize = 64 * 1024;
 const MAX_CHUNKS: usize = 64;
 const MANIFEST_BYTES: usize = 16 * 1024;
+const MAX_CONFIGURED_DEVICES: usize = 256;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct Principal {
@@ -152,9 +155,10 @@ impl Credential {
 pub(super) struct NativeCustody {
     cipher: Custody,
     key_version: u32,
+    vault_namespace: String,
     // Managed construction resolves these profiles from SQL and device secrets
     // from a vault. No public configuration accepts credential maps or images.
-    credentials: BTreeMap<(String, String), Credential>,
+    credentials: RwLock<BTreeMap<(String, String), Arc<Credential>>>,
 }
 
 fn digest(value: &str) -> bool {
@@ -202,12 +206,15 @@ impl Context {
 pub(crate) mod testing;
 
 impl NativeCustody {
-    fn credential(&self, agent: &str, device: &str) -> Result<&Credential, RuntimeError> {
+    fn credential(&self, agent: &str, device: &str) -> Result<Arc<Credential>, RuntimeError> {
         if !id(agent) || !id(device) {
             return Err(RuntimeError::InvalidBinding);
         }
         self.credentials
+            .read()
+            .map_err(|_| RuntimeError::Unavailable)?
             .get(&(agent.into(), device.into()))
+            .cloned()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)
     }
 
@@ -322,13 +329,21 @@ impl NativeCustody {
         device: &str,
     ) -> Result<NativeInspection, RuntimeError> {
         let credential = self.credential(agent, device)?;
+        self.inspect_credential(runtime, &credential).await
+    }
+
+    async fn inspect_credential(
+        &self,
+        runtime: &RuntimeAuthority,
+        credential: &Credential,
+    ) -> Result<NativeInspection, RuntimeError> {
         let principal = credential.principal();
         let guard = runtime
             .finance
             .native_directory(
                 &credential.agent,
                 &credential.owner,
-                device,
+                &principal.device,
                 &credential.certificate,
             )
             .await?;
@@ -368,7 +383,7 @@ impl NativeCustody {
         runtime.collect_reply_retired(&principal).await?;
         let fence = runtime.execution.acquire_native_device(&principal).await?;
         let result = self
-            .repack_fenced(runtime, credential, &principal, &fence)
+            .repack_fenced(runtime, &credential, &principal, &fence)
             .await;
         // Release cannot clear the monotonic token, nor release a new holder.
         // Any uncertain activation has already discarded its native workspace.

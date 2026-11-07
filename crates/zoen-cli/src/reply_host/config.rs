@@ -4,7 +4,7 @@ use crate::{
     gate_transport::ReqwestTransport,
     runtime_host_config::{read_private, text, Connection},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -12,9 +12,10 @@ use std::{
 use zoen_models::EndpointPolicy;
 use zoen_runtime::{ImageDeliveryTarget, PriceProfile, ReplyHostConfig, RuntimeConfig};
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Config {
+    pub managed_service: Option<ManagedServiceSettings>,
     /// Deployment owns the child process through the normal control service.
     #[serde(default)]
     pub supervised: bool,
@@ -38,14 +39,14 @@ pub(super) struct Config {
     pub gate: GateConfig,
     pub worker_bus_key: Option<String>,
 }
-#[derive(Default, Deserialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum ChatEndpoint {
     #[default]
     Https,
     LoopbackFixture,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "provider", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum GateConfig {
     Clef {
@@ -54,6 +55,14 @@ pub(super) enum GateConfig {
     },
     /// Explicit operator acceptance of the existing offline policy floor.
     Offline,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ManagedServiceSettings {
+    pub id: String,
+    pub definition: String,
+    pub zoen_binary: PathBuf,
 }
 impl Config {
     pub(super) fn resolve_device(&mut self, vault: &FileVault) -> Result<(), String> {

@@ -13,6 +13,17 @@ pub(super) async fn run(
     supervised: bool,
     source: Option<ReplySource>,
 ) -> Result<(), String> {
+    run_ready(host, config, vault, supervised, source, None).await
+}
+
+pub(super) async fn run_ready(
+    host: &ReplyRuntimeHost,
+    config: &Config,
+    vault: &FileVault,
+    supervised: bool,
+    source: Option<ReplySource>,
+    ready: Option<tokio::sync::oneshot::Sender<()>>,
+) -> Result<(), String> {
     let mut hints = if let Some(key) = &config.worker_bus_key {
         let url = text(vault, key)?;
         match async_nats::ConnectOptions::new()
@@ -42,13 +53,16 @@ pub(super) async fn run(
     };
     let controls = crate::control::Server::bind(&config.home)?;
     let mut shutdown = Shutdown::new()?;
-    let mut parent = Box::pin(parent_lifetime(supervised)?);
+    let mut parent = Box::pin(crate::parent_lifetime::watch(supervised)?);
     let mut worker = Worker::new(source)?;
     let mut interval = tokio::time::interval(Duration::from_secs(2));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     crate::emit(
         &serde_json::json!({"status":"worker_ready","notifications":hints.is_some(),"subject":host.wake_subject().map_err(|e|e.to_string())?}),
     )?;
+    if let Some(ready) = ready {
+        ready.send(()).map_err(|_| "worker supervisor retired")?;
+    }
     loop {
         match Box::pin(worker.tick(host)).await {
             Ok((events, complete)) => {
@@ -119,32 +133,6 @@ impl Worker {
             Self::Source(worker) => worker.reconcile_soon(),
         }
     }
-}
-
-/// A pipe held only by the supervisor ends even if it is killed without running
-/// destructors. EOF requests graceful shutdown between durable worker ticks.
-fn parent_lifetime(supervised: bool) -> Result<impl std::future::Future<Output = ()>, String> {
-    let (send, receive) = tokio::sync::oneshot::channel();
-    if supervised {
-        std::thread::Builder::new()
-            .name("reply-parent".into())
-            .spawn(move || {
-                use std::io::Read;
-                let mut byte = [0];
-                // Any input, EOF or pipe error ends this lifetime; the pipe is never
-                // a command transport and cannot grant work or change authority.
-                let _ = std::io::stdin().read(&mut byte);
-                let _ = send.send(());
-            })
-            .map_err(|_| "parent lifetime unavailable")?;
-    }
-    Ok(async move {
-        if supervised {
-            let _ = receive.await;
-        } else {
-            std::future::pending::<()>().await;
-        }
-    })
 }
 
 struct Shutdown {

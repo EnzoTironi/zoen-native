@@ -218,7 +218,7 @@ impl NativeCustody {
         let fence = runtime.execution.acquire_native_device(&principal).await?;
         // Keep the native image/discovery frame out of every caller's future.
         let result =
-            Box::pin(self.sync_fenced(runtime, credential, &principal, &fence, space, selected))
+            Box::pin(self.sync_fenced(runtime, &credential, &principal, &fence, space, selected))
                 .await;
         let released = runtime
             .execution

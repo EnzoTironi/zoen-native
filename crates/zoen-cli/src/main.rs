@@ -21,6 +21,7 @@ mod file_import;
 mod file_vault;
 mod gate_transport;
 mod image_protocol;
+mod parent_lifetime;
 mod terminal;
 
 use std::{

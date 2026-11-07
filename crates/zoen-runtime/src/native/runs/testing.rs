@@ -10,7 +10,7 @@ pub(crate) async fn repack_holder(runtime: &RuntimeAuthority, step: &crate::Veri
         .credential(&principal.agent, &principal.device)
         .unwrap();
     custody
-        .repack_fenced(runtime, credential, principal, &step.loaded.fences.device)
+        .repack_fenced(runtime, &credential, principal, &step.loaded.fences.device)
         .await
         .unwrap();
 }

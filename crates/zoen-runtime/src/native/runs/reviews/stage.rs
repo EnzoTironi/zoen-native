@@ -220,7 +220,7 @@ impl NativeCustody {
             let staged = runtime.execution.stage_native(principal, Some(loaded.current.clone()), &loaded.fences.device, image).await?;
             let live = LiveToolDecision { loaded: &loaded, capture: &capture, blocks: &blocks, index: observed.index,
                 policy: &observed.policy, audit: &observed.audit, image: &native_image, review, capability };
-            self.activate_tool_decision(runtime, credential, staged, &loaded.fences.device, &live).await
+            self.activate_tool_decision(runtime, &credential, staged, &loaded.fences.device, &live).await
         }.await;
         let released = runtime
             .execution

@@ -77,7 +77,7 @@ impl NativeCustody {
         // heap: callers can compose concurrent publication without embedding
         // the entire native workspace in every outer async frame.
         let result =
-            Box::pin(self.packages_fenced(runtime, credential, &principal, &fence, phase)).await;
+            Box::pin(self.packages_fenced(runtime, &credential, &principal, &fence, phase)).await;
         let released = runtime
             .execution
             .release_native_device(&principal, &fence)

@@ -214,6 +214,16 @@ impl Sequenced {
 pub(super) fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
     let mut pb = PbAgentReq::default();
     match a {
+        AgentRequest::ManagedService => pb.op = "managed_service".into(),
+        AgentRequest::PrepareManaged(request) => {
+            pb.op = "managed_prepare".into();
+            pb.managed = Some(request.clone());
+        }
+        AgentRequest::ManagedStatus { service, operation } => {
+            pb.op = "managed_status".into();
+            pb.agent.clone_from(service);
+            pb.operation.clone_from(operation);
+        }
         AgentRequest::State => pb.op = "state".into(),
         AgentRequest::Advance { space, seq } => {
             pb.op = "advance".into();
@@ -261,6 +271,25 @@ pub(super) fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
 
 pub(super) fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError> {
     Ok(match pb.op.as_str() {
+        "managed_service" => AgentRequest::ManagedService,
+        "managed_prepare" => {
+            let request = pb.managed.ok_or_else(|| bad("managed agent request"))?;
+            if !request.valid() {
+                return Err(bad("managed agent request"));
+            }
+            AgentRequest::PrepareManaged(request)
+        }
+        "managed_status" => {
+            if !crate::managed_agents::digest(&pb.agent)
+                || !crate::managed_agents::digest(&pb.operation)
+            {
+                return Err(bad("managed agent request"));
+            }
+            AgentRequest::ManagedStatus {
+                service: pb.agent,
+                operation: pb.operation,
+            }
+        }
         "state" => AgentRequest::State,
         "advance" => AgentRequest::Advance {
             space: pb.space,

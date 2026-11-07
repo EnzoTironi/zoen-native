@@ -45,10 +45,7 @@ pub(super) async fn run(
     assert_eq!(first.state, "pending");
     assert!(first.context.is_none());
     let before = options(owner, &scope, &first.source, &mut host).await;
-    assert_eq!(
-        before.image_profile_digest,
-        config.image_price.digest().unwrap()
-    );
+    assert_eq!(before.profile_digest, config.image_price.digest().unwrap());
     assert_eq!(
         before.reservation_units,
         config.image_price.reservation_units.to_string()

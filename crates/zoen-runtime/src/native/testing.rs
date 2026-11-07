@@ -26,7 +26,11 @@ pub(crate) fn custody(
     NativeCustody {
         cipher: Custody::new([73; 32], format!("native-capsule/1/{namespace}")),
         key_version: 1,
-        credentials: BTreeMap::from([((principal.agent, principal.device), credential)]),
+        vault_namespace: namespace.into(),
+        credentials: RwLock::new(BTreeMap::from([(
+            (principal.agent, principal.device),
+            Arc::new(credential),
+        )])),
     }
 }
 
@@ -49,10 +53,11 @@ pub(crate) fn add_device(
     };
     credential.unlocked().unwrap();
     let principal = credential.principal();
-    assert!(custody
-        .credentials
-        .insert((principal.agent, principal.device), credential)
-        .is_none());
+    assert!(matches!(
+        custody.credentials.get_mut().map(|credentials| credentials
+            .insert((principal.agent, principal.device), Arc::new(credential))),
+        Ok(None)
+    ));
 }
 
 pub(crate) async fn provision_packages(
@@ -210,7 +215,8 @@ pub(crate) async fn storage_cuts(
         let other = NativeCustody {
             cipher: Custody::new(key, namespace.into()),
             key_version: 1,
-            credentials: BTreeMap::new(),
+            vault_namespace: namespace.into(),
+            credentials: RwLock::new(BTreeMap::new()),
         };
         assert!(other
             .open_image(

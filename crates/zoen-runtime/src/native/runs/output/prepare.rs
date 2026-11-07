@@ -152,7 +152,7 @@ impl NativeCustody {
                 .await?;
             let live = LivePublication::new(loaded, &retained, &prepared, capability, audit);
             return self
-                .activate_shared_reply(runtime, credential, staged, &loaded.fences.device, &live)
+                .activate_shared_reply(runtime, &credential, staged, &loaded.fences.device, &live)
                 .await;
         }
         let transition = runtime
@@ -323,7 +323,7 @@ impl NativeCustody {
         let credential = self.credential(&principal.agent, &principal.device)?;
         #[cfg(test)]
         if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 54 {
-            self.repack_fenced(runtime, credential, principal, &loaded.fences.device)
+            self.repack_fenced(runtime, &credential, principal, &loaded.fences.device)
                 .await?;
         }
         let capsule = runtime

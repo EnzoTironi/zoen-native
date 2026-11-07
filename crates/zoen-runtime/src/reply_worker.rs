@@ -51,7 +51,11 @@ impl ReplyWorker {
             match host.discover(&space).await {
                 Ok(_) => {}
                 Err(error) if retryable(error) => {
-                    self.defer(key, REVIEW)?;
+                    // A new conversation can precede its encrypted Listen grant.
+                    // Discovery performs native synchronization, not inference;
+                    // recheck it on the ordinary cycle so the later grant arrives.
+                    // Retained/held originals below keep their review cooldown.
+                    self.defer(key, RETRY)?;
                     events.push(ReplyWorkerEvent::ConversationDeferred { space, error });
                 }
                 Err(error) => return Err(error),

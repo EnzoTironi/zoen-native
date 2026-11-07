@@ -133,6 +133,8 @@ pub struct PbAgentReq {
     pub operation: String,
     #[prost(uint64, tag = "9")]
     pub revision: u64,
+    #[prost(message, optional, tag = "10")]
+    pub managed: Option<crate::managed_agents::Request>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -514,7 +516,7 @@ pub struct PbRes {
     pub id: u64,
     #[prost(
         oneof = "pb_res::R",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
     )]
     pub r: Option<pb_res::R>,
 }
@@ -564,6 +566,10 @@ pub mod pb_res {
         SavedMessages(crate::saved_messages::Receipt),
         #[prost(bool, tag = "19")]
         VoipConsent(bool),
+        #[prost(message, tag = "20")]
+        ManagedService(crate::managed_agents::Availability),
+        #[prost(message, tag = "21")]
+        ManagedAgent(crate::managed_agents::Record),
     }
 }
 

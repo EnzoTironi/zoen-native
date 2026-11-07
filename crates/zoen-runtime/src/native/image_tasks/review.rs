@@ -181,7 +181,7 @@ impl NativeCustody {
             drop(trx);
             let envelope = review
                 .as_ref()
-                .map(|r| r.envelope(&target.source, &input_digest, credential, space))
+                .map(|r| r.envelope(&target.source, &input_digest, &credential, space))
                 .transpose()?;
             let capsule = runtime
                 .execution
@@ -199,7 +199,7 @@ impl NativeCustody {
                 runtime,
                 custody: self,
                 capability,
-                credential,
+                credential: &credential,
                 fence: &fence,
                 key,
                 prior,

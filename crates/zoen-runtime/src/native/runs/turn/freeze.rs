@@ -220,7 +220,7 @@ impl NativeCustody {
             )
             .await?;
         let (_, runs) = if runtime.runtime_continuity.is_some() {
-            self.activate_discovery(runtime, credential, staged, &loaded.fences.device, batch)
+            self.activate_discovery(runtime, &credential, staged, &loaded.fences.device, batch)
                 .await?
         } else {
             let authority = batch.scope(&runtime.execution, &staged, &loaded.fences.device)?;

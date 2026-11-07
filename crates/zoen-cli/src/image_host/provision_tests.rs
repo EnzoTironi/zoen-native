@@ -1,6 +1,33 @@
 use super::*;
 use std::{collections::BTreeMap, path::PathBuf};
 
+#[test]
+fn shared_custody_keeps_independent_devices_and_refuses_reseeding(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let custody = Home::new()?;
+    let first = Home::new()?;
+    let second = Home::new()?;
+    let c = config();
+    let locator = RuntimeAuthority::native_capsule_vault_key(&c.namespace, c.key_version)?;
+    assert!(prepare_in_custody(&c, &first.vault(), Some(&custody.vault())).is_err());
+    assert!(!first.vault().dir.exists());
+    custody.vault().write_bytes(&locator, &[73; 32])?;
+    let a = prepare_in_custody(&c, &first.vault(), Some(&custody.vault()))?;
+    let b = prepare_in_custody(&c, &second.vault(), Some(&custody.vault()))?;
+    assert_ne!(a.device, b.device);
+    assert_eq!(first.vault().read_bytes(&locator)?, vec![73; 32]);
+    assert_eq!(second.vault().read_bytes(&locator)?, vec![73; 32]);
+    assert_eq!(
+        prepare_in_custody(&c, &first.vault(), Some(&custody.vault()))?,
+        a
+    );
+    let before = first.snapshot();
+    custody.vault().write_bytes(&locator, &[74; 32])?;
+    assert!(prepare_in_custody(&c, &first.vault(), Some(&custody.vault())).is_err());
+    assert_eq!(first.snapshot(), before);
+    Ok(())
+}
+
 struct Home(PathBuf);
 impl Home {
     fn new() -> std::result::Result<Self, Box<dyn std::error::Error>> {

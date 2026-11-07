@@ -6,6 +6,7 @@
 //! anyone. These rows are the single source of truth the runtime resumes from.
 
 mod control;
+pub mod provision;
 pub use control::{control_reviewed, control_status, invite_live};
 use protocol::{AgentAction, AgentStateRecord};
 use sqlx::{PgPool, Postgres, Transaction};

@@ -19,6 +19,9 @@ name = "zoen-reply-host"
 path = "src/reply_host_main.rs"
 
 [dependencies]
+protocol = { path = "../protocol" }
+zoen-relay = { path = "../zoen-relay" }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }
 relay-admission = { path = "../relay-admission" }
 async-nats = "0.50"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
@@ -51,11 +54,9 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 store.workspace = true
 hkdf.workspace = true
 async-nats = "0.50"
-protocol = { path = "../protocol" }
 event-log = { path = "../event-log" }
 serde_json = "1"
 rusqlite.workspace = true
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 getrandom = "0.2"
