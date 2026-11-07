@@ -15,6 +15,7 @@ import { inboxActions } from './catalogs/inbox-actions.ts';
 import { messageInfo } from './catalogs/message-info.ts';
 import { replyOptions } from './catalogs/reply-options.ts';
 import { chat } from './catalogs/chat.ts';
+import { spaceInvite } from './catalogs/space-invite.ts';
 import { community } from './catalogs/community.ts';
 import { common } from './catalogs/common.ts';
 import { composerKeyboard } from './catalogs/composer-keyboard.ts';
@@ -50,6 +51,7 @@ import {
 
 // Feature owners only add their catalog import and assembly entry here.
 const catalogs = {
+  spaceInvite,
   community,
   ownerPolicy,
   imageReview,

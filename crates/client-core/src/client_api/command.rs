@@ -309,9 +309,6 @@ pub(super) enum Command {
     FindPeople {
         query: String,
     },
-    CreateInvite {
-        space_id: String,
-    },
     PreviewInvite {
         code: String,
     },
@@ -815,4 +812,6 @@ pub(super) enum Command {
     PrivateMedia(super::private_media_command::PrivateMediaCommand),
     #[serde(untagged)]
     ManagedAgent(super::managed_agent_command::ManagedAgentCommand),
+    #[serde(untagged)]
+    SpaceInvite(super::space_invite_command::SpaceInviteCommand),
 }
