@@ -3,6 +3,25 @@ use super::*;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
 pub(super) const MODEL: &str = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+pub(super) fn challenge() -> Result<String, Box<dyn std::error::Error>> {
+    // Do not ask the model to echo a key-shaped nonce: the unchanged outbound
+    // secret detector must refuse such content, even in a synthetic probe.
+    const WORDS: [&str; 16] = [
+        "amber", "birch", "cedar", "dune", "elm", "fern", "glen", "hill", "iris", "jade", "kelp",
+        "lake", "moss", "nest", "oak", "pine",
+    ];
+    let mut bytes = [0; 4];
+    getrandom::getrandom(&mut bytes).map_err(|_| "synthetic challenge unavailable")?;
+    let text = bytes
+        .map(|byte| WORDS[usize::from(byte) % WORDS.len()])
+        .join(" ");
+    let checked = gate::Gate::default().check(&gate::Check::new(gate::Point::Outbound, &text));
+    if checked.outcome != gate::Outcome::Allow {
+        return Err("synthetic challenge is not permitted by the unchanged Gate".into());
+    }
+    Ok(text)
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Profile {
@@ -148,6 +167,7 @@ fn live_reply_profile_refuses_other_origins_and_reused_dispatch_markers() -> Tes
     }
     profile.endpoint = valid;
     profile.validate()?;
+    assert_eq!(challenge()?.split_whitespace().count(), 4);
     let mut value = json!({});
     profile.price(&mut value);
     let price: zoen_runtime::PriceProfile = serde_json::from_value(value["chat_price"].clone())?;

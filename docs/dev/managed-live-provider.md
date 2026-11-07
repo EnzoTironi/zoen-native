@@ -47,7 +47,7 @@ not a provider invoice or a general-purpose token estimator.
 Sources: [OpenAI compatibility](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)
 and [model/pricing](https://developers.cloudflare.com/workers-ai/models/llama-3.3-70b-instruct-fp8-fast/).
 
-The probe requires one accepted answer containing its synthetic identifier, one
+The probe requires one accepted answer containing its synthetic four-word phrase, one
 runtime attempt, one positive usage-based settlement within the signed budget,
 then the same decrypted answer exactly once after service restart and owner cold
 recovery. Attempts and settlement must remain unchanged. The ordinary fixture's
@@ -60,3 +60,9 @@ accounts, evidence keys, failure fixtures and the dispatch marker. `outcome.json
 records completion and credential retirement without prompts, replies, account
 IDs or tokens. An external kill/power loss can prevent cleanup: inspect and retire
 only that probe's `reply-runtime/**/vault/chat` copies before sharing diagnostics.
+
+The phrase passes the unchanged local outbound Gate before dispatch. A key-shaped
+nonce is unsuitable: a real model can return it correctly while the secret rule
+correctly withholds publication. Such a paid original stays retained and is not
+re-inferred; inspect its attempt/settlement separately. Failure outcomes also
+record observed attempt and settlement totals, rather than implying no charge.

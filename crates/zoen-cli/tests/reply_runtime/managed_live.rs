@@ -13,16 +13,26 @@ async fn managed_live_chat_provider() -> TestResult {
     let token = zeroize::Zeroizing::new(
         std::env::var("ZOEN_LIVE_CHAT_TOKEN").map_err(|_| "live chat credential unavailable")?,
     );
-    if token.is_empty() || token.len() > 16384 || token.bytes().any(|b| b.is_ascii_control()) {
+    if token.is_empty() || token.len() > 4096 || token.bytes().any(|b| b.is_ascii_control()) {
         return Err("invalid live credential".into());
     }
+    let challenge = profile::challenge()?;
     profile.claim()?;
     let mut w = World::new_with("managed_live_chat", None, &[]).await;
     // Declared after World so credentials retire before failed-fixture diagnostics.
     let credentials = profile::CredentialCopies(w.dir.join("reply-runtime"));
     let mut outcome = json!({"status":"incomplete","synthetic_only":true,"automatic_retry":false,
         "configured_model":profile::MODEL,"gate":"explicit_offline_floor","ui_qa":false});
-    let result = run(&mut w, &profile, &token, &mut outcome).await;
+    let result = run(&mut w, &profile, &token, &challenge, &mut outcome).await;
+    outcome["observed_attempts"] = w
+        .count("SELECT count(*) FROM runtime_attempts")
+        .await
+        .into();
+    outcome["observed_settled_microdollars"] = w
+        .scalar("SELECT COALESCE(sum(amount_units),0)::text FROM runtime_dispositions WHERE kind='settle'")
+        .await
+        .parse::<u64>()?
+        .into();
     credentials.retire()?;
     outcome["operator_credential_retired"] = true.into();
     write_json(&profile.output_directory.join("outcome.json"), &outcome)?;
@@ -36,6 +46,7 @@ async fn run(
     w: &mut World,
     profile: &profile::Profile,
     token: &str,
+    challenge: &str,
     outcome: &mut Value,
 ) -> TestResult {
     w.init("owner", "Synthetic live provider owner");
@@ -144,10 +155,9 @@ async fn run(
         .ok_or("conversation")?
         .to_owned();
     bridge(&owner, "managed_agent_complete", context).await?;
-    let canary = format!("ZOEN_LIVE_{}", types::new_id("reply")?);
     owner.send_message(
         space.clone(),
-        format!("Reply with exactly this identifier and nothing else: {canary}"),
+        format!("Reply with exactly this phrase and nothing else: {challenge}"),
     )?;
     owner.wait_until_settled(20_000).await?;
     owner.stop_sync();
@@ -160,7 +170,7 @@ async fn run(
     if output["delivery"]["status"] != "accepted"
         || !output["message"]
             .as_str()
-            .is_some_and(|s| s.contains(&canary))
+            .is_some_and(|s| s.contains(challenge))
     {
         return Err("live reply missing its synthetic identifier or delivery receipt".into());
     }
