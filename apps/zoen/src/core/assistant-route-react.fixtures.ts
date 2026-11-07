@@ -8,7 +8,7 @@ import { ClientStore } from './store.ts';
 import { Driver, draftSession, deferred } from './store.fixtures.ts';
 import { EphemeralConversation } from '../assistant/conversation.ts';
 import * as scope from './conversation-scope.ts';
-import type { AssistantOpen, AssistantPort } from '../assistant/types.ts';
+import type { AssistantAnswer, AssistantOpen, AssistantPort } from '../assistant/types.ts';
 export { deferred };
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -48,7 +48,7 @@ export async function assistantRouteFixture() {
     asked: string[] = [],
     closed: string[] = [];
   let openGate: Promise<AssistantOpen> | null = null,
-    askGate: Promise<{ text: string }> | null = null,
+    askGate: Promise<AssistantAnswer> | null = null,
     closeGate: Promise<void> | null = null;
   const assistant: AssistantPort = {
     async open(id) {
@@ -80,6 +80,16 @@ export async function assistantRouteFixture() {
   };
   const store = new ClientStore(driver);
   await store.open();
+  const cleanupOwners = new Set<(discard: boolean) => Promise<void>>();
+  const registerCleanup = store.registerSessionCleanup.bind(store);
+  store.registerSessionCleanup = (cleanup) => {
+    cleanupOwners.add(cleanup);
+    const unregister = registerCleanup(cleanup);
+    return () => {
+      cleanupOwners.delete(cleanup);
+      unregister();
+    };
+  };
   let focused = true,
     foreground = 'active',
     ticket = '',
@@ -292,10 +302,16 @@ export async function assistantRouteFixture() {
         await store.refresh();
       }),
     release: () => launch.releaseAssistantLaunch(ticket),
+    hasLaunch: () => !!launch.readAssistantLaunch(ticket, space, store),
+    cleanupOwnerCount: () => cleanupOwners.size,
+    retireQueuedWork: () =>
+      root.act(async () => {
+        for (const cleanup of cleanupOwners) await cleanup(true);
+      }),
     holdOpen: (gate: Promise<AssistantOpen> | null) => {
       openGate = gate;
     },
-    holdAsk: (gate: Promise<{ text: string }>) => {
+    holdAsk: (gate: Promise<AssistantAnswer> | null) => {
       askGate = gate;
     },
     holdClose: (gate: Promise<void> | null) => {

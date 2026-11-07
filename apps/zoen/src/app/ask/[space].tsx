@@ -225,7 +225,11 @@ function Conversation({
               ) : null}
               {inputError || state.failed ? (
                 <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 22 }}>
-                  {inputError ? t('agents.temporaryQuestionTooLong') : t('agents.temporaryFailed')}
+                  {inputError
+                    ? t('agents.temporaryQuestionTooLong')
+                    : state.failure === 'source_changed'
+                      ? t('agents.temporarySourceChanged')
+                      : t('agents.temporaryFailed')}
                 </Text>
               ) : null}
               {finished ? (

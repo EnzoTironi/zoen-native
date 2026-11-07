@@ -259,3 +259,64 @@ test('a failed launch at capacity preserves the oldest valid handoff', async () 
     await f.cleanup();
   }
 });
+
+test('source reset clears old answers and preserves the unanswered question for an explicit send', async () => {
+  const f = await assistantRouteFixture();
+  try {
+    f.launch();
+    await f.mount();
+    assert.ok(f.text().includes('Local answer'));
+    f.holdAsk(Promise.resolve({ reset: 'source_changed', contextMessages: 1 }));
+    await f.root.act(() => f.composer()!.onChangeText('Question after an edit'));
+    await f.root.act(() => f.composer()!.onSend());
+    assert.equal(f.text().includes('Local answer'), false);
+    assert.ok(f.text().includes('agents.temporarySourceChanged'));
+    assert.equal(f.composer()?.value, 'Question after an edit');
+    assert.equal(f.asked.length, 2);
+    assert.equal(f.opened.length, 1);
+    f.holdAsk(null);
+    await f.root.act(() => f.composer()!.onSend());
+    assert.equal(f.asked.length, 3);
+    assert.equal(f.composer()?.value, '');
+    assert.ok(f.calls.every((value: any) => value.op === 'snapshot'));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('queued private search handoffs retire with their session even before a screen mounts', async () => {
+  const f = await assistantRouteFixture();
+  try {
+    f.launch();
+    assert.equal(f.hasLaunch(), true);
+    assert.equal(f.cleanupOwnerCount(), 1);
+    await f.retireQueuedWork();
+    assert.equal(f.cleanupOwnerCount(), 0);
+    assert.equal(f.hasLaunch(), false);
+    await f.mount();
+    assert.deepEqual(f.opened, []);
+    assert.deepEqual(f.asked, []);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('handoff eviction, explicit release and failed navigation release their cleanup owners', async () => {
+  const f = await assistantRouteFixture();
+  try {
+    for (let i = 0; i < 5; i++) f.launch(`Private question ${i}`);
+    assert.equal(f.cleanupOwnerCount(), 4);
+    f.useTicket('ticket-1');
+    assert.equal(f.hasLaunch(), false);
+    f.useTicket('ticket-5');
+    f.release();
+    assert.equal(f.cleanupOwnerCount(), 3);
+    f.failNavigation();
+    assert.throws(() => f.launch('Failed private question'), /navigation failed/);
+    assert.equal(f.cleanupOwnerCount(), 3);
+    await f.retireQueuedWork();
+    assert.equal(f.cleanupOwnerCount(), 0);
+  } finally {
+    await f.cleanup();
+  }
+});
