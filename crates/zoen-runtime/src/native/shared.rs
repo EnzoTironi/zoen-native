@@ -34,6 +34,8 @@ struct Intent {
     discovery: Option<Discovery>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     publication: Option<runs::output::SharedPublication>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tool: Option<runs::reviews::SharedToolDecision>,
 }
 impl Intent {
     fn subject(&self) -> Result<String, RuntimeError> {
@@ -41,10 +43,19 @@ impl Intent {
     }
     fn effect(&self) -> Result<String, RuntimeError> {
         if let Some(publication) = &self.publication {
-            if self.discovery.is_some() || self.source.as_ref() != Some(publication.source()) {
+            if self.discovery.is_some()
+                || self.tool.is_some()
+                || self.source.as_ref() != Some(publication.source())
+            {
                 return Err(RuntimeError::InvalidBinding);
             }
             return publication.effect();
+        }
+        if let Some(tool) = &self.tool {
+            if self.discovery.is_some() || self.source.as_ref() != Some(tool.source()) {
+                return Err(RuntimeError::InvalidBinding);
+            }
+            return tool.effect();
         }
         Ok(hash(
             &serde_json::to_vec(&("runtime-native-maintenance/1", self))
@@ -70,6 +81,9 @@ impl Intent {
         }
         if let Some(publication) = &self.publication {
             updates.push(publication.update().clone());
+        }
+        if let Some(tool) = &self.tool {
+            updates.push(tool.update().clone());
         }
         Ok(updates)
     }
@@ -101,6 +115,9 @@ impl Intent {
         }
         if let Some(publication) = &self.publication {
             scope.effects = publication.digest()?;
+        }
+        if let Some(tool) = &self.tool {
+            scope.effects = tool.digest()?;
         }
         Ok(scope)
     }
@@ -155,6 +172,18 @@ pub(in crate::native) fn publication_transition(
         .publication
         .ok_or(RuntimeError::RestoreUnreconciled)?;
     publication.matches_original(run, bytes, prepared.next.sequence)
+}
+pub(in crate::native) fn tool_transition(
+    custody: &Custody,
+    prepared: &Prepared,
+    run: &str,
+    index: u8,
+    bytes: &[u8],
+) -> Result<(), RuntimeError> {
+    open_intent(custody, prepared)?
+        .tool
+        .ok_or(RuntimeError::RestoreUnreconciled)?
+        .matches_original(run, index, bytes, prepared.next.sequence)
 }
 pub(crate) fn shared_intent(prepared: &Prepared) -> bool {
     prepared

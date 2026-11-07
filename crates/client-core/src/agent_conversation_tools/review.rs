@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    agent_binary_documents::tool_approvals as shared, agent_page_tools as hash, engine::Engine,
-    AgentRequestDto, AgentToolApprovalInput,
+    agent_binary_documents::tool_approvals as shared, engine::Engine, AgentRequestDto,
+    AgentToolApprovalInput,
 };
 use types::{ActionClass, AgentRequest, EventBody, ToolProposal};
 
@@ -81,10 +81,7 @@ impl Engine {
             source_sha256,
             device,
             owner,
-            task_sha256: hash::digest(
-                &serde_json::to_vec(&("zoen.tool-task.v1", space, &actor, source))
-                    .map_err(|_| invalid())?,
-            ),
+            task_sha256: super::contract::task(&ask, space, &actor, source)?,
             step: ask["steps"]
                 .as_array()
                 .and_then(|steps| u32::try_from(steps.len()).ok())

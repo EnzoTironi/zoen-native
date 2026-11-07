@@ -6,6 +6,7 @@ mod conversation;
 mod history_search;
 pub(in crate::tests) mod policy_host;
 mod search_turn;
+pub(in crate::tests) mod tool_reviews;
 mod tool_rounds;
 
 fn definition(version: u32) -> Definition {
@@ -65,7 +66,15 @@ async fn ready() -> Result<(Fixture, Relay, crate::ReplyRun), Box<dyn std::error
     f = Box::pin(execution::qualify(f, &relay)).await?;
     Ok((f, relay, run))
 }
+pub(in crate::tests) async fn history_turns() -> TestResult {
+    Box::pin(tool_rounds::run()).await?;
+    Box::pin(search_turn::run()).await?;
+    Ok(())
+}
 pub(in crate::tests) async fn run() -> TestResult {
+    Box::pin(tool_reviews::run()).await?;
+    Box::pin(tool_reviews::boundaries()).await?;
+    Box::pin(tool_reviews::sequential()).await?;
     Box::pin(tool_rounds::run()).await?;
     Box::pin(search_turn::run()).await?;
     Box::pin(history_search::run()).await?;

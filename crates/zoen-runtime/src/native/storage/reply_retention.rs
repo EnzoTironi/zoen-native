@@ -36,13 +36,13 @@ impl Execution {
             return Ok(ReplyRetention::Pinned);
         }
         for (key, value) in rows {
-            let (run, publication) = if let Ok((run,)) = prefix.unpack::<(String,)>(&key) {
-                (run, false)
+            let (run, kind) = if let Ok((run,)) = prefix.unpack::<(String,)>(&key) {
+                (run, "original".to_owned())
             } else if let Ok((kind, run)) = prefix.unpack::<(String, String)>(&key) {
-                if kind != "publication/1" {
+                if !["publication/1", "tool/1/0", "tool/1/1", "tool/1/2"].contains(&kind.as_str()) {
                     return Ok(ReplyRetention::Pinned);
                 }
-                (run, true)
+                (run, kind)
             } else {
                 // Other subsystems' references retain their original pin semantics.
                 return Ok(ReplyRetention::Pinned);
@@ -57,12 +57,19 @@ impl Execution {
             else {
                 return Ok(ReplyRetention::Pinned);
             };
-            let expected = if publication {
-                &completed.publication
+            let expected = if kind == "publication/1" {
+                completed.publication
+            } else if kind == "original" {
+                completed.original
             } else {
-                &completed.original
+                let index = kind
+                    .rsplit('/')
+                    .next()
+                    .and_then(|value| value.parse::<u8>().ok())
+                    .ok_or(RuntimeError::InvalidBinding)?;
+                self.retained_tool_root_in(tx, &run, index, custody).await?
             };
-            if expected != root {
+            if &expected != root {
                 return Err(RuntimeError::InvalidBinding);
             }
         }

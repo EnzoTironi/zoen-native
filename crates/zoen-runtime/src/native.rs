@@ -12,6 +12,7 @@ mod owner_policy;
 mod packages;
 mod runs;
 pub(crate) use runs::output::ReplyOutputCheck;
+pub(crate) use runs::reviews::commitment as tool_decision_commitment;
 mod source;
 pub(crate) use image_tasks::ImageStep;
 pub use image_tasks::{

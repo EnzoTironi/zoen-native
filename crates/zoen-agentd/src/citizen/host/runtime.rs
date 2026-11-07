@@ -8,26 +8,10 @@ impl Runtime {
     }
 
     pub(super) fn tool_policy_sha256(&self) -> Result<String, HostError> {
-        let thresholds = serde_json::to_value(&self.gate.thresholds)
-            .map_err(|_| HostError::ToolContinuation("policy encoding".into()))?;
-        if thresholds
-            .as_object()
-            .is_none_or(|fields| fields.values().any(|value| !value.is_number()))
-        {
-            return Err(HostError::ToolContinuation(
-                "invalid policy thresholds".into(),
-            ));
-        }
-        let encoded = serde_json::to_vec(&(
-            "zoen.tool-policy.v1",
-            thresholds,
-            self.gate.remote.as_ref().map(|provider| provider.name()),
-            self.gate.on_device.as_ref().map(|provider| provider.name()),
-            gate::DecisionProvider::name(&self.gate.fallback),
-            Gate::questions(Point::ToolCall),
-        ))
-        .map_err(|_| HostError::ToolContinuation("policy encoding".into()))?;
-        Ok(hex::encode(Sha256::digest(encoded)))
+        self.gate.tool_policy_sha256().map_err(|error| match error {
+            gate::GateError::BadResponse(message) => HostError::ToolContinuation(message),
+            _ => HostError::ToolContinuation("policy encoding".into()),
+        })
     }
 
     pub(super) fn tool_check(

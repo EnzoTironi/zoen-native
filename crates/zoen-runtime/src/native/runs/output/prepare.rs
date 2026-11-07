@@ -28,7 +28,7 @@ impl PreparedOutput<'_> {
                 hash: facts.frontier().hash().into(),
             },
             epoch: facts.frontier().epoch(),
-            expires_at_ms: facts.expires_at_ms(),
+            expires_at_ms: self.loaded.deadline(),
             publication: self.publication.digest.clone(),
         })
     }

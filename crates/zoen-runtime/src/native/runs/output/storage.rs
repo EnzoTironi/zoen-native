@@ -101,7 +101,7 @@ impl Execution {
         Ok(())
     }
 
-    pub(super) async fn output_capture_in(
+    pub(in crate::native::runs) async fn output_capture_in(
         &self,
         trx: &Transaction,
         record: &RunRecord,

@@ -4,6 +4,7 @@ mod completed;
 mod policy;
 mod search;
 pub(crate) use policy::{ReplyOutputCheck, ReplyOutputReview};
+pub(in crate::native::runs) use search::search_proposal;
 mod delivery;
 mod prepare;
 mod recovery;
@@ -66,13 +67,13 @@ impl FreshOutputNamespace {
     }
 }
 
-struct SealedRecord<T> {
-    value: T,
-    digest: String,
-    bytes: Vec<u8>,
+pub(in crate::native::runs) struct SealedRecord<T> {
+    pub(in crate::native::runs) value: T,
+    pub(in crate::native::runs) digest: String,
+    pub(in crate::native::runs) bytes: Vec<u8>,
 }
 
-fn seal_metadata<T: Serialize>(
+pub(in crate::native::runs) fn seal_metadata<T: Serialize>(
     custody: &Custody,
     subject: &str,
     value: T,
@@ -89,7 +90,7 @@ fn seal_metadata<T: Serialize>(
     })
 }
 
-fn open_metadata<T: DeserializeOwned + Serialize>(
+pub(in crate::native::runs) fn open_metadata<T: DeserializeOwned + Serialize>(
     custody: &Custody,
     subject: &str,
     bytes: &[u8],
@@ -115,7 +116,7 @@ fn open_metadata<T: DeserializeOwned + Serialize>(
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct NativeCaptureRecord {
+pub(in crate::native::runs) struct NativeCaptureRecord {
     format: u8,
     source: String,
     run: String,
@@ -124,7 +125,7 @@ struct NativeCaptureRecord {
     binding: String,
     original_capsule: String,
     admitted_nonce: String,
-    evidence: String,
+    pub(in crate::native::runs) evidence: String,
 }
 
 impl NativeCaptureRecord {
@@ -145,9 +146,9 @@ impl NativeCaptureRecord {
     }
 }
 
-struct RetainedCapture {
-    association: SealedRecord<NativeCaptureRecord>,
-    capture: Capture,
+pub(in crate::native::runs) struct RetainedCapture {
+    pub(in crate::native::runs) association: SealedRecord<NativeCaptureRecord>,
+    pub(in crate::native::runs) capture: Capture,
 }
 
 impl RetainedCapture {

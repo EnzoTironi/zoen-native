@@ -26,6 +26,13 @@ pub enum ReplyHostProgress {
         audit: gate::AuditRecord,
         financial: Option<FinancialState>,
     },
+    Review {
+        run: String,
+        request: String,
+        content_hash: String,
+        status: client_core::RequestStatus,
+        financial: FinancialState,
+    },
     AwaitingRecovery {
         run: String,
         financial: FinancialState,
@@ -315,6 +322,16 @@ impl ReplyRuntimeHost {
                     .map(HostAdvance::progress);
             }
         }
+        native
+            .verify_reply_tool_policy(
+                runtime,
+                run,
+                &self
+                    .gate
+                    .tool_policy_sha256()
+                    .map_err(|_| RuntimeError::InvalidProfile)?,
+            )
+            .await?;
         let financial = match Box::pin(runtime.run_model(run)).await {
             Ok(retained) => retained.financial,
             Err(RuntimeError::Unavailable) => {
@@ -328,6 +345,25 @@ impl ReplyRuntimeHost {
             }
             Err(error) => return Err(error),
         };
+        if let Some(hold) = native
+            .prepare_reply_tools(runtime, run, scope, self.gate.clone(), &self.config.target)
+            .await?
+        {
+            return finished(match hold.request {
+                Some((request, content_hash, status)) => ReplyHostProgress::Review {
+                    run: run.into(),
+                    request,
+                    content_hash,
+                    status,
+                    financial,
+                },
+                None => ReplyHostProgress::Held {
+                    run: run.into(),
+                    audit: hold.audit,
+                    financial: Some(financial),
+                },
+            });
+        }
         if let Some(next) = Box::pin(native.continue_search_reply(runtime, run, scope)).await? {
             return Ok(HostAdvance::Next(next));
         }

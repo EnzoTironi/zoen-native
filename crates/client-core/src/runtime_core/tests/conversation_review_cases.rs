@@ -375,3 +375,127 @@ fn native_conversation_review_pages_keep_each_original_owner_decision() -> TestR
         .is_err());
     Ok(())
 }
+
+#[test]
+fn captured_calls_keep_independent_review_identities_and_original_wire() -> TestResult {
+    let (mut f, original, now) = setup()?;
+    let args = json!({"query":"needle","limit":1});
+    let mut requests = Vec::new();
+    for index in 0..3 {
+        let mut ask = input(&f, &original, args.clone())?;
+        let mut value: Value = serde_json::from_str(&ask.continuation_json)?;
+        value["version"] = 2.into();
+        value["native"] =
+            json!({"original":"aa".repeat(32),"capture":"bb".repeat(32),"call":index});
+        ask.continuation_json = value.to_string();
+        let mut repeated = input(&f, &original, args.clone())?;
+        repeated
+            .continuation_json
+            .clone_from(&ask.continuation_json);
+        let prepared = f.core.stage_reply_search_review(&original, ask, now)?;
+        let request = prepared.request().id.clone();
+        let hash = prepared
+            .request()
+            .tool_approval
+            .as_ref()
+            .ok_or("review")?
+            .content_hash
+            .clone();
+        let wire = prepared.envelope().ok_or("wire")?.clone();
+        assert_eq!(
+            f.core
+                .retained_reply_search_review(&original, &request, &hash, wire.client_id())?,
+            wire
+        );
+        assert!(f
+            .core
+            .accepted_reply_search_review(&original, &request, &hash, wire.client_id())?
+            .is_none());
+        f.core
+            .reply_search_review_bound(&original, &request, &hash, &value["native"])?;
+        let mut wrong = value["native"].clone();
+        wrong["capture"] = "cc".repeat(32).into();
+        assert!(f
+            .core
+            .reply_search_review_bound(&original, &request, &hash, &wrong)
+            .is_err());
+        confirm(&mut f, &wire)?;
+        assert!(f
+            .core
+            .accepted_reply_search_review(&original, &request, &hash, wire.client_id())?
+            .is_some());
+        assert_eq!(
+            f.core
+                .retained_reply_search_review(&original, &request, &hash, wire.client_id())?,
+            wire
+        );
+        f.core = DeviceCore::restore(f.core.image()?, f.credential())?;
+        assert_eq!(
+            f.core
+                .stage_reply_search_review(&original, repeated, now)?
+                .request()
+                .id,
+            request
+        );
+        requests.push((request, hash, wire));
+    }
+    assert_ne!(requests[0].0, requests[1].0);
+    assert_ne!(requests[1].0, requests[2].0);
+    decide(
+        &mut f,
+        &requests[0].0,
+        &requests[0].1,
+        ToolRequestDecision::ApproveOnce,
+    )?;
+    f.core
+        .reply_search_review_approved(&original, &requests[0].0, &requests[0].1, &args, now)?;
+    for (request, hash, _) in &requests[1..] {
+        assert!(f
+            .core
+            .reply_search_review_approved(&original, request, hash, &args, now)
+            .is_err());
+    }
+    f.encrypted(
+        EventBody::GrantRevoked {
+            grant: "reviewed-history".into(),
+        },
+        now + 1,
+    )?;
+    let (request, hash, wire) = &requests[0];
+    assert!(f
+        .core
+        .reply_search_review_approved(&original, request, hash, &args, now + 1)
+        .is_err());
+    assert_eq!(
+        f.core
+            .retained_reply_search_review(&original, request, hash, wire.client_id())?,
+        *wire
+    );
+    assert!(f
+        .core
+        .retained_reply_search_review(&original, request, hash, requests[1].2.client_id())
+        .is_err());
+    Ok(())
+}
+
+#[test]
+fn captured_review_rejects_invalid_call_binding_without_staging() -> TestResult {
+    let (f, original, now) = setup()?;
+    for native in [
+        json!({"original":"aa".repeat(32),"capture":"bb".repeat(32),"call":3}),
+        json!({"original":"bad","capture":"bb".repeat(32),"call":0}),
+        json!({"original":"aa".repeat(32),"capture":"bb".repeat(32),"call":0,"extra":true}),
+    ] {
+        let mut ask = input(&f, &original, json!({"query":"needle"}))?;
+        let mut value: Value = serde_json::from_str(&ask.continuation_json)?;
+        value["version"] = 2.into();
+        value["native"] = native;
+        ask.continuation_json = value.to_string();
+        let mut scratch = DeviceCore::restore(f.core.image()?, f.credential())?;
+        assert!(scratch
+            .stage_reply_search_review(&original, ask, now)
+            .is_err());
+    }
+    assert_eq!(f.core.engine.store.outbox_len()?, 0);
+    Ok(())
+}

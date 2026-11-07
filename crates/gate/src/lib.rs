@@ -21,6 +21,7 @@
 
 mod contract;
 mod mock;
+mod policy;
 mod rules;
 
 pub use contract::*;

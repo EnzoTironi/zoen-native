@@ -174,6 +174,14 @@ pub(crate) async fn inventory(
                 .map_err(|_| RuntimeError::InvalidBinding)?,
         );
     }
+    for (subject, decisions) in captures.tools {
+        let value = result
+            .get_mut(&subject)
+            .ok_or(RuntimeError::RestoreUnreconciled)?;
+        for decision in decisions {
+            *value = crate::native::tool_decision_commitment(value, &decision)?;
+        }
+    }
     for (subject, publication) in captures.publications {
         let value = result
             .get_mut(&subject)

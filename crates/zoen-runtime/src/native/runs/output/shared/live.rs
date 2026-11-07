@@ -136,7 +136,7 @@ impl<'a> LivePublication<'a> {
             )
             .map_err(crate::managed_images::error)?,
             source: self.source(runtime)?,
-            expires: self.prepared.facts().expires_at_ms(),
+            expires: self.loaded.deadline(),
             update: SubjectUpdate {
                 subject,
                 next: publication_commitment(&previous, &publication.digest)?,

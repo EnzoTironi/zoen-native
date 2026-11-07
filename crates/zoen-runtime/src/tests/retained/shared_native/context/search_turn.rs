@@ -13,7 +13,7 @@ fn host(f: &Fixture, relay: &Relay) -> Result<ReplyRuntimeHost, RuntimeError> {
                 .ok_or(RuntimeError::InvalidBinding)?,
             target: relay.target(f, relay.address),
         },
-        gate::Gate::default(),
+        super::tool_reviews::policy(false, Arc::new(std::sync::atomic::AtomicUsize::new(0))),
     )
 }
 fn proposal(f: &Fixture) -> TestResult {

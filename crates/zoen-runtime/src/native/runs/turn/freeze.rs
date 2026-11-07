@@ -83,11 +83,16 @@ impl NativeCustody {
         if capsule.root != loaded.current {
             return Err(RuntimeError::Denied);
         }
-        let next = self.seal_image(
-            principal,
-            Some(&loaded.current),
-            &self.open_image(principal, capsule)?,
-        )?;
+        let image = self.open_image(principal, capsule)?;
+        let mut core = DeviceCore::restore(image, credential.unlocked()?).map_err(native_error)?;
+        let tx = loaded.policy_snapshot(runtime, scope).await?;
+        let (gated, _) = runtime
+            .execution
+            .approved_tools_in(runtime, &tx, &loaded.record, &mut core, false, None)
+            .await?;
+        let image = core.image().map_err(native_error)?;
+        drop(core);
+        let next = self.seal_image(principal, Some(&loaded.current), &image)?;
         let locator = ReplyRun {
             run: types::new_id("run").map_err(|_| RuntimeError::Unavailable)?,
             attempt: types::new_id("attempt").map_err(|_| RuntimeError::Unavailable)?,
@@ -167,6 +172,7 @@ impl NativeCustody {
                 original: loaded.record_digest.clone(),
                 capture,
                 used,
+                gated,
             }),
         };
         record.validate(&locator.run, &parent.source)?;
