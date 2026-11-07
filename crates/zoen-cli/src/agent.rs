@@ -1,4 +1,6 @@
-//! Server-side agent citizen runtime (`zoen agent-*`).
+//! Local developer and selected-source agent runtime (`zoen agent-*`).
+//! Configured standard hosts are routed by `controls::dispatch` to the supervised
+//! durable executor before constructing this local model/tool implementation.
 //!
 //! The agent is an ordinary Zoen account of kind Agent: its own root, certified device,
 //! MLS leaf and relay session. `agent-host` keeps that session open. The engine's change

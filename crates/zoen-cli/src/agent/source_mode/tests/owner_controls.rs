@@ -40,7 +40,7 @@ async fn active_controls_host_keeps_an_actual_approved_source_and_content_untouc
 
     tokio::time::timeout(
         Duration::from_secs(4),
-        controls::host(&f.client, &ready, Some(1)),
+        controls::host(&f.client, &f.path, &ready, Some(1), false),
     )
     .await??;
 
@@ -90,7 +90,7 @@ async fn paused_controls_host_is_ready_without_resuming_the_agent_or_consuming_b
 
     tokio::time::timeout(
         Duration::from_secs(4),
-        controls::host(&f.client, &ready, Some(1)),
+        controls::host(&f.client, &f.path, &ready, Some(1), false),
     )
     .await??;
 
@@ -116,7 +116,10 @@ async fn controls_host_never_publishes_ready_or_reads_agent_state_before_sync_se
         server.released.store(true, Ordering::SeqCst);
         server.release.notify_waiters();
     };
-    let (result, ()) = tokio::join!(controls::host(&f.client, &ready, Some(1)), observe);
+    let (result, ()) = tokio::join!(
+        controls::host(&f.client, &f.path, &ready, Some(1), false),
+        observe
+    );
     result?;
     assert!(f.path.join("agent-ready").exists());
     content_stayed_idle(&server, &f);
@@ -134,7 +137,9 @@ async fn revoked_or_unknown_state_refuses_before_ready_or_any_content_effect(
         let ready = startup::Readiness::reset(&f.path, &lock)?;
         server.calls.lock().unwrap().clear();
 
-        assert!(controls::host(&f.client, &ready, Some(1)).await.is_err());
+        assert!(controls::host(&f.client, &f.path, &ready, Some(1), false)
+            .await
+            .is_err());
 
         assert!(!f.path.join("agent-ready").exists());
         content_stayed_idle(&server, &f);
@@ -150,7 +155,9 @@ async fn missing_account_and_non_agent_owner_scope_never_publish_readiness(
     let lock = crate::agent_host_lock::HostLock::acquire(&f.path)?;
     let ready = startup::Readiness::reset(&f.path, &lock)?;
     let missing = Client::open(":memory:".into(), "en".into())?;
-    assert!(controls::host(&missing, &ready, Some(1)).await.is_err());
+    assert!(controls::host(&missing, &f.path, &ready, Some(1), false)
+        .await
+        .is_err());
     assert!(!f.path.join("agent-ready").exists());
     let person = Client::open(
         f.path.join("person.sqlite").to_string_lossy().into_owned(),
@@ -165,7 +172,9 @@ async fn missing_account_and_non_agent_owner_scope_never_publish_readiness(
     online(&person, true).await;
     server.calls.lock().unwrap().clear();
 
-    assert!(controls::host(&person, &ready, Some(1)).await.is_err());
+    assert!(controls::host(&person, &f.path, &ready, Some(1), false)
+        .await
+        .is_err());
 
     assert!(!f.path.join("agent-ready").exists());
     content_stayed_idle(&server, &f);
@@ -183,9 +192,11 @@ async fn invalid_direct_host_bounds_refuse_before_sync_or_any_worker_start(
     let ready = startup::Readiness::reset(&f.path, &lock)?;
     server.calls.lock().unwrap().clear();
     for bound in [0, u64::MAX] {
-        assert!(controls::host(&f.client, &ready, Some(bound))
-            .await
-            .is_err());
+        assert!(
+            controls::host(&f.client, &f.path, &ready, Some(bound), false)
+                .await
+                .is_err()
+        );
         assert!(!f.path.join("agent-ready").exists());
         let calls = server.calls.lock().unwrap().clone();
         assert!(!calls.contains(&"sync"));

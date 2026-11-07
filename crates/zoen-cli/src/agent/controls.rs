@@ -65,8 +65,16 @@ pub(crate) async fn dispatch(
     source: Option<Source>,
 ) -> Result<(), String> {
     match command {
+        "agent-host" if super::image_ipc::reply_paths()?.is_some() => {
+            // One configured execution authority. A selected-source request must
+            // not fall through to an unaccounted legacy provider/tool host.
+            if source.is_some() {
+                return Err("agent_host_durable_source_unavailable".into());
+            }
+            host(client, home, readiness, for_secs, true).await
+        }
         "agent-host" => super::host(client, home, readiness, for_secs, source).await,
-        COMMAND if source.is_none() => host(client, home, readiness, for_secs).await,
+        COMMAND if source.is_none() => host(client, home, readiness, for_secs, false).await,
         _ => Err("agent_controls_invalid_mode".into()),
     }
 }
@@ -122,6 +130,7 @@ pub(super) async fn host(
     home: &Path,
     readiness: &Readiness<'_>,
     for_secs: Option<u64>,
+    executor_required: bool,
 ) -> Result<(), String> {
     let scope = Scope::current(client)?;
     let duration = for_secs.map(Duration::from_secs);
@@ -138,6 +147,9 @@ pub(super) async fn host(
     startup::settled_cursors(client, 15_000).await?;
     scope.state(client).await?;
     let mut executor = super::managed_reply::start(client, home).await?;
+    if executor_required && executor.is_none() {
+        return Err("agent_host_managed_executor_required".into());
+    }
     readiness.publish()?;
     let mut worker = owner_policy::start(client, &scope.agent, &scope.device);
     let deadline = duration.and_then(|duration| Instant::now().checked_add(duration));

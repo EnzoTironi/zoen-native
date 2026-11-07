@@ -7,7 +7,16 @@ use std::{path::PathBuf, process::Stdio};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub(super) fn reply_paths() -> Result<Option<(PathBuf, PathBuf)>, String> {
-    match (env("ZOEN_REPLY_HOST_BIN"), env("ZOEN_REPLY_HOST_CONFIG")) {
+    checked_reply_paths(
+        std::env::var_os("ZOEN_REPLY_HOST_BIN"),
+        std::env::var_os("ZOEN_REPLY_HOST_CONFIG"),
+    )
+}
+fn checked_reply_paths(
+    binary: Option<std::ffi::OsString>,
+    config: Option<std::ffi::OsString>,
+) -> Result<Option<(PathBuf, PathBuf)>, String> {
+    match (binary, config) {
         (None, None) => Ok(None),
         (Some(binary), Some(config)) => {
             let (binary, config) = (PathBuf::from(binary), PathBuf::from(config));
@@ -150,6 +159,25 @@ fn decode_response<T: serde::de::DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn configured_reply_paths_cannot_disappear_into_legacy_fallback() {
+        assert_eq!(checked_reply_paths(None, None), Ok(None));
+        for (binary, config) in [
+            (Some(""), None),
+            (None, Some("")),
+            (Some(""), Some("")),
+            (Some("/host"), None),
+            (None, Some("/config")),
+            (Some("relative"), Some("/config")),
+            (Some("/host"), Some("relative")),
+        ] {
+            assert!(checked_reply_paths(binary.map(Into::into), config.map(Into::into)).is_err());
+        }
+        assert_eq!(
+            checked_reply_paths(Some("/host".into()), Some("/config".into())),
+            Ok(Some(("/host".into(), "/config".into())))
+        );
+    }
     #[test]
     fn failed_child_or_malformed_output_cannot_become_an_authenticated_policy_reply() {
         let refused = br#"{"status":"options_refused","inquiry_digest":"same"}"#;
