@@ -221,6 +221,8 @@ export function fixture(
       if (name.endsWith('/home/provider')) return { useHome: () => ({ allItems: [] }) };
       if (name.endsWith('/thread-hashtag-provider'))
         return { ThreadHashtagProvider: 'ThreadHashtagProvider' };
+      if (name.endsWith('/conversation-return-button'))
+        return { ConversationReturnButton: 'ConversationReturnButton' };
       if (name.endsWith('/message-composer')) return { MessageComposer: 'Composer' };
       if (name.endsWith('/use-message-selection'))
         return {

@@ -13,6 +13,7 @@ import { find, type Element } from './thread-message-selection.fixtures.ts';
 
 const require = createRequire(import.meta.url);
 const views = new Set([
+  'conversation-return-button',
   'thread-hashtag-provider',
   'quote-layout-context',
   'quote-layout-transition',
@@ -85,7 +86,7 @@ export async function threadNavigationFixture(jump?: string, album = false) {
     seq,
     author: person,
   });
-  const entries = [
+  let entries = [
     message('root', null, '1'),
     message('source', 'root', '2'),
     message('latest', 'root', '3'),
@@ -230,6 +231,7 @@ export async function threadNavigationFixture(jump?: string, album = false) {
       if (path.endsWith('/primitives'))
         return { EmptyState: 'Empty', Loading: 'Loading', NativeButton: 'Button' };
       const names: Record<string, string[]> = {
+        'conversation-return-button': ['ConversationReturnButton'],
         'thread-hashtag-provider': ['ThreadHashtagProvider'],
         'quote-layout-context': ['QuoteMotionView'],
         'quote-layout-transition': ['QuoteLayoutTransition'],
@@ -345,7 +347,13 @@ export async function threadNavigationFixture(jump?: string, album = false) {
     offsets,
     indices,
     draft,
-    entries,
+    get entries() {
+      return entries;
+    },
+    remove: async (id: string) => {
+      entries = entries.filter((entry) => entry.id !== id);
+      await render();
+    },
     commit,
     frame: () =>
       root.act(() => {
@@ -353,7 +361,8 @@ export async function threadNavigationFixture(jump?: string, album = false) {
         frames.clear();
         for (const work of batch) work();
       }),
-    tap: (id: string, space?: string) => root.act(() => ui().message().onQuote(id, space)),
+    tap: (id: string, space?: string, origin?: string) =>
+      root.act(() => ui().message().onQuote(id, space, origin)),
     read: (next: typeof read) => {
       read = next;
     },

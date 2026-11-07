@@ -76,7 +76,7 @@ export type ConversationMessageProps = {
     nativeSource?: MessageContextRequest,
   ) => void;
   onReact: (entry: TimelineEntry, emoji: string | null) => void;
-  onQuote: (id: string, sourceSpace?: string) => void;
+  onQuote: (id: string, sourceSpace?: string, originId?: string) => void;
 };
 export function useConversationMessage({
   spaceId,
@@ -133,7 +133,7 @@ export function useConversationMessage({
   const openQuote = () => {
     const quote = entry.reply_to;
     if (!quote || entry.deleted || disabled || quote.origin?.available === false) return;
-    onQuote(quote.id, quote.origin?.space_id);
+    onQuote(quote.id, quote.origin?.space_id, entry.id);
   };
   const mine = entry.author.is_me;
   const card = messageCard(entry);

@@ -1,3 +1,4 @@
+import { loadEditorAgent } from './editor-agent-compile.fixtures.ts';
 import * as conversationSearch from './conversation-search.ts';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
@@ -27,6 +28,7 @@ const views: Record<string, string[]> = {
   'conversation-timeline-message': ['ConversationTimelineMessage'],
   'conversation-viewport': ['ConversationContainer', 'ConversationViewport'],
   'message-composer': ['MessageComposer'],
+  'conversation-return-button': ['ConversationReturnButton'],
   primitives: ['EmptyState', 'Loading'],
   rail: ['MiniappRail'],
 };
@@ -45,6 +47,11 @@ runInNewContext(source.outputFiles[0]!.text, {
     if (name.endsWith('/conversation-search')) return conversationSearch;
     if (name.endsWith('/presentation')) return { conversationTitle: () => 'Chat' };
     if (name.endsWith('/index.ts')) return { t: (key: string) => key };
+    if (name.endsWith('/open-chat-quote'))
+      return loadEditorAgent('../components/open-chat-quote.ts', {
+        '../home/access': {},
+        '../i18n/index.ts': { t: (key: string) => key },
+      });
     if (name === 'expo-router') return { router: {} };
     // View ports remain inert: inspect the actual screen's composer contract,
     // without mounting native geometry, media, or list implementations.

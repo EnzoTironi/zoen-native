@@ -1,3 +1,4 @@
+import { ConversationReturnButton } from '../../../components/conversation-return-button';
 import { sendChatMessage } from '../../../core/send-chat-message';
 import { NavigationContainer } from '../../../components/navigation-container';
 import { useThreadMessageNavigation } from '../../../components/use-thread-message-navigation';
@@ -189,6 +190,20 @@ export default function Thread() {
           onNativeLayout={navigation.onLayout}
           onNativeInset={navigation.onInset}
           onComposerLayout={navigation.onComposerLayout}
+          navigation={
+            selection.active ? undefined : (
+              <ConversationReturnButton
+                navigation={navigation.returnNavigation}
+                onError={(reason) => {
+                  setFailure({
+                    scope: sendScope,
+                    message:
+                      reason instanceof Error ? reason.message : t('chat.messageUnavailable'),
+                  });
+                }}
+              />
+            )
+          }
           composer={
             <>
               {failure ||

@@ -205,3 +205,64 @@ test('late old-root native layout events cannot replace the new Thread binding',
     await f.close();
   }
 });
+
+test('Thread return reveals the original reply and consumes only its own bookmark', async () => {
+  const f = await threadNavigationFixture();
+  try {
+    await f.tap('source', undefined, 'latest');
+    await f.commit();
+    await frames(f);
+    const control = f.ui().viewport.navigation.props.navigation;
+    assert.equal(control.canReturn, true);
+    await f.root.act(() => control.restore());
+    await f.commit();
+    await frames(f);
+    assert.equal(f.ui().message(2).highlighted, true);
+    assert.equal(f.ui().viewport.navigation.props.navigation.canReturn, false);
+    assert.deepEqual(f.offsets, [528, 1128]);
+    assert.deepEqual(f.calls, []);
+    assert.equal(
+      find(f.ui().viewport.composer, 'MessageComposer')!.props.value,
+      f.draft.messageDraft.text,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('a return button from another Thread cannot replace its fresh navigation', async () => {
+  const f = await threadNavigationFixture();
+  try {
+    await f.tap('source', undefined, 'latest');
+    const old = f.ui().viewport.navigation.props.navigation;
+    await f.changeRoot();
+    await f.tap('different-root', undefined, 'other-child');
+    assert.equal(f.ui().message(0).highlighted, true);
+    await f.root.act(() => old.restore());
+    assert.equal(f.ui().message(0).highlighted, true);
+    assert.equal(f.ui().viewport.navigation.props.navigation.canReturn, true);
+  } finally {
+    await f.close();
+  }
+});
+
+test('an unavailable return origin removes its bookmark without changing the draft or writing Core', async () => {
+  const f = await threadNavigationFixture();
+  try {
+    await f.tap('source', undefined, 'latest');
+    await f.remove('latest');
+    const control = f.ui().viewport.navigation.props.navigation;
+    await f.root.act(async () => {
+      await assert.rejects(control.restore(), /chat.thisMessageIsNoLongerInThisDevice/);
+    });
+    assert.equal(f.ui().viewport.navigation.props.navigation.canReturn, false);
+    assert.deepEqual(f.calls, []);
+    assert.equal(
+      find(f.ui().viewport.composer, 'MessageComposer')!.props.value,
+      f.draft.messageDraft.text,
+    );
+    assert.deepEqual(f.root.errors, []);
+  } finally {
+    await f.close();
+  }
+});
