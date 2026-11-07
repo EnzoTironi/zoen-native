@@ -3,6 +3,16 @@ use crate::{Result, SearchRow, Store, StoreError};
 use rusqlite::params;
 
 impl Store {
+    /// Remove a row while rebuilding an index or preparing a disposable view.
+    /// The caller owns the index transaction/generation; this is not log state.
+    pub fn index_remove_message(&self, space: &str, message: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM search WHERE kind = 'message' AND space = ?1 AND ref_id = ?2",
+            params![space, message],
+        )?;
+        Ok(())
+    }
+
     /// Prefix search over the index. `query` is the user's text; every word must match
     /// (as a prefix, diacritics folded). Best matches first, then newest.
     pub fn search(&self, query: &str, kind: &str, limit: u32) -> Result<Vec<SearchRow>> {

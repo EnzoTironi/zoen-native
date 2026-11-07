@@ -20,6 +20,9 @@ impl Drop for Provider {
 }
 impl Provider {
     pub async fn start() -> Result<Self, Box<dyn std::error::Error>> {
+        Self::with_history(false).await
+    }
+    pub async fn with_history(history: bool) -> Result<Self, Box<dyn std::error::Error>> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let endpoint = format!("http://{}/v1/chat/completions", listener.local_addr()?);
         let calls = Arc::new(AtomicUsize::new(0));
@@ -62,8 +65,30 @@ impl Provider {
                             assert!(input
                                 .to_string()
                                 .contains("Can you answer with the client closed?"));
-                            counter.fetch_add(1, Ordering::SeqCst);
-                            let body=serde_json::json!({"id":"local-reply","object":"chat.completion","created":1,"model":"reply-fixture","choices":[{"index":0,"message":{"role":"assistant","content":ANSWER},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":3,"total_tokens":6}}).to_string();
+                            let turn = counter.fetch_add(1, Ordering::SeqCst);
+                            if history && turn == 1 {
+                                let messages = input["messages"]
+                                    .as_array()
+                                    .ok_or_else(|| std::io::Error::other("missing messages"))?;
+                                assert!(messages.iter().all(|m| m["content"].is_string()));
+                                let tool = messages
+                                    .last()
+                                    .ok_or_else(|| std::io::Error::other("missing result"))?;
+                                assert_eq!(tool["role"], "tool");
+                                assert_eq!(tool["tool_call_id"], "history-call");
+                                let page: serde_json::Value = serde_json::from_str(
+                                    tool["content"]
+                                        .as_str()
+                                        .ok_or_else(|| std::io::Error::other("tool content"))?,
+                                )?;
+                                assert_eq!(page["hits"].as_array().map(Vec::len), Some(1));
+                            }
+                            let mut body = serde_json::json!({"id":"local-reply","object":"chat.completion","created":1,"model":"reply-fixture","choices":[{"index":0,"message":{"role":"assistant","content":ANSWER},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":3,"total_tokens":6}});
+                            if history && turn == 0 {
+                                body["choices"][0]["message"] = serde_json::json!({"role":"assistant","content":null,"tool_calls":[{"id":"history-call","type":"function","function":{"name":"search_conversation_history","arguments":"{\"query\":\"conversa\",\"limit\":1}"}}]});
+                                body["choices"][0]["finish_reason"] = "tool_calls".into();
+                            }
+                            let body = body.to_string();
                             let response=format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
                             stream.write_all(response.as_bytes()).await?;
                             return Ok(());

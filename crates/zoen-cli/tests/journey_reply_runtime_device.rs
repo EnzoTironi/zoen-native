@@ -10,6 +10,8 @@ mod gate_transport;
 mod history_search;
 #[path = "reply_runtime/managed_live.rs"]
 mod managed_live;
+#[path = "reply_runtime/managed_receipt_recovery.rs"]
+mod managed_receipt_recovery;
 #[path = "reply_runtime/managed_service.rs"]
 mod managed_service;
 #[path = "reply_runtime/managed_startup.rs"]
