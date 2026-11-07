@@ -435,3 +435,5 @@ mod reconcile_cases;
 
 #[path = "../agent_control/tests.rs"]
 mod control_cases;
+#[path = "../agent_enrollment/managed_request/transport_tests.rs"]
+mod managed_transport;

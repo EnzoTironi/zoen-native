@@ -348,15 +348,16 @@ async fn reviewed_chain(sequential: bool) -> TestResult {
         if sequential { 24 } else { 12 }
     );
     assert_eq!(f.world.balance().await.held_units, 0);
-    let requests = f.world.http.requests.lock().map_err(|_| "requests")?;
-    let tools = requests.last().ok_or("final request")?["messages"]
-        .as_array()
-        .ok_or("messages")?
-        .iter()
-        .filter(|message| message["role"] == "tool")
-        .count();
+    let tools = {
+        let requests = f.world.http.requests.lock().map_err(|_| "requests")?;
+        requests.last().ok_or("final request")?["messages"]
+            .as_array()
+            .ok_or("messages")?
+            .iter()
+            .filter(|message| message["role"] == "tool")
+            .count()
+    };
     assert_eq!(tools, 3);
-    drop(requests);
     drop(consumer);
     relay.stop().await;
     f.finish().await;

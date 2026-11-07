@@ -1,6 +1,8 @@
 //! Independent local Agent enrollment. Pairing transfers public owner consent;
 //! it never installs an owner device or imports an IdentityBox/account secret.
 mod host;
+mod managed;
+mod managed_request;
 pub use host::{AgentEnrollmentHostOffer, AgentEnrollmentHostProgress, AgentEnrollmentHostRequest};
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};

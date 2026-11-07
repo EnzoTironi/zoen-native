@@ -1,5 +1,6 @@
 //! Provisioning schedules an independently keyed host; it grants no owner consent.
-#[derive(Clone, PartialEq, Eq, prost::Message)]
+#[derive(Clone, PartialEq, Eq, prost::Message, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Service {
     #[prost(string, tag = "1")]
     pub id: String,
@@ -13,7 +14,8 @@ pub struct Availability {
     pub service: Option<Service>,
 }
 
-#[derive(Clone, PartialEq, Eq, prost::Message)]
+#[derive(Clone, PartialEq, Eq, prost::Message, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Request {
     #[prost(string, tag = "1")]
     pub operation: String,

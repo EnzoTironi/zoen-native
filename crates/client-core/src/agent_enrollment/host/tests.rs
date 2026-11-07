@@ -1,4 +1,5 @@
 use super::*;
+mod managed_cases;
 use std::{
     fs,
     io::Write,
