@@ -20,6 +20,8 @@ mod managed_service;
 mod managed_startup;
 #[path = "reply_runtime/managed_support.rs"]
 mod managed_support;
+#[path = "reply_runtime/managed_tool_review.rs"]
+mod managed_tool_review;
 #[path = "reply_runtime/owner_budget.rs"]
 mod owner_budget;
 #[path = "reply_runtime/provider.rs"]

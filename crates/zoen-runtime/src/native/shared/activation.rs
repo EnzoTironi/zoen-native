@@ -70,6 +70,11 @@ impl NativeCustody {
                 candidate.1,
             )
             .await?;
+        #[cfg(test)]
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 188 {
+            runtime.native_cut_entered.notify_one();
+            runtime.native_cut_resume.notified().await;
+        }
         self.activate_native_guarded(
             runtime,
             credential,

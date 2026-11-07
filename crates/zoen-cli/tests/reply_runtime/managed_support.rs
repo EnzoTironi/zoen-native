@@ -50,7 +50,7 @@ impl ServiceProcess {
         status: &str,
         budget: Duration,
     ) -> Result<Value, Box<dyn std::error::Error>> {
-        self.observe(status, budget, false, 0).await
+        self.observe(status, budget, false, 0, None).await
     }
     // A paid synthetic probe stops at the first policy hold/review rather than
     // waiting through another worker cycle and inferring a new decision.
@@ -58,18 +58,24 @@ impl ServiceProcess {
         &mut self,
         budget: Duration,
     ) -> Result<Value, Box<dyn std::error::Error>> {
-        self.observe("output", budget, true, 0).await
+        self.observe("output", budget, true, 0, None).await
     }
     pub(super) fn observation_point(&self) -> Result<usize, Box<dyn std::error::Error>> {
         Ok(std::fs::read_to_string(&self.log)?.lines().count())
     }
-    pub(super) async fn frame_after(
+    pub(super) async fn conversation_denied_after(
         &mut self,
-        status: &str,
         after: usize,
     ) -> Result<Value, Box<dyn std::error::Error>> {
-        self.observe(status, Duration::from_secs(20), true, after)
-            .await
+        let reason = zoen_runtime::RuntimeError::Denied.to_string();
+        self.observe(
+            "conversation_deferred",
+            Duration::from_secs(20),
+            true,
+            after,
+            Some(&reason),
+        )
+        .await
     }
     async fn observe(
         &mut self,
@@ -77,6 +83,7 @@ impl ServiceProcess {
         budget: Duration,
         stop_on_hold: bool,
         after: usize,
+        reason: Option<&str>,
     ) -> Result<Value, Box<dyn std::error::Error>> {
         let until = Instant::now() + budget;
         loop {
@@ -86,7 +93,9 @@ impl ServiceProcess {
                 .skip(after)
                 .filter_map(|line| serde_json::from_str::<Value>(line).ok())
             {
-                if frame["status"] == status {
+                if frame["status"] == status
+                    && reason.is_none_or(|wanted| frame["reason"] == wanted)
+                {
                     return Ok(frame);
                 }
                 if stop_on_hold

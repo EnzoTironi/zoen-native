@@ -23,6 +23,12 @@ impl Provider {
         Self::with_history(false).await
     }
     pub async fn with_history(history: bool) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::with_query(if history { Some("conversa") } else { None }).await
+    }
+    pub async fn with_query(
+        query: Option<&'static str>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let history = query.is_some();
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let endpoint = format!("http://{}/v1/chat/completions", listener.local_addr()?);
         let calls = Arc::new(AtomicUsize::new(0));
@@ -85,7 +91,7 @@ impl Provider {
                             }
                             let mut body = serde_json::json!({"id":"local-reply","object":"chat.completion","created":1,"model":"reply-fixture","choices":[{"index":0,"message":{"role":"assistant","content":ANSWER},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":3,"total_tokens":6}});
                             if history && turn == 0 {
-                                body["choices"][0]["message"] = serde_json::json!({"role":"assistant","content":null,"tool_calls":[{"id":"history-call","type":"function","function":{"name":"search_conversation_history","arguments":"{\"query\":\"conversa\",\"limit\":1}"}}]});
+                                body["choices"][0]["message"] = serde_json::json!({"role":"assistant","content":null,"tool_calls":[{"id":"history-call","type":"function","function":{"name":"search_conversation_history","arguments":serde_json::json!({"query":query,"limit":1}).to_string()}}]});
                                 body["choices"][0]["finish_reason"] = "tool_calls".into();
                             }
                             let body = body.to_string();
