@@ -50,15 +50,40 @@ impl ServiceProcess {
         status: &str,
         budget: Duration,
     ) -> Result<Value, Box<dyn std::error::Error>> {
+        self.observe(status, budget, false).await
+    }
+    // A paid synthetic probe stops at the first policy hold/review rather than
+    // waiting through another worker cycle and inferring a new decision.
+    pub(super) async fn live_output(
+        &mut self,
+        budget: Duration,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        self.observe("output", budget, true).await
+    }
+    async fn observe(
+        &mut self,
+        status: &str,
+        budget: Duration,
+        stop_on_hold: bool,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
         let until = Instant::now() + budget;
         loop {
             let body = std::fs::read_to_string(&self.log)?;
-            if let Some(frame) = body
+            for frame in body
                 .lines()
                 .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-                .find(|frame| frame["status"] == status)
             {
-                return Ok(frame);
+                if frame["status"] == status {
+                    return Ok(frame);
+                }
+                if stop_on_hold
+                    && matches!(
+                        frame["status"].as_str(),
+                        Some("held" | "review" | "recovery" | "deferred")
+                    )
+                {
+                    return Err(format!("live probe stopped at {}", frame["status"]).into());
+                }
             }
             if let Some(exit) = self.child.try_wait()? {
                 return Err(format!("service exited {exit}: {body}").into());
@@ -69,6 +94,33 @@ impl ServiceProcess {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_probe_stops_before_a_later_success_after_policy_hold(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for status in ["held", "review", "recovery", "deferred"] {
+        let log = std::env::temp_dir().join(types::new_id("live-observer")?);
+        std::fs::write(
+            &log,
+            format!("{{\"status\":\"{status}\"}}\n{{\"status\":\"output\"}}\n"),
+        )?;
+        let child = Command::new("sleep").arg("10").spawn()?;
+        let mut service = ServiceProcess {
+            child,
+            log: log.clone(),
+        };
+        assert!(service
+            .live_output(Duration::from_millis(100))
+            .await
+            .is_err());
+        // Ordinary fixture observers retain their existing behavior.
+        assert_eq!(service.frame("output").await?["status"], "output");
+        drop(service);
+        std::fs::remove_file(log)?;
+    }
+    Ok(())
 }
 
 pub(super) fn open_owner(w: &World) -> Result<Arc<Client>, Box<dyn std::error::Error>> {

@@ -264,8 +264,8 @@ fn call(transport: &ReqwestTransport, peer: &Peer) -> Result<String, String> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn gate_transport_accepts_exact_cap_and_preserves_post_and_http_error_body_semantics() {
-    for status in [200, 500] {
+async fn gate_transport_accepts_exact_cap_and_preserves_post() {
+    for status in [200, 201] {
         for chunked in [false, true] {
             let text = format!("{{\"fixture\":true}}{}", " ".repeat(48));
             assert_eq!(text.len(), 64);
@@ -382,7 +382,7 @@ async fn gate_transport_total_deadline_is_not_extended_by_body_progress() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn gate_transport_rejects_large_declared_bodies_without_waiting_for_bytes_or_eof() {
-    for status in [200, 500] {
+    for status in [200, 201] {
         let peer = Peer::start(Reply::Http {
             status,
             body: Vec::new(),
@@ -406,8 +406,8 @@ async fn gate_transport_rejects_large_declared_bodies_without_waiting_for_bytes_
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn gate_transport_rejects_oversized_chunked_bodies_before_eof_on_success_and_error() {
-    for status in [200, 500] {
+async fn gate_transport_rejects_oversized_successful_chunked_bodies_before_eof() {
+    for status in [200, 201] {
         let peer = Peer::start(Reply::Http {
             status,
             body: vec![b'x'; 129],

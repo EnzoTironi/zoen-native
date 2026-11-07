@@ -25,6 +25,8 @@ impl ReqwestTransport {
         max_response_bytes: usize,
     ) -> Result<Self, String> {
         let client = builder
+            .redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never())
             .connect_timeout(connect_timeout)
             .read_timeout(timeout)
             .timeout(timeout)
@@ -50,6 +52,9 @@ impl HttpTransport for ReqwestTransport {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let mut response = rq.send().await.map_err(|_| "transport".to_string())?;
+                if !response.status().is_success() {
+                    return Err("status".to_string());
+                }
                 if response
                     .content_length()
                     .is_some_and(|length| length > self.max_response_bytes as u64)
@@ -70,3 +75,7 @@ impl HttpTransport for ReqwestTransport {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "gate_transport_tests.rs"]
+mod tests;

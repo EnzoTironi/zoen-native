@@ -22,7 +22,7 @@ async fn managed_live_chat_provider() -> TestResult {
     // Declared after World so credentials retire before failed-fixture diagnostics.
     let credentials = profile::CredentialCopies(w.dir.join("reply-runtime"));
     let mut outcome = json!({"status":"incomplete","synthetic_only":true,"automatic_retry":false,
-        "configured_model":profile::MODEL,"gate":"explicit_offline_floor","ui_qa":false});
+        "configured_model":profile::MODEL,"gate":profile.gate.label(),"ui_qa":false});
     let result = run(&mut w, &profile, &token, &challenge, &mut outcome).await;
     outcome["observed_attempts"] = w
         .count("SELECT count(*) FROM runtime_attempts")
@@ -74,7 +74,7 @@ async fn run(
     }
     .encode()?;
     let mut value = configuration(w, "", &profile.endpoint);
-    profile.price(&mut value);
+    profile.price(&mut value)?;
     value["admission_config"] = registry.to_string_lossy().to_string().into();
     value["managed_service"] = json!({"id":"11".repeat(32),"definition":String::from_utf8(definition)?,"zoen_binary":env!("CARGO_BIN_EXE_zoen")});
     let config: config::Config = serde_json::from_value(value.clone())?;
@@ -99,6 +99,11 @@ async fn run(
         if !vault.save(key, bytes) {
             return Err("live operator credential save failed".into());
         }
+    }
+    if profile.gate == profile::GateMode::ClefFlash
+        && !vault.save("live-clef".into(), token.as_bytes().to_vec())
+    {
+        return Err("live Gate credential save failed".into());
     }
     let path = w.dir.join("managed-service.json");
     write_json(&path, &value)?;
@@ -162,13 +167,30 @@ async fn run(
     owner.wait_until_settled(20_000).await?;
     owner.stop_sync();
     drop(owner);
-    // The production transport budget is 90s; observe it plus bounded lifecycle
-    // overhead, without changing the gateway or ordinary 20s fixture budgets.
+    // Observe chat (90s), optional inbound/outbound Gate (60s each), and
+    // lifecycle overhead. Ordinary fixture and production deadlines stay intact.
     let output = service
-        .frame_for("output", Duration::from_secs(120))
+        .live_output(Duration::from_secs(profile.gate.observation_seconds()))
         .await?;
     if output["delivery"]["status"] != "accepted" {
         return Err("live reply missing its delivery receipt".into());
+    }
+    if profile.gate == profile::GateMode::ClefFlash {
+        let audit = &output["audit"];
+        if audit["provider"] != profile.gate.label()
+            || audit["outcome"] != "allow"
+            || audit["answers"]
+                .as_object()
+                .is_none_or(|answers| answers.is_empty())
+            || !audit["rule"]
+                .as_str()
+                .is_some_and(|rule| rule.starts_with("model:"))
+        {
+            return Err("live reply lacks a parsed allowing Clef decision".into());
+        }
+        outcome["outbound_gate_audit"] = json!({"provider":audit["provider"],
+            "outcome":audit["outcome"],"rule":audit["rule"],
+            "answers":audit["answers"],"latency_ms":audit["latency_ms"]});
     }
     assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
     assert_eq!(
