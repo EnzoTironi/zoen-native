@@ -29,6 +29,17 @@ impl ServiceProcess {
             .spawn()?;
         Ok(Self { child, log })
     }
+    #[cfg(unix)]
+    fn signal(&self, signal: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if !Command::new("kill")
+            .args([signal, &self.child.id().to_string()])
+            .status()?
+            .success()
+        {
+            return Err("owned service signal failed".into());
+        }
+        Ok(())
+    }
     async fn frame(&mut self, status: &str) -> Result<Value, Box<dyn std::error::Error>> {
         let until = Instant::now() + Duration::from_secs(20);
         loop {
@@ -76,6 +87,17 @@ async fn bridge(
     Ok(serde_json::from_str(
         &owner.client_request(input.to_string()).await?,
     )?)
+}
+
+// The log also receives legitimate key/device synchronization events. Compare
+// actual trust grant hashes, not the unrelated total event count.
+fn trust_grants(owner: &Client, space: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    Ok(owner
+        .log_events(space.into())?
+        .into_iter()
+        .filter(|event| event.label.starts_with("Grant: trust "))
+        .map(|event| event.hash)
+        .collect())
 }
 
 async fn status(
@@ -202,6 +224,11 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         )
         .await
         .is_err());
+        #[cfg(unix)]
+        {
+            process.frame("enrollment_waiting").await?;
+            process.signal("-STOP")?;
+        }
         let approved = bridge(
             &owner,
             "managed_agent_approve",
@@ -210,6 +237,43 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         )
         .await?;
         assert_eq!(approved["state"], "installing");
+        #[cfg(unix)]
+        {
+            // The owned service parent is paused, its real enrollment child
+            // continues. Wait for canonical registration, not a fixed sleep.
+            let pool = sqlx::PgPool::connect(&w.db_url).await?;
+            let until = Instant::now() + Duration::from_secs(20);
+            loop {
+                let registered: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM agent_citizens WHERE agent=$1)",
+                )
+                .bind(offered["agent_id"].as_str().ok_or("agent")?)
+                .fetch_one(&pool)
+                .await?;
+                if registered {
+                    break;
+                }
+                if Instant::now() >= until {
+                    return Err("child registration was not observed".into());
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            pool.close().await;
+            // Simulate the owner dismissing a connection receipt on another
+            // surface while its already-consumed consent remains authoritative.
+            let receipt = bridge(&owner, "agent_enrollment_status", json!({})).await?;
+            assert_eq!(bridge(&owner, "agent_enrollment_dismiss", json!({
+                "receipt_id":receipt["delivery"]["receipt_id"], "observed_offer_digest":receipt["preview"]["offer_digest"]
+            })).await?, true);
+            let cancellation = bridge(
+                &owner,
+                "managed_agent_cancel",
+                json!({"operation_id":request.operation}),
+            )
+            .await?;
+            assert_eq!(cancellation["state"], "cancelling");
+            process.signal("-CONT")?;
+        }
         let installed = status(&owner, &mut process, "registered").await?;
         assert_eq!(installed["agent_id"], offered["agent_id"]);
         let agent = installed["agent_id"].as_str().ok_or("agent")?.to_owned();
@@ -242,18 +306,21 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
             .ok_or("private chat")?
             .to_owned();
         owner.wait_until_settled(20_000).await?;
-        let before = owner.log_events(space.clone())?.len();
+        let before = trust_grants(&owner, &space)?;
+        assert_eq!(before.len(), 1);
         assert_eq!(
             bridge(&owner, "managed_agent_chat", context.clone()).await?,
             space
         );
-        assert_eq!(owner.log_events(space.clone())?.len(), before);
+        assert_eq!(trust_grants(&owner, &space)?, before);
         // Subsequent choices remain authoritative; reopening cannot silently
         // downgrade the owner's explicit grant to Listen.
         owner.set_trust(agent.clone(), space.clone(), TrustLevelDto::Suggest)?;
-        let changed = owner.log_events(space.clone())?.len();
+        owner.wait_until_settled(20_000).await?;
+        let changed = trust_grants(&owner, &space)?;
+        assert_eq!(changed.len(), 2);
         assert_eq!(bridge(&owner, "managed_agent_chat", context).await?, space);
-        assert_eq!(owner.log_events(space.clone())?.len(), changed);
+        assert_eq!(trust_grants(&owner, &space)?, changed);
         owner.set_trust(agent.clone(), space.clone(), TrustLevelDto::Listen)?;
         let completed = json!({"operation_id":request.operation,"agent_id":agent});
         assert_eq!(
@@ -324,6 +391,35 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
             bridge(&owner, "managed_agent_status", json!({})).await?["operation_id"],
             another["operation_id"]
         );
+        let citizens = w.count("SELECT count(*) FROM agent_citizens").await;
+        let cancel = bridge(
+            &owner,
+            "managed_agent_cancel",
+            json!({"operation_id":another["operation_id"]}),
+        )
+        .await?;
+        assert!(matches!(
+            cancel["state"].as_str(),
+            Some("cancelling" | "cancelled")
+        ));
+        let cancelled = status(&owner, &mut restarted, "cancelled").await?;
+        assert_eq!(cancelled["operation_id"], another["operation_id"]);
+        assert_eq!(
+            w.count("SELECT count(*) FROM agent_citizens").await,
+            citizens
+        );
+        assert_eq!(
+            bridge(
+                &owner,
+                "managed_agent_discard",
+                json!({"operation_id":another["operation_id"]})
+            )
+            .await?,
+            true
+        );
+        assert!(bridge(&owner, "managed_agent_status", json!({}))
+            .await?
+            .is_null());
         owner.stop_sync();
         drop(owner);
         drop(restarted);

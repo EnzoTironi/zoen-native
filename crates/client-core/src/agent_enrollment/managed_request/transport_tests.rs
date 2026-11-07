@@ -224,3 +224,80 @@ async fn managed_terminal_restart_preserves_ambiguous_approval_and_checks_canoni
     client.stop_sync();
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn managed_cancel_unknown_replays_the_same_disposition_after_cold_restart() -> TestResult {
+    let dir = Directory::new()?;
+    let mut relay = relay().await;
+    let (client, key) = owner(dir.path(), &relay.url);
+    let account = client.account().ok_or("account")?;
+    let agreement = Zeroizing::new(
+        client
+            .lock()
+            .net
+            .profiles
+            .agreement
+            .as_ref()
+            .ok_or("agreement")?
+            .secret(),
+    );
+    online(&client).await;
+    let preparing = prepare(&client);
+    let sent = call(&mut relay.calls).await;
+    let AgentRequest::PrepareManaged(request) = sent.op else {
+        return Err("prepare".into());
+    };
+    sent.response
+        .send(Ok(Reply::ManagedAgent(queued(
+            &request,
+            &account.identity_id,
+        ))))
+        .map_err(|_| "prepare response")?;
+    preparing.await??;
+    let running = {
+        let client = client.clone();
+        let operation = request.operation.clone();
+        let identity = account.identity_id.clone();
+        let device = account.device_id.clone();
+        tokio::spawn(async move {
+            client
+                .cancel_managed_enrollment(&operation, &identity, &device)
+                .await
+        })
+    };
+    let sent = call(&mut relay.calls).await;
+    assert_eq!(sent.op, AgentRequest::CancelManaged(request.clone()));
+    assert!(client.managed_enrollment_cancelling(&account.identity_id, &account.device_id)?);
+    sent.response
+        .send(Err("lost cancellation ACK".into()))
+        .map_err(|_| "cancel response")?;
+    assert!(running.await?.is_err());
+    client.stop_sync();
+    drop(client);
+    let cold = Client::open(dir.path(), "en".into())?;
+    assert!(cold.lock().unlock(Some(key.to_vec()))?);
+    cold.lock().unlock_profile(Some(agreement.to_vec()))?;
+    online(&cold).await;
+    let running = {
+        let client = cold.clone();
+        let identity = account.identity_id.clone();
+        let device = account.device_id.clone();
+        tokio::spawn(async move {
+            client
+                .managed_enrollment_read_view(&identity, &device)
+                .await
+        })
+    };
+    let sent = call(&mut relay.calls).await;
+    assert_eq!(sent.op, AgentRequest::CancelManaged(request.clone()));
+    let mut cancelled = queued(&request, &account.identity_id);
+    cancelled.state = "cancelled".into();
+    sent.response
+        .send(Ok(Reply::ManagedAgent(cancelled)))
+        .map_err(|_| "replay response")?;
+    let view = running.await??.ok_or("view")?;
+    assert_eq!(view.state, "cancelled");
+    assert_eq!(view.operation_id, request.operation);
+    cold.stop_sync();
+    Ok(())
+}

@@ -444,4 +444,5 @@ impl crate::Engine {
 #[cfg(test)]
 mod tests;
 
+mod managed_cancel;
 mod pending;

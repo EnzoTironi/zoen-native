@@ -29,6 +29,12 @@ pub(super) enum ManagedAgentCommand {
         expected_identity_id: String,
         expected_device_id: String,
     },
+    #[serde(rename = "managed_agent_cancel")]
+    Cancel {
+        operation_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
     #[serde(rename = "managed_agent_discard")]
     Discard {
         operation_id: String,
@@ -92,6 +98,19 @@ impl ManagedAgentCommand {
                     .chat_with_managed_agent(
                         &operation_id,
                         &agent_id,
+                        &expected_identity_id,
+                        &expected_device_id,
+                    )
+                    .await?,
+            ),
+            Self::Cancel {
+                operation_id,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &client
+                    .managed_enrollment_cancel_view(
+                        &operation_id,
                         &expected_identity_id,
                         &expected_device_id,
                     )

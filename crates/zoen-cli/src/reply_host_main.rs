@@ -1,6 +1,7 @@
 //! Dedicated certified native reply executor; never opens a Client MLS workspace.
 #[path = "reply_host/admission.rs"]
 mod admission;
+mod agent_enrollment_vault;
 mod agent_host_lock;
 #[path = "reply_host/config.rs"]
 mod config;

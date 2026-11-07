@@ -419,6 +419,7 @@ impl Client {
             if !receipt.matches(&current) {
                 return Err(changed());
             }
+            managed_request::approval_allowed(&e, identity, device)?;
             if let Some(value) = e.store.meta(RECEIPT_META)? {
                 let held: OwnerReceipt = serde_json::from_str(&value).map_err(|_| changed())?;
                 if held.matches(&current) && held.status.preview == receipt.status.preview {

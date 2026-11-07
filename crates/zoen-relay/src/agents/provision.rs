@@ -1,5 +1,7 @@
 //! Owner-authenticated bootstrap queue. Enrollment/citizens remain identity authority.
+pub mod cancel;
 pub mod host;
+pub use cancel::cancel;
 use protocol::managed_agents::{digest, Availability, Record, Request, Service};
 use sqlx::{PgPool, Postgres, Transaction};
 
@@ -141,7 +143,7 @@ pub async fn prepare(
     live.ok_or(Error::Unavailable)?;
     let (count,): (i64,) = sqlx::query_as(
         "SELECT count(*) FROM managed_agent_requests
-        WHERE owner=$1 AND state IN ('queued','offered')",
+        WHERE owner=$1 AND state IN ('queued','offered','cancel_requested')",
     )
     .bind(owner)
     .fetch_one(&mut *tx)

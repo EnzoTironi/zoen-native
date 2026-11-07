@@ -20,6 +20,12 @@ impl Session {
                     .map(Reply::ManagedAgent)
                     .map_err(|e| e.to_string());
             }
+            AgentRequest::CancelManaged(request) => {
+                return agents::provision::cancel(pool, me, &self.device, &request)
+                    .await
+                    .map(Reply::ManagedAgent)
+                    .map_err(|e| e.to_string());
+            }
             AgentRequest::ManagedStatus { service, operation } => {
                 return agents::provision::status(pool, me, &self.device, &service, &operation)
                     .await

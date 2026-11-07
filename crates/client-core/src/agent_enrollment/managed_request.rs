@@ -7,6 +7,7 @@ use protocol::{
 };
 
 const META: &str = "agent.enrollment.managed-intent.v1";
+mod cancel;
 mod chat;
 mod complete;
 mod discard;
@@ -20,6 +21,8 @@ struct Intent {
     certificate_sha256: String,
     relay: String,
     request: Request,
+    #[serde(default)]
+    cancel_requested: bool,
 }
 
 impl Intent {
@@ -93,6 +96,7 @@ impl Intent {
             certificate_sha256: context.certificate_sha256,
             relay: context.relay,
             request: request.clone(),
+            cancel_requested: false,
         };
         let value = serde_json::to_string(&intent).map_err(|_| malformed())?;
         engine.store.set_meta(META, &value)?;
@@ -205,3 +209,10 @@ fn managed_record(
 
 #[cfg(test)]
 mod tests;
+
+pub(super) fn approval_allowed(engine: &crate::Engine, identity: &str, device: &str) -> R<()> {
+    if Intent::load(engine, identity, device)?.is_some_and(|intent| intent.cancel_requested) {
+        return Err(changed());
+    }
+    Ok(())
+}
