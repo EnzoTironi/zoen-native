@@ -180,6 +180,13 @@ pub trait LogStore: Send + Sync {
     async fn spaces_of(&self, who: &str) -> Result<Vec<String>, StoreError>;
     /// Identities that share at least one Space with `who` (presence audience).
     async fn co_members(&self, who: &str) -> Result<Vec<String>, StoreError>;
+    async fn manage_space_invites(
+        &self,
+        _who: &str,
+        _request: &protocol::space_invites::Request,
+    ) -> Result<protocol::space_invites::SpaceInvitePage, String> {
+        Err("space invitation management unsupported".into())
+    }
     async fn create_invite(
         &self,
         who: &str,

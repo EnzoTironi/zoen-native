@@ -103,5 +103,79 @@ async fn reviewed_invite_uses_selected_limits_and_existing_relay_join_authority(
         .client_request(command(&review, 0).to_string())
         .await
         .is_err());
+    // The same native review/real relay contract manages the actual minted links.
+    let review = context(&alice.0, &space).await?;
+    let management = |review: &Value, action: Value| {
+        json!({
+            "op":"manage_space_invites_reviewed", "input":{
+                "space_id":review["space_id"], "expected_identity_id":review["identity_id"],
+                "expected_device_id":review["device_id"], "observed_revision":review["revision"],
+            }, "action":action,
+        })
+    };
+    let list = json!({"kind":"list","after":""});
+    let page: Value = serde_json::from_str(
+        &alice
+            .0
+            .client_request(management(&review, list.clone()).to_string())
+            .await?,
+    )?;
+    assert_eq!(page["indexing"], false);
+    let id = zoen_relay::log::fdb::code_hash(code);
+    let entries = page["entries"].as_array().ok_or("invite entries")?;
+    assert_eq!(entries.len(), 2);
+    let used = entries
+        .iter()
+        .find(|entry| entry["id"] == id)
+        .ok_or("used invite")?;
+    assert_eq!(used["uses"], 1);
+    assert_eq!(used["max_uses"], 1);
+    assert!(bob
+        .0
+        .client_request(management(&bob_review, list.clone()).to_string())
+        .await
+        .is_err());
+    let legacy_code = legacy["code"].as_str().ok_or("legacy code")?;
+    let legacy_id = zoen_relay::log::fdb::code_hash(legacy_code);
+    let renamed: Value = serde_json::from_str(
+        &alice
+            .0
+            .client_request(
+                management(
+                    &review,
+                    json!({"kind":"rename","id":legacy_id,"name":"Family"}),
+                )
+                .to_string(),
+            )
+            .await?,
+    )?;
+    assert_eq!(renamed["entries"][0]["name"], "Family");
+    let revoked: Value = serde_json::from_str(
+        &alice
+            .0
+            .client_request(
+                management(&review, json!({"kind":"revoke","id":legacy_id})).to_string(),
+            )
+            .await?,
+    )?;
+    assert_eq!(revoked["entries"][0]["revoked"], true);
+    assert!(carla.0.join_invite(legacy_code.into()).await.is_err());
+    drop(alice);
+    let reopened = Open::online(&w, "alice").await?;
+    let review = context(&reopened.0, &space).await?;
+    let page: Value = serde_json::from_str(
+        &reopened
+            .0
+            .client_request(management(&review, list).to_string())
+            .await?,
+    )?;
+    let saved = page["entries"]
+        .as_array()
+        .ok_or("recovered entries")?
+        .iter()
+        .find(|entry| entry["id"] == legacy_id)
+        .ok_or("recovered invite")?;
+    assert_eq!(saved["name"], "Family");
+    assert_eq!(saved["revoked"], true);
     Ok(())
 }

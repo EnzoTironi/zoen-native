@@ -94,6 +94,7 @@ mod membership_reads;
 mod routing;
 mod runtime;
 mod source_fence;
+mod space_invites;
 mod terminal;
 pub use runtime::{RuntimeHead, RuntimeMembershipError, RuntimeSource, RuntimeSourceBatch};
 
@@ -325,79 +326,6 @@ impl FdbLog {
         result
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub async fn create_invite_fenced(
-        &self,
-        who: &str,
-        space: &str,
-        role: Role,
-        max_uses: u32,
-        ttl_secs: u64,
-        code: &str,
-        fence: Fence,
-    ) -> Result<InviteCreated, String> {
-        let (max, ttl_ms) = relay_admission::invite::invite_limits(max_uses, ttl_secs);
-        let expires = now_ms() + ttl_ms;
-        let key = self.cell.root.pack(&("inv", code_hash(code)));
-        let fence = &fence;
-        let r = self
-            .cell
-            .db
-            .run(|trx, _| {
-                let key = key.clone();
-                async move {
-                    ownership::bound_transaction(&trx)?;
-                    let version = trx.get_read_version().await?;
-                    let lease = ownership::lease_in(&trx, &self.cell.root, fence.partition).await?;
-                    if fence.owner != self.owner.node
-                        || !ownership::accepts(lease.as_ref(), fence, space, version)
-                    {
-                        return Ok(Err("stale partition owner"));
-                    }
-                    if !protocol::valid_invite_code(code) {
-                        return Ok(Err("invalid invite code"));
-                    }
-                    let mine = self.cell.role_in(&trx, space, who).await?;
-                    if let Err(reason) = relay_admission::invite::authorize_inviter(mine, role) {
-                        return Ok(Err(reason));
-                    }
-                    let kind = match trx.get(&self.cell.space_key(space, "meta"), false).await? {
-                        Some(m) => {
-                            unpack::<(String, String, String)>(&m)
-                                .map_err(|e| custom(e.to_string()))?
-                                .0
-                        }
-                        None => return Ok(Err("unknown space")),
-                    };
-                    if let Some(kind) = parse::<SpaceKind>(&kind) {
-                        if let Err(reason) = relay_admission::invite::authorize_invite_kind(kind) {
-                            return Ok(Err(reason));
-                        }
-                    }
-                    if let Some(existing) = trx.get(&key, false).await? {
-                        let inv: Invite = unpack(&existing).map_err(|e| custom(e.to_string()))?;
-                        if inv.0 != space || inv.1 != word(&role) || inv.2 != who || inv.4 != max {
-                            return Ok(Err("invite code collision"));
-                        }
-                    } else {
-                        trx.set(&key, &pack(&(space, word(&role), who, expires, max, 0i64)));
-                    }
-                    let stored = trx
-                        .get(&key, true)
-                        .await?
-                        .ok_or_else(|| custom("invite missing after mint"))?;
-                    let inv: Invite = unpack(&stored).map_err(|e| custom(e.to_string()))?;
-                    Ok(Ok(inv.3))
-                }
-            })
-            .await
-            .map_err(|e| e.to_string())?;
-        let expires = r.map_err(str::to_string)?;
-        Ok(InviteCreated {
-            code: code.to_string(),
-            expires_at_ms: expires,
-        })
-    }
     /// Clears every key of this cell (decommissioning a cell, throwaway test cells).
     /// Ops (and tests): ends an agent link now, as if its lifetime had run out.
     pub async fn expire_agent_invite(&self, code: &str) -> Result<bool, String> {

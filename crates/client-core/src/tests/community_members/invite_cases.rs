@@ -76,3 +76,23 @@ fn invite_review_refuses_direct_chat_even_with_owner_looking_labels() -> TestRes
     assert!(check(&f.client, &selected).is_err());
     Ok(())
 }
+
+#[test]
+fn invitation_management_uses_the_same_review_without_limit_placeholders() -> TestResult<()> {
+    use crate::client_api::space_invite_command::{check_review, SpaceInviteReview};
+    let f = Fixture::new(SpaceKind::Group)?;
+    let original = input(&f)?;
+    let review = SpaceInviteReview {
+        space_id: original.space_id,
+        expected_identity_id: original.expected_identity_id,
+        expected_device_id: original.expected_device_id,
+        observed_revision: original.observed_revision,
+    };
+    check_review(&f.client, &review)?;
+    f.ordered(EventBody::MemberAdded {
+        identity: f.identity.clone(),
+        role: Role::Member,
+    })?;
+    assert!(check_review(&f.client, &review).is_err());
+    Ok(())
+}

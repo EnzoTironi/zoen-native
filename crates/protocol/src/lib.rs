@@ -44,6 +44,7 @@ pub mod read_time;
 pub mod runtime_binding;
 pub mod saved_messages;
 pub mod sites;
+pub mod space_invites;
 pub mod turn;
 pub mod wire;
 
@@ -83,6 +84,7 @@ pub const PROTOCOL: &str = "zoen-sync/2";
 /// Optional features; each side announces its own and uses the intersection.
 pub const AGENT_OWNER_PROOF: &str = "agent_owner_proof_v1";
 pub const CAPABILITIES: &[&str] = &[
+    space_invites::CAPABILITY,
     push::VOIP_WAKE_CAPABILITY,
     "blobs",
     saved_messages::CAPABILITY,

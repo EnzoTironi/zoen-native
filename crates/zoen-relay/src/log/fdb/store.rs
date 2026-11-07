@@ -272,6 +272,14 @@ impl LogStore for FdbLog {
         Ok(out)
     }
 
+    async fn manage_space_invites(
+        &self,
+        who: &str,
+        request: &protocol::space_invites::Request,
+    ) -> Result<protocol::space_invites::SpaceInvitePage, String> {
+        self.manage_space_invites(who, request).await
+    }
+
     async fn create_invite(
         &self,
         who: &str,

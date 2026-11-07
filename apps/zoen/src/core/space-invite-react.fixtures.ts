@@ -6,11 +6,13 @@ import { compileExpoSource } from './expo-compiler.fixtures.ts';
 import * as ownership from './account-scope.ts';
 import * as actions from '../communities/space-invite-actions.ts';
 import * as dates from './message-info-presentation.ts';
+import type { SpaceInvitePage } from './generated/SpaceInvitePage';
 import type { InviteDto } from './generated/InviteDto';
 import type { useSpaceInvite } from '../communities/use-space-invite';
 const require = createRequire(import.meta.url);
 compileExpoSource(new URL('../communities/use-space-invite.ts', import.meta.url));
 compileExpoSource(new URL('../communities/space-invite-action.tsx', import.meta.url));
+compileExpoSource(new URL('../communities/space-invite-management.tsx', import.meta.url));
 
 /** Actual optimized sheet/controller/member lease and Store; native UI and RPC are ports. */
 export async function spaceInviteFixture() {
@@ -24,9 +26,19 @@ export async function spaceInviteFixture() {
     link: 'https://zoen.invalid/j/ABCD234567',
     expires_at_ms: '1800000000000',
   });
+  let manage: (command: any) => Promise<SpaceInvitePage> = async () => ({
+    entries: [],
+    next: '',
+    indexing: false,
+  });
+  const confirmations: any[] = [];
   let permission = true;
   const operation = f.driver.operation;
   f.driver.operation = async (command) => {
+    if (command.op === 'manage_space_invites_reviewed') {
+      requests.push(structuredClone(command));
+      return manage(command);
+    }
     if (command.op === 'create_invite_reviewed') {
       requests.push(structuredClone(command));
       return create();
@@ -76,7 +88,7 @@ export async function spaceInviteFixture() {
     return null;
   }
   Picker.Item = () => null;
-  const component = loadEditorAgent('../communities/space-invite-action.tsx', {
+  const uiPorts = {
     ...common,
     '@expo/ui': {
       Host: View,
@@ -86,11 +98,18 @@ export async function spaceInviteFixture() {
       RNHostView: View,
       BottomSheet: Sheet,
       Picker,
+      TextInput: (props: any) => {
+        useCapture(props.testID, props);
+        return null;
+      },
     },
     'react-native': {
       View,
       ScrollView: View,
       Text: () => null,
+      Alert: {
+        alert: (_title: string, _body: string, buttons: any[]) => confirmations.push(buttons),
+      },
       Share: {
         share: async ({ message }: any) => {
           shares.push(message);
@@ -134,10 +153,22 @@ export async function spaceInviteFixture() {
         return value;
       },
     },
+  };
+  const management = loadEditorAgent(
+    '../communities/space-invite-management.tsx',
+    uiPorts,
+  ).SpaceInviteManagement;
+  const component = loadEditorAgent('../communities/space-invite-action.tsx', {
+    ...uiPorts,
+    './space-invite-management': { SpaceInviteManagement: management },
   }).SpaceInviteAction;
   return {
     ...f,
     requests,
+    confirmations,
+    manage: (next: typeof manage) => {
+      manage = next;
+    },
     shares,
     copies,
     controls,

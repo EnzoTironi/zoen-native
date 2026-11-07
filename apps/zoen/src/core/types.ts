@@ -1,3 +1,4 @@
+import type { SpaceInvitePage } from './generated/SpaceInvitePage';
 import type { ManagedRecoveryPageDto } from './generated/ManagedRecoveryPageDto';
 import type { ManagedEnrollmentDto } from './generated/ManagedEnrollmentDto';
 import type { MediaPlaybackBookmark } from './generated/MediaPlaybackBookmark';
@@ -215,6 +216,7 @@ type Results = {
   create_community: string;
   create_invite: InviteDto;
   create_invite_reviewed: InviteDto;
+  manage_space_invites_reviewed: SpaceInvitePage;
   create_agent_invite: InviteDto;
   preview_invite: InvitePreviewDto;
   join_invite: string;

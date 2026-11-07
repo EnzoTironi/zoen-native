@@ -142,6 +142,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::OlderDto::export_all(&config)?;
     crate::BackupStatusDto::export_all(&config)?;
     crate::InviteDto::export_all(&config)?;
+    protocol::space_invites::SpaceInvitePage::export_all(&config)?;
     crate::InvitePreviewDto::export_all(&config)?;
     crate::ProfileDto::export_all(&config)?;
     crate::StandingDecisionDto::export_all(&config)?;

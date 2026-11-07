@@ -1,3 +1,5 @@
+import type { SpaceInviteAction } from '../core/generated/SpaceInviteAction';
+import type { SpaceInvitePage } from '../core/generated/SpaceInvitePage';
 import type { ClientStore } from '../core/store';
 import type { SpaceMemberContext } from '../core/generated/SpaceMemberContext';
 import type { InviteDto } from '../core/generated/InviteDto';
@@ -79,5 +81,28 @@ export function discloseSpaceInvite(action: InviteAction & { disclose(): Promise
     )
       throw Error('Invite permission changed');
     await action.disclose();
+  });
+}
+
+/** Management shares the same form lifetime and duplicate-request guard. */
+export function manageSpaceInvites(
+  action: InviteAction & {
+    command: SpaceInviteAction;
+    completed(page: SpaceInvitePage): void;
+  },
+) {
+  return run(action, async () => {
+    const { context, store } = action;
+    const page = await store.driver.request({
+      op: 'manage_space_invites_reviewed',
+      input: {
+        space_id: context.space_id,
+        expected_identity_id: context.identity_id,
+        expected_device_id: context.device_id,
+        observed_revision: context.revision,
+      },
+      action: action.command,
+    });
+    if (action.current()) action.completed(page);
   });
 }
