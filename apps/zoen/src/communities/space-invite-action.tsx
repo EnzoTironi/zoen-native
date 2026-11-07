@@ -8,6 +8,7 @@ import { messageInfoDate } from '../core/message-info-presentation';
 import { t, formatLocale } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { useSpaceInvite } from './use-space-invite';
+import { SpaceInviteManagement } from './space-invite-management';
 import { inviteDurations, inviteUses } from './space-invite-actions';
 
 export function SpaceInviteAction({
@@ -66,7 +67,9 @@ export function SpaceInviteAction({
                 />
               </View>
               <Text style={{ color: p.list.secondary, fontSize: 17 }}>{invite.title}</Text>
-              {invite.loading ? (
+              {invite.screen === 'manage' ? (
+                <SpaceInviteManagement invite={invite} />
+              ) : invite.loading ? (
                 <Loading />
               ) : invite.result ? (
                 <>
@@ -156,6 +159,15 @@ export function SpaceInviteAction({
                   />
                 </>
               )}
+              {invite.screen === 'create' ? (
+                <NativeButton
+                  testID="space-invite-manage"
+                  secondary
+                  label={t('spaceInvite.manage')}
+                  disabled={invite.busy}
+                  onPress={invite.showManagement}
+                />
+              ) : null}
               {invite.error ? (
                 <Text accessibilityRole="alert" style={{ color: p.list.destructive }}>
                   {t('spaceInvite.failed')}

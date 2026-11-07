@@ -4,6 +4,7 @@ use event_log::{Author, Signer, SpaceLog};
 use types::{EventBody, Privacy, SpaceKind};
 
 mod frame_cases;
+mod space_invites;
 
 fn signed() -> Result<(Envelope, SpaceLog), Box<dyn std::error::Error>> {
     let root = Signer::generate()?;

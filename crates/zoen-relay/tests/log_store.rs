@@ -14,6 +14,8 @@ use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
 mod history_visibility;
 #[path = "log_store/membership_review_keys.rs"]
 mod membership_review_keys;
+#[path = "log_store/space_invites.rs"]
+mod space_invites;
 
 #[path = "log_store/mls_contracts.rs"]
 mod mls_contracts;
@@ -181,7 +183,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             || arguments == ["--two-client"]
             || arguments == ["--two-client-renewals"]
             || arguments == ["--two-client-conflicts"]
-            || arguments == ["--agent-invite-replay"],
+            || arguments == ["--agent-invite-replay"]
+            || arguments == ["--space-invites"],
         "usage: log_store [--two-client|--two-client-renewals|--two-client-conflicts|--agent-invite-replay]"
     );
     // The error at the FDB boundary is otherwise lost behind the retryable public
@@ -197,6 +200,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .init();
     let network = unsafe { foundationdb::boot() };
     tokio::runtime::Runtime::new().unwrap().block_on(async {
+        if arguments == ["--space-invites"] {
+            run(
+                "space invite management with migration, pagination and atomic revoke",
+                space_invites::management_migrates_pages_and_revokes_against_actual_redemption(),
+            )
+            .await?;
+            return Ok::<(), Box<dyn std::error::Error>>(());
+        }
         if arguments == ["--agent-invite-replay"] {
             run(
                 "agent preflight keeps prior-redeemer replay without exposing spent links",
@@ -262,6 +273,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
         run("invites are bounded by uses", invites_are_bounded_by_uses()).await?;
+        run(
+            "space invite management",
+            space_invites::management_migrates_pages_and_revokes_against_actual_redemption(),
+        )
+        .await?;
         run(
             "agent preflight keeps prior-redeemer replay without exposing spent links",
             agent_invite_replay::agent_redemption_preflight_preserves_idempotent_replay(),

@@ -1,9 +1,16 @@
+import type { SpaceInviteAction } from '../core/generated/SpaceInviteAction';
+import type { SpaceInvitePage } from '../core/generated/SpaceInvitePage';
 import { useEffect, useRef, useState } from 'react';
 import { useClient } from '../core/provider';
 import { accountScope, accountScopeKey } from '../core/account-scope';
 import type { InviteDto } from '../core/generated/InviteDto';
 import { useMemberActions } from './use-member-actions';
-import { createSpaceInvite, discloseSpaceInvite, type InviteFlight } from './space-invite-actions';
+import {
+  createSpaceInvite,
+  discloseSpaceInvite,
+  manageSpaceInvites,
+  type InviteFlight,
+} from './space-invite-actions';
 
 export function useSpaceInvite(space: string) {
   const client = useClient(),
@@ -22,6 +29,11 @@ export function useSpaceInvite(space: string) {
   const [result, setResult] = useState<{ key: object; value: InviteDto } | null>(null);
   const [busy, setBusy] = useState<object | null>(null);
   const [error, setError] = useState<object | null>(null);
+  const [screen, setScreen] = useState<'create' | 'manage'>('create');
+  const [management, setManagement] = useState<{
+    key: object;
+    page: SpaceInvitePage;
+  } | null>(null);
   const [ttl, setTtl] = useState(604800);
   const [uses, setUses] = useState(50);
   useEffect(() => {
@@ -52,9 +64,57 @@ export function useSpaceInvite(space: string) {
     active.current = null;
     setOpening(null);
   };
+  const manage = (command: SpaceInviteAction, completed?: () => void) => {
+    if (!opening || !context || !current()) return;
+    void manageSpaceInvites({
+      store,
+      context,
+      command,
+      key: opening.key,
+      flight,
+      current,
+      pending: (value) => {
+        setBusy(value ? opening.key : null);
+        if (value) setError(null);
+      },
+      completed: (page) => {
+        completed?.();
+        if (command.kind === 'list') setManagement({ key: opening.key, page });
+        else {
+          setResult(null);
+          setManagement((previous) =>
+            previous?.key === opening.key
+              ? {
+                  key: opening.key,
+                  page: {
+                    ...previous.page,
+                    entries: previous.page.entries.map(
+                      (entry) => page.entries.find((next) => next.id === entry.id) ?? entry,
+                    ),
+                  },
+                }
+              : null,
+          );
+        }
+      },
+      failed: () => setError(opening.key),
+    });
+  };
   return {
+    screen,
+    configure: () => {
+      if (current()) setScreen('create');
+    },
+    management: open && management?.key === opening.key ? management.page : null,
+    manage,
+    showManagement: () => {
+      if (!current()) return;
+      setScreen('manage');
+      manage({ kind: 'list', after: '' });
+    },
     open,
     permitted,
+    isOwner: context?.role === 'owner',
     available: member.available,
     ready: state.phase === 'ready',
     readFailed: state.phase === 'failed',
@@ -74,6 +134,8 @@ export function useSpaceInvite(space: string) {
       active.current = key;
       setOpening({ review, key });
       setResult(null);
+      setManagement(null);
+      setScreen('create');
       setError(null);
       setTtl(604800);
       setUses(50);

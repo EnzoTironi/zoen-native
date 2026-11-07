@@ -97,6 +97,7 @@ impl ClientFrame {
 
 fn request_to(op: &Op) -> pb_req::Op {
     match op {
+        Op::SpaceInvites(request) => pb_req::Op::SpaceInvites(request.clone()),
         Op::Register { profile } => pb_req::Op::Register(profile_to(profile)),
         Op::Lookup { handle, prefix } => pb_req::Op::Lookup(PbLookup {
             handle: handle.clone(),
@@ -219,6 +220,10 @@ fn runtime_binding_to(r: &crate::runtime_binding::Request) -> PbRuntimeBindingRe
 fn request_from(op: pb_req::Op) -> Result<Op, DecodeError> {
     Ok(match op {
         pb_req::Op::EnsureSavedMessages(genesis) => Op::EnsureSavedMessages(genesis),
+        pb_req::Op::SpaceInvites(request) => {
+            request.validate().map_err(bad)?;
+            Op::SpaceInvites(request)
+        }
         pb_req::Op::Register(p) => Op::Register {
             profile: profile_from(p)?,
         },

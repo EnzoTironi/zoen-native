@@ -197,6 +197,7 @@ fn result_to(result: &Result<Reply, String>) -> pb_res::R {
         Ok(Reply::Profiles(ps)) => pb_res::R::Profiles(PbProfiles {
             profiles: ps.iter().map(profile_to).collect(),
         }),
+        Ok(Reply::SpaceInvites(page)) => pb_res::R::SpaceInvites(page.clone()),
         Ok(Reply::Invite(i)) => pb_res::R::Invite(PbInviteCreated {
             code: i.code.clone(),
             expires_at_ms: i.expires_at_ms,
@@ -291,6 +292,10 @@ fn result_from(result: pb_res::R) -> Result<Result<Reply, String>, DecodeError> 
                 .map(profile_from)
                 .collect::<Result<_, _>>()?,
         )),
+        pb_res::R::SpaceInvites(page) => {
+            page.validate().map_err(bad)?;
+            Ok(Reply::SpaceInvites(page))
+        }
         pb_res::R::Invite(i) => Ok(Reply::Invite(InviteCreated {
             code: i.code,
             expires_at_ms: i.expires_at_ms,

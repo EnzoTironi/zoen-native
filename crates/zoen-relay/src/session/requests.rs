@@ -159,6 +159,19 @@ impl Session {
                     db::profiles(pool, &ids).await.map_err(|e| e.to_string())?,
                 ))
             }
+            Op::SpaceInvites(request) => {
+                self.st
+                    .limits
+                    .lookup_account
+                    .check(&self.identity)
+                    .map_err(limits::slow_down)?;
+                Ok(Reply::SpaceInvites(
+                    self.st
+                        .log
+                        .manage_space_invites(&self.identity, &request)
+                        .await?,
+                ))
+            }
             Op::CreateInvite {
                 space,
                 agent,

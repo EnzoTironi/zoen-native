@@ -16,10 +16,35 @@ pub(crate) struct SpaceInviteInput {
 }
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SpaceInviteReview {
+    pub space_id: String,
+    pub expected_identity_id: String,
+    pub expected_device_id: String,
+    pub observed_revision: String,
+}
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum SpaceInviteAction {
+    List { after: String },
+    Revoke { id: String },
+    Rename { id: String, name: String },
+}
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum SpaceInviteCommand {
-    CreateInvite { space_id: String },
-    CreateInviteReviewed { input: SpaceInviteInput },
+    CreateInvite {
+        space_id: String,
+    },
+    CreateInviteReviewed {
+        input: SpaceInviteInput,
+    },
+    ManageSpaceInvitesReviewed {
+        input: SpaceInviteReview,
+        action: SpaceInviteAction,
+    },
 }
 
 pub(crate) fn check(client: &Client, input: &SpaceInviteInput) -> Result<(), CoreError> {
@@ -28,6 +53,17 @@ pub(crate) fn check(client: &Client, input: &SpaceInviteInput) -> Result<(), Cor
             reason: "invalid invite limits".into(),
         });
     }
+    check_review(
+        client,
+        &SpaceInviteReview {
+            space_id: input.space_id.clone(),
+            expected_identity_id: input.expected_identity_id.clone(),
+            expected_device_id: input.expected_device_id.clone(),
+            observed_revision: input.observed_revision.clone(),
+        },
+    )
+}
+pub(crate) fn check_review(client: &Client, input: &SpaceInviteReview) -> Result<(), CoreError> {
     let context = client.space_member_context(
         input.space_id.clone(),
         input.expected_identity_id.clone(),
@@ -48,6 +84,35 @@ pub(crate) fn check(client: &Client, input: &SpaceInviteInput) -> Result<(), Cor
 impl SpaceInviteCommand {
     pub(super) async fn execute(self, client: &Client) -> Result<String, CoreError> {
         match self {
+            Self::ManageSpaceInvitesReviewed { input, action } => {
+                use protocol::space_invites::{Action, Rename, Request};
+                check_review(client, &input)?;
+                let request = Request {
+                    space: input.space_id.clone(),
+                    action: Some(match action {
+                        SpaceInviteAction::List { after } => Action::List(after),
+                        SpaceInviteAction::Revoke { id } => Action::Revoke(id),
+                        SpaceInviteAction::Rename { id, name } => {
+                            Action::Rename(Rename { id, name })
+                        }
+                    }),
+                };
+                request.validate().map_err(|reason| CoreError::Invalid {
+                    reason: reason.into(),
+                })?;
+                let protocol::Reply::SpaceInvites(page) =
+                    client.request(protocol::Op::SpaceInvites(request)).await?
+                else {
+                    return Err(CoreError::Invalid {
+                        reason: "unexpected invite management response".into(),
+                    });
+                };
+                check_review(client, &input)?;
+                page.validate().map_err(|reason| CoreError::Invalid {
+                    reason: reason.into(),
+                })?;
+                encode(&page)
+            }
             Self::CreateInvite { space_id } => encode(&client.create_invite(space_id).await?),
             Self::CreateInviteReviewed { input } => {
                 check(client, &input)?;

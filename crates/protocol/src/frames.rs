@@ -90,6 +90,7 @@ pub enum Op {
     Profiles {
         ids: Vec<IdentityId>,
     },
+    SpaceInvites(crate::space_invites::Request),
     CreateInvite {
         space: SpaceId,
         /// When set, this invite opens a chat with the agent instead of joining a Space.
@@ -296,6 +297,7 @@ impl Op {
             Op::Register { .. } => "register",
             Op::Lookup { .. } => "lookup",
             Op::Profiles { .. } => "profiles",
+            Op::SpaceInvites(_) => "space_invites",
             Op::CreateInvite { .. } => "create_invite",
             Op::PreviewInvite { .. } => "preview_invite",
             Op::RedeemAgentInvite { .. } => "redeem_agent_invite",
@@ -368,6 +370,7 @@ pub enum Reply {
     Registered(Identity),
     /// Lookup and Profiles.
     Profiles(Vec<Identity>),
+    SpaceInvites(crate::space_invites::SpaceInvitePage),
     Invite(InviteCreated),
     Preview(InvitePreview),
     Done,
