@@ -96,8 +96,12 @@ export class ConversationDateJump {
         this.publish({ pending: false, error: 'missing' });
         return;
       }
-      await this.ports.reveal(target);
+      const revealed = await this.ports.reveal(target);
       if (!current()) return;
+      if (revealed === null) {
+        this.publish({ pending: false });
+        return;
+      }
       this.close();
       this.ports.select(target);
     } catch {

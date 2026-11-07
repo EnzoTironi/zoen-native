@@ -1,3 +1,4 @@
+import { useConversationMessageNavigation } from './use-conversation-message-navigation';
 import { searchLaunches } from '../core/search-launch';
 import { sendChatMessage } from '../core/send-chat-message';
 import { useReplyDestinationFocus } from '../core/use-reply-destination-focus';
@@ -72,7 +73,6 @@ export function useChatController() {
   const [pending, setPending] = useState<string | null>(null);
   const sendRef = useRef<{ scope: string } | null>(null);
   const [loadedSpace, setLoadedSpace] = useState<string | null>(null);
-  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [nativeTimeline, setNativeTimeline] = useState<{ scope: string; tag: number } | null>(null);
   const [railHeight, setRailHeight] = useState(0);
   const [noticeHeight, setNoticeHeight] = useState(0);
@@ -90,14 +90,14 @@ export function useChatController() {
     error: string | null;
   } | null>(null);
   const selectedHit = searchState.hits[searchState.index];
-  const selectedSearchId = searchState.active ? selectedHit?.ref_id : null;
+
   const currentRead =
     searchState.active && searchRead?.search === search && searchRead.hit === selectedHit
       ? searchRead
       : null;
   const searchThread = currentRead?.thread ?? null;
-  const searchRevealBusy = Boolean(searchState.active && selectedHit && !currentRead);
-  const searchRevealError = currentRead?.error;
+  const timelineRevealBusy = Boolean(searchState.active && selectedHit && !currentRead);
+  const timelineRevealError = currentRead?.error;
   const page = useMemo(
     () =>
       searchThread
@@ -106,9 +106,28 @@ export function useChatController() {
     [searchThread, timelines, id],
   );
   const selection = useMessageSelection(id, page?.entries ?? [], searchState.active);
-  const [revealedActivity, setRevealedActivity] = useState<{ scope: string; id: string } | null>(
-    null,
+  const initialEnd = useMemo(
+    () =>
+      new InitialTimelineEnd(`${id}:${owner}`, undefined, {
+        anchorUntilInteraction: process.env.EXPO_OS === 'ios',
+      }),
+    [id, owner],
   );
+  const timelineReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
+  const {
+    target: scrollTarget,
+    select: setScrollTarget,
+    reveal,
+    current: navigationCurrent,
+  } = useConversationMessageNavigation({
+    store,
+    space: id,
+    owner,
+    focused,
+    scroller: timelineReveal,
+    cancelInitialEnd: initialEnd.cancel,
+  });
+  const highlightedMessageId = searchState.active ? selectedHit?.ref_id : scrollTarget;
   const rows = useMemo<ConversationTimelineRow[]>(
     () =>
       selection.active
@@ -117,12 +136,10 @@ export function useChatController() {
             page?.entries ?? [],
             items,
             id,
-            selectedSearchId ??
-              (revealedActivity?.scope === `${id}:${owner}` ? revealedActivity.id : null) ??
-              jump,
+            highlightedMessageId ?? jump,
             supportsMediaMosaic,
           ),
-    [page, items, id, owner, selectedSearchId, revealedActivity, jump, selection.active],
+    [page, items, id, highlightedMessageId, jump, selection.active],
   );
   const visibleEntries = useMemo(() => rows.map((row) => row.entry), [rows]);
   const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
@@ -138,13 +155,6 @@ export function useChatController() {
         : { scope: nativeTimelineScope, tag },
     );
   }, [nativeTimelineScope]);
-  const initialEnd = useMemo(
-    () =>
-      new InitialTimelineEnd(`${id}:${owner}`, undefined, {
-        anchorUntilInteraction: process.env.EXPO_OS === 'ios',
-      }),
-    [id, owner],
-  );
   const revealLayout = useRef({
     entries: [] as readonly TimelineEntry[],
     ready: false,
@@ -152,8 +162,8 @@ export function useChatController() {
     timelineTopInset,
     railHeight,
     noticeHeight,
+    target: null as string | null,
   });
-  const searchReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
   const metricsFocused = useIsFocused();
   const {
     navigationMetrics,
@@ -161,14 +171,11 @@ export function useChatController() {
     onComposerLayout,
     onInsetRequested,
   } = useChatNativeMetrics({
-    reveal: searchReveal,
+    reveal: timelineReveal,
     focused: metricsFocused,
     searchActive: searchState.active,
-    current: () =>
-      focused.current &&
-      owner !== null &&
-      !store.isSessionRetiring &&
-      conversationScope(store.getSnapshot(), store.sessionEpoch, id) === owner,
+    revealActive: searchState.active || Boolean(scrollTarget),
+    current: navigationCurrent,
     list,
     rows: visibleEntries.length,
     keyboard,
@@ -183,22 +190,27 @@ export function useChatController() {
   const onSearchContentLayout = useCallback(
     (target: string, layout: ConversationContentLayout) => {
       const current = search.getSnapshot();
-      if (!current.active || current.hits[current.index]?.ref_id !== target) return;
-      searchContent.current = { scope: searchReveal, id: target, layout };
-      searchReveal.onItemLayout();
+      if (
+        current.active
+          ? current.hits[current.index]?.ref_id !== target
+          : revealLayout.current.target !== target
+      )
+        return;
+      searchContent.current = { scope: timelineReveal, id: target, layout };
+      timelineReveal.onItemLayout();
     },
-    [search, searchReveal],
+    [search, timelineReveal],
   );
   useLayoutEffect(() => {
-    searchReveal.connect({
+    timelineReveal.connect({
       observe: observeNativeMetrics,
       current: (target) => {
         const current = search.getSnapshot();
         return (
-          focused.current &&
-          search.isCurrent() &&
-          current.active &&
-          current.hits[current.index]?.ref_id === target
+          navigationCurrent() &&
+          (current.active
+            ? search.isCurrent() && current.hits[current.index]?.ref_id === target
+            : revealLayout.current.target === target)
         );
       },
       item: (target) => {
@@ -213,7 +225,7 @@ export function useChatController() {
         return {
           ...conversationRevealContent(
             row,
-            content?.scope === searchReveal && content.id === target ? content.layout : null,
+            content?.scope === timelineReveal && content.id === target ? content.layout : null,
           ),
           firstItemOffset: native.getFirstItemOffset(),
           childHeight: native.getChildContainerDimensions().height,
@@ -246,7 +258,7 @@ export function useChatController() {
           }
         : undefined,
     });
-  }, [searchReveal, search, railVisibleHeight, observeNativeMetrics]);
+  }, [timelineReveal, search, railVisibleHeight, observeNativeMetrics, navigationCurrent]);
   useLayoutEffect(() => {
     revealLayout.current = {
       entries: visibleEntries,
@@ -258,8 +270,9 @@ export function useChatController() {
       timelineTopInset,
       railHeight,
       noticeHeight,
+      target: scrollTarget,
     };
-    searchReveal.onData(visibleEntries);
+    timelineReveal.onData(visibleEntries);
   }, [
     page,
     visibleEntries,
@@ -271,12 +284,13 @@ export function useChatController() {
     timelineTopInset,
     railHeight,
     noticeHeight,
-    searchReveal,
+    timelineReveal,
+    scrollTarget,
   ]);
   useLayoutEffect(() => {
-    searchReveal.cancel();
-  }, [searchReveal, searchState.active, searchState.query, selectedSearchId]);
-  useLayoutEffect(() => () => searchReveal.cancel(), [searchReveal]);
+    timelineReveal.cancel();
+  }, [timelineReveal, searchState.active, searchState.query, highlightedMessageId]);
+  useLayoutEffect(() => () => timelineReveal.cancel(), [timelineReveal]);
   const cancelInitialEnd = initialEnd.cancel;
   useLayoutEffect(() => {
     initialEnd.connect({
@@ -347,26 +361,16 @@ export function useChatController() {
       return () => {
         focused.current = false;
         initialEnd.blur();
-        searchReveal.cancel();
+        timelineReveal.cancel();
         store.setTyping(id, false);
         store.selectSpace(null);
       };
-    }, [id, store, initialEnd, searchReveal, search, searchTicket]),
-  );
-  const reveal = useCallback(
-    async (messageId: string, keepActivityVisible = true, current?: () => boolean) => {
-      cancelInitialEnd();
-      const index = await store.revealMessage(id, messageId, current);
-      if (index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
-      if (keepActivityVisible) setRevealedActivity({ scope: `${id}:${owner}`, id: messageId });
-      return messageId;
-    },
-    [id, owner, store, cancelInitialEnd],
+    }, [id, store, initialEnd, timelineReveal, search, searchTicket]),
   );
   useEffect(() => {
     let active = true;
     if (!searchState.active || !selectedHit) return;
-    const captured = searchReveal.capture();
+    const captured = timelineReveal.capture();
     const current = () => {
       const latest = search.getSnapshot();
       return (
@@ -374,7 +378,7 @@ export function useChatController() {
         focused.current &&
         search.isCurrent() &&
         latest.hits[latest.index] === selectedHit &&
-        searchReveal.isCurrent(captured)
+        timelineReveal.isCurrent(captured)
       );
     };
     void (async () => {
@@ -398,7 +402,7 @@ export function useChatController() {
       } else await reveal(selectedHit.ref_id, false, current);
       if (current()) {
         setSearchRead({ search, hit: selectedHit, thread, error: null });
-        if (process.env.EXPO_OS === 'ios') searchReveal.request(selectedHit.ref_id, captured);
+        if (process.env.EXPO_OS === 'ios') timelineReveal.request(selectedHit.ref_id, captured);
         else setScrollTarget(selectedHit.ref_id);
       }
     })().catch((reason: unknown) => {
@@ -413,14 +417,14 @@ export function useChatController() {
     return () => {
       active = false;
     };
-  }, [id, store, reveal, selectedHit, searchState.active, search, searchReveal]);
+  }, [id, store, reveal, selectedHit, searchState.active, search, timelineReveal, setScrollTarget]);
   useFocusEffect(
     useCallback(() => {
       if (!jump) return;
       let active = true;
       void reveal(jump)
         .then((target) => {
-          if (active) setScrollTarget(target);
+          if (active && target) setScrollTarget(target);
         })
         .catch((reason: unknown) => {
           if (active)
@@ -432,7 +436,7 @@ export function useChatController() {
       return () => {
         active = false;
       };
-    }, [jump, reveal, inform]),
+    }, [jump, reveal, inform, setScrollTarget]),
   );
   useEffect(() => {
     if (
@@ -445,7 +449,11 @@ export function useChatController() {
       return;
     const index = visibleEntries.findIndex((entry) => entry.id === scrollTarget);
     if (index < 0) return;
-    // Wait until the loaded history has committed before addressing list indices.
+    if (process.env.EXPO_OS === 'ios') {
+      timelineReveal.request(scrollTarget);
+      return;
+    }
+    // Deferred platforms retain their existing list-index navigation.
     const frame = requestAnimationFrame(() => {
       void list.current
         ?.scrollToIndex({
@@ -468,6 +476,8 @@ export function useChatController() {
     return () => cancelAnimationFrame(frame);
   }, [
     scrollTarget,
+    setScrollTarget,
+    timelineReveal,
     loadedSpace,
     timelineKey,
     id,
@@ -538,7 +548,7 @@ export function useChatController() {
     search,
     input,
     initialEnd,
-    searchReveal,
+    timelineReveal,
     navigationMetrics,
     onComposerLayout,
     onInsetRequested,
@@ -550,8 +560,8 @@ export function useChatController() {
     composerText,
     sending: pending === scope,
     send,
-    searchRevealBusy,
-    searchRevealError,
+    timelineRevealBusy,
+    timelineRevealError,
     searchThread,
     headerHeight,
     setRailHeight,
@@ -574,7 +584,7 @@ export function useChatController() {
     Math,
     noticeHeight,
     items,
-    selectedSearchId,
+    highlightedMessageId,
     actions,
     reveal,
     inform,
