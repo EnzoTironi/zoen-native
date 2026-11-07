@@ -54,13 +54,16 @@ not a provider invoice or a general-purpose token estimator.
 Sources: [OpenAI compatibility](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)
 and [model/pricing](https://developers.cloudflare.com/workers-ai/models/llama-3.3-70b-instruct-fp8-fast/).
 
-The probe requires one accepted answer containing its synthetic four-word phrase, one
-runtime attempt, one positive usage-based settlement within the signed budget,
+The probe requires one accepted answer containing its synthetic four-word phrase,
+one to four admitted model turns (the existing agent can propose up to three
+bounded history searches), and one positive usage-based settlement per turn within
+the signed period/attempt budget,
 then the same decrypted answer exactly once after service restart and owner cold
 recovery. Attempts and settlement must remain unchanged. The ordinary fixture's
 20-second observation is preserved; the explicit live probe observes the existing
 90-second chat transport budget plus 30 seconds of lifecycle overhead. Clef mode
-adds the two existing 60-second Gate budgets (240 seconds total observation).
+has a 240-second observation bound for the synthetic journey; this is not a
+worst-case bound for every allowed multi-turn conversation.
 The probe stops at its first hold, review, recovery or run deferral and retires its
 owned service instead of waiting for a later automatic worker cycle. Decision
 transport rejects redirects/non-2xx responses and disables automatic HTTP retries.
@@ -71,6 +74,13 @@ accounts, evidence keys, failure fixtures and the dispatch marker. `outcome.json
 records completion and credential retirement without prompts, replies, account
 IDs or tokens. An external kill/power loss can prevent cleanup: inspect and retire
 only that probe's `reply-runtime/**/vault/{chat,live-clef}` copies before sharing diagnostics.
+
+Tool transcripts use the same canonical text-only JSON in gateway preflight and
+dispatch: retain call IDs/arguments/results, include empty assistant content for
+tool-only turns, and represent text content consistently as strings. Ordinary
+chat bytes and image dispatch remain unchanged. The exact wire hash binds the
+canonical request before admission; an older incompatible request is not reissued
+under its old authorization.
 
 The phrase passes the unchanged local outbound Gate before dispatch. A key-shaped
 nonce is unsuitable: a real model can return it correctly while the secret rule

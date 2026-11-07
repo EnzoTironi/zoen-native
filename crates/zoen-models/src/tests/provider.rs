@@ -146,7 +146,8 @@ async fn exact_tool_call_is_a_proposal_and_invalid_arguments_retain_receipt() {
 }
 
 #[tokio::test]
-async fn valid_tool_history_preserves_exact_call_and_result_identity() {
+async fn valid_tool_history_preserves_exact_call_and_result_identity(
+) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::json(reply()).await;
     let mut input = request();
     input.messages.push(InputMessage::Assistant {
@@ -161,20 +162,31 @@ async fn valid_tool_history_preserves_exact_call_and_result_identity() {
         name: "lookup".into(),
         text: "verified result".into(),
     });
-    ModelGateway::new(config(&fixture.base))
-        .unwrap()
-        .complete(input, &TestAuthority::default())
-        .await
-        .unwrap();
-    let seen = fixture.seen.lock().unwrap();
+    let gateway = ModelGateway::new(config(&fixture.base))?;
+    let frozen = gateway.preflight(&input)?;
+    let authority = TestAuthority::default();
+    let result = gateway.complete(input, &authority).await?;
+    assert_eq!(result.request_digest, frozen.request_digest);
+    let seen = fixture.seen.lock().map_err(|_| "fixture poisoned")?;
+    assert_eq!(
+        u64::try_from(serde_json::to_vec(&seen[0].1)?.len())?,
+        frozen.descriptor.encoded_request_bytes
+    );
+    assert!(seen[0].1["messages"]
+        .as_array()
+        .ok_or("messages")?
+        .iter()
+        .all(|message| message["content"].is_string()));
+    assert_eq!(seen[0].1["messages"][1]["content"], PROMPT);
+    assert_eq!(seen[0].1["messages"][2]["content"], "");
     assert_eq!(
         seen[0].1["messages"][2]["tool_calls"][0]["id"],
         "approved-call"
     );
     assert_eq!(seen[0].1["messages"][3]["tool_call_id"], "approved-call");
     assert_eq!(seen[0].1["messages"][3]["content"], "verified result");
+    Ok(())
 }
-
 #[tokio::test]
 async fn reused_historical_call_id_is_invalid_output_and_keeps_the_bill() {
     let mut body = reply();

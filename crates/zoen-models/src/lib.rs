@@ -3,6 +3,7 @@
 //! durable SQL/FDB authority, MLS worker, billing or tool execution.
 
 mod adapter;
+mod chat_wire;
 mod images;
 pub use images::*;
 mod contract;
@@ -178,10 +179,8 @@ impl ModelGateway {
                 let Body::Bytes(bytes) = encoded.request.body() else {
                     return Err(GatewayError::UnsupportedOperation);
                 };
-                if bytes.len() > limits.max_request_bytes {
-                    return Err(GatewayError::InvalidRequest);
-                }
-                let wire_digest = validation::wire_digest(bytes, limits.max_request_bytes)?;
+                let bytes = chat_wire::encode(bytes, limits.max_request_bytes)?;
+                let wire_digest = validation::wire_digest(&bytes, limits.max_request_bytes)?;
                 let profile = json!({
                     "profile": CHAT_PROFILE,
                     "base_url": self.config.base_url,

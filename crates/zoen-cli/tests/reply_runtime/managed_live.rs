@@ -1,4 +1,4 @@
-//! One explicit external HTTPS model call through the real native service.
+//! One explicit external HTTPS journey through the real native service.
 use super::managed_support::*;
 use super::*;
 use std::{fs, time::Duration};
@@ -192,20 +192,24 @@ async fn run(
             "outcome":audit["outcome"],"rule":audit["rule"],
             "answers":audit["answers"],"latency_ms":audit["latency_ms"]});
     }
-    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
+    let attempts = w.count("SELECT count(*) FROM runtime_attempts").await;
+    // The existing agent may propose up to three authorized history searches.
+    // These are distinct admitted turns, never retries of an incurred original.
+    if !(1..=4).contains(&attempts) {
+        return Err("live chat exceeded its bounded history continuation chain".into());
+    }
     assert_eq!(
         w.count("SELECT count(*) FROM runtime_dispositions WHERE kind='settle'")
             .await,
-        1
+        attempts
     );
     let charge = w
         .scalar("SELECT sum(amount_units)::text FROM runtime_dispositions WHERE kind='settle'")
         .await
         .parse::<u64>()?;
-    if charge == 0 || charge > 3000 {
+    if charge == 0 || charge > 10000 || charge > u64::try_from(attempts)? * 3000 {
         return Err("live reported usage outside admitted price bound".into());
     }
-    let attempts = w.count("SELECT count(*) FROM runtime_attempts").await;
     drop(service);
     let mut restarted = ServiceProcess::start(w, &path)?;
     restarted.frame("service_ready").await?;
