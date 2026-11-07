@@ -27,7 +27,9 @@ fn category(error: zoen_runtime::RuntimeError) -> PolicyUnavailable {
         E::OverBudget => PolicyUnavailable::OverBudget,
         E::CoreAuthorityUnavailable => PolicyUnavailable::CoreAuthorityUnavailable,
         E::RestoreUnreconciled => PolicyUnavailable::RestoreUnreconciled,
-        E::Unavailable | E::NativeBackpressure => PolicyUnavailable::Unavailable,
+        E::Unavailable | E::NativeBackpressure | E::NativeSourceAdvanced => {
+            PolicyUnavailable::Unavailable
+        }
         E::EvidenceTooLarge => PolicyUnavailable::EvidenceTooLarge,
     }
 }
@@ -63,6 +65,7 @@ mod tests {
             (S::AdmissionMembership, E::Denied),
             (S::Source, E::Denied),
             (S::Source, E::NativeBackpressure),
+            (S::Source, E::NativeSourceAdvanced),
         ] {
             let response =
                 context_failure(Failure { stage, error }, "exact-inquiry".into(), &device);
@@ -79,12 +82,25 @@ mod tests {
     #[test]
     fn native_capacity_preserves_the_existing_unavailable_wire_contract(
     ) -> Result<(), serde_json::Error> {
-        for operation in [PolicyOperation::Context, PolicyOperation::Import] {
-            let value = serde_json::to_value(unavailable(
-                operation,
+        for (operation, error) in [
+            (
+                PolicyOperation::Context,
                 zoen_runtime::RuntimeError::NativeBackpressure,
-                None,
-            ))?;
+            ),
+            (
+                PolicyOperation::Import,
+                zoen_runtime::RuntimeError::NativeBackpressure,
+            ),
+            (
+                PolicyOperation::Context,
+                zoen_runtime::RuntimeError::NativeSourceAdvanced,
+            ),
+            (
+                PolicyOperation::Import,
+                zoen_runtime::RuntimeError::NativeSourceAdvanced,
+            ),
+        ] {
+            let value = serde_json::to_value(unavailable(operation, error, None))?;
             assert_eq!(value["status"], "unavailable");
             assert_eq!(value["code"], "unavailable");
             assert!(matches!(

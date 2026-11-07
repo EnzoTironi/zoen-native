@@ -98,17 +98,7 @@ impl ReplyWorker {
                     events.push(ReplyWorkerEvent::Progress(Box::new(progress)));
                 }
                 Err(error) if retryable(error) => {
-                    self.defer(
-                        run.run.clone(),
-                        if matches!(
-                            error,
-                            RuntimeError::Unavailable | RuntimeError::NativeBackpressure
-                        ) {
-                            RETRY
-                        } else {
-                            REVIEW
-                        },
-                    )?;
+                    self.defer(run.run.clone(), retry_delay(error))?;
                     events.push(ReplyWorkerEvent::Deferred {
                         run: run.run,
                         error,
@@ -148,7 +138,17 @@ fn retryable(error: RuntimeError) -> bool {
             | RuntimeError::OverBudget
             | RuntimeError::Unavailable
             | RuntimeError::NativeBackpressure
+            | RuntimeError::NativeSourceAdvanced
     )
+}
+
+fn retry_delay(error: RuntimeError) -> Duration {
+    match error {
+        RuntimeError::Unavailable
+        | RuntimeError::NativeBackpressure
+        | RuntimeError::NativeSourceAdvanced => RETRY,
+        _ => REVIEW,
+    }
 }
 
 #[cfg(test)]
@@ -188,5 +188,8 @@ mod tests {
         assert!(!retryable(RuntimeError::InvalidBinding));
         assert!(!retryable(RuntimeError::EvidenceTooLarge));
         assert!(retryable(RuntimeError::NativeBackpressure));
+        assert!(retryable(RuntimeError::NativeSourceAdvanced));
+        assert_eq!(retry_delay(RuntimeError::NativeSourceAdvanced), RETRY);
+        assert_eq!(retry_delay(RuntimeError::Denied), REVIEW);
     }
 }

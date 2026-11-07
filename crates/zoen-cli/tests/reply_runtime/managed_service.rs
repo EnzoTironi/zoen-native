@@ -6,13 +6,38 @@ use zoen_runtime::RuntimeAuthority;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestResult {
-    run(false).await
+    run(Journey::Reply).await
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn managed_service_history_search_reply_and_cold_recovery() -> TestResult {
-    run(true).await
+    run(Journey::History).await
 }
-async fn run(history: bool) -> TestResult {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn managed_service_tool_approval_resumes_original_after_cold_owner_decision() -> TestResult {
+    run(Journey::ApproveHistory).await
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn managed_service_tool_denial_survives_restart_without_another_inference() -> TestResult {
+    run(Journey::DenyHistory).await
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn managed_service_tool_cancellation_survives_restart_without_another_inference() -> TestResult
+{
+    run(Journey::CancelHistory).await
+}
+enum Journey {
+    Reply,
+    History,
+    ApproveHistory,
+    DenyHistory,
+    CancelHistory,
+}
+async fn run(journey: Journey) -> TestResult {
+    let history = !matches!(journey, Journey::Reply);
+    let reviewed = matches!(
+        journey,
+        Journey::ApproveHistory | Journey::DenyHistory | Journey::CancelHistory
+    );
     let expected_calls = if history { 2 } else { 1 };
     let expected_units = (expected_calls * 6).to_string();
     let mut w = World::new_with("managed_service", None, &[]).await;
@@ -30,7 +55,11 @@ async fn run(history: bool) -> TestResult {
         w.stop_relay();
         w.configure_relay_env("ZOEN_MANAGED_DEVICE_CONFIG", registry.to_str());
         w.start_relay();
-        let provider = provider::Provider::with_history(history).await?;
+        let provider = if reviewed {
+            provider::Provider::with_query(Some("delete")).await?
+        } else {
+            provider::Provider::with_history(history).await?
+        };
         let definition = zoen_agentd::Definition {
             version: 1,
             kind: zoen_agentd::AgentKind::User,
@@ -254,10 +283,10 @@ async fn run(history: bool) -> TestResult {
             assert_eq!(paused["status"], "Paused");
         }
         let queued_after = process.observation_point()?;
-        owner.send_message(space.clone(), if history { "Can you answer with the client closed? conversa" } else { "Can you answer with the client closed?" }.into())?;
+        owner.send_message(space.clone(), if reviewed { "Can you answer with the client closed? delete" } else if history { "Can you answer with the client closed? conversa" } else { "Can you answer with the client closed?" }.into())?;
         owner.wait_until_settled(20_000).await?;
         if !history {
-            let deferred = process.frame_after("conversation_deferred", queued_after).await?;
+            let deferred = process.conversation_denied_after(queued_after).await?;
             assert_eq!(deferred["space"], space);
             assert_eq!(deferred["reason"], zoen_runtime::RuntimeError::Denied.to_string());
             assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
@@ -269,6 +298,21 @@ async fn run(history: bool) -> TestResult {
         }
         owner.stop_sync();
         drop(owner);
+        if reviewed {
+            process = Box::pin(super::managed_tool_review::resolve(
+                &w, &path, process, &space, &provider,
+                match journey {
+                    Journey::ApproveHistory => client_core::ToolRequestDecision::ApproveOnce,
+                    Journey::DenyHistory => client_core::ToolRequestDecision::Deny,
+                    Journey::CancelHistory => client_core::ToolRequestDecision::Cancel,
+                    _ => return Err("not a tool review journey".into()),
+                },
+            )).await?;
+            if matches!(journey, Journey::DenyHistory | Journey::CancelHistory) {
+                drop(process);
+                return Ok(());
+            }
+        }
         let output = process.live_output(Duration::from_secs(40)).await?;
         assert_eq!(output["delivery"]["status"], "accepted");
         assert_eq!(provider.calls.load(Ordering::SeqCst), expected_calls);

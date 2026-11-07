@@ -21,7 +21,7 @@ impl Execution {
         if mode != DiscoveryMode::Recovery
             && (head.seq() != batch.head.seq || head.hash() != batch.head.hash)
         {
-            return Err(RuntimeError::Denied);
+            return Err(RuntimeError::NativeSourceAdvanced);
         }
         let principal = &root.context.principal;
         let mut runs = Vec::new();

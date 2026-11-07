@@ -87,6 +87,8 @@ pub enum RuntimeError {
     EvidenceTooLarge,
     #[error("native retirement capacity is temporarily full")]
     NativeBackpressure,
+    #[error("native source advanced; re-read required")]
+    NativeSourceAdvanced,
 }
 impl From<sqlx::Error> for RuntimeError {
     fn from(error: sqlx::Error) -> Self {

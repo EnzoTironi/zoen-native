@@ -71,15 +71,10 @@ impl SelectedReplyWorker {
             Err(error) if retryable(error) => {
                 self.schedule.defer(
                     key.into(),
-                    if self.original.is_none()
-                        || matches!(
-                            error,
-                            RuntimeError::Unavailable | RuntimeError::NativeBackpressure
-                        )
-                    {
+                    if self.original.is_none() {
                         RETRY
                     } else {
-                        REVIEW
+                        retry_delay(error)
                     },
                 )?;
                 let event = match &self.original {
