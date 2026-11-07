@@ -6,8 +6,9 @@ rules and controls. The existing SQL/FDB financial authority, encrypted native
 capsule and independent continuity anchor own durable state.
 
 The operator configures the host; product clients and model tools supply bounded
-conversation/run locators or an already signed owner budget. The existing owner-approved agent enrollment remains canonical. Public service provisioning/distribution and the normal Brain/tool host integration
-remain work in #175.
+conversation/run locators or an already signed owner budget. The existing
+owner-approved agent enrollment remains canonical. Public service provisioning,
+distribution, general tools/approvals and iOS service integration remain in #175.
 
 ## Enrollment and startup
 
@@ -28,7 +29,7 @@ oversized input and changed file identity. Errors omit configuration content.
 
 For a service that owns the executor lifecycle, set `supervised: true`, leave
 `device` empty, and provide the existing absolute `ZOEN_REPLY_HOST_BIN` and
-`ZOEN_REPLY_HOST_CONFIG` paths to `zoen agent-controls`. The operator provisions infrastructure credentials and the private relay registry
+`ZOEN_REPLY_HOST_CONFIG` paths to `zoen agent-host`. The operator provisions infrastructure credentials and the private relay registry
 once. Set that registry to `{"live":true,"devices":[]}`, select it through the relay's
 existing `ZOEN_MANAGED_DEVICE_CONFIG`, and set `admission_config` in the executor
 config to the same absolute file. Its directory must be private and separate from
@@ -38,7 +39,7 @@ The executor appends only its currently certified principal and actual deploymen
 binding after successful native initialization. The relay adopts additions without
 restart. No person creating an agent edits a principal list or chooses a device.
 
-After verifying the enrolled agent's current state, `agent-controls` automatically
+After verifying the enrolled agent's current state, the normal `agent-host` automatically
 prepares retained device material through a private bounded pipe, certifies that
 device using the agent sponsor, initializes its original custody/continuity and
 starts the executor. It publishes readiness only after actual worker startup.
@@ -48,6 +49,20 @@ Unknown acknowledgements retry the same certificate bytes through the existing
 relay admission transaction. Registration uses the existing atomic FileVault writer
 and a shared operator-directory lock; an uncertain save resumes the same record. Revoked targets remain refused by that transaction.
 The new device resolves from retained originals; recovery never reseeds it.
+
+The configured standard host supervises the durable executor and the same signed
+owner-budget control channel. It never constructs `ModelBrain`/`CodexBrain`, starts
+editor workers, or seeds the old host's content cursors. Missing/relative/empty
+executor paths, failed enrollment, and non-supervised configurations fail before
+readiness; they never fall back to an unaccounted local model. `--source` is
+currently refused with a durable executor configured, rather than selecting the
+legacy execution path. Durable single-source selection remains work in #175.
+
+`agent-controls` remains available for control-only services and separately
+supervised executors; with `supervised: true` it uses the same lifecycle. With
+neither executor environment variable present, existing local development hosts
+and their explicitly selected providers remain available. That development path
+does not inherit the durable financial authority described here.
 
 A separately supervised executor remains supported with `supervised: false`
 (the default). Its existing explicit setup is:

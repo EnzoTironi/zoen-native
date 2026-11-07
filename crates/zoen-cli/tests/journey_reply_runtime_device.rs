@@ -18,6 +18,8 @@ mod provider;
 mod provision;
 #[path = "../src/runtime_host_config.rs"]
 mod runtime_host_config;
+#[path = "reply_runtime/standard_host.rs"]
+mod standard_host;
 #[path = "reply_runtime/support.rs"]
 mod support;
 #[path = "reply_runtime/worker.rs"]
@@ -136,11 +138,13 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
             &serde_json::to_vec(&json!({"live":false,"devices":[]}))?,
         )?;
         let first = w
-            .cmd("citizen", &["agent-controls", "--for", "1"])
+            .cmd("citizen", &["agent-host", "--for", "1"])
             .env("ZOEN_REPLY_HOST_BIN", env!("CARGO_BIN_EXE_zoen-reply-host"))
             .env("ZOEN_REPLY_HOST_CONFIG", &path)
             .env_remove("ZOEN_IMAGE_HOST_BIN")
             .env_remove("ZOEN_IMAGE_HOST_CONFIG")
+            .env("ZOEN_BRAIN", "legacy-provider-must-not-run")
+            .env("ZOEN_AGENT_GATE", "legacy-gate-must-not-run")
             .output()?;
         assert!(
             !first.status.success(),
@@ -152,16 +156,18 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
             "managed.json",
             &serde_json::to_vec(&json!({"live":true,"devices":[]}))?,
         )?;
-        // The normal control service now owns preparation, certified enrollment,
+        // The normal agent host owns preparation, certified enrollment,
         // initialization, readiness and graceful worker retirement. No pairing UI,
         // copied identity box, manually selected device or separate worker command.
         for pass in 0..2 {
             let output = w
-                .cmd("citizen", &["agent-controls", "--for", "1"])
+                .cmd("citizen", &["agent-host", "--for", "1"])
                 .env("ZOEN_REPLY_HOST_BIN", env!("CARGO_BIN_EXE_zoen-reply-host"))
                 .env("ZOEN_REPLY_HOST_CONFIG", &path)
                 .env_remove("ZOEN_IMAGE_HOST_BIN")
                 .env_remove("ZOEN_IMAGE_HOST_CONFIG")
+                .env("ZOEN_BRAIN", "legacy-provider-must-not-run")
+                .env("ZOEN_AGENT_GATE", "legacy-gate-must-not-run")
                 .output()?;
             assert!(
                 output.status.success(),
@@ -207,6 +213,7 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
         provision::validate_installed(&config.enrollment_scope(), &vault)?;
         let checked = config::Config::read(&path)?;
         assert!(!checked.supervised);
+        standard_host::refuse_external(&w, &path)?;
         assert_eq!(checked.worker_bus_key.as_deref(), Some("bus"));
         let _ = checked.runtime(&vault)?;
         let _ = checked.host()?;
@@ -338,6 +345,10 @@ async fn native_reply_process_uses_its_own_leaf_and_recovers_original() -> TestR
         assert!(!config.home.join("zoen.sqlite").exists());
         assert!(!vault.dir.join("zoen.identity.v1").exists());
         worker::run(&w, &path, &agent, &space, &provider).await?;
+        value["supervised"] = true.into();
+        std::fs::remove_file(&path)?;
+        write_json(&path, &value)?;
+        standard_host::run(&w, &path, &agent, &space, &code, &provider).await?;
         println!("reply executable: actual sponsor/device pairing, canonical persona on dedicated leaf, owner-signed budget, closed clients, paid HTTP, owner MLS and repeated cold processes without duplicate inference/charge/output PASS");
         Ok(())
     }

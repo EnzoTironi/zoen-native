@@ -17,20 +17,33 @@ impl Drop for Companion {
 }
 impl Companion {
     pub(super) fn start(w: &World, path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let log = w.dir.join("reply-owner-controls.log");
+        Self::command(w, path, "agent-controls", "reply-owner-controls.log")
+    }
+    pub(super) fn start_host(w: &World, path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::command(w, path, "agent-host", "reply-standard-host.log")
+    }
+    fn command(
+        w: &World,
+        path: &Path,
+        command: &str,
+        log_name: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let log = w.dir.join(log_name);
         let output = std::fs::File::create(&log)?;
         let child = w
-            .cmd("citizen", &["agent-controls", "--for", "180"])
+            .cmd("citizen", &[command, "--for", "180"])
             .env("ZOEN_REPLY_HOST_BIN", env!("CARGO_BIN_EXE_zoen-reply-host"))
             .env("ZOEN_REPLY_HOST_CONFIG", path)
             .env_remove("ZOEN_IMAGE_HOST_BIN")
             .env_remove("ZOEN_IMAGE_HOST_CONFIG")
+            .env("ZOEN_BRAIN", "legacy-provider-must-not-run")
+            .env("ZOEN_AGENT_GATE", "legacy-gate-must-not-run")
             .stdout(Stdio::from(output.try_clone()?))
             .stderr(Stdio::from(output))
             .spawn()?;
         Ok(Self { child, log })
     }
-    fn check(&mut self) -> TestResult {
+    pub(super) fn check(&mut self) -> TestResult {
         if let Some(status) = self.child.try_wait()? {
             return Err(format!(
                 "owner controls exited {status}: {}",
@@ -182,6 +195,18 @@ pub(super) async fn observe_disabled(
     let (owner, _, _, context) = quote(w, companion, agent, space).await?;
     assert_eq!(context.current_enabled, Some(false));
     assert_eq!(context.current_limit_units.as_deref(), Some("500"));
+    owner.stop_sync();
+    Ok(())
+}
+
+pub(super) async fn observe_enabled(
+    w: &World,
+    companion: &mut Companion,
+    agent: &str,
+    space: &str,
+) -> TestResult {
+    let (owner, _, _, context) = quote(w, companion, agent, space).await?;
+    assert_eq!(context.current_enabled, Some(true));
     owner.stop_sync();
     Ok(())
 }
