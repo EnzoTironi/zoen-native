@@ -8,6 +8,8 @@ mod file_vault;
 #[allow(dead_code)]
 #[path = "common/final_event_loss.rs"]
 mod final_event_loss;
+#[path = "journey_message_deletion/message_info.rs"]
+mod message_info;
 #[path = "journey_message_deletion/thread_sources.rs"]
 mod thread_sources;
 // The cursor-repair journey uses the proxy's full evidence API. This
