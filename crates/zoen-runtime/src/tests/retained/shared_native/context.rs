@@ -6,6 +6,7 @@ mod conversation;
 mod history_search;
 pub(in crate::tests) mod policy_host;
 mod search_turn;
+pub(in crate::tests) mod selected_source;
 pub(in crate::tests) mod tool_reviews;
 mod tool_rounds;
 
@@ -72,6 +73,7 @@ pub(in crate::tests) async fn history_turns() -> TestResult {
     Ok(())
 }
 pub(in crate::tests) async fn run() -> TestResult {
+    Box::pin(selected_source::run()).await?;
     Box::pin(tool_reviews::run()).await?;
     Box::pin(tool_reviews::boundaries()).await?;
     Box::pin(tool_reviews::sequential()).await?;

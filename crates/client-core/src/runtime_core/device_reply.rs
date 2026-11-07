@@ -12,6 +12,42 @@ impl DeviceCore {
         self.extract(space, trigger, at_ms)
     }
 
+    /// Resolve one exact timeline message in authenticated history. This never
+    /// advances discovery or supplies permission absent from `extract`.
+    pub fn reply_for_message(
+        &self,
+        space: &str,
+        message: &str,
+        author: &str,
+        text_sha256: &str,
+        at_ms: i64,
+    ) -> Result<ReplyFacts> {
+        if message.is_empty()
+            || message.len() > 256
+            || author != self.owner
+            || !crate::agent_page_tools::valid_digest(text_sha256)
+        {
+            return Err(NativeError::Permission);
+        }
+        let log = self.engine.logs.get(space).ok_or(NativeError::History)?;
+        let mut matching = log.events().iter().filter(|event| {
+            event.client_id == message && matches!(&event.body, EventBody::MessagePosted { .. })
+        });
+        let source = matching.next().ok_or(NativeError::Permission)?;
+        if matching.next().is_some() || source.author != author {
+            return Err(NativeError::Permission);
+        }
+        let facts = self.extract(space, &source.hash, at_ms)?;
+        let target = facts.messages().last().ok_or(NativeError::History)?;
+        if target.source() != source.hash
+            || target.author() != author
+            || crate::agent_page_tools::digest(target.text().as_bytes()) != text_sha256
+        {
+            return Err(NativeError::Permission);
+        }
+        Ok(facts)
+    }
+
     /// Applied native position only. This is not a current relay head or grant.
     pub fn retained_head(&self, space: &str) -> Result<Option<Seen>> {
         if !self.usable {

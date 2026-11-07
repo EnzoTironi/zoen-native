@@ -35,9 +35,8 @@ pub(super) async fn run(
         .env("ZOEN_REPLY_HOST_CONFIG", path)
         .output()?;
     assert!(!refused.status.success());
-    assert!(
-        String::from_utf8_lossy(&refused.stderr).contains("agent_host_durable_source_unavailable")
-    );
+    assert!(String::from_utf8_lossy(&refused.stderr)
+        .contains("agent_host_source_unavailable_in_projection"));
     assert_eq!(provider.calls.load(Ordering::SeqCst), 3);
     let mut host = owner_budget::Companion::start_host(w, path)?;
     owner_budget::set(w, &mut host, agent, space, true).await?;

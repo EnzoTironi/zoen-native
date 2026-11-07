@@ -334,12 +334,20 @@ impl Fixture {
         &mut self,
         body: EventBody,
     ) -> std::result::Result<String, Box<dyn std::error::Error>> {
-        let now = self.world.runtime.finance.reply_clock().await.unwrap();
         let client = new_id("inner")?;
+        self.encrypted_named(body, &client).await
+    }
+
+    pub(super) async fn encrypted_named(
+        &mut self,
+        body: EventBody,
+        client: &str,
+    ) -> std::result::Result<String, Box<dyn std::error::Error>> {
+        let now = self.world.runtime.finance.reply_clock().await?;
         let event =
             self.world
                 .owner
-                .sign_event(&self.space, &client, now, self.head.clone(), body)?;
+                .sign_event(&self.space, client, now, self.head.clone(), body)?;
         let bytes = self
             .device()
             .seal(
@@ -354,7 +362,7 @@ impl Fixture {
         let envelope = Envelope::sealed(
             &self.world.owner,
             &self.space,
-            &client,
+            client,
             now,
             self.head.as_ref(),
             Sealed::new(SealedKind::Application, SUITE_ID, bytes),

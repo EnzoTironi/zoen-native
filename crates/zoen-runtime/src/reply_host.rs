@@ -164,6 +164,52 @@ impl ReplyRuntimeHost {
             .await
     }
 
+    /// Resolve exactly one authenticated message without discovering other work.
+    pub async fn discover_source(
+        &self,
+        source: &crate::ReplySource,
+    ) -> Result<crate::ReplySync, RuntimeError> {
+        source.validate()?;
+        let scope = self.runtime.production_output_scope()?;
+        scope.check_context(&self.runtime)?;
+        scope.check_device(&self.config.agent, &self.config.device)?;
+        scope.check_target(&self.config.target)?;
+        self.runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .sync_reply_source(
+                &self.runtime,
+                &self.config.agent,
+                &self.config.device,
+                &source.space,
+                Some(source),
+            )
+            .await
+    }
+
+    /// A selector never changes the stored original or permits unrelated work.
+    pub async fn advance_source(
+        &self,
+        run: &str,
+        source: &crate::ReplySource,
+    ) -> Result<ReplyHostProgress, RuntimeError> {
+        if !id(run) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        source.validate()?;
+        if !self.refresh_for(&source.space, true).await? {
+            return Err(RuntimeError::Unavailable);
+        }
+        self.runtime
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .verify_selected_run(&self.runtime, run, source)
+            .await?;
+        self.advance_inner(run, true).await
+    }
+
     /// Canonical owner lifecycle revision, never an execution permit.
     pub async fn control_revision(&self) -> Result<Option<u64>, RuntimeError> {
         self.runtime.check_reply_continuity().await?;
@@ -239,10 +285,18 @@ impl ReplyRuntimeHost {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
+        self.advance_inner(run, false).await
+    }
+
+    async fn advance_inner(
+        &self,
+        run: &str,
+        selected: bool,
+    ) -> Result<ReplyHostProgress, RuntimeError> {
         let mut current = run.to_owned();
         // Three verified reads permit at most three child originals.
         for _ in 0..4 {
-            match Box::pin(self.advance_current(&current)).await? {
+            match Box::pin(self.advance_current(&current, selected)).await? {
                 HostAdvance::Next(next) => current = next,
                 HostAdvance::Progress(progress) => return Ok(*progress),
             }
@@ -250,7 +304,11 @@ impl ReplyRuntimeHost {
         Err(RuntimeError::InvalidBinding)
     }
 
-    async fn advance_current(&self, run: &str) -> Result<HostAdvance, RuntimeError> {
+    async fn advance_current(
+        &self,
+        run: &str,
+        selected: bool,
+    ) -> Result<HostAdvance, RuntimeError> {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
@@ -297,7 +355,7 @@ impl ReplyRuntimeHost {
                 ReplyReceiptProgress::Waiting => {}
             }
         }
-        if !self.refresh(&state.space).await? {
+        if !self.refresh_for(&state.space, selected).await? {
             return self
                 .catching_up(run, &state.attempt)
                 .await
@@ -315,7 +373,7 @@ impl ReplyRuntimeHost {
                 });
             }
             // A remote policy provider may race revocation or source changes.
-            if !self.refresh(&state.space).await? {
+            if !self.refresh_for(&state.space, selected).await? {
                 return self
                     .catching_up(run, &state.attempt)
                     .await
@@ -386,7 +444,7 @@ impl ReplyRuntimeHost {
                 })
             }
         };
-        if !self.refresh(&state.space).await? {
+        if !self.refresh_for(&state.space, selected).await? {
             return self
                 .catching_up(run, &state.attempt)
                 .await
@@ -402,6 +460,27 @@ impl ReplyRuntimeHost {
             financial,
             audit: review.audit().clone(),
         })
+    }
+
+    async fn refresh_for(&self, space: &str, selected: bool) -> Result<bool, RuntimeError> {
+        if selected {
+            let native = self
+                .runtime
+                .native
+                .as_ref()
+                .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
+            Ok(native
+                .refresh_source(
+                    &self.runtime,
+                    &self.config.agent,
+                    &self.config.device,
+                    space,
+                )
+                .await?
+                .caught_up)
+        } else {
+            self.refresh(space).await
+        }
     }
 
     async fn refresh(&self, space: &str) -> Result<bool, RuntimeError> {

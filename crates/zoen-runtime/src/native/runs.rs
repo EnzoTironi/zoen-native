@@ -7,6 +7,7 @@ mod loading;
 mod pending;
 mod records;
 mod search;
+mod selected;
 mod turn;
 use records::{PreparedRun, RunRecord, Wake};
 pub(crate) mod output;
@@ -179,6 +180,24 @@ impl NativeCustody {
         device: &str,
         space: &str,
     ) -> Result<ReplySync, RuntimeError> {
+        self.sync_reply_source(runtime, agent, device, space, None)
+            .await
+    }
+
+    pub(crate) async fn sync_reply_source(
+        &self,
+        runtime: &RuntimeAuthority,
+        agent: &str,
+        device: &str,
+        space: &str,
+        selected: Option<&crate::ReplySource>,
+    ) -> Result<ReplySync, RuntimeError> {
+        if let Some(source) = selected {
+            source.validate()?;
+            if source.space != space {
+                return Err(RuntimeError::InvalidBinding);
+            }
+        }
         runtime.check_shared_runtime().await?;
         let credential = self.credential(agent, device)?;
         let principal = credential.principal();
@@ -197,9 +216,10 @@ impl NativeCustody {
         runtime.execution.collect_native_stage(&principal).await?;
         runtime.collect_reply_retired(&principal).await?;
         let fence = runtime.execution.acquire_native_device(&principal).await?;
-        let result = self
-            .sync_fenced(runtime, credential, &principal, &fence, space)
-            .await;
+        // Keep the native image/discovery frame out of every caller's future.
+        let result =
+            Box::pin(self.sync_fenced(runtime, credential, &principal, &fence, space, selected))
+                .await;
         let released = runtime
             .execution
             .release_native_device(&principal, &fence)
@@ -220,6 +240,7 @@ impl NativeCustody {
         principal: &Principal,
         fence: &Fence,
         space: &str,
+        selected: Option<&crate::ReplySource>,
     ) -> Result<ReplySync, RuntimeError> {
         let capsule = runtime
             .execution
@@ -248,11 +269,44 @@ impl NativeCustody {
             hash: batch.head.hash().into(),
         };
         let caught_up = core.retained_head(space).map_err(native_error)?.as_ref() == Some(&head);
+        if caught_up {
+            if let Some(selected) = selected {
+                let mut context = selected::Selected {
+                    credential,
+                    principal,
+                    fence,
+                    core: &mut core,
+                    previous: &previous,
+                    selected,
+                    head: &head,
+                    applied,
+                };
+                if let Some(reused) = Box::pin(context.reuse(self, runtime)).await? {
+                    return Ok(reused);
+                }
+            }
+        }
+        let observed = runtime.finance.reply_clock().await?;
         let discovery = if caught_up {
-            Some(
-                core.discover_replies(space, runtime.finance.reply_clock().await?)
+            Some(match selected {
+                Some(source) => client_core::runtime_core::ReplyDiscovery {
+                    replies: vec![core
+                        .reply_for_message(
+                            space,
+                            &source.message,
+                            &source.author,
+                            &source.text_sha256,
+                            observed,
+                        )
+                        .map_err(native_error)?],
+                    examined: 1,
+                    complete: true,
+                    changed: true,
+                },
+                None => core
+                    .discover_replies(space, observed)
                     .map_err(native_error)?,
-            )
+            })
         } else {
             None
         };

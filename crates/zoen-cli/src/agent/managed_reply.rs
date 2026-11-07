@@ -4,15 +4,20 @@ use crate::{
     file_vault::FileVault,
     reply_enrollment_protocol::{Request, Response},
 };
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdout},
 };
 
 pub(super) struct Worker {
     child: Child,
     drain: tokio::task::JoinHandle<Result<(), String>>,
+    selected: bool,
+    completed: Arc<AtomicBool>,
 }
 impl Drop for Worker {
     fn drop(&mut self) {
@@ -22,7 +27,11 @@ impl Drop for Worker {
     }
 }
 
-pub(super) async fn start(client: &Arc<Client>, home: &Path) -> Result<Option<Worker>, String> {
+pub(super) async fn start(
+    client: &Arc<Client>,
+    home: &Path,
+    source: Option<&zoen_runtime::ReplySource>,
+) -> Result<Option<Worker>, String> {
     let Some((binary, config)) = image_ipc::reply_paths()? else {
         return Ok(None);
     };
@@ -49,9 +58,36 @@ pub(super) async fn start(client: &Arc<Client>, home: &Path) -> Result<Option<Wo
     if initialized["status"] != "initialized" {
         return Err("managed reply initialization not confirmed".into());
     }
-    let mut child = image_ipc::process(binary, config, "supervised-watch")
-        .spawn()
-        .map_err(|_| "managed reply spawn unavailable")?;
+    let mut child = image_ipc::process(
+        binary,
+        config,
+        if source.is_some() {
+            "supervised-source"
+        } else {
+            "supervised-watch"
+        },
+    )
+    .spawn()
+    .map_err(|_| "managed reply spawn unavailable")?;
+    if let Some(source) = source {
+        let mut bytes = serde_json::to_vec(source).map_err(|_| "managed source invalid")?;
+        if bytes.len() > 16384 {
+            return Err("managed source too large".into());
+        }
+        bytes.push(b'\n');
+        let input = child
+            .stdin
+            .as_mut()
+            .ok_or("managed source pipe unavailable")?;
+        input
+            .write_all(&bytes)
+            .await
+            .map_err(|_| "managed source pipe unavailable")?;
+        input
+            .flush()
+            .await
+            .map_err(|_| "managed source pipe unavailable")?;
+    }
     let mut output = BufReader::new(
         child
             .stdout
@@ -72,14 +108,34 @@ pub(super) async fn start(client: &Arc<Client>, home: &Path) -> Result<Option<Wo
     {
         return Err("managed reply readiness not confirmed".into());
     }
+    let selected = source.is_some();
+    let completed = Arc::new(AtomicBool::new(false));
+    let observed = completed.clone();
     let drain = tokio::spawn(async move {
+        let mut accepted = false;
         loop {
-            if line(&mut output).await?.is_empty() {
+            let bytes = line(&mut output).await?;
+            if bytes.is_empty() {
+                if selected && accepted {
+                    observed.store(true, Ordering::SeqCst);
+                }
                 return Ok(());
+            }
+            if selected {
+                let frame: serde_json::Value =
+                    serde_json::from_slice(&bytes).map_err(|_| "managed source output invalid")?;
+                if frame["status"] == "source_completed" {
+                    accepted = true;
+                }
             }
         }
     });
-    Ok(Some(Worker { child, drain }))
+    Ok(Some(Worker {
+        child,
+        drain,
+        selected,
+        completed,
+    }))
 }
 
 async fn line(output: &mut BufReader<ChildStdout>) -> Result<Vec<u8>, String> {
@@ -96,17 +152,26 @@ async fn line(output: &mut BufReader<ChildStdout>) -> Result<Vec<u8>, String> {
 }
 
 impl Worker {
-    pub(super) fn check(&mut self) -> Result<(), String> {
-        if self.drain.is_finished()
-            || self
-                .child
-                .try_wait()
-                .map_err(|_| "managed reply status unavailable")?
-                .is_some()
-        {
+    pub(super) fn check(&mut self) -> Result<bool, String> {
+        let status = self
+            .child
+            .try_wait()
+            .map_err(|_| "managed reply status unavailable")?;
+        if let Some(status) = status {
+            if status.success() && self.selected {
+                if !self.drain.is_finished() {
+                    return Ok(false);
+                }
+                if self.completed.load(Ordering::SeqCst) {
+                    return Ok(true);
+                }
+            }
             return Err("managed reply executor stopped".into());
         }
-        Ok(())
+        if self.drain.is_finished() && !(self.selected && self.completed.load(Ordering::SeqCst)) {
+            return Err("managed reply output stopped".into());
+        }
+        Ok(false)
     }
     pub(super) async fn stop(&mut self) -> Result<(), String> {
         drop(self.child.stdin.take());

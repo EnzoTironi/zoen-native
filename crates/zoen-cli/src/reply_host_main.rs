@@ -50,12 +50,30 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
             | "serve"
             | "watch"
             | "supervised-watch"
+            | "supervised-source"
             | "control"
             | "owner-control"
     ) {
         return Err("unsupported reply host action".into());
     }
     let mut config = config::Config::read(path)?;
+    if action == "supervised-source" && !config.supervised {
+        return Err("selected source requires supervision".into());
+    }
+    let selected: Option<zoen_runtime::ReplySource> = if action == "supervised-source" {
+        let mut bytes = Vec::new();
+        std::io::stdin()
+            .lock()
+            .take(protocol::MAX_INPUT as u64 + 1)
+            .read_until(b'\n', &mut bytes)
+            .map_err(|_| "selected source unavailable")?;
+        if bytes.len() > protocol::MAX_INPUT || !bytes.ends_with(b"\n") {
+            return Err("selected source frame invalid".into());
+        }
+        Some(serde_json::from_slice(&bytes).map_err(|_| "selected source invalid")?)
+    } else {
+        None
+    };
     if action == "prepare-managed" {
         let request: reply_enrollment_protocol::Request = serde_json::from_slice(&read_command()?)
             .map_err(|_| "invalid managed enrollment request")?;
@@ -174,8 +192,11 @@ fn run(path: &Path, action: &str) -> Result<(), String> {
         );
         let host = ReplyRuntimeHost::configured(authority.clone(), host_config, gate)
             .map_err(|e| e.to_string())?;
-        if matches!(action, "watch" | "supervised-watch") {
-            return worker::run(&host, &config, &vault, action == "supervised-watch").await;
+        if matches!(action, "watch" | "supervised-watch" | "supervised-source") {
+            if selected.is_some() && !config.supervised {
+                return Err("selected source requires supervision".into());
+            }
+            return worker::run(&host, &config, &vault, action != "watch", selected).await;
         }
         if action == "execute" {
             let bytes = read_command()?;

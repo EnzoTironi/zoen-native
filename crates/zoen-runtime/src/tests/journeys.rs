@@ -20,6 +20,9 @@ pub(super) async fn run() -> TestResult {
         Ok(cohort) if cohort == "native-reply-host" => {
             vec![|| Box::pin(retained::shared_native::context::policy_host::run())]
         }
+        Ok(cohort) if cohort == "native-selected-source" => {
+            vec![|| Box::pin(retained::shared_native::context::selected_source::run())]
+        }
         Ok(cohort) if cohort == "native-tool-review-release" => {
             vec![
                 || Box::pin(retained::shared_native::context::history_turns()),
