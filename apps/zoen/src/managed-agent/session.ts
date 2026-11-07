@@ -69,7 +69,10 @@ export class ManagedAgentSession {
     this.activate(null);
   }
   scopeMatches(owner: AccountScope | null) {
-    return !!owner && accountScopeKey(owner) === accountScopeKey(this.owner);
+    return !!owner && this.scopeMatchesKey(accountScopeKey(owner));
+  }
+  scopeMatchesKey(key: string) {
+    return !!key && key === accountScopeKey(this.owner);
   }
   async refresh() {
     if (!this.owner || this.state.busy) return;

@@ -33,6 +33,7 @@ const compiled = await build({
             plugins: [['babel-plugin-react-compiler', { target: '19' }]],
             caller: { name: 'metro', platform: 'ios', isDev: false, supportsStaticESM: true },
           }).code as string;
+          assert.match(code, /react\/compiler-runtime/);
           return { contents: code, loader: 'js', resolveDir: dirname(path) };
         });
       },
