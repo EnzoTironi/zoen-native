@@ -94,6 +94,8 @@ test('actual agent hook coalesces canonical bursts and cannot reactivate from a 
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
     exports: module.exports,
+    setTimeout,
+    clearTimeout,
     require: (name: string) => {
       if (name === 'react') return React;
       if (name === 'react-native') return { AppState: app };

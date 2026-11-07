@@ -247,8 +247,26 @@ async fn run(history: bool) -> TestResult {
         assert!(bridge(&owner, "managed_agent_status", json!({}))
             .await?
             .is_null());
+        if !history {
+            let observed = bridge(&owner, "agent_control_read", json!({"agent_id":agent})).await?;
+            let paused = bridge(&owner, "agent_control_change", json!({"agent_id":agent,
+                "action":"Pause","observed_revision":observed["revision"]})).await?;
+            assert_eq!(paused["status"], "Paused");
+        }
+        let queued_after = process.observation_point()?;
         owner.send_message(space.clone(), if history { "Can you answer with the client closed? conversa" } else { "Can you answer with the client closed?" }.into())?;
         owner.wait_until_settled(20_000).await?;
+        if !history {
+            let deferred = process.frame_after("conversation_deferred", queued_after).await?;
+            assert_eq!(deferred["space"], space);
+            assert_eq!(deferred["reason"], zoen_runtime::RuntimeError::Denied.to_string());
+            assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+            assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
+            let observed = bridge(&owner, "agent_control_read", json!({"agent_id":agent})).await?;
+            let resumed = bridge(&owner, "agent_control_change", json!({"agent_id":agent,
+                "action":"Resume","observed_revision":observed["revision"]})).await?;
+            assert_eq!(resumed["status"], "Active");
+        }
         owner.stop_sync();
         drop(owner);
         let output = process.live_output(Duration::from_secs(40)).await?;
