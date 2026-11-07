@@ -39,10 +39,20 @@ pub(in crate::tests) async fn run() -> TestResult {
         native::testing::test_source_guard(&runtime, &f.space, before.clone(), invalid).await,
         Err(RuntimeError::InvalidBinding)
     );
-    let mut missing = before.clone();
-    missing.seq = 0;
+    let mut wrong_origin = before.clone();
+    wrong_origin.seq = 0;
     assert_eq!(
-        native::testing::test_source_guard(&runtime, &f.space, missing, before.clone()).await,
+        native::testing::test_source_guard(&runtime, &f.space, wrong_origin, before.clone()).await,
+        Err(RuntimeError::InvalidBinding)
+    );
+    assert_eq!(
+        native::testing::test_source_guard(
+            &runtime,
+            "missing-space",
+            before.clone(),
+            before.clone()
+        )
+        .await,
         Err(RuntimeError::Denied)
     );
     let mut future = before.clone();
