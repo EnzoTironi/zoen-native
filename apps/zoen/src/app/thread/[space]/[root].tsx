@@ -1,10 +1,12 @@
+import { sendChatMessage } from '../../../core/send-chat-message';
+import { NavigationContainer } from '../../../components/navigation-container';
+import { useThreadMessageNavigation } from '../../../components/use-thread-message-navigation';
 import { ThreadHashtagProvider } from '../../../components/thread-hashtag-provider';
-import { homeSpacesFor } from '../../../home/access';
 import { t } from '../../../i18n/index.ts';
 import { QuoteLayoutTransition } from '../../../components/quote-layout-transition';
 import { QuoteMotionView } from '../../../components/quote-layout-context';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -12,13 +14,9 @@ import { Text, type TextInputInstance } from 'react-native';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
 import { useMessageAudioFocus } from '../../../media/message-audio-provider';
-import { supportsMediaMosaic } from '../../../media/mosaic-layout';
 import { messageText } from '../../../core/presentation';
 import { messageCard } from '../../../core/message-presentation';
-import {
-  projectConversationTimeline,
-  type ConversationTimelineRow,
-} from '../../../core/conversation-timeline';
+import type { ConversationTimelineRow } from '../../../core/conversation-timeline';
 import { useMessageDraft } from '../../../core/use-message-draft';
 import { EmptyState, Loading, NativeButton } from '../../../components/primitives';
 import { useTheme } from '../../../theme';
@@ -68,26 +66,36 @@ export default function Thread() {
     retry,
   } = useCoreQuery({ op: 'thread', space_id: space, root_id: root });
   const selection = useMessageSelection(space, entries ?? [], false, root);
-  const rows = useMemo<ConversationTimelineRow[]>(
-    () =>
-      selection.active
-        ? (entries ?? []).map((entry) => ({ key: entry.id, entry }))
-        : projectConversationTimeline(entries ?? [], items, space, root, supportsMediaMosaic),
-    [entries, items, space, root, selection.active],
-  );
-  const { colors } = useTheme();
+  const { colors, presentation: p } = useTheme();
+  const normalDraft = useMessageDraft(space, root);
+  const { messageDraft, updateDraft } = normalDraft;
+  const { text: draft, reply, editing, editText: editDraft } = messageDraft;
+  const navigation = useThreadMessageNavigation({
+    space,
+    root,
+    jump,
+    entries,
+    items,
+    list,
+    disabled: selection.active,
+    headerHeight,
+    timelineTopInset,
+    reply: Boolean(reply),
+    editing: Boolean(editing),
+  });
+  const { rows } = navigation;
   const jumpIndex = jump
     ? rows.findIndex(
         (row) => row.entry.id === jump || row.album?.entries.some((entry) => entry.id === jump),
       )
     : -1;
-  const normalDraft = useMessageDraft(space, root);
-  const { messageDraft, updateDraft } = normalDraft;
-  const { text: draft, reply, editing, editText: editDraft } = messageDraft;
-  const sendScope = useMemo(() => ({ owner, space, root }), [owner, space, root]);
+  const sendScope = useMemo(
+    () => ({ owner, space, root, relay: snapshot?.account?.relay_url }),
+    [owner, space, root, snapshot?.account?.relay_url],
+  );
   const sending = useRef<{ scope: typeof sendScope } | null>(null);
-  const [pendingSend, setPendingSend] = useState<{ scope: typeof sendScope } | null>(null);
-  const busy = pendingSend?.scope === sendScope;
+  const [pendingSend, setPendingSend] = useState<typeof sendScope | null>(null);
+  const busy = pendingSend === sendScope;
   const [sendFailure, setFailure] = useState<{ scope: typeof sendScope; message: string } | null>(
     null,
   );
@@ -108,32 +116,20 @@ export default function Thread() {
     },
     onThread: () => input.current?.focus(),
   });
-  async function send() {
-    if (selection.active) return;
-    const attempt = normalDraft.capture();
-    if (!attempt) return;
-    const text = attempt.text;
-    if ((!text.trim() && !editing?.isCaption) || sending.current?.scope === sendScope) return;
-    const operation = { scope: sendScope };
-    sending.current = operation;
-    store.setTyping(space, false);
-    setPendingSend(operation);
+  function send() {
     setFailure(null);
-    try {
-      if (attempt.editingId) await normalDraft.sendEdit(attempt);
-      else await normalDraft.send();
-    } catch (reason) {
-      if (sending.current === operation && normalDraft.isCurrent(attempt))
-        setFailure({
-          scope: sendScope,
-          message: reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'),
-        });
-    } finally {
-      if (sending.current === operation) {
-        sending.current = null;
-        setPendingSend(null);
-      }
-    }
+    return sendChatMessage({
+      draft: normalDraft,
+      scope: sendScope,
+      blocked: selection.active,
+      allowEmptyCaption: editing?.isCaption === true,
+      flight: sending,
+      setPending: setPendingSend,
+      typing: () => store.setTyping(space, false),
+      inform: async (_title, message) => {
+        setFailure({ scope: sendScope, message });
+      },
+    });
   }
   return (
     <ThreadHashtagProvider space={space}>
@@ -142,9 +138,38 @@ export default function Thread() {
           options={{
             title: selection.active ? String(selection.count) : t('chat.replies'),
             headerBackVisible: !selection.active,
-            headerTitle: selection.active
-              ? () => <MessageSelectionHeader count={selection.count} onCancel={selection.cancel} />
-              : undefined,
+            headerTitle:
+              process.env.EXPO_OS === 'ios'
+                ? () => (
+                    <NavigationContainer
+                      scrollViewTag={navigation.scrollViewTag}
+                      metrics={navigation.metrics}
+                    >
+                      {selection.active ? (
+                        <MessageSelectionHeader
+                          count={selection.count}
+                          onCancel={selection.cancel}
+                        />
+                      ) : (
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: p.navigation.text,
+                            fontSize: 17,
+                            fontWeight: '600',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {t('chat.replies')}
+                        </Text>
+                      )}
+                    </NavigationContainer>
+                  )
+                : selection.active
+                  ? () => (
+                      <MessageSelectionHeader count={selection.count} onCancel={selection.cancel} />
+                    )
+                  : undefined,
             headerLeft: selection.active && process.env.EXPO_OS !== 'ios' ? () => null : undefined,
             headerRight:
               selection.active && process.env.EXPO_OS !== 'ios'
@@ -160,15 +185,23 @@ export default function Thread() {
           }}
         />
         <ConversationViewport
+          onNativeScroll={(event) => navigation.onScroll(event.nativeEvent)}
+          onNativeLayout={navigation.onLayout}
+          onNativeInset={navigation.onInset}
+          onComposerLayout={navigation.onComposerLayout}
           composer={
             <>
-              {failure || error || notice || (jump && entries && jumpIndex < 0) ? (
+              {failure ||
+              error ||
+              navigation.error ||
+              notice ||
+              (jump && entries && jumpIndex < 0) ? (
                 <Text
                   accessibilityRole="alert"
                   selectable
                   style={{ color: colors.danger, padding: 16 }}
                 >
-                  {failure ?? error ?? notice ?? t('chat.messageUnavailable')}
+                  {failure ?? error ?? navigation.error ?? notice ?? t('chat.messageUnavailable')}
                 </Text>
               ) : null}
               {selection.active ? (
@@ -247,11 +280,21 @@ export default function Thread() {
                     CellRendererComponent={
                       process.env.EXPO_OS === 'ios' ? QuoteMotionView : undefined
                     }
-                    onCommitLayoutEffect={commit}
-                    onScrollBeginDrag={cancel}
+                    onLoad={navigation.onLoad}
+                    onContentSizeChange={navigation.onContentSize}
+                    onCommitLayoutEffect={() => {
+                      commit();
+                      navigation.onCommit();
+                    }}
+                    onScrollBeginDrag={() => {
+                      cancel();
+                      navigation.cancel();
+                    }}
                     extraData={selection.ids}
                     data={rows}
-                    initialScrollIndex={jumpIndex >= 0 ? jumpIndex : undefined}
+                    initialScrollIndex={
+                      process.env.EXPO_OS !== 'ios' && jumpIndex >= 0 ? jumpIndex : undefined
+                    }
                     keyExtractor={(row) => row.key}
                     keyboardDismissMode="interactive"
                     keyboardShouldPersistTaps="handled"
@@ -265,7 +308,8 @@ export default function Thread() {
                     maintainVisibleContentPosition={{
                       disabled: active,
                       startRenderingFromBottom: false,
-                      autoscrollToBottomThreshold: jump || reading ? undefined : 0.15,
+                      autoscrollToBottomThreshold:
+                        jump || navigation.target || reading ? undefined : 0.15,
                     }}
                     renderItem={({ item: { entry, activity, album }, index }) => (
                       <QuoteMotionView>
@@ -283,10 +327,18 @@ export default function Thread() {
                           spaceId={space}
                           entry={entry}
                           highlighted={Boolean(
-                            jump &&
-                            (entry.id === jump ||
-                              album?.entries.some((child) => child.id === jump)),
+                            (process.env.EXPO_OS === 'ios' ? navigation.target : jump) &&
+                            (entry.id ===
+                              (process.env.EXPO_OS === 'ios' ? navigation.target : jump) ||
+                              album?.entries.some(
+                                (child) =>
+                                  child.id ===
+                                  (process.env.EXPO_OS === 'ios' ? navigation.target : jump),
+                              )),
                           )}
+                          onRevealLayout={
+                            entry.id === navigation.target ? navigation.onContentLayout : undefined
+                          }
                           activity={activity}
                           album={album}
                           previous={index > 1 ? rows[index - 1]?.entry : undefined}
@@ -301,47 +353,8 @@ export default function Thread() {
                           onReact={(message, emoji) => {
                             void actions.react(message, emoji);
                           }}
-                          onQuote={(messageId, sourceSpace) => {
-                            if (sourceSpace) {
-                              if (homeSpacesFor(store.getSnapshot()).has(sourceSpace))
-                                router.push({
-                                  pathname: '/chat/[id]',
-                                  params: { id: sourceSpace, jump: messageId },
-                                });
-                              return;
-                            }
-                            const target = rows.findIndex(
-                              (row) =>
-                                row.entry.id === messageId ||
-                                row.album?.entries.some((entry) => entry.id === messageId),
-                            );
-                            if (target >= 0)
-                              void list.current
-                                ?.scrollToIndex({
-                                  index: target,
-                                  animated: true,
-                                  viewPosition: 0.5,
-                                })
-                                .catch(() => {});
-                            else
-                              router.push({
-                                pathname: '/chat/[id]',
-                                params: { id: space, jump: messageId },
-                              });
-                          }}
+                          onQuote={navigation.quote}
                         />
-                        {index === 0 ? (
-                          <Text
-                            style={{
-                              color: colors.secondary,
-                              fontSize: 12,
-                              textAlign: 'center',
-                              paddingVertical: 18,
-                            }}
-                          >
-                            {t('chat.originalMessage')}
-                          </Text>
-                        ) : null}
                       </QuoteMotionView>
                     )}
                   />

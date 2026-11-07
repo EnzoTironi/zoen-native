@@ -1,4 +1,4 @@
-import { useCallback, useState, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { conversationScope } from '../core/conversation-scope';
 import type { ClientStore } from '../core/store';
@@ -21,14 +21,26 @@ export function useConversationMessageNavigation({
   scroller: ConversationReveal;
   cancelInitialEnd(): void;
 }) {
-  const [selection, setSelection] = useState<{ owner: string; id: string } | null>(null);
+  const [selection, setSelection] = useState<{
+    owner: string;
+    scroller: ConversationReveal;
+    id: string;
+  } | null>(null);
+  const active = useRef<ConversationReveal | null>(null);
+  useLayoutEffect(() => {
+    active.current = scroller;
+    return () => {
+      if (active.current === scroller) active.current = null;
+    };
+  }, [scroller]);
   const current = useCallback(
     () =>
+      active.current === scroller &&
       focused.current &&
       owner !== null &&
       !store.isSessionRetiring &&
       conversationScope(store.getSnapshot(), store.sessionEpoch, space) === owner,
-    [focused, owner, store, space],
+    [focused, owner, store, space, scroller],
   );
   useFocusEffect(
     useCallback(() => {
@@ -47,9 +59,9 @@ export function useConversationMessageNavigation({
   );
   const select = useCallback(
     (id: string | null) => {
-      if (current()) setSelection(id ? { owner: owner!, id } : null);
+      if (current()) setSelection(id ? { owner: owner!, scroller, id } : null);
     },
-    [current, owner],
+    [current, owner, scroller],
   );
   const reveal = useCallback(
     async (id: string, explicit = true, admitted?: () => boolean) => {
@@ -58,17 +70,21 @@ export function useConversationMessageNavigation({
       if (explicit) scroller.cancel();
       const token = scroller.capture();
       const valid = () => current() && scroller.isCurrent(token) && (admitted?.() ?? true);
-      try {
-        const index = await store.revealMessage(space, id, valid);
-        if (!valid()) return null;
-        if (index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
-        return id;
-      } catch (reason) {
-        if (!valid()) return null;
-        throw reason;
-      }
+      const result = await store.revealMessage(space, id, valid).then(
+        (index) => ({ ok: true, index }) as const,
+        (reason: unknown) => ({ ok: false, reason }) as const,
+      );
+      if (!valid()) return null;
+      if (!result.ok) throw result.reason;
+      if (result.index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
+      return id;
     },
     [current, cancelInitialEnd, scroller, store, space],
   );
-  return { target: selection?.owner === owner ? selection.id : null, select, reveal, current };
+  return {
+    target: selection?.owner === owner && selection.scroller === scroller ? selection.id : null,
+    select,
+    reveal,
+    current,
+  };
 }
