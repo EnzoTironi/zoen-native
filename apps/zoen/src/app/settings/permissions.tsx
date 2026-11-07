@@ -40,6 +40,16 @@ export default function PermissionsSettings() {
               ...(canConnect
                 ? [
                     {
+                      id: 'settings-create-agent',
+                      title: t('managedAgent.create'),
+                      icon: {
+                        ios: 'sparkles' as const,
+                        android: 'auto_awesome' as const,
+                        web: 'auto_awesome' as const,
+                      },
+                      onPress: () => router.push('/create-agent'),
+                    },
+                    {
                       id: 'settings-connect-agent',
                       title: t('agentEnrollment.connect'),
                       hint: t('agentEnrollment.connectHint'),

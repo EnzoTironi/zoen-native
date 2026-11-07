@@ -6,6 +6,7 @@ import { access } from './catalogs/access.ts';
 import { activity } from './catalogs/activity.ts';
 import { reviewRenewal } from './catalogs/review-renewal.ts';
 import { agents } from './catalogs/agents.ts';
+import { managedAgent } from './catalogs/managed-agent.ts';
 import { agentEnrollment } from './catalogs/agent-enrollment.ts';
 import { agentDefinition } from './catalogs/agent-definition.ts';
 import { auth } from './catalogs/auth.ts';
@@ -59,6 +60,7 @@ const catalogs = {
   agents,
   reviewRenewal,
   agentEnrollment,
+  managedAgent,
   agentDefinition,
   auth,
   authProviders,

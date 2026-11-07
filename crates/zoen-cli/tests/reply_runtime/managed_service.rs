@@ -1,6 +1,5 @@
 //! Real service process, owner Core consent, dedicated native leaf and cold reply.
 use super::*;
-use protocol::managed_agents::Record;
 use std::{
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
@@ -65,18 +64,29 @@ fn open_owner(w: &World) -> Result<Arc<Client>, Box<dyn std::error::Error>> {
     Ok(client)
 }
 
+async fn bridge(
+    owner: &Client,
+    op: &str,
+    mut input: Value,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let account = owner.account().ok_or("account")?;
+    input["op"] = op.into();
+    input["expected_identity_id"] = account.identity_id.into();
+    input["expected_device_id"] = account.device_id.into();
+    Ok(serde_json::from_str(
+        &owner.client_request(input.to_string()).await?,
+    )?)
+}
+
 async fn status(
     owner: &Client,
     process: &mut ServiceProcess,
     wanted: &str,
-) -> Result<Record, Box<dyn std::error::Error>> {
-    let account = owner.account().ok_or("account")?;
+) -> Result<Value, Box<dyn std::error::Error>> {
     let until = Instant::now() + Duration::from_secs(20);
     loop {
-        let record = owner
-            .managed_enrollment_status(&account.identity_id, &account.device_id)
-            .await?;
-        if record.state == wanted {
+        let record = bridge(owner, "managed_agent_status", json!({})).await?;
+        if record["state"] == wanted {
             return Ok(record);
         }
         if let Some(exit) = process.child.try_wait()? {
@@ -163,45 +173,46 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         owner.start_sync(None)?;
         owner.wait_until_settled(20_000).await?;
         let account = owner.account().ok_or("account")?;
-        let available = owner
-            .managed_agent_service(&account.identity_id, &account.device_id)
-            .await?
-            .ok_or("service not available")?;
-        let record = owner
-            .prepare_managed_enrollment(
-                &available,
-                "Helpful agent",
-                "managed_helper",
-                &account.identity_id,
-                &account.device_id,
-            )
-            .await?;
-        let request = record.request.ok_or("request")?;
-        let offered = status(&owner, &mut process, "offered").await?;
+        let started = bridge(
+            &owner,
+            "managed_agent_start",
+            json!({"name":"Helpful agent"}),
+        )
+        .await?;
+        let request = owner
+            .pending_managed_enrollment(&account.identity_id, &account.device_id)?
+            .ok_or("request")?;
+        assert_eq!(started["operation_id"], request.operation);
+        let offered = status(&owner, &mut process, "review").await?;
+        for secret_field in [
+            "pairing_secret",
+            "sealed_offer",
+            "hpke_public",
+            "zoen-agent-enroll:",
+        ] {
+            assert!(!offered.to_string().contains(secret_field));
+        }
+        assert_eq!(offered["preview"]["pairing_check"], "");
         assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
         assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
-        let review = owner.managed_enrollment_preview(
-            &request,
-            &offered,
-            &account.identity_id,
-            &account.device_id,
-        )?;
-        let approved = owner
-            .approve_managed_enrollment(
-                &request,
-                &offered,
-                &review.offer_digest,
-                &account.identity_id,
-                &account.device_id,
-            )
-            .await?;
-        assert_eq!(
-            approved.outcome,
-            client_core::AgentEnrollmentDeliveryOutcome::Sent
-        );
+        assert!(bridge(
+            &owner,
+            "managed_agent_complete",
+            json!({"operation_id":request.operation,"agent_id":offered["agent_id"]})
+        )
+        .await
+        .is_err());
+        let approved = bridge(
+            &owner,
+            "managed_agent_approve",
+            json!({"operation_id":request.operation,
+            "observed_offer_digest":offered["preview"]["offer_digest"]}),
+        )
+        .await?;
+        assert_eq!(approved["state"], "installing");
         let installed = status(&owner, &mut process, "registered").await?;
-        assert_eq!(installed.agent, offered.agent);
-        let agent = installed.agent;
+        assert_eq!(installed["agent_id"], offered["agent_id"]);
+        let agent = installed["agent_id"].as_str().ok_or("agent")?.to_owned();
         let executor = config
             .home
             .join(&account.identity_id)
@@ -224,9 +235,38 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
         );
         let people = owner.find_people(request.handle.clone()).await?;
         assert!(people.iter().any(|person| person.id == agent));
-        let space = owner.start_direct(agent.clone())?;
+        let context = json!({"operation_id":request.operation,"agent_id":agent});
+        let space = bridge(&owner, "managed_agent_chat", context.clone())
+            .await?
+            .as_str()
+            .ok_or("private chat")?
+            .to_owned();
         owner.wait_until_settled(20_000).await?;
+        let before = owner.log_events(space.clone())?.len();
+        assert_eq!(
+            bridge(&owner, "managed_agent_chat", context.clone()).await?,
+            space
+        );
+        assert_eq!(owner.log_events(space.clone())?.len(), before);
+        // Subsequent choices remain authoritative; reopening cannot silently
+        // downgrade the owner's explicit grant to Listen.
+        owner.set_trust(agent.clone(), space.clone(), TrustLevelDto::Suggest)?;
+        let changed = owner.log_events(space.clone())?.len();
+        assert_eq!(bridge(&owner, "managed_agent_chat", context).await?, space);
+        assert_eq!(owner.log_events(space.clone())?.len(), changed);
         owner.set_trust(agent.clone(), space.clone(), TrustLevelDto::Listen)?;
+        let completed = json!({"operation_id":request.operation,"agent_id":agent});
+        assert_eq!(
+            bridge(&owner, "managed_agent_complete", completed.clone()).await?,
+            true
+        );
+        assert_eq!(
+            bridge(&owner, "managed_agent_complete", completed.clone()).await?,
+            true
+        );
+        assert!(bridge(&owner, "managed_agent_status", json!({}))
+            .await?
+            .is_null());
         owner.send_message(space, "Can you answer with the client closed?".into())?;
         owner.wait_until_settled(20_000).await?;
         owner.stop_sync();
@@ -261,8 +301,31 @@ async fn managed_service_owner_consent_first_reply_and_cold_recovery() -> TestRe
                 .await,
             "0"
         );
-        let history = w.zoen("owner", &["read", "@managed_helper"]);
+        let history = w.zoen("owner", &["read", &format!("@{}", request.handle)]);
         assert_eq!(history.matches(provider::ANSWER).count(), 1);
+        let owner = open_owner(&w)?;
+        owner.start_sync(None)?;
+        owner.wait_until_settled(20_000).await?;
+        assert_eq!(
+            bridge(&owner, "managed_agent_complete", completed.clone()).await?,
+            true
+        );
+        let another = bridge(
+            &owner,
+            "managed_agent_start",
+            json!({"name":"Another helper"}),
+        )
+        .await?;
+        assert_ne!(another["operation_id"], request.operation);
+        assert!(bridge(&owner, "managed_agent_complete", completed)
+            .await
+            .is_err());
+        assert_eq!(
+            bridge(&owner, "managed_agent_status", json!({})).await?["operation_id"],
+            another["operation_id"]
+        );
+        owner.stop_sync();
+        drop(owner);
         drop(restarted);
         Ok(())
     }

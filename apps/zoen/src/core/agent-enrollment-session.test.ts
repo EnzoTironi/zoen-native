@@ -36,7 +36,7 @@ function fixture() {
   const calls: {
     action: string;
     code?: string;
-    review?: EnrollmentReview;
+    review?: Pick<EnrollmentReview, 'agent' | 'handle'>;
     scope: EnrollmentScope;
   }[] = [];
   let now = 1000n;

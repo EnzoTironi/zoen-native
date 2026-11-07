@@ -13,6 +13,7 @@ mod conversation_dispatch;
 mod draft_dispatch;
 mod forwarding_command;
 mod forwarding_dispatch;
+mod managed_agent_command;
 mod private_media_command;
 mod search;
 use command::Command;
@@ -157,6 +158,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::AgentEnrollmentPreviewDto::export_all(&config)?;
     crate::AgentEnrollmentDeliveryDto::export_all(&config)?;
     crate::AgentEnrollmentStatusDto::export_all(&config)?;
+    crate::ManagedEnrollmentDto::export_all(&config)?;
     crate::UniversalResults::export_all(&config)?;
     crate::UniversalSearchPage::export_all(&config)?;
     Ok(())
