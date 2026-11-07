@@ -1,11 +1,12 @@
 import type { ReplySelection } from '../core/generated/ReplySelection';
 import { messageInfoAction } from './message-info-navigation';
 import { copyMessageLink } from './message-link-actions';
-import { currentMessageAction, resolveMessageAuthor } from './message-action-current';
-import { canDeleteMessage, bindMessageDeletion } from './delete-message-action';
+import { resolveMessageAuthor } from './message-action-current';
+import { useMessageActionLifetime } from './use-message-action-lifetime';
+import { canDeleteMessage } from './delete-message-action';
 import { useMessageQuoteSelection } from './use-message-quote-selection';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { router } from 'expo-router';
 import { copyableMessageText, copyMessageText } from './message-copy';
 import { KeyboardController } from 'react-native-keyboard-controller';
 import type { TimelineEntry } from '../core/types';
@@ -50,34 +51,10 @@ export function useMessageActions({
   onSelect?: (entry: TimelineEntry) => void;
 }) {
   const client = useClient();
-  const { store, snapshot, mode } = client;
-  const infoEpoch = store.sessionEpoch;
+  const { store, mode } = client;
   const { choose, inform } = useDialogs();
-  const scope = `${mode}:${snapshot?.account?.identity_id ?? snapshot?.me?.id}:${snapshot?.account?.device_id}:${spaceId}`;
-  const latest = useRef({ entries, disabled, scope });
-  const focused = useRef(true);
-  const mounted = useRef(false);
-  const pending = useRef(false);
-  const confirmation = useRef<AbortController | null>(null);
-  const profileEpoch = useRef(0);
-  const profileAttempt = useRef<{ epoch: number; scope: string; messageId: string } | null>(null);
-  const openAttempt = useRef<{
-    epoch: number;
-    scope: string;
-    messageId: string;
-    mode: MessageActionMode;
-    emoji?: string;
-  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<{ scope: string; id: string; text: string } | null>(null);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      profileAttempt.current = null;
-      openAttempt.current = null;
-    };
-  }, []);
   const [selection, setSelection] = useState<{
     scope: string;
     id: string;
@@ -87,59 +64,17 @@ export function useMessageActions({
     fromParticipants?: boolean;
     nativeSource?: MessageContextRequest;
   } | null>(null);
-  useLayoutEffect(() => {
-    if (latest.current.scope !== scope || (disabled && !latest.current.disabled)) {
-      ++profileEpoch.current;
-      profileAttempt.current = null;
-      openAttempt.current = null;
-    }
-    latest.current = { entries, disabled, scope };
-  }, [entries, disabled, scope]);
-  useFocusEffect(
-    useCallback(() => {
-      focused.current = true;
-      ++profileEpoch.current;
-      profileAttempt.current = null;
-      openAttempt.current = null;
-      setBusy(pending.current);
-      return () => {
-        focused.current = false;
-        confirmation.current?.abort();
-        ++profileEpoch.current;
-        profileAttempt.current = null;
-        openAttempt.current = null;
-        setSelection(null);
-      };
-    }, []),
-  );
-  const current = useCallback(
-    (entry: TimelineEntry, purpose: 'content' | 'delete' | 'thread' = 'content') =>
-      currentMessageAction(store, spaceId, scope, focused.current, latest.current, entry, purpose),
-    [scope, spaceId, store],
-  );
-  const quote = useMessageQuoteSelection(
-    current,
-    onReply,
-    `${scope}:${store.sessionEpoch}`,
+  const clearSelection = useCallback(() => setSelection(null), [setSelection]);
+  const { scope, infoEpoch, controller, current } = useMessageActionLifetime({
+    store,
+    state: client,
     spaceId,
-    threadRootId,
-  );
-  useEffect(
-    () =>
-      store.subscribe(() => {
-        for (const attempt of [profileAttempt.current, openAttempt.current]) {
-          if (!attempt || attempt.scope !== scope) continue;
-          const value = latest.current.entries.find((entry) => entry.id === attempt.messageId);
-          if (!value || !current(value)) {
-            ++profileEpoch.current;
-            profileAttempt.current = null;
-            openAttempt.current = null;
-            return;
-          }
-        }
-      }),
-    [current, scope, store],
-  );
+    entries,
+    disabled,
+    setBusy,
+    clearSelection,
+  });
+  const quote = useMessageQuoteSelection(current, onReply, scope, spaceId, threadRootId);
   const candidate =
     !disabled && selection?.scope === scope
       ? (entries.find((entry) => entry.id === selection.id) ?? null)
@@ -152,20 +87,20 @@ export function useMessageActions({
       ? candidate
       : null;
   const close = () => {
-    openAttempt.current = null;
+    controller.clearOpen();
     setSelection(null);
   };
   const reply = (entry: TimelineEntry) => {
     const value = current(entry);
     if (value && !value.deleted) {
-      openAttempt.current = null;
+      controller.clearOpen();
       onReply(value);
     }
   };
   const thread = (entry: TimelineEntry) => {
     const value = current(entry, 'thread');
     if (!value) return;
-    openAttempt.current = null;
+    controller.clearOpen();
     if (onThread) onThread(value);
     else
       router.push({
@@ -175,15 +110,11 @@ export function useMessageActions({
   };
   const profile = async (entry: TimelineEntry) => {
     const value = current(entry);
-    if (!mounted.current || !value || pending.current || profileAttempt.current) return;
-    openAttempt.current = null;
-    const attempt = { epoch: profileEpoch.current, scope, messageId: value.id };
-    profileAttempt.current = attempt;
+    if (!controller.isMounted() || !value || controller.isPending() || controller.hasProfile())
+      return;
+    const attempt = controller.startProfile(value.id);
     const active = () =>
-      mounted.current &&
-      profileAttempt.current === attempt &&
-      profileEpoch.current === attempt.epoch &&
-      Boolean(current(value));
+      controller.isMounted() && controller.isProfile(attempt) && Boolean(current(value));
     let navigated = false;
     try {
       const author = await resolveMessageAuthor(store, spaceId, attempt.messageId, active);
@@ -198,14 +129,14 @@ export function useMessageActions({
           reason instanceof Error ? reason.message : t('chat.tryAgainInAMoment'),
         );
     } finally {
-      if (profileAttempt.current === attempt && !navigated) profileAttempt.current = null;
+      controller.finishProfile(attempt, navigated);
     }
   };
   async function react(entry: TimelineEntry, emoji: string | null) {
     const value = current(entry);
-    if (!value || value.deleted || pending.current) return;
-    openAttempt.current = null;
-    pending.current = true;
+    if (!value || value.deleted || controller.isPending()) return;
+    controller.clearOpen();
+    controller.beginPending();
     setBusy(true);
     setFailure(null);
     try {
@@ -219,30 +150,30 @@ export function useMessageActions({
           text: reason instanceof Error ? reason.message : t('chat.thisCouldNotBeCompleted'),
         });
     } finally {
-      pending.current = false;
+      controller.endPending();
       // Release only the latch, never old content after a scope change.
-      if (mounted.current) setBusy(false);
+      if (controller.isMounted()) setBusy(false);
     }
   }
   async function recover(entry: TimelineEntry) {
     const value = current(entry);
-    if (!value || !messageCanRecoverMedia(value) || pending.current) return;
-    pending.current = true;
+    if (!value || !messageCanRecoverMedia(value) || controller.isPending()) return;
+    controller.beginPending();
     setBusy(true);
     try {
       await store.mediaDrafts.recoverFailed(spaceId, value.in_thread, value.id, () => {
-        const latest = mounted.current ? current(value) : undefined;
+        const latest = controller.isMounted() ? current(value) : undefined;
         return latest !== undefined && messageCanRecoverMedia(latest);
       });
     } catch (reason) {
-      if (mounted.current && current(value))
+      if (controller.isMounted() && current(value))
         void inform(
           t('media.recoveryUnavailable'),
           reason instanceof Error ? reason.message : t('chat.tryAgain'),
         );
     } finally {
-      pending.current = false;
-      if (mounted.current) setBusy(false);
+      controller.endPending();
+      if (controller.isMounted()) setBusy(false);
     }
   }
   return {
@@ -259,24 +190,17 @@ export function useMessageActions({
       const purpose = actionMode === 'actions' ? 'delete' : 'content';
       const value = current(entry, purpose);
       if (
-        !mounted.current ||
+        !controller.isMounted() ||
         !value ||
         (value.deleted && Boolean(nativeSource)) ||
-        pending.current ||
-        profileAttempt.current ||
+        controller.isPending() ||
+        controller.hasProfile() ||
         (nativeSource && !nativeSource.current())
       )
         return;
       if (nativeSource?.kind === 'double') {
         // Native admission fences a touch; current() rechecks account, access, message and focus.
-        const attempt = {
-          epoch: profileEpoch.current,
-          scope,
-          messageId: value.id,
-          mode: actionMode,
-          emoji,
-        };
-        openAttempt.current = attempt;
+        const attempt = controller.startOpen(value.id, actionMode, emoji);
         try {
           const admitted = await nativeSource.native.consumeGesture(
             nativeSource.binding,
@@ -285,12 +209,11 @@ export function useMessageActions({
           const canonical = current(value, purpose);
           if (
             admitted &&
-            mounted.current &&
-            openAttempt.current === attempt &&
-            profileEpoch.current === attempt.epoch &&
+            controller.isMounted() &&
+            controller.isOpen(attempt) &&
             nativeSource.current() &&
             canonical &&
-            !pending.current
+            !controller.isPending()
           ) {
             // Product default only; no invented saved reaction preference.
             void react(
@@ -302,8 +225,8 @@ export function useMessageActions({
           }
         } catch (reason) {
           if (
-            mounted.current &&
-            openAttempt.current === attempt &&
+            controller.isMounted() &&
+            controller.isOpen(attempt) &&
             nativeSource.current() &&
             current(value, purpose)
           )
@@ -312,29 +235,16 @@ export function useMessageActions({
               reason instanceof Error ? reason.message : t('chat.tryAgain'),
             );
         } finally {
-          if (openAttempt.current === attempt) openAttempt.current = null;
+          controller.finishOpen(attempt);
         }
         return;
       }
-      if (
-        openAttempt.current?.messageId === value.id &&
-        openAttempt.current.mode === actionMode &&
-        openAttempt.current.emoji === emoji
-      )
-        return;
-      const attempt = {
-        epoch: profileEpoch.current,
-        scope,
-        messageId: value.id,
-        mode: actionMode,
-        emoji,
-      };
-      openAttempt.current = attempt;
+      if (controller.opening(value.id, actionMode, emoji)) return;
+      const attempt = controller.startOpen(value.id, actionMode, emoji);
       const active = () =>
-        mounted.current &&
-        openAttempt.current === attempt &&
-        profileEpoch.current === attempt.epoch &&
-        !pending.current &&
+        controller.isMounted() &&
+        controller.isOpen(attempt) &&
+        !controller.isPending() &&
         Boolean(current(value, purpose)) &&
         (!nativeSource || nativeSource.current());
       try {
@@ -368,7 +278,7 @@ export function useMessageActions({
             reason instanceof Error ? reason.message : t('chat.tryAgainInAMoment'),
           );
       } finally {
-        if (openAttempt.current === attempt) openAttempt.current = null;
+        controller.finishOpen(attempt);
       }
     },
     close,
@@ -399,7 +309,7 @@ export function useMessageActions({
             const value = selected && current(selected);
             if (
               !value ||
-              pending.current ||
+              controller.isPending() ||
               !value.reactions.some((reaction) => reaction.emoji === emoji)
             )
               return;
@@ -411,7 +321,7 @@ export function useMessageActions({
           }}
           onChooseEmoji={() => {
             const value = selected && current(selected);
-            if (!value || pending.current) return;
+            if (!value || controller.isPending()) return;
             setSelection((previous) =>
               previous?.scope === scope && previous.id === value.id
                 ? { ...previous, mode: 'emoji', fromParticipants: true }
@@ -420,7 +330,7 @@ export function useMessageActions({
           }}
           onBack={() => {
             const value = selected && current(selected);
-            if (!value || pending.current) return;
+            if (!value || controller.isPending()) return;
             setSelection((previous) =>
               previous?.scope === scope && previous.id === value.id
                 ? { ...previous, mode: 'participants' }
@@ -450,7 +360,7 @@ export function useMessageActions({
           }}
           onMore={() => {
             const value = selected && current(selected);
-            if (value && !pending.current)
+            if (value && !controller.isPending())
               setSelection({ scope, id: value.id, mode: 'emoji', anchor: selection?.anchor });
           }}
           onReply={() => {
@@ -525,15 +435,7 @@ export function useMessageActions({
           onDelete={
             canDeleteMessage(store, spaceId, selected)
               ? () =>
-                  bindMessageDeletion(store, spaceId, selected, choose, {
-                    epoch: infoEpoch,
-                    pending,
-                    mounted,
-                    activation: profileEpoch,
-                    confirmation,
-                    resolve: (entry) => current(entry, 'delete'),
-                    setBusy,
-                  })()
+                  controller.delete(selected, choose, (entry) => current(entry, 'delete'), setBusy)
               : undefined
           }
           onShare={

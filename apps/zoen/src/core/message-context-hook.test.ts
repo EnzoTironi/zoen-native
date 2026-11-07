@@ -1,307 +1,105 @@
-import { messageCanSelect } from './message-presentation.ts';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { runInNewContext } from 'node:vm';
-import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
-import { messageInfoNavigation } from './message-info-navigation.fixtures.ts';
-import * as messageCopyText from './message-copy-text.ts';
-import * as conversationScope from './conversation-scope.ts';
-import * as messageLinks from '../notifications/links.ts';
-import * as messageDeletionAction from '../components/delete-message-action.ts';
-const code = (
-  await build({
-    stdin: {
-      contents: readFileSync(
-        new URL('../components/use-message-actions.tsx', import.meta.url),
-        'utf8',
-      ),
-      loader: 'tsx',
-      resolveDir: fileURLToPath(new URL('../components/', import.meta.url)),
-    },
-    bundle: true,
-    format: 'cjs',
-    platform: 'node',
-    define: { 'process.env.EXPO_OS': '"ios"' },
-    jsx: 'automatic',
-    write: false,
-    plugins: [
-      {
-        name: 'context-hook-ports',
-        setup(builder) {
-          builder.onResolve({ filter: /./ }, ({ path }) =>
-            ['./message-action-current', './message-link-actions'].includes(path)
-              ? undefined
-              : { path, external: true },
-          );
-        },
-      },
-    ],
-  })
-).outputFiles[0]!.text;
-const copyCode = (
-  await build({
-    stdin: {
-      contents: readFileSync(new URL('../components/message-copy.ts', import.meta.url), 'utf8'),
-      loader: 'ts',
-    },
-    bundle: true,
-    external: ['*'],
-    format: 'cjs',
-    platform: 'node',
-    write: false,
-  })
-).outputFiles[0]!.text;
-const copy = { exports: {} };
-runInNewContext(copyCode, {
-  module: copy,
-  exports: copy.exports,
-  require(name: string) {
-    if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
-    assert.equal(name, '../core/message-copy-text');
-    return messageCopyText;
-  },
-});
-const deferred = <T>() => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((yes) => {
-    resolve = yes;
-  });
-  return { promise, resolve };
-};
-const tick = async () => {
-  for (let i = 0; i < 8; i++) await Promise.resolve();
-};
-function fixture() {
-  const keyboard = deferred<void>(),
-    admission = deferred<boolean>();
-  const calls: any[] = [],
-    refs: { current: any }[] = [],
-    states: any[] = [],
-    effects: (() => void)[] = [];
-  let refCursor = 0,
-    stateCursor = 0,
-    initialized = false,
-    focused = false;
-  let focusCleanup: () => void = () => {},
-    mountedCleanup: () => void = () => {};
-  let row = true,
-    visible = true;
-  const accessibleSpaces = new Set(['space']);
-  let entry = {
-    id: 'm1',
-    kind: { Message: { text: 'message', card: null } },
-    voice: null,
-    author: { is_me: false },
-    reactions: [] as any[],
-    deleted: false,
-  };
-  const state = {
-    phase: 'ready',
-    mode: 'native',
-    snapshot: { account: { identity_id: 'me', device_id: 'device' }, me: { id: 'me' } },
-  };
-  const store = {
-    getSnapshot: () => state,
-    subscribe: () => () => {},
-    request: async (value: unknown) => {
-      calls.push(value);
-    },
-    driver: { request: async () => entry },
-  };
-  const request = {
-    binding: 'row',
-    gestureId: 'gesture',
-    kind: 'hold',
-    current: () => row,
-    native: { consumeGesture: () => admission.promise },
-  };
-  const ports: Record<string, any> = {
-    react: {
-      useRef: (value: unknown) => (refs[refCursor++] ??= { current: value }),
-      useState: (initial: unknown) => {
-        const i = stateCursor++;
-        if (!(i in states)) states[i] = initial;
-        return [
-          states[i],
-          (value: any) => {
-            states[i] = typeof value === 'function' ? value(states[i]) : value;
-          },
-        ];
-      },
-      useCallback: (callback: unknown) => callback,
-      useLayoutEffect: (effect: () => void) => effects.push(effect),
-      useEffect: (effect: () => void | (() => void)) => {
-        if (!initialized)
-          effects.push(() => {
-            const cleanup = effect();
-            if (cleanup) mountedCleanup = cleanup;
-          });
-      },
-    },
-    'react/jsx-runtime': { jsx: (type: unknown, props: unknown) => ({ type, props }) },
-    'expo-router': {
-      router: { push: (value: unknown) => calls.push(value) },
-      useFocusEffect: (effect: () => () => void) => {
-        if (!focused) {
-          focused = true;
-          focusCleanup = effect();
-        }
-      },
-    },
-    'expo-clipboard': {},
-    'react-native-keyboard-controller': {
-      KeyboardController: {
-        dismiss: () => {
-          calls.push('keyboard');
-          return keyboard.promise;
-        },
-        isVisible: () => visible,
-      },
-    },
-    '../core/provider': {
-      useClient: () => ({ store, snapshot: state.snapshot, mode: state.mode }),
-    },
-    '../core/message-presentation': {
-      messageCanSelect,
-      messageCanInteract: () => true,
-      messageCanRecoverMedia: () => false,
-      messageCanEdit: () => false,
-      messageCard: () => null,
-    },
-    '../core/presentation': { messageText: () => '' },
-    '../core/conversation-scope': conversationScope,
-    '../notifications/links': messageLinks,
-    '../media/share-message': {},
-    '../i18n/index.ts': { t: (key: string) => key },
-    '../home/access': { homeSpacesFor: () => accessibleSpaces },
-    './dialogs': {
-      useDialogs: () => ({
-        choose: async () => 'everyone',
-        inform: (...value: unknown[]) => calls.push(value),
-      }),
-    },
-    // Quote ownership/rendered selection has its own real compiled-hook suite.
-    './use-message-quote-selection': {
-      useMessageQuoteSelection: () => ({ open() {}, panel: null }),
-    },
-    './message-copy': copy.exports,
-    './delete-message-action': messageDeletionAction,
-    './message-info-navigation': messageInfoNavigation({ push() {} }),
-    './message-actions': { MessageActions: 'MessageActions' },
-    './reaction-details': { ReactionDetails: 'ReactionDetails' },
-  };
-  const module = { exports: {} as { useMessageActions(props: any): any } };
-  runInNewContext(code, {
-    module,
-    exports: module.exports,
-    require: (path: string) => {
-      assert.ok(path in ports, path);
-      return ports[path];
-    },
-  });
-  const render = () => {
-    refCursor = 0;
-    stateCursor = 0;
-    const result = module.exports.useMessageActions({
-      spaceId: 'space',
-      entries: [entry],
-      onReply() {},
-      onEdit() {},
-    });
-    effects.splice(0).forEach((run) => run());
-    initialized = true;
-    return result;
-  };
-  return {
-    render,
-    calls,
-    keyboard,
-    admission,
-    request,
-    entry: () => entry,
-    revokeRow: () => {
-      row = false;
-    },
-    removeMembership: () => {
-      accessibleSpaces.delete('space');
-    },
-    blur: () => focusCleanup(),
-    changeAccount: () => {
-      state.snapshot.account.identity_id = 'other';
-    },
-    hideKeyboard: () => {
-      visible = false;
-      keyboard.resolve();
-    },
-    replaceEntry: () => {
-      entry = { ...entry, reactions: [{ emoji: '❤️', mine: true }] };
-    },
-    unmount: () => {
-      mountedCleanup();
-    },
-  };
+import { liveMessageActions } from './message-actions-live.fixtures.ts';
+
+type Fixture = Awaited<ReturnType<typeof liveMessageActions>>;
+type Boundary = 'row' | 'blur' | 'owner' | 'access';
+async function retire(f: Fixture, boundary: Boundary) {
+  if (boundary === 'row') f.revokeRow();
+  else await f.change(boundary);
 }
 
-test('actual compiled hook uses ONE existing keyboard clock before attaching native context', async () => {
-  const f = fixture(),
-    hook = f.render();
-  const opening = hook.open(f.entry(), 'actions', undefined, undefined, undefined, f.request);
-  assert.deepEqual(f.calls, ['keyboard']);
-  assert.equal(f.render().panel.props.entry, null);
-  f.hideKeyboard();
-  await opening;
-  assert.equal(f.render().panel.props.nativeSource, f.request);
-  assert.equal(f.calls.length, 1);
-});
-for (const boundary of ['revokeRow', 'blur', 'changeAccount', 'removeMembership'] as const)
-  test(`actual keyboard-held context cannot cross ${boundary}`, async () => {
-    const f = fixture(),
-      hook = f.render();
-    const opening = hook.open(f.entry(), 'actions', undefined, undefined, undefined, f.request);
-    f[boundary]();
-    f.hideKeyboard();
-    await opening;
-    assert.equal(f.render().panel.props.entry, null);
-  });
-test('double tap awaits exact native gesture admission and then toggles the latest canonical reaction', async () => {
-  const f = fixture(),
-    hook = f.render();
-  const request = { ...f.request, kind: 'double' };
-  const opening = hook.open(f.entry(), 'reactions', undefined, undefined, undefined, request);
-  assert.deepEqual(f.calls, []);
-  f.replaceEntry();
-  f.render();
-  f.admission.resolve(true);
-  await opening;
-  await tick();
-  assert.deepEqual(JSON.parse(JSON.stringify(f.calls)), [
-    { op: 'react', space_id: 'space', message_id: 'm1', emoji: null },
-  ]);
-});
-for (const boundary of ['revokeRow', 'blur', 'changeAccount', 'removeMembership'] as const)
-  test(`native-admission-held quick reaction cannot cross ${boundary}`, async () => {
-    const f = fixture(),
-      hook = f.render();
-    const opening = hook.open(f.entry(), 'reactions', undefined, undefined, undefined, {
-      ...f.request,
-      kind: 'double',
+test('the compiled hook waits for the existing keyboard clock before attaching native context', async () => {
+  const f = await liveMessageActions();
+  try {
+    const hide = f.holdKeyboard();
+    const request = f.context();
+    const opening = await f.startContext(request);
+    assert.deepEqual(f.keyboardCalls, ['keyboard']);
+    assert.equal(f.panel().entry, null);
+    await f.root.act(async () => {
+      hide();
+      await opening.done;
     });
-    f[boundary]();
-    f.admission.resolve(true);
-    await opening;
-    await tick();
-    assert.deepEqual(f.calls, []);
+    assert.equal(f.panel().nativeSource, request);
+    assert.equal(f.keyboardCalls.length, 1);
+    assert.deepEqual(f.commands, []);
+  } finally {
+    await f.close();
+  }
+});
+
+for (const boundary of ['row', 'blur', 'owner', 'access'] as const) {
+  test(`keyboard-held native context cannot cross ${boundary}`, async () => {
+    const f = await liveMessageActions();
+    try {
+      const hide = f.holdKeyboard();
+      const opening = await f.startContext(f.context());
+      await retire(f, boundary);
+      await f.root.act(async () => {
+        hide();
+        await opening.done;
+      });
+      assert.equal(f.panel().entry, null);
+      assert.deepEqual(f.commands, []);
+    } finally {
+      await f.close();
+    }
   });
-test('native refusal after another activation performs no canonical mutation or keyboard movement', async () => {
-  const f = fixture(),
-    hook = f.render();
-  const opening = hook.open(f.entry(), 'reactions', undefined, undefined, undefined, {
-    ...f.request,
-    kind: 'double',
+}
+
+test('double tap awaits exact native admission and toggles the latest canonical reaction', async () => {
+  const f = await liveMessageActions();
+  try {
+    const gate = f.holdAdmission();
+    const opening = await f.startContext(f.context('double'), 'reactions');
+    assert.deepEqual(f.keyboardCalls, []);
+    assert.deepEqual(f.admissions, [['row', 'gesture']]);
+    await f.replaceReaction();
+    await f.root.act(async () => {
+      gate.resolve(true);
+      await opening.done;
+    });
+    assert.deepEqual(structuredClone(f.commands), [
+      { op: 'react', space_id: 'read-chat', message_id: f.entry.id, emoji: null },
+    ]);
+    assert.deepEqual(f.keyboardCalls, []);
+  } finally {
+    await f.close();
+  }
+});
+
+for (const boundary of ['row', 'blur', 'owner', 'access'] as const) {
+  test(`admission-held quick reaction cannot cross ${boundary}`, async () => {
+    const f = await liveMessageActions();
+    try {
+      const gate = f.holdAdmission();
+      const opening = await f.startContext(f.context('double'), 'reactions');
+      await retire(f, boundary);
+      await f.root.act(async () => {
+        gate.resolve(true);
+        await opening.done;
+      });
+      assert.deepEqual(f.commands, []);
+      assert.deepEqual(f.keyboardCalls, []);
+    } finally {
+      await f.close();
+    }
   });
-  f.admission.resolve(false);
-  await opening;
-  assert.deepEqual(f.calls, []);
+}
+
+test('native refusal performs no canonical mutation or keyboard movement', async () => {
+  const f = await liveMessageActions();
+  try {
+    const gate = f.holdAdmission();
+    const opening = await f.startContext(f.context('double'), 'reactions');
+    await f.root.act(async () => {
+      gate.resolve(false);
+      await opening.done;
+    });
+    assert.deepEqual(f.commands, []);
+    assert.deepEqual(f.keyboardCalls, []);
+  } finally {
+    await f.close();
+  }
 });
