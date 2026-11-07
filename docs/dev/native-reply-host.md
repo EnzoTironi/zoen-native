@@ -270,22 +270,33 @@ before returning data, including after index computation. Pausing, revoking,
 replacing the source grant or changing the definition refuses the old read.
 Reads perform no model call, financial reservation or publication.
 
-Configured canonical agents now offer this search directly to the model. A
-complete captured proposal can perform one native search (up to 20 results),
-then feed its exact page back as a ToolResult for a final answer. The second
-model request has its own immutable run/attempt, current budget and one-shot
-admission. The continuation uses the existing native activation/checkpoint,
-evidence and financial journals; retrying either run does not repeat paid calls.
-Historical text-only records retain their original format and semantics.
+Configured canonical agents offer this search directly to the model. The
+consumer can read up to three pages/queries before a final answer, sequentially
+or in the same model proposal, with up to
+20 hits per read. Each model request has its own immutable run/attempt, current
+budget and one-shot admission. Tool results retain their actual message IDs and
+roles. Mixed text/tool proposals are preserved; ordered final text segments are
+joined literally before outbound review and publication. The final request preserves the tool history but disables new proposals;
+a provider that ignores this cannot trigger another tool or model attempt.
+Historical one-search/text-only records keep their original contracts.
 
-The result is bound to the parent capture, original message, principal and source
-frontier. Actor/definition/grant changes, cancellation of the parent, or source
-changes after freezing refuse the follow-up. A changed source currently requires
-a new user request; the host never silently reuses a stale search result. Parent
-wakes delegate to the retained child; authenticated completion also releases the
-parent image pin through the existing receipt-based collection rules.
+Every continuation binds the exact parent capture, original message, principal
+and previous transcript. Cold retries recover the same chain through the existing
+native activation/checkpoint, evidence and financial journals. Parent wakes
+hand off to the retained child; the final authenticated receipt also releases
+ancestor image references through the normal receipt-based collection rules.
 
-This bounded turn supports one search and then an answer, without arbitrary
-writes, pagination rounds or owner-reviewed effects. General tools/approvals,
-consumer onboarding and product acceptance remain open in #175. Apps/editors
-remain paused.
+For the new turn format, a later unrelated message does not require resubmitting
+the question. Before another inference or publication, the native index rereads
+the retained pages under the current grant and compares their actual hits and
+pagination boundaries. Only its own previously verified cursors are translated
+through those fresh pages. The direct search API keeps its strict source-bound
+cursor contract. Changed/deleted results, replaced/revoked grants, actor or
+persona changes refuse stale execution. No stale result becomes a read permit.
+
+Canceling any ancestor blocks its descendants and removes their wakes from the
+runnable page without refunding already incurred calls. Observing retained cost
+or an accepted historical receipt remains separate from productive execution.
+
+General tools/owner-reviewed effects, consumer onboarding and product acceptance
+remain open in #175. Apps/editors remain paused.

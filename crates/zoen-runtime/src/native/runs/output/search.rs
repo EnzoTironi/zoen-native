@@ -9,7 +9,7 @@ impl Execution {
         original: &str,
         custody: &Custody,
     ) -> Result<Option<(String, Vec<OutputBlock>)>, RuntimeError> {
-        if record.format != 3 {
+        if !matches!(record.format, 3 | 5) {
             return Ok(None);
         }
         let retained = Box::pin(self.output_capture_in(tx, record, original, custody)).await?;
@@ -17,13 +17,18 @@ impl Execution {
         let Ok(blocks) = &result.output else {
             return Ok(None);
         };
-        let [OutputBlock::ToolCall {
-            name, arguments, ..
-        }] = blocks.as_slice()
-        else {
-            return Ok(None);
+        let calls = super::super::turn::search_calls(blocks);
+        let limit = if record.format == 3 {
+            1
+        } else {
+            3 - record.tool_reads()?
         };
-        super::super::turn::query(name, arguments)?;
+        if calls.is_empty() || calls.len() > usize::from(limit) {
+            return Ok(None);
+        }
+        for call in calls {
+            super::super::turn::query(call.name, call.arguments, record.format)?;
+        }
         if !result.evidence.complete
             || !result
                 .receipt

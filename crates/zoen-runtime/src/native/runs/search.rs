@@ -26,6 +26,17 @@ impl NativeCustody {
         arguments: &serde_json::Value,
         scope: &dyn NativeOutputAuthority,
     ) -> Result<client_core::MessageSearchPage, RuntimeError> {
+        Box::pin(self.search_loaded_with_history(runtime, loaded, arguments, scope, None)).await
+    }
+
+    pub(in crate::native::runs) async fn search_loaded_with_history(
+        &self,
+        runtime: &RuntimeAuthority,
+        loaded: &LoadedReply,
+        arguments: &serde_json::Value,
+        scope: &dyn NativeOutputAuthority,
+        reads: Option<&[client_core::runtime_core::ReplyHistoryRead]>,
+    ) -> Result<client_core::MessageSearchPage, RuntimeError> {
         let _snapshot = loaded.policy_snapshot(runtime, scope).await?;
         let mut definition = runtime.finance.continuity_transaction().await?;
         loaded.record.current_definition_in(&mut definition).await?;
@@ -43,9 +54,13 @@ impl NativeCustody {
         let core =
             DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
                 .map_err(native_error)?;
-        let page = core
-            .search_reply_history(&loaded.record.intent, arguments, observed)
-            .map_err(native_error)?;
+        let page = match reads {
+            Some(reads) => {
+                core.continue_reply_history(&loaded.record.intent, reads, arguments, observed)
+            }
+            None => core.search_reply_history(&loaded.record.intent, arguments, observed),
+        }
+        .map_err(native_error)?;
         if serde_json::to_vec(&page)
             .map_err(|_| RuntimeError::InvalidBinding)?
             .len()

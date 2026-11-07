@@ -117,7 +117,7 @@ impl NativeCustody {
                 .output_capture_in(&tx, &loaded.record, &loaded.record_digest, &runtime.custody)
                 .await?;
             let text = match retained.text(&loaded.record) {
-                Ok(text) => Zeroizing::new(text.to_owned()),
+                Ok(text) => Zeroizing::new(text),
                 Err(RuntimeError::Denied) => return Ok(None),
                 Err(error) => return Err(error),
             };

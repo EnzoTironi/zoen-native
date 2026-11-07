@@ -131,9 +131,7 @@ impl RunRecord {
         if !matches!(self.intent.profile(), PROFILE | "owner-direct-text-reply/2") {
             return Err(RuntimeError::InvalidBinding);
         }
-        if (self.format == 4) != self.continuation.is_some() {
-            return Err(RuntimeError::InvalidBinding);
-        }
+        self.tool_reads()?;
         match (self.format, &self.agent_context) {
             (1, None)
                 if matches!(
@@ -143,7 +141,7 @@ impl RunRecord {
             {
                 Ok(self.intent.profile().into())
             }
-            (2..=4, Some(context)) => {
+            (2..=6, Some(context)) => {
                 let messages = turn::base_messages(self)?;
                 let [InputMessage::System { text }, rest @ ..] = messages else {
                     return Err(RuntimeError::InvalidBinding);

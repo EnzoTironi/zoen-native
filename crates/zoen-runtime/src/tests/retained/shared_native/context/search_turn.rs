@@ -130,7 +130,7 @@ async fn recover(cut: u8) -> TestResult {
         assert_eq!(page.hits.len(), 1);
         assert_eq!(page.hits[0].space_id.as_deref(), Some(f.space.as_str()));
         assert!(page.hits[0].snippet.contains("needle"));
-        assert_eq!(requests[1]["tool_choice"], "none");
+        assert_ne!(requests[1]["tools"], serde_json::Value::Null);
     }
     assert_eq!(f.world.balance().await.spent_units, 12);
     println!("native search turn cut={cut}: accepted, checking receipt and collection proof");
@@ -188,7 +188,7 @@ async fn refuse_changed(change: &str) -> TestResult {
             f.sync(false).await?;
         }
         "source" => {
-            f.message("source changed after the search result was frozen")
+            f.message("needle changed after the search result was frozen")
                 .await?;
             f.sync(false).await?;
         }

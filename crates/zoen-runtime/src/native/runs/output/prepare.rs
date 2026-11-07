@@ -338,7 +338,7 @@ impl NativeCustody {
                 .map_err(native_error)?;
         let at = runtime.finance.reply_clock().await?;
         let prepared = core
-            .prepare_reply(&loaded.record.intent, retained.text(&loaded.record)?, at)
+            .prepare_reply(&loaded.record.intent, &retained.text(&loaded.record)?, at)
             .map_err(native_error)?;
         #[cfg(test)]
         _capability.observe(prepared.publish_digest(), prepared.envelope())?;

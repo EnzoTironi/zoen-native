@@ -201,15 +201,6 @@ impl Execution {
         expected: &str,
     ) -> Result<(), RuntimeError> {
         self.reply_original_scope(trx, record, expected).await?;
-        if let Some(step) = &record.continuation {
-            if trx
-                .get(&self.run(&step.parent, "cancel"), false)
-                .await?
-                .is_some()
-            {
-                return Err(RuntimeError::Denied);
-            }
-        }
         if trx
             .get(&self.run(&record.locator.run, "cancel"), false)
             .await?
@@ -251,6 +242,7 @@ impl Execution {
     ) -> Result<(), RuntimeError> {
         self.reply_record_scope(trx, record, expected).await?;
         Box::pin(self.verify_search_continuation_in(trx, record, custody)).await?;
+        Box::pin(self.check_search_cancellation_in(trx, record, custody)).await?;
         record.verify_input(facts)?;
         let principal = &record.original.context.principal;
         let version = trx.get_read_version().await?;

@@ -32,7 +32,7 @@ impl NativeCustody {
         loaded: &LoadedReply,
         scope: &dyn NativeOutputAuthority,
     ) -> Result<Option<String>, RuntimeError> {
-        if loaded.record.format != 3 {
+        if !matches!(loaded.record.format, 3 | 5) {
             return Ok(None);
         }
         // The captured proposal is data; the fresh native read below supplies
@@ -46,18 +46,33 @@ impl NativeCustody {
             return Ok(None);
         };
         drop(tx);
-        let [OutputBlock::ToolCall {
-            call_id,
-            name,
-            arguments,
-        }] = blocks.as_slice()
-        else {
-            return Err(RuntimeError::InvalidBinding);
-        };
-        let page = self
-            .search_loaded(runtime, loaded, arguments, scope)
+        let calls = search_calls(&blocks);
+        let mut reads = loaded.record.history_reads()?;
+        let mut results = Vec::new();
+        for call in &calls {
+            let page = Box::pin(self.search_loaded_with_history(
+                runtime,
+                loaded,
+                call.arguments,
+                scope,
+                if loaded.record.format >= 5 {
+                    Some(&reads)
+                } else {
+                    None
+                },
+            ))
             .await?;
-        let text = serde_json::to_string(&page).map_err(|_| RuntimeError::InvalidBinding)?;
+            let text = serde_json::to_string(&page).map_err(|_| RuntimeError::InvalidBinding)?;
+            reads.push(client_core::runtime_core::ReplyHistoryRead {
+                arguments: call.arguments.clone(),
+                page,
+            });
+            results.push(InputMessage::ToolResult {
+                call_id: call.id.into(),
+                name: call.name.into(),
+                text,
+            });
+        }
         let parent = &loaded.record;
         let principal = &parent.original.context.principal;
         let credential = self.credential(&principal.agent, &principal.device)?;
@@ -89,12 +104,30 @@ impl NativeCustody {
         request.messages.push(InputMessage::Assistant {
             blocks: blocks.clone(),
         });
-        request.messages.push(InputMessage::ToolResult {
-            call_id: call_id.clone(),
-            name: name.clone(),
-            text,
-        });
-        request.tool_mode = zoen_models::ToolMode::FinalAnswer;
+        request.messages.extend(results);
+        let used = if parent.format == 3 {
+            0
+        } else {
+            parent
+                .tool_reads()?
+                .checked_add(u8::try_from(calls.len()).map_err(|_| RuntimeError::InvalidBinding)?)
+                .ok_or(RuntimeError::InvalidBinding)?
+        };
+        if used > 3 {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let format = if parent.format == 3 {
+            4
+        } else if used == 3 {
+            6
+        } else {
+            5
+        };
+        request.tool_mode = if matches!(format, 4 | 6) {
+            zoen_models::ToolMode::FinalAnswer
+        } else {
+            zoen_models::ToolMode::Auto
+        };
         request.max_output_tokens = runtime.price.max_output_tokens;
         let dispatch = runtime
             .gateway
@@ -116,7 +149,7 @@ impl NativeCustody {
             price: runtime.price.clone().into(),
         };
         let record = RunRecord {
-            format: 4,
+            format,
             source: parent.source.clone(),
             locator: locator.clone(),
             request,
@@ -133,6 +166,7 @@ impl NativeCustody {
                 parent: parent.locator.run.clone(),
                 original: loaded.record_digest.clone(),
                 capture,
+                used,
             }),
         };
         record.validate(&locator.run, &parent.source)?;
