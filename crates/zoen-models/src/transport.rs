@@ -75,7 +75,14 @@ impl BoundedHttp {
         {
             return Err(self.fail(OutputFailure::UnsupportedOutput));
         }
-        let (parts, body) = req.into_parts();
+        let (mut parts, body) = req.into_parts();
+        let body = if self.endpoint.ends_with("/chat/completions") {
+            crate::chat_wire::encode(&body, self.max_request_bytes)
+                .map_err(|_| self.fail(OutputFailure::UnsupportedOutput))?
+        } else {
+            body.to_vec()
+        };
+        parts.headers.remove(http::header::CONTENT_LENGTH);
         let mut response = self
             .client
             .post(&self.endpoint)

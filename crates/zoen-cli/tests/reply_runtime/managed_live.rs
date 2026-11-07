@@ -1,4 +1,4 @@
-//! One explicit external HTTPS model call through the real native service.
+//! One explicit external HTTPS journey through the real native service.
 use super::managed_support::*;
 use super::*;
 use std::{fs, time::Duration};
@@ -22,7 +22,7 @@ async fn managed_live_chat_provider() -> TestResult {
     // Declared after World so credentials retire before failed-fixture diagnostics.
     let credentials = profile::CredentialCopies(w.dir.join("reply-runtime"));
     let mut outcome = json!({"status":"incomplete","synthetic_only":true,"automatic_retry":false,
-        "configured_model":profile::MODEL,"gate":"explicit_offline_floor","ui_qa":false});
+        "configured_model":profile::MODEL,"gate":profile.gate.label(),"history_search_requested":profile.history_search,"ui_qa":false});
     let result = run(&mut w, &profile, &token, &challenge, &mut outcome).await;
     outcome["observed_attempts"] = w
         .count("SELECT count(*) FROM runtime_attempts")
@@ -68,13 +68,17 @@ async fn run(
         persona:
             "Answer the owner briefly and accurately. This is a synthetic transport qualification."
                 .into(),
-        rules: vec!["Do not call tools or request private information.".into()],
+        rules: vec![if profile.history_search {
+            "Use only conversation history search when the owner requests it. Do not request private information."
+        } else {
+            "Do not call tools or request private information."
+        }.into()],
         state: json!({}),
         model_tier: zoen_agentd::ModelTier::Cheap,
     }
     .encode()?;
     let mut value = configuration(w, "", &profile.endpoint);
-    profile.price(&mut value);
+    profile.price(&mut value)?;
     value["admission_config"] = registry.to_string_lossy().to_string().into();
     value["managed_service"] = json!({"id":"11".repeat(32),"definition":String::from_utf8(definition)?,"zoen_binary":env!("CARGO_BIN_EXE_zoen")});
     let config: config::Config = serde_json::from_value(value.clone())?;
@@ -99,6 +103,11 @@ async fn run(
         if !vault.save(key, bytes) {
             return Err("live operator credential save failed".into());
         }
+    }
+    if profile.gate == profile::GateMode::ClefFlash
+        && !vault.save("live-clef".into(), token.as_bytes().to_vec())
+    {
+        return Err("live Gate credential save failed".into());
     }
     let path = w.dir.join("managed-service.json");
     write_json(&path, &value)?;
@@ -155,35 +164,61 @@ async fn run(
         .ok_or("conversation")?
         .to_owned();
     bridge(&owner, "managed_agent_complete", context).await?;
-    owner.send_message(
-        space.clone(),
-        format!("Reply with exactly this phrase and nothing else: {challenge}"),
-    )?;
+    let prompt = if profile.history_search {
+        format!("First use search_conversation_history to search for \"{challenge}\" in this conversation. Then reply with exactly this phrase and nothing else: {challenge}")
+    } else {
+        format!("Reply with exactly this phrase and nothing else: {challenge}")
+    };
+    owner.send_message(space.clone(), prompt)?;
     owner.wait_until_settled(20_000).await?;
     owner.stop_sync();
     drop(owner);
-    // The production transport budget is 90s; observe it plus bounded lifecycle
-    // overhead, without changing the gateway or ordinary 20s fixture budgets.
+    // Observe chat (90s), optional inbound/outbound Gate (60s each), and
+    // lifecycle overhead. Ordinary fixture and production deadlines stay intact.
     let output = service
-        .frame_for("output", Duration::from_secs(120))
+        .live_output(Duration::from_secs(profile.gate.observation_seconds()))
         .await?;
     if output["delivery"]["status"] != "accepted" {
         return Err("live reply missing its delivery receipt".into());
     }
-    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
+    if profile.gate == profile::GateMode::ClefFlash {
+        let audit = &output["audit"];
+        if audit["provider"] != profile.gate.label()
+            || audit["outcome"] != "allow"
+            || audit["answers"]
+                .as_object()
+                .is_none_or(|answers| answers.is_empty())
+            || !audit["rule"]
+                .as_str()
+                .is_some_and(|rule| rule.starts_with("model:"))
+        {
+            return Err("live reply lacks a parsed allowing Clef decision".into());
+        }
+        outcome["outbound_gate_audit"] = json!({"provider":audit["provider"],
+            "outcome":audit["outcome"],"rule":audit["rule"],
+            "answers":audit["answers"],"latency_ms":audit["latency_ms"]});
+    }
+    let attempts = w.count("SELECT count(*) FROM runtime_attempts").await;
+    // The existing agent may propose up to three authorized history searches.
+    // These are distinct admitted turns, never retries of an incurred original.
+    if profile.history_search && attempts < 2 {
+        return Err("live model did not execute the requested history continuation".into());
+    }
+    if !(1..=4).contains(&attempts) {
+        return Err("live chat exceeded its bounded history continuation chain".into());
+    }
     assert_eq!(
         w.count("SELECT count(*) FROM runtime_dispositions WHERE kind='settle'")
             .await,
-        1
+        attempts
     );
     let charge = w
         .scalar("SELECT sum(amount_units)::text FROM runtime_dispositions WHERE kind='settle'")
         .await
         .parse::<u64>()?;
-    if charge == 0 || charge > 3000 {
+    if charge == 0 || charge > 10000 || charge > u64::try_from(attempts)? * 3000 {
         return Err("live reported usage outside admitted price bound".into());
     }
-    let attempts = w.count("SELECT count(*) FROM runtime_attempts").await;
     drop(service);
     let mut restarted = ServiceProcess::start(w, &path)?;
     restarted.frame("service_ready").await?;
@@ -210,6 +245,9 @@ async fn run(
     drop(restarted);
     outcome["status"] = "passed".into();
     outcome["attempts"] = attempts.into();
+    // This native source has no continuation other than its bounded, verified
+    // history tool chain. Every intermediate turn must settle before output.
+    outcome["history_continuation_observed"] = (attempts > 1).into();
     outcome["settled_microdollars"] = charge.into();
     outcome["delivery"] = "accepted".into();
     outcome["recovered_without_another_attempt"] = true.into();

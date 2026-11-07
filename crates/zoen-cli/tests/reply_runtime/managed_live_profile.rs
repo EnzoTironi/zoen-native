@@ -25,8 +25,33 @@ pub(super) fn challenge() -> Result<String, Box<dyn std::error::Error>> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Profile {
+    #[serde(default)]
+    pub gate: GateMode,
+    #[serde(default)]
+    pub history_search: bool,
     pub endpoint: String,
     pub output_directory: PathBuf,
+}
+#[derive(Clone, Copy, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum GateMode {
+    #[default]
+    OfflineFloor,
+    ClefFlash,
+}
+impl GateMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::OfflineFloor => "explicit_offline_floor",
+            Self::ClefFlash => "cloudflare:clef-flash",
+        }
+    }
+    pub fn observation_seconds(self) -> u64 {
+        match self {
+            Self::OfflineFloor => 120,
+            Self::ClefFlash => 240,
+        }
+    }
 }
 impl Profile {
     pub fn read() -> Result<Self, Box<dyn std::error::Error>> {
@@ -74,23 +99,34 @@ impl Profile {
             &marker,
             &json!({
                 "synthetic_only":true,"automatic_retry":false,"model":MODEL,
-                "max_input_tokens":8192,"max_output_tokens":96,"max_request_bytes":4096,
+                "max_input_tokens":8192,"max_output_tokens":96,"max_request_bytes":32768,"max_model_attempts":4,"history_search_requested":self.history_search,
                 "input_microdollars_per_million":293000,"output_microdollars_per_million":2253000,
                 "pricing_reference":"https://developers.cloudflare.com/workers-ai/models/llama-3.3-70b-instruct-fp8-fast/",
-                "pricing_observed":"2026-11-07","gate":"explicit_offline_floor"
+                "pricing_observed":"2026-11-07","gate":self.gate.label()
             }),
         )?;
         fs::File::open(marker)?.sync_all()?;
         fs::File::open(&self.output_directory)?.sync_all()?;
         Ok(())
     }
-    pub fn price(&self, value: &mut Value) {
+    pub fn price(&self, value: &mut Value) -> TestResult {
+        if self.gate == GateMode::ClefFlash {
+            // validate() has already pinned this exact provider/account route.
+            let account = self
+                .endpoint
+                .split('/')
+                .nth(6)
+                .ok_or("live Gate account unavailable")?;
+            value["gate"] =
+                json!({"provider":"clef","account":account,"credential_key":"live-clef"});
+        }
         value["chat_endpoint_policy"] = "https".into();
         value["chat_price"] = json!({"version":"cf-llama33-20261107","endpoint":self.endpoint,
             "model":MODEL,"credential_ref":"live-chat","currency":"USD","scale":6,
             "input_units_per_million":293000,"output_units_per_million":2253000,
             "max_billable_input_tokens":8192,"max_output_tokens":96,
-            "max_request_bytes":4096,"max_response_bytes":32768});
+            "max_request_bytes":32768,"max_response_bytes":32768});
+        Ok(())
     }
 }
 
@@ -112,7 +148,7 @@ impl CredentialCopies {
                 if kind.is_dir() {
                     visit(&path)?;
                 } else if kind.is_file()
-                    && entry.file_name() == "chat"
+                    && matches!(entry.file_name().to_str(), Some("chat" | "live-clef"))
                     && path
                         .parent()
                         .and_then(Path::file_name)
@@ -151,6 +187,8 @@ fn live_reply_profile_refuses_other_origins_and_reused_dispatch_markers() -> Tes
         "a1".repeat(16)
     );
     let mut profile = Profile {
+        gate: GateMode::OfflineFloor,
+        history_search: false,
         endpoint: valid.clone(),
         output_directory: dir.clone(),
     };
@@ -169,7 +207,7 @@ fn live_reply_profile_refuses_other_origins_and_reused_dispatch_markers() -> Tes
     profile.validate()?;
     assert_eq!(challenge()?.split_whitespace().count(), 4);
     let mut value = json!({});
-    profile.price(&mut value);
+    profile.price(&mut value)?;
     let price: zoen_runtime::PriceProfile = serde_json::from_value(value["chat_price"].clone())?;
     let digest = price.digest()?;
     let mut other = price.clone();
@@ -191,15 +229,21 @@ fn live_reply_profile_refuses_other_origins_and_reused_dispatch_markers() -> Tes
         other.digest().is_err(),
         "provider syntax must not relax authority identifiers"
     );
+    profile.gate = GateMode::ClefFlash;
+    profile.price(&mut value)?;
+    assert_eq!(value["gate"]["account"], "a1".repeat(16));
+    assert_eq!(value["gate"]["credential_key"], "live-clef");
     profile.claim()?;
     assert!(profile.claim().is_err());
     let operator = dir.join("operator");
     let vault = operator.join("vault");
     fs::create_dir_all(&vault)?;
     fs::write(vault.join("chat"), b"synthetic-token")?;
+    fs::write(vault.join("live-clef"), b"synthetic-token")?;
     fs::write(vault.join("evidence"), b"retained")?;
     CredentialCopies(operator).retire()?;
     assert!(!vault.join("chat").exists());
+    assert!(!vault.join("live-clef").exists());
     assert!(vault.join("evidence").exists());
     assert!(dir.join("one-attempt.json").exists());
     fs::remove_dir_all(dir)?;
