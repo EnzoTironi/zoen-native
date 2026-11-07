@@ -1,3 +1,4 @@
+import { messageActionOwner } from './message-action-current.fixtures.ts';
 import * as sendChat from './send-chat-message.ts';
 import * as searchLaunch from './search-launch.ts';
 import { messageCanInteract } from './message-presentation.ts';
@@ -211,6 +212,7 @@ export async function chatSearchReactFixture(qa = false) {
       if (name.startsWith('@babel/runtime/helpers/')) return require(name);
       if (name === 'react-native') return { Keyboard: { dismiss() {} } };
       if (name === 'expo-clipboard') return { setStringAsync: async () => {} };
+      if (name === './message-action-current') return { messageActionOwner };
       if (name === '../core/message-selection') return messageSelection;
       if (name === '../core/message-deletion') return messageDeletion;
       if (name === './dialogs') return { useDialogs: () => ({ choose: async () => null }) };

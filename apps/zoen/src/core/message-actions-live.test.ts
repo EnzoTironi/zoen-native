@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { deferred } from './store.fixtures.ts';
 import { liveMessageActions } from './message-actions-live.fixtures.ts';
 
-for (const change of ['reopen', 'relay', 'access-aba', 'focus-aba', 'disabled'] as const) {
+for (const change of [
+  'reopen',
+  'relay',
+  'access-aba',
+  'focus-aba',
+  'disabled',
+  'thread-aba',
+] as const) {
   test(`visible message controls retire after ${change}, and fresh controls still work`, async () => {
     const f = await liveMessageActions();
     try {
@@ -67,3 +75,26 @@ for (const action of ['thread', 'copy', 'forward', 'react', 'edit'] as const) {
     }
   });
 }
+
+test('a single-message deletion confirmation retires when its thread view changes', async () => {
+  const f = await liveMessageActions();
+  const answer = deferred<string | null>();
+  try {
+    await f.open();
+    f.choose(() => answer.promise);
+    await f.root.act(() => f.panel().onDelete?.(f.entry));
+    assert.equal(f.confirmations.length, 1);
+    await f.change('thread-aba');
+    assert.equal(f.confirmations[0]!.signal?.aborted, true);
+    await f.root.act(() => {
+      answer.resolve('everyone');
+    });
+    assert.deepEqual(f.commands, []);
+    await f.open();
+    assert.ok(f.panel().entry);
+    assert.deepEqual(f.root.errors, []);
+  } finally {
+    answer.resolve(null);
+    await f.close();
+  }
+});

@@ -9,7 +9,7 @@ import { hookHost } from './message-selection-react.fixtures.ts';
 import { draftSession } from './store.fixtures.ts';
 import * as selection from './message-selection.ts';
 import * as deletion from './message-deletion.ts';
-import { conversationScope } from './conversation-scope.ts';
+import { messageActionOwner } from './message-action-current.fixtures.ts';
 import type { TimelineEntry } from './types';
 import type { DialogChoiceOptions } from '../components/dialog-types';
 import type { useMessageSelection } from '../components/use-message-selection';
@@ -47,6 +47,7 @@ function fixture() {
     isSessionRetiring: false,
     getSnapshot: () => state,
     setTyping: () => {},
+    registerSessionCleanup: () => () => {},
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => {
@@ -84,7 +85,7 @@ function fixture() {
             copied.push(value);
           },
         };
-      if (name === '../core/conversation-scope') return { conversationScope };
+      if (name === './message-action-current') return { messageActionOwner };
       if (name === '../core/message-selection') return selection;
       if (name === '../core/message-presentation') return messagePresentation;
       if (name === '../core/message-deletion') return deletion;
@@ -294,7 +295,7 @@ test('real hook confirms the exact owned set once and clears only after successf
   ]);
   assert.equal(f.render().count, 0);
   assert.equal(f.render().pending, false);
-  assert.equal(f.listeners.size, 0);
+  assert.equal(f.listeners.size, 1);
 });
 
 test('cancel and command failure preserve selection for a fresh confirmation and retry', async () => {
@@ -318,7 +319,7 @@ test('cancel and command failure preserve selection for a fresh confirmation and
   assert.equal(f.confirmations.length, 3);
   assert.equal(f.commands.length, 2);
   assert.equal(f.render().count, 0);
-  assert.equal(f.listeners.size, 0);
+  assert.equal(f.listeners.size, 1);
 });
 
 for (const change of [
@@ -353,7 +354,7 @@ for (const change of [
     f.answer(true);
     await settleDeletion();
     assert.deepEqual(f.commands, []);
-    assert.equal(f.listeners.size, 0);
+    assert.equal(f.listeners.size, change === 'blur' ? 0 : 1);
     assert.equal(f.render().pending, false);
   });
 

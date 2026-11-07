@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { Keyboard } from 'react-native';
-import { conversationScope } from '../core/conversation-scope';
+import { messageActionOwner } from './message-action-current';
 import {
   MAX_SELECTED_MESSAGES,
   selectedMessages,
@@ -30,26 +30,48 @@ export function useMessageSelection(
   const deleting = useRef(false);
   const recheckConfirmation = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState(false);
-  const scope = conversationScope(client, store.sessionEpoch, spaceId);
+  const owner = messageActionOwner(store, client, spaceId).scope;
+  const scope = owner || null;
   const binding = scope && JSON.stringify([scope, threadRootId]);
   const [selection, setSelection] = useState<MessageSelection>(null);
   const focused = useRef(false);
   const latest = useRef({ scope, binding, entries, disabled, selection });
+  const activationRef = useRef(0);
+  const [activation, setActivation] = useState(0);
+  const retire = useCallback(() => {
+    ++activationRef.current;
+    latest.current = { ...latest.current, selection: null };
+    confirmation.current?.abort();
+    setSelection(null);
+    setActivation(activationRef.current);
+  }, []);
   useLayoutEffect(() => {
+    const changed = latest.current.binding !== binding || (disabled && !latest.current.disabled);
     if (latest.current.selection !== selection || latest.current.binding !== binding || disabled)
       confirmation.current?.abort();
     latest.current = { scope, binding, entries, disabled, selection };
+    if (changed) retire();
     recheckConfirmation.current?.();
-  }, [scope, binding, entries, disabled, selection]);
+  }, [scope, binding, entries, disabled, selection, retire]);
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
+      let observed = messageActionOwner(store, store.getSnapshot(), spaceId).scope;
+      const unsubscribe = store.subscribe(() => {
+        const next = messageActionOwner(store, store.getSnapshot(), spaceId).scope;
+        if (next !== observed) {
+          observed = next;
+          retire();
+        }
+      });
+      const cleanup = store.registerSessionCleanup(async () => retire());
       return () => {
         focused.current = false;
-        confirmation.current?.abort();
-        setSelection(null);
+        unsubscribe();
+        cleanup();
+        retire();
       };
-    }, []),
+    }, [store, spaceId, retire]),
   );
   const messages = disabled ? [] : selectedMessages(selection, binding, entries);
   const active = messages.length > 0;
@@ -67,15 +89,16 @@ export function useMessageSelection(
     });
   }, [binding, entries, disabled]);
   const current = () =>
+    activationRef.current === activation &&
     focused.current &&
     !latest.current.disabled &&
     scope !== null &&
     latest.current.scope === scope &&
     latest.current.binding === binding &&
     !store.isSessionRetiring &&
-    conversationScope(store.getSnapshot(), store.sessionEpoch, spaceId) === scope;
+    messageActionOwner(store, store.getSnapshot(), spaceId).scope === scope;
   const toggle = (entry: TimelineEntry) => {
-    if (!current()) return;
+    if (!current() || latest.current.selection !== selection) return;
     Keyboard.dismiss();
     store.setTyping(spaceId, false);
     setSelection((value) =>
