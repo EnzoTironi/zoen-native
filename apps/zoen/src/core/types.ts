@@ -214,6 +214,7 @@ type Results = {
   create_group: string;
   create_community: string;
   create_invite: InviteDto;
+  create_invite_reviewed: InviteDto;
   create_agent_invite: InviteDto;
   preview_invite: InvitePreviewDto;
   join_invite: string;

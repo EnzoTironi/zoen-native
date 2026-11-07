@@ -1,3 +1,4 @@
+import { SpaceInviteAction } from '../../communities/space-invite-action';
 import { t } from '../../i18n/index.ts';
 import { useMutedChats } from '../../notifications/use-muted-chats';
 import { MuteDurationSheet } from '../../notifications/mute-duration-sheet';
@@ -400,16 +401,23 @@ function SpaceContent() {
         ) : null}
         {chat.kind !== 'Direct' ? (
           <ProfileSection>
-            <ProfileInfoRow
-              label={t('chat.inviteSomeone')}
-              disabled={busy}
-              onPress={() => {
-                void perform(async () => {
-                  const invite = await store.driver.request({ op: 'create_invite', space_id: id });
-                  if (currentOwner()) await Share.share({ message: invite.link });
-                });
-              }}
-            />
+            {process.env.EXPO_OS === 'web' ? (
+              <ProfileInfoRow
+                label={t('chat.inviteSomeone')}
+                disabled={busy}
+                onPress={() => {
+                  void perform(async () => {
+                    const invite = await store.driver.request({
+                      op: 'create_invite',
+                      space_id: id,
+                    });
+                    if (currentOwner()) await Share.share({ message: invite.link });
+                  });
+                }}
+              />
+            ) : (
+              <SpaceInviteAction space={id} disabled={busy} />
+            )}
             <ProfileInfoRow
               destructive
               label={t('chat.leaveChat')}

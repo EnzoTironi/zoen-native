@@ -240,6 +240,7 @@ export async function communityUi(
     if (name.endsWith('/use-member-actions')) return load('hook');
     if (name.endsWith('/member-addition-sheet'))
       return { MemberAdditionSheet: 'MemberAdditionSheet' };
+    if (name.endsWith('/space-invite-action')) return { SpaceInviteAction: 'SpaceInviteAction' };
     if (name.endsWith('/member-actions-sheet')) return load('sheet');
     if (name.endsWith('/i18n') || name.endsWith('/i18n/index.ts')) return localization;
     if (name.endsWith('/theme'))

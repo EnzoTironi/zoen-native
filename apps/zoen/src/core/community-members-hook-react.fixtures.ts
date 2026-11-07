@@ -196,6 +196,9 @@ export async function memberHookReactFixture() {
   }
   return {
     store,
+    driver,
+    renderContent: root.render,
+    useMemberActions: module.exports.useMemberActions,
     snapshot,
     calls,
     errors: root.errors,

@@ -327,6 +327,8 @@ export function fixture(kind: keyof typeof sources, overrides: Record<string, un
       };
     if (path.endsWith('notifications/mute-duration-sheet'))
       return { MuteDurationSheet: 'MuteDurationSheet' };
+    if (path.endsWith('communities/space-invite-action'))
+      return { SpaceInviteAction: 'SpaceInviteAction' };
     if (path.endsWith('communities/use-member-actions'))
       return { useMemberActions: () => ({ available: false, session: {}, state: {} }) };
     if (path.endsWith('communities/member-addition-sheet'))

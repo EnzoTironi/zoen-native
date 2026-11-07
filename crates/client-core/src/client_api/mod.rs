@@ -16,6 +16,7 @@ mod forwarding_dispatch;
 mod managed_agent_command;
 mod private_media_command;
 mod search;
+pub(crate) mod space_invite_command;
 use command::Command;
 
 mod handle;
