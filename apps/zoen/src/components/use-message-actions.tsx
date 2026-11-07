@@ -69,6 +69,7 @@ export function useMessageActions({
     store,
     state: client,
     spaceId,
+    threadRootId,
     entries,
     disabled,
     setBusy,

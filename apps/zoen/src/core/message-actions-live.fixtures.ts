@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
 import * as React from 'react';
 import { createRequire } from 'node:module';
+import { build } from 'esbuild';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { compileExpoSource } from './expo-compiler.fixtures.ts';
+import type { useMessageSelection } from '../components/use-message-selection';
+import type { Dialogs } from '../components/dialog-types';
 import type { useMessageActions } from '../components/use-message-actions';
 import type { MessageActionsProps } from '../components/message-actions.types';
 import type { MessageContextRequest } from '../components/message-context-ports';
@@ -10,6 +16,29 @@ import { ClientStore } from './store.ts';
 import { Driver, draftSession, deferred } from './store.fixtures.ts';
 import { createReactTestRoot } from './react-test-root.fixtures.ts';
 const require = createRequire(import.meta.url);
+const selectionSource = new URL('../components/use-message-selection.ts', import.meta.url);
+const selectionBundle = await build({
+  stdin: {
+    contents: compileExpoSource(selectionSource, true),
+    resolveDir: dirname(fileURLToPath(selectionSource)),
+    loader: 'js',
+  },
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  write: false,
+  external: [
+    'react',
+    'react/compiler-runtime',
+    'react/jsx-runtime',
+    'expo-router',
+    'expo-clipboard',
+    'react-native',
+    '../core/provider',
+    './dialogs',
+    '../i18n/index.ts',
+  ],
+});
 
 /** Real React, ClientStore and compiled action hook; native UI and commands are ports. */
 export async function liveMessageActions() {
@@ -21,6 +50,18 @@ export async function liveMessageActions() {
     author: snapshot.conversations[0]!.members[0]!,
     text_revision: 'signed-revision',
   });
+  const second = message({
+    id: 'synthetic_second',
+    seq: '2',
+    author: entry.author,
+    text_revision: 'second-revision',
+    kind: { Message: { text: 'Second message', card: null } },
+  });
+  let entries = [entry, second];
+  let threadRoot: string | null = null;
+  const confirmations: Parameters<Dialogs['choose']>[0][] = [];
+  let choose: Dialogs['choose'] = async () => assert.fail('No deletion confirmation');
+  let failMutation = false;
   const commands: unknown[] = [],
     routes: unknown[] = [],
     copies: string[] = [];
@@ -36,8 +77,16 @@ export async function liveMessageActions() {
   driver.opening = async () => structuredClone(snapshot);
   driver.operation = async (command) => {
     if (command.op === 'snapshot') return structuredClone(snapshot);
-    if (command.op === 'message') return entry;
+    if (command.op === 'message')
+      return entries.find((value) => value.id === command.message_id) ?? entry;
+    if (command.op === 'set_typing') return undefined;
     commands.push(command);
+    if (failMutation) throw Error('storage unavailable');
+    if (command.op === 'delete_messages') {
+      const removed = command.targets.map((target) => target.message_id);
+      entries = entries.filter((value) => !removed.includes(value.id));
+      return removed;
+    }
     if (command.op === 'react') return entry;
     throw Error(`Unexpected message action ${command.op}`);
   };
@@ -52,13 +101,15 @@ export async function liveMessageActions() {
     ...React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot),
   });
   const module = { exports: {} as { useMessageActions: typeof useMessageActions } };
-  runInNewContext(bundled.outputFiles[0]!.text, {
+  const ports = {
     module,
     exports: module.exports,
     Error,
     AbortController,
     require: (name: string) => {
       if (name === 'react') return React;
+      if (name === 'react-native')
+        return { Keyboard: { dismiss: () => keyboardCalls.push('selection-keyboard') } };
       if (
         name === 'react/compiler-runtime' ||
         name === 'react/jsx-runtime' ||
@@ -97,7 +148,10 @@ export async function liveMessageActions() {
       if (name === './dialogs')
         return {
           useDialogs: () => ({
-            choose: () => assert.fail('No deletion confirmation'),
+            choose: (options: Parameters<Dialogs['choose']>[0]) => {
+              confirmations.push(options);
+              return choose(options);
+            },
             inform: () => assert.fail('No error expected'),
           }),
         };
@@ -107,9 +161,16 @@ export async function liveMessageActions() {
         return { messageInfoAction: () => assert.fail('No message-info navigation') };
       throw Error(name);
     },
+  };
+  runInNewContext(bundled.outputFiles[0]!.text, ports);
+  const selectionModule = { exports: {} as { useMessageSelection: typeof useMessageSelection } };
+  runInNewContext(selectionBundle.outputFiles[0]!.text, {
+    ...ports,
+    module: selectionModule,
+    exports: selectionModule.exports,
   });
   let actions!: ReturnType<typeof useMessageActions>;
-  let entries = [entry];
+  let selected!: ReturnType<typeof useMessageSelection>;
   const onReply = (value: unknown) => {
     replies.push(value);
   };
@@ -120,10 +181,12 @@ export async function liveMessageActions() {
     threads.push(value);
   };
   function Probe(_props: { revision: number }) {
+    selected = selectionModule.exports.useMessageSelection(space, entries, disabled, threadRoot);
     actions = module.exports.useMessageActions({
       spaceId: space,
       entries,
-      disabled,
+      disabled: disabled || selected.active,
+      threadRootId: threadRoot,
       onReply,
       onEdit,
       onThread,
@@ -146,6 +209,17 @@ export async function liveMessageActions() {
       return entry;
     },
     commands,
+    confirmations,
+    selection: () => selected,
+    get entries() {
+      return entries;
+    },
+    choose: (next: Dialogs['choose']) => {
+      choose = next;
+    },
+    failMutation: (fail: boolean) => {
+      failMutation = fail;
+    },
     routes,
     copies,
     replies,
@@ -186,7 +260,7 @@ export async function liveMessageActions() {
     },
     async replaceReaction() {
       entry = { ...entry, reactions: [{ emoji: '❤️', mine: true, people: [entry.author] }] };
-      entries = [entry];
+      entries = entries.map((value) => (value.id === entry.id ? entry : value));
       await render();
     },
     async startContext(request: MessageContextRequest, mode: 'actions' | 'reactions' = 'actions') {
@@ -209,8 +283,18 @@ export async function liveMessageActions() {
         | 'disabled'
         | 'owner'
         | 'access'
-        | 'blur',
+        | 'blur'
+        | 'thread-aba',
     ) {
+      if (kind === 'thread-aba') {
+        const previous = entries;
+        entries = [];
+        threadRoot = 'another-thread';
+        await render();
+        entries = previous;
+        threadRoot = null;
+        await render();
+      }
       if (kind === 'owner')
         await root.act(async () => {
           snapshot.account!.identity_id = 'c'.repeat(64);

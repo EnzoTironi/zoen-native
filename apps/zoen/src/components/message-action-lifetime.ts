@@ -11,7 +11,7 @@ type Attempt = Readonly<{
   mode?: MessageActionMode;
   emoji?: string;
 }>;
-type Observation = Readonly<{ activation: number }>;
+type Observation = Readonly<{ activation: number; threadRoot: string | null }>;
 
 /** Owns transient interaction attempts, never messages, permissions or receipts. */
 export class MessageActionLifetime {
@@ -23,7 +23,7 @@ export class MessageActionLifetime {
   private activation = { current: 0 };
   private profile: Attempt | null = null;
   private open: Attempt | null = null;
-  private observation: Observation = { activation: 0 };
+  private observation: Observation;
   private listeners = new Set<() => void>();
   private observed: string;
   constructor(
@@ -32,7 +32,9 @@ export class MessageActionLifetime {
     private scope: string,
     private epoch: number,
     private clearSelection: () => void,
+    threadRoot: string | null = null,
   ) {
+    this.observation = { activation: 0, threadRoot };
     this.observed = scope;
     this.latest = { scope, entries: [], disabled: true };
   }
@@ -48,7 +50,7 @@ export class MessageActionLifetime {
     this.profile = null;
     this.open = null;
     this.confirmation.current?.abort();
-    this.observation = { activation: this.activation.current };
+    this.observation = { ...this.observation, activation: this.activation.current };
     this.clearSelection();
     for (const listener of this.listeners) listener();
   };

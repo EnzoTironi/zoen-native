@@ -9,6 +9,7 @@ export function useMessageActionLifetime({
   store,
   state,
   spaceId,
+  threadRootId = null,
   entries,
   disabled,
   setBusy,
@@ -17,6 +18,7 @@ export function useMessageActionLifetime({
   store: ClientStore;
   state: ClientState;
   spaceId: string;
+  threadRootId?: string | null;
   entries: readonly TimelineEntry[];
   disabled: boolean;
   setBusy(value: boolean): void;
@@ -24,8 +26,8 @@ export function useMessageActionLifetime({
 }) {
   const { scope, epoch: infoEpoch } = messageActionOwner(store, state, spaceId);
   const controller = useMemo(
-    () => new MessageActionLifetime(store, spaceId, scope, infoEpoch, clearSelection),
-    [store, spaceId, scope, infoEpoch, clearSelection],
+    () => new MessageActionLifetime(store, spaceId, scope, infoEpoch, clearSelection, threadRootId),
+    [store, spaceId, scope, infoEpoch, clearSelection, threadRootId],
   );
   const observation = useSyncExternalStore(
     controller.subscribe,
