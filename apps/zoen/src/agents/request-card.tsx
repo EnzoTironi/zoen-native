@@ -4,7 +4,7 @@ import {
   type DecisionTicket,
 } from './submit-request-decision';
 import { t, formatLocale } from '../i18n/index.ts';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
@@ -65,7 +65,7 @@ export function RequestCard({
   const [pendingTicket, setPendingTicket] = useState<DecisionTicket | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
-  const [expiryRevision, redrawExpiry] = useState(0);
+  const [expiryClock, observeExpiry] = useState(Date.now);
   const deciding = useRef<DecisionAttempt | null>(null);
   const resetOutput = useCallback(() => {
     setFailure(null);
@@ -80,7 +80,7 @@ export function RequestCard({
   const drawingOwner = accountScopeKey(accountScope(store, client));
   const reviewExpired = useCallback(() => {
     if (drawingOwner && accountScopeKey(accountScope(store)) === drawingOwner)
-      redrawExpiry((revision) => revision + 1);
+      observeExpiry(Date.now());
   }, [store, drawingOwner]);
   const drawingKey = `${request.id}:${tool?.content_hash ?? ''}:${drawingOwner}:${drawingReview?.key ?? ''}`;
   const drawingLease = useRef<string | null>(null);
@@ -106,13 +106,9 @@ export function RequestCard({
   const conversationRequest = tool != null && conversationSearchReview(tool);
   const image = imageRequest && imageToolReviewValid(tool.image) ? tool.image : null;
   const toolValid = tool == null || toolApprovalValid(tool);
-  // The session's existing deadline observation invalidates this presentation
-  // calculation even when the canonical request object has not changed.
-  const toolExpiry = useMemo(
-    () => ({ revision: expiryRevision, expired: tool != null && toolApprovalExpired(tool) }),
-    [tool, expiryRevision],
-  );
-  const toolExpired = toolExpiry.expired;
+  // The observed deadline is a real value dependency for compiler memoization.
+  // Core independently checks the signed expiry when a decision is submitted.
+  const toolExpired = tool != null && toolApprovalExpired(tool, expiryClock);
   const itemId =
     imageRequest || conversationRequest
       ? null
