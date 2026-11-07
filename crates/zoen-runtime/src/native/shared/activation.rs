@@ -1,7 +1,7 @@
 use super::*;
 enum NativeEffect<'a> {
     Maintenance(Option<SharedSource>),
-    Discovery(Batch),
+    Discovery(Discovery, SharedSource),
     Publication(&'a runs::output::LivePublication<'a>),
     Tool(&'a runs::reviews::LiveToolDecision<'a>),
 }
@@ -40,17 +40,43 @@ impl NativeCustody {
         &self,
         runtime: &RuntimeAuthority,
         credential: &Credential,
-        staged: storage::Staged,
+        candidate: (Root, PreparedImage),
         fence: &crate::execution::Fence,
         batch: Batch,
     ) -> Result<(Root, Vec<crate::ReplyRun>), RuntimeError> {
-        batch.scope(&runtime.execution, &staged, fence)?;
-        self.activate_native(
+        batch.validate()?;
+        let shared = runtime
+            .runtime_continuity
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
+        let mut managed = shared.lock().await;
+        Box::pin(managed.reconcile(runtime)).await?;
+        let source = SharedSource {
+            cell: batch.source.clone(),
+            space: batch.space.clone(),
+            expected: batch.head.clone(),
+            through: batch.through.clone(),
+        };
+        // A current-head refusal during planning must leave no native stage.
+        // Once the anchor prepares activation, normal exact recovery remains
+        // authoritative; no stage, pin, lease or recovery window is bypassed.
+        let discovery = Discovery::retain(runtime, &candidate.1.root, batch).await?;
+        let staged = runtime
+            .execution
+            .stage_native(
+                &credential.principal(),
+                Some(candidate.0),
+                fence,
+                candidate.1,
+            )
+            .await?;
+        self.activate_native_guarded(
             runtime,
             credential,
             staged,
             fence,
-            NativeEffect::Discovery(batch),
+            NativeEffect::Discovery(discovery, source),
+            Some(&mut managed),
         )
         .await
     }
@@ -81,19 +107,37 @@ impl NativeCustody {
         fence: &crate::execution::Fence,
         effect: NativeEffect<'_>,
     ) -> Result<(Root, Vec<crate::ReplyRun>), RuntimeError> {
-        let (source, batch, live, tool) = match effect {
+        if let Some(shared) = &runtime.runtime_continuity {
+            let mut managed = shared.lock().await;
+            self.activate_native_guarded(
+                runtime,
+                credential,
+                staged,
+                fence,
+                effect,
+                Some(&mut managed),
+            )
+            .await
+        } else {
+            self.activate_native_guarded(runtime, credential, staged, fence, effect, None)
+                .await
+        }
+    }
+
+    async fn activate_native_guarded(
+        &self,
+        runtime: &RuntimeAuthority,
+        credential: &Credential,
+        staged: storage::Staged,
+        fence: &crate::execution::Fence,
+        effect: NativeEffect<'_>,
+        managed: Option<&mut ManagedRuntime>,
+    ) -> Result<(Root, Vec<crate::ReplyRun>), RuntimeError> {
+        let (source, discovery, live, tool) = match effect {
             NativeEffect::Maintenance(source) => (source, None, None, None),
-            NativeEffect::Discovery(batch) => (
-                Some(SharedSource {
-                    cell: batch.source.clone(),
-                    space: batch.space.clone(),
-                    expected: batch.head.clone(),
-                    through: batch.through.clone(),
-                }),
-                Some(batch),
-                None,
-                None,
-            ),
+            NativeEffect::Discovery(discovery, source) => {
+                (Some(source), Some(discovery), None, None)
+            }
             NativeEffect::Publication(live) => {
                 (Some(live.source(runtime)?), None, Some(live), None)
             }
@@ -108,8 +152,8 @@ impl NativeCustody {
             publication: None,
             tool: None,
         };
-        let Some(shared) = &runtime.runtime_continuity else {
-            if batch.is_some() || live.is_some() || tool.is_some() {
+        let Some(managed) = managed else {
+            if discovery.is_some() || live.is_some() || tool.is_some() {
                 return Err(RuntimeError::CoreAuthorityUnavailable);
             }
             let scope = intent.scope(runtime, fence)?;
@@ -134,7 +178,6 @@ impl NativeCustody {
             tx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
             return Ok((staged.root, Vec::new()));
         };
-        let mut managed = shared.lock().await;
         Box::pin(managed.reconcile(runtime)).await?;
         let mut sql = runtime.finance.continuity_transaction().await?;
         let previous = managed.sql_checkpoint(&mut sql).await?;
@@ -170,8 +213,7 @@ impl NativeCustody {
         {
             return Err(RuntimeError::RestoreUnreconciled);
         }
-        if let Some(batch) = batch {
-            let discovery = Discovery::retain(runtime, &staged.root, batch).await?;
+        if let Some(discovery) = discovery {
             discovery.require_capacity(runtime, &tx).await?;
             intent.discovery = Some(discovery);
         }
@@ -263,7 +305,7 @@ impl NativeCustody {
             guard
         };
         let admission = guard
-            .shared_native_checkpoint(&managed, &prepared, &scope, false)
+            .shared_native_checkpoint(managed, &prepared, &scope, false)
             .await?
             .authorize_before(
                 scope.clone(),

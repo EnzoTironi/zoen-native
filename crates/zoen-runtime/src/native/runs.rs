@@ -45,12 +45,7 @@ pub(in crate::native) struct Batch {
 }
 
 impl Batch {
-    pub(in crate::native) fn scope(
-        &self,
-        execution: &Execution,
-        staged: &super::storage::Staged,
-        fence: &Fence,
-    ) -> Result<ActivationScope, RuntimeError> {
+    pub(in crate::native) fn validate(&self) -> Result<(), RuntimeError> {
         if self.runs.len() > MAX_RUNS {
             return Err(RuntimeError::EvidenceTooLarge);
         }
@@ -58,6 +53,17 @@ impl Batch {
         if bytes.len() > MAX_BATCH_BYTES {
             return Err(RuntimeError::EvidenceTooLarge);
         }
+        Ok(())
+    }
+
+    pub(in crate::native) fn scope(
+        &self,
+        execution: &Execution,
+        staged: &super::storage::Staged,
+        fence: &Fence,
+    ) -> Result<ActivationScope, RuntimeError> {
+        self.validate()?;
+        let bytes = serde_json::to_vec(self).map_err(|_| RuntimeError::InvalidBinding)?;
         let mut scope = staged.scope(execution, fence);
         scope.effects = hash(&bytes);
         Ok(scope)
@@ -457,13 +463,14 @@ impl NativeCustody {
                 }
             }
         }
-        let staged = runtime
-            .execution
-            .stage_native(principal, Some(previous), fence, next)
-            .await?;
+        #[cfg(test)]
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 187 {
+            runtime.native_cut_entered.notify_one();
+            runtime.native_cut_resume.notified().await;
+        }
         if runtime.runtime_continuity.is_some() {
             let (root, runs) = self
-                .activate_discovery(runtime, credential, staged, fence, effects)
+                .activate_discovery(runtime, credential, (previous, next), fence, effects)
                 .await?;
             return Ok(ReplySync {
                 native: NativeInspection {
@@ -476,6 +483,10 @@ impl NativeCustody {
                 runs,
             });
         }
+        let staged = runtime
+            .execution
+            .stage_native(principal, Some(previous), fence, next)
+            .await?;
         let scope = effects.scope(&runtime.execution, &staged, fence)?;
         #[cfg(test)]
         let scope = if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 18 {

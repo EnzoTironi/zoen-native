@@ -210,19 +210,25 @@ impl NativeCustody {
         let mut definition = runtime.finance.continuity_transaction().await?;
         parent.current_definition_in(&mut definition).await?;
         definition.commit().await?;
-        let staged = runtime
-            .execution
-            .stage_native(
-                principal,
-                Some(loaded.current.clone()),
-                &loaded.fences.device,
-                next,
-            )
-            .await?;
         let (_, runs) = if runtime.runtime_continuity.is_some() {
-            self.activate_discovery(runtime, &credential, staged, &loaded.fences.device, batch)
-                .await?
+            self.activate_discovery(
+                runtime,
+                &credential,
+                (loaded.current.clone(), next),
+                &loaded.fences.device,
+                batch,
+            )
+            .await?
         } else {
+            let staged = runtime
+                .execution
+                .stage_native(
+                    principal,
+                    Some(loaded.current.clone()),
+                    &loaded.fences.device,
+                    next,
+                )
+                .await?;
             let authority = batch.scope(&runtime.execution, &staged, &loaded.fences.device)?;
             let admission = runtime
                 .finance

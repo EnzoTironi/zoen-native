@@ -37,7 +37,7 @@ impl PriceProfile {
 
     pub(crate) fn validate(&self) -> Result<(), RuntimeError> {
         if !crate::id(&self.version)
-            || !crate::id(&self.model)
+            || !zoen_models::valid_model_identifier(&self.model)
             || !crate::id(&self.credential_ref)
             || self.endpoint.len() > 2048
             || !self.endpoint.ends_with("/v1/chat/completions")

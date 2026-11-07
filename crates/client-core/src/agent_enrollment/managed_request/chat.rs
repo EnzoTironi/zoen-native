@@ -27,11 +27,45 @@ impl Client {
             }))
             .await
             .map_err(invalid)?;
-        self.with_device_directory_completion(&owner, &channel, |engine| {
+        let record = self.with_device_directory_completion(&owner, &channel, |engine| {
             let record = managed_record(engine, &request, response, identity, device)?;
             if record.state != "registered" || record.agent != agent {
                 return Err(changed());
             }
+            Ok(record)
+        })?;
+        // Registration can precede directory background discovery. Resolve the
+        // exact certified public profile on this same connection, rather than
+        // requiring an unrelated People search before the first Chat action.
+        let profiles = channel
+            .clone()
+            .send(Op::Profiles {
+                ids: vec![agent.into()],
+            })
+            .await
+            .map_err(invalid)?;
+        self.with_device_directory_completion(&owner, &channel, |engine| {
+            managed_record(
+                engine,
+                &request,
+                Reply::ManagedAgent(record),
+                identity,
+                device,
+            )?;
+            let Reply::Profiles(profiles) = profiles else {
+                return Err(changed());
+            };
+            let [profile] = profiles.as_slice() else {
+                return Err(changed());
+            };
+            if profile.id != agent
+                || profile.kind != types::IdentityKind::Agent
+                || profile.owner.as_deref() != Some(identity)
+                || !event_log::agent_owner::profile_authorized(profile)
+            {
+                return Err(changed());
+            }
+            engine.put_profiles(profiles)?;
             let space = engine.start_owner_policy_direct(identity, device, agent)?;
             // A retry must neither downgrade an existing grant nor resurrect a
             // revoked one. The normal permissions surface owns later changes.

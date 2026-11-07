@@ -7,6 +7,7 @@ pub(in crate::tests) mod capture;
 mod claims;
 pub(in crate::tests) mod context;
 pub(in crate::tests) mod discovery;
+pub(in crate::tests) mod discovery_race;
 mod dispatch;
 pub(in crate::tests) mod execution;
 pub(in crate::tests) mod output_route;
@@ -148,6 +149,7 @@ pub(in crate::tests) async fn run() -> TestResult {
         f.finish().await;
         println!("shared native maintenance fault {fault}: original bootstrap/MLS packages/source cursor share policy anchor, cold exact recovery, valid old native root rejected despite unchanged detector pair, zero provider/financial claims PASS");
     }
+    Box::pin(discovery_race::run()).await?;
     Box::pin(discovery::run()).await?;
     Box::pin(cancellation::run()).await?;
     Box::pin(reservation::run()).await?;
