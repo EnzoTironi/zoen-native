@@ -4,6 +4,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 mod contract;
+mod control;
+pub(crate) use control::conversation_review_control;
 mod recovery;
 mod review;
 pub(crate) use contract::{access, matches, parsed};

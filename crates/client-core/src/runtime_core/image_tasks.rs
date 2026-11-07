@@ -2,10 +2,9 @@
 mod delivery;
 mod output;
 mod policy_context;
-mod reference;
 mod review;
 use super::{
-    direct_writers, DeviceCore, Event, EventBody, FileDoc, ItemContent, ItemKind, NativeError,
+    direct_writers, DeviceCore, EventBody, FileDoc, ItemContent, ItemKind, NativeError,
     NativeFrontier, NativeImage, Result, SpaceLog, ToolProposal, MAX_EVENT_BYTES,
 };
 use crate::image_tasks::{self, ImageTaskInput};

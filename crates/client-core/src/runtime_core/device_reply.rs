@@ -230,6 +230,22 @@ impl DeviceCore {
                         && (profile != LEGACY_PROFILE || original.is_some() || reply.is_none())
                         && (opened.is_some() || own_echo)
                 }
+                EventBody::RequestOpened { .. }
+                | EventBody::RequestResolved { .. }
+                | EventBody::ToolReviewRequested { .. } => {
+                    accepted
+                        && historical_writers
+                        && (own_echo
+                            || opened
+                                .as_ref()
+                                .is_some_and(|from| from.identity == event.author))
+                        && crate::agent_conversation_tools::conversation_review_control(
+                            &ordered,
+                            event,
+                            &self.owner,
+                            &self.agent,
+                        )
+                }
                 _ => false,
             };
             if !supported {
