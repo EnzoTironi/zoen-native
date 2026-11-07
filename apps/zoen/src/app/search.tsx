@@ -71,14 +71,15 @@ function recentPeriod(days: number): SearchPageInput['period'] {
 
 export default function Search() {
   const params = useLocalSearchParams<{ space?: string; query?: string }>();
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const space = params.space;
   const initial = params.query;
-  const scope = searchScope(store, space);
+  const scope = searchScope(store, space, client);
   const owner = JSON.stringify([
     store.sessionEpoch,
-    homeOwnerFor(store.getSnapshot()),
-    store.getSnapshot().snapshot?.account?.relay_url ?? null,
+    homeOwnerFor(client),
+    client.snapshot?.account?.relay_url ?? null,
   ]);
   const [initialOwner] = useState(owner);
   return (
@@ -102,7 +103,8 @@ function SearchBody({
 }) {
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
-  const { store } = useClient();
+  const client = useClient();
+  const { store } = client;
   const { colors } = useTheme();
   const [filter, setFilter] = useState({
     index: 0,
@@ -113,8 +115,7 @@ function SearchBody({
     messages: undefined as SearchPageInput['messages'],
     labels: {} as { author?: string; space?: string },
   });
-  const supportsNativeFilters =
-    process.env.EXPO_OS !== 'web' && store.getSnapshot().mode === 'account';
+  const supportsNativeFilters = process.env.EXPO_OS !== 'web' && client.mode === 'account';
   const filters = supportsNativeFilters
     ? space
       ? nativeSearchFilters.filter(
@@ -176,9 +177,9 @@ function SearchBody({
     return () => clearTimeout(timer);
   }, [search, query, results.active, results.loading, results.completed, results.error]);
   const hits = scope ? results.hits : [];
-  const readable = homeSpacesFor(store.getSnapshot());
+  const readable = homeSpacesFor(client);
   const choices = searchIdentityOptions(
-    store.getSnapshot().snapshot?.conversations.filter((chat) => readable.has(chat.id)) ?? [],
+    client.snapshot?.conversations.filter((chat) => readable.has(chat.id)) ?? [],
     hits,
     space ?? filter.messages?.space_id,
   );
