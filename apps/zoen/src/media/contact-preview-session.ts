@@ -126,7 +126,7 @@ export class ContactPreviewSession {
       this.working ||
       !copy ||
       this.state.contact !== expected ||
-      this.state.phase !== 'ready' ||
+      (this.state.phase !== 'ready' && this.state.phase !== 'error') ||
       !this.state.visible ||
       !this.ports.current()
     )
@@ -135,7 +135,7 @@ export class ContactPreviewSession {
     const current = () => generation === this.generation && !copy.retired && this.ports.current();
     this.working = true;
     copy.users++;
-    this.publish({ ...this.state, busy: true });
+    this.publish({ ...this.state, phase: 'ready', busy: true });
     try {
       const available = ready ? await ready() : true;
       if (!current()) return;

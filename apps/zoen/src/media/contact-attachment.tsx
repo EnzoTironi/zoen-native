@@ -9,6 +9,7 @@ import { t } from '../i18n';
 import { useTheme } from '../theme';
 import { MediaSheet } from './media-sheet';
 import { useContactPreview } from './use-contact-preview';
+import { saveContact } from './contact-save';
 import type { MediaDriver } from './types';
 
 export function ContactAttachment(props: {
@@ -21,8 +22,8 @@ export function ContactAttachment(props: {
   onActions?: () => void;
   isCurrent(): boolean;
 }) {
-  const { store } = useClient();
-  const scope = documentScope(store.getSnapshot(), store.sessionEpoch);
+  const client = useClient();
+  const scope = documentScope(client, client.store.sessionEpoch);
   return (
     <ContactAttachmentView
       key={JSON.stringify([scope, props.spaceId, props.messageId, props.source])}
@@ -107,7 +108,7 @@ function ContactAttachmentView(props: Parameters<typeof ContactAttachment>[0]) {
               {t(contact ? 'media.contactActionFailed' : 'media.contactCouldNotBeOpened')}
             </Text>
           ) : null}
-          {contact && state.phase === 'ready' ? (
+          {contact && (state.phase === 'ready' || state.phase === 'error') ? (
             <>
               {contact.phones.map((phone, index) => (
                 <View
@@ -142,6 +143,21 @@ function ContactAttachmentView(props: Parameters<typeof ContactAttachment>[0]) {
                   />
                 </View>
               ))}
+              {saveContact ? (
+                <NativeButton
+                  label={t('media.saveContact')}
+                  disabled={state.busy}
+                  onPress={() => {
+                    if (current())
+                      void session
+                        .perform(contact, async (_file, valid) => {
+                          if (valid() && saveContact)
+                            await saveContact(contact, t('common.cancel'));
+                        })
+                        .catch(() => {});
+                  }}
+                />
+              ) : null}
               <NativeButton
                 label={t('media.shareContact')}
                 disabled={state.busy}

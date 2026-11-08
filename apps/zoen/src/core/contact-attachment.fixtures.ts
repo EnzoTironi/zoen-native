@@ -225,12 +225,13 @@ export function fixture(kind: 'contact' | 'location' = 'contact') {
               return focusCleanup;
             }, [read]),
         };
-      if (name === '../core/provider') return { useClient: () => ({ store }) };
+      if (name === '../core/provider') return { useClient: () => ({ store, ...state }) };
       if (name === '../components/primitives')
         return { NativeButton: 'NativeButton', IconButton: 'IconButton', Icon: 'Icon' };
       if (name === '../components/message-interaction')
         return { MessagePressable: 'MessagePressable' };
       if (name === './location-map') return { LocationMap: 'LocationMap' };
+      if (name === './contact-save') return { saveContact: null };
       if (name === './media-sheet') return { MediaSheet: 'MediaSheet' };
       if (name === '../theme') return { useTheme: () => ({ colors: {} }) };
       if (name.startsWith('../i18n'))
