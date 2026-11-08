@@ -1,3 +1,4 @@
+import { messageAddress } from './links.ts';
 import type { Snapshot } from '../core/types';
 
 export type LocalNote = {
@@ -7,6 +8,7 @@ export type LocalNote = {
   spaceId: string;
   deviceId: string;
   sequence: string;
+  messageId?: string;
 };
 
 function eventCount(value: string): bigint | null {
@@ -56,6 +58,9 @@ export function localNotes(before: Snapshot, after: Snapshot): LocalNote[] {
         spaceId: chat.id,
         deviceId: account.device_id,
         sequence: chat.event_count,
+        ...(chat.last_message_id && messageAddress(chat.id, chat.last_message_id)
+          ? { messageId: chat.last_message_id }
+          : {}),
       },
     ];
   });

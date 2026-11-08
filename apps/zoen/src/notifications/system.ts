@@ -194,6 +194,7 @@ export async function showLocalNote(note: LocalNote) {
         device_id: note.deviceId,
         space_id: note.spaceId,
         event_seq: note.sequence,
+        ...(note.messageId ? { message_id: note.messageId } : {}),
       },
     },
     trigger: Platform.OS === 'android' ? { channelId: ANDROID_MESSAGE_CHANNEL } : null,

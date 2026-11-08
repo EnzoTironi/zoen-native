@@ -146,7 +146,7 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
     'fixture:i18n': { t: (key: string) => key },
     'fixture:dialogs': { useDialogs: () => ({ inform: async () => {} }) },
     'fixture:client': {
-      useClient: () => ({ store, snapshot: current.snapshot, mode: current.mode }),
+      useClient: () => ({ store, ...current }),
     },
     'fixture:system': system,
   };
@@ -386,6 +386,69 @@ test('notification taps require an unlocked live account on the original relay',
       f.respond({ zoen_local: 1, device_id: 'synthetic-device', event_seq: '1', space_id: 'chat' });
       assert.equal(
         f.calls.some(({ kind }) => kind === 'navigation'),
+        false,
+        invalidate,
+      );
+    } finally {
+      f.close();
+    }
+  }
+});
+
+test('new local notifications open the exact canonical message route rather than the latest chat', () => {
+  const f = fixture('background');
+  try {
+    f.conversations([{ id: 'chat', members: [{ id: 'synthetic-owner' }] } as SpaceSummary]);
+    f.respond({
+      zoen_local: 1,
+      device_id: 'synthetic-device',
+      event_seq: '18446744073709551615',
+      space_id: 'chat',
+      message_id: 'message-old',
+    });
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(f.calls.filter(({ kind }) => kind === 'navigation'))),
+      [
+        {
+          kind: 'navigation',
+          value: {
+            pathname: '/message/[space]/[message]',
+            params: { space: 'chat', message: 'message-old' },
+          },
+        },
+      ],
+    );
+    f.respond({
+      zoen_local: 1,
+      device_id: 'synthetic-device',
+      event_seq: '1',
+      space_id: 'chat',
+      message_id: 'https://malicious.example',
+    });
+    assert.equal(f.calls.filter(({ kind }) => kind === 'navigation').length, 1);
+    f.reopen();
+    f.respond({
+      zoen_local: 1,
+      device_id: 'synthetic-device',
+      event_seq: '2',
+      space_id: 'chat',
+      message_id: 'message-new',
+    });
+    assert.equal(f.calls.filter(({ kind }) => kind === 'navigation').length, 1);
+  } finally {
+    f.close();
+  }
+});
+
+test('old registration activation refuses locked, retiring and changed-relay account scopes', async () => {
+  for (const invalidate of ['lock', 'retire', 'changeRelay'] as const) {
+    const f = fixture('background');
+    try {
+      f[invalidate]();
+      f.enter('active');
+      await f.flush();
+      assert.equal(
+        f.calls.some(({ kind }) => ['permission', 'token', 'register'].includes(kind)),
         false,
         invalidate,
       );

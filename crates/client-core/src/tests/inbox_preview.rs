@@ -16,10 +16,15 @@ fn preview_format_tracks_complete_message_edits_deletion_and_legacy_dtos(
         "never parse a truncated Markdown source"
     );
     assert!(summary.last_preview_is_markdown);
+    assert_eq!(
+        summary.last_message_id.as_deref(),
+        Some(message.id.as_str())
+    );
 
     let mut legacy = serde_json::to_value(&summary)?;
     if let serde_json::Value::Object(fields) = &mut legacy {
         fields.remove("last_preview_is_markdown");
+        fields.remove("last_message_id");
     }
     let decoded: SpaceSummary = serde_json::from_value(legacy)?;
     assert!(
@@ -27,6 +32,7 @@ fn preview_format_tracks_complete_message_edits_deletion_and_legacy_dtos(
         "old DTOs never guess label syntax"
     );
     assert_eq!(decoded.last_preview, body);
+    assert_eq!(decoded.last_message_id, None);
 
     client.edit_message(
         space.clone(),
@@ -36,6 +42,7 @@ fn preview_format_tracks_complete_message_edits_deletion_and_legacy_dtos(
     let edited = client.space(space.clone())?;
     assert_eq!(edited.last_preview, "`edited literal_*`");
     assert!(edited.last_preview_is_markdown);
+    assert_eq!(edited.last_message_id, Some(message.id.clone()));
     client.lock().reload()?;
     assert_eq!(
         client.space(space.clone())?,
@@ -46,6 +53,7 @@ fn preview_format_tracks_complete_message_edits_deletion_and_legacy_dtos(
     client.delete_message(space.clone(), message.id)?;
     let deleted = client.space(space)?;
     assert!(!deleted.last_preview_is_markdown);
+    assert_eq!(deleted.last_message_id, None);
     assert_ne!(deleted.last_preview, edited.last_preview);
     Ok(())
 }

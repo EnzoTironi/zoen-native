@@ -332,7 +332,13 @@ impl Engine {
     pub(super) fn preview(
         &self,
         s: &SpaceState,
-    ) -> (String, bool, Option<Persona>, Option<Delivery>) {
+    ) -> (
+        String,
+        bool,
+        Option<Persona>,
+        Option<Delivery>,
+        Option<String>,
+    ) {
         for e in s.entries.iter().rev() {
             if !self.visible_message(e) {
                 continue;
@@ -361,7 +367,7 @@ impl Engine {
                 EntryBody::Request { request } => {
                     if let Some(r) = self.state.requests.get(request) {
                         // A request's title already describes the action in natural language.
-                        return (r.req.title.clone(), false, None, None);
+                        return (r.req.title.clone(), false, None, None, None);
                     }
                     continue;
                 }
@@ -384,11 +390,20 @@ impl Engine {
             } else {
                 None
             };
-            return (text, markdown, Some(self.persona(&e.author)), delivery);
+            let message_id = matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted)
+                .then(|| e.id().to_string());
+            return (
+                text,
+                markdown,
+                Some(self.persona(&e.author)),
+                delivery,
+                message_id,
+            );
         }
         (
             t("Nenhuma mensagem ainda", "No messages yet"),
             false,
+            None,
             None,
             None,
         )

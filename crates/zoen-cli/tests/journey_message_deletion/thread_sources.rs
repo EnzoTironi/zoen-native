@@ -39,6 +39,12 @@ async fn nested_thread_reply_keeps_exact_source_across_delivery_and_cold_reopen(
     drop(bob);
     for person in ["alice", "bob"] {
         let reopened = Open::offline(&w, person)?;
+        let summary = reopened.0.space(space.clone())?;
+        assert_eq!(
+            summary.last_message_id.as_deref(),
+            Some(answer.id.as_str()),
+            "notification preview must retain the exact thread message across cold reopen"
+        );
         let timeline = reopened.0.timeline(space.clone())?;
         let received = timeline
             .iter()

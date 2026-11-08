@@ -126,6 +126,7 @@ extension ZoenSession {
         content.sound = .default
         content.threadIdentifier = note.spaceID
         content.userInfo = ["zoen_local": 1, "device_id": note.deviceID, "space_id": note.spaceID, "event_seq": note.sequence]
+        if let messageID = note.messageID { content.userInfo["message_id"] = messageID }
         try await center.add(UNNotificationRequest(identifier: note.identifier, content: content, trigger: nil))
         do {
           try Task.checkCancellation()

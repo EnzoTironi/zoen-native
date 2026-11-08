@@ -60,6 +60,7 @@ private func snapshotModels(_ fixture: URL) throws {
   for (note, value) in zip(notes, expected) {
     check(note.identifier == value["identifier"] && note.title == value["title"] && note.body == value["body"])
     check(note.spaceID == value["spaceId"] && note.deviceID == value["deviceId"] && note.sequence == value["sequence"])
+    check(note.messageID == value["messageId"])
   }
   var changed = root["after"] as! [String: Any]
   var account = changed["account"] as! [String: Any]

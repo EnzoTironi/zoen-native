@@ -14,6 +14,10 @@ can_write: boolean, members: Array<Persona>,
  */
 counterpart: Persona | null, last_preview: string, 
 /**
+ * Exact message behind this preview; absent for labels, deleted text and warnings.
+ */
+last_message_id?: string, 
+/**
  * Complete message Markdown; false for generated labels, titles and warnings.
  */
 last_preview_is_markdown?: boolean, last_author: Persona | null, last_at_ms: string, unread: number, 

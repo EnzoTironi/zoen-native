@@ -124,6 +124,24 @@ impl World {
         port
     }
 
+    /// Reaps this World's auxiliary relay processes while retaining their port reservations.
+    /// A restart profile must not leave an independent healthy partition owner behind.
+    pub fn stop_nodes(&mut self) -> Result<usize, String> {
+        let count = self.nodes.len();
+        for child in &mut self.nodes {
+            if child
+                .try_wait()
+                .map_err(|error| error.to_string())?
+                .is_none()
+            {
+                child.kill().map_err(|error| error.to_string())?;
+            }
+            child.wait().map_err(|error| error.to_string())?;
+        }
+        self.nodes.clear();
+        Ok(count)
+    }
+
     pub(super) fn spawn_relay(&self, port: u16, log_name: &str) -> Result<(Child, String), String> {
         let path = self.dir.join(log_name);
         let log = std::fs::OpenOptions::new()
