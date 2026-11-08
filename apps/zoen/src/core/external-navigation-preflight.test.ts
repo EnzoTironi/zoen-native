@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { ClientStore } from './store.ts';
-import { accountScope } from './account-scope.ts';
+import { accountScope, accountScopeKey } from './account-scope.ts';
 import type { Command, CommandResult, CoreDriver, CoreEvent, Snapshot } from './types.ts';
 import { allowLocalNotification } from '../notifications/local-admission.ts';
 import { validLocalNotification } from '../notifications/links.ts';
@@ -185,7 +185,7 @@ for (const platform of ['ios', 'android'])
     }
     const unmount = mount('notifications', {
       '../core/provider': { useClient: () => ({ ...store.getSnapshot(), store }) },
-      '../core/account-scope': { accountScope },
+      '../core/account-scope': { accountScope, accountScopeKey },
       '../components/dialogs': {
         useDialogs: () => ({
           inform: (title: string, message: string) => {
