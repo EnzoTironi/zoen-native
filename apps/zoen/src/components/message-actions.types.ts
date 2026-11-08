@@ -32,6 +32,7 @@ export type MessageActionsProps = Readonly<{
   onReply: (entry: TimelineEntry) => void;
   onThread: (entry: TimelineEntry) => void;
   onInfo?: (entry: TimelineEntry) => void;
+  onPin?: (entry: TimelineEntry) => void;
   onForward?: (entry: TimelineEntry) => void;
   onSelect?: (entry: TimelineEntry) => void;
   onSelectText?: (entry: TimelineEntry) => void | (() => void);

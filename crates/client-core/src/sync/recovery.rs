@@ -91,7 +91,7 @@ impl Engine {
             return false;
         }
         self.approval_replay_needed
-            || self.media_edit_needs_replay(e)
+            || self.reviewed_annotation_needs_replay(e)
             || self.state.waiting_spaces.contains(&e.space)
             || matches!(
                 e.body,

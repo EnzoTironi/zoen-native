@@ -177,6 +177,25 @@ function Navigation() {
                     sheetGrabberVisible: true,
                   }}
                 />
+                <Stack.Screen
+                  name="message-pin/[space]/[message]"
+                  options={{
+                    title: t('messagePins.title'),
+                    presentation: 'formSheet',
+                    headerTransparent: false,
+                    sheetAllowedDetents: 'fitToContents',
+                    sheetGrabberVisible: true,
+                  }}
+                />
+                <Stack.Screen
+                  name="pinned/[space]"
+                  options={{
+                    title: t('messagePins.title'),
+                    presentation: 'formSheet',
+                    headerTransparent: false,
+                    sheetGrabberVisible: true,
+                  }}
+                />
                 <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
               </Stack>
             </SessionGate>

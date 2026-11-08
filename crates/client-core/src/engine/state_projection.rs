@@ -12,6 +12,9 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !self.message_pin_valid(e) {
+            return Projection::Refused;
+        }
         if !crate::forwarding::metadata_valid(&e.body) {
             return Projection::Refused;
         }

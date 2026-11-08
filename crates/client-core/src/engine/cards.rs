@@ -298,6 +298,12 @@ impl Engine {
         self.redact_deleted_for_self(
             e,
             TimelineEntry {
+                pinned: !marks.deleted && marks.pin.as_ref().is_some_and(|p| p.pinned),
+                can_pin: !marks.deleted
+                    && !e.hash.is_empty()
+                    && e.seq > 0
+                    && matches!(&e.body, EntryBody::Message { .. })
+                    && self.state.pin_writer(&e.space, &me),
                 text_revision:
                     matches!(&e.body, EntryBody::Message { marks, .. } if !marks.deleted).then(
                         || {

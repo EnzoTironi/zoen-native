@@ -11,6 +11,7 @@ export function messageInfoAction(
   entry: TimelineEntry,
   current: (entry: TimelineEntry) => TimelineEntry | undefined,
   epoch = store.sessionEpoch,
+  destination: 'info' | 'pin' = 'info',
 ): () => void {
   return () => {
     const state = store.getSnapshot();
@@ -25,7 +26,10 @@ export function messageInfoAction(
     )
       return;
     router.push({
-      pathname: '/message-info/[space]/[message]',
+      pathname:
+        destination === 'pin'
+          ? '/message-pin/[space]/[message]'
+          : '/message-info/[space]/[message]',
       params: { space: spaceId, message: entry.id, owner: scope },
     });
   };

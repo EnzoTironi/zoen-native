@@ -62,3 +62,29 @@ test('service rows and an absent source never gain message actions from supplied
   assert.deepEqual(messageMenuActions(props(null)), []);
   assert.deepEqual(messageMenuActions(null), []);
 });
+
+test('Pin/Unpin is one native-permitted shared action; absent or denied permissions never offer it', () => {
+  const run = () => {};
+  for (const allowed of [undefined, false, true]) {
+    const entry = message({ can_pin: allowed, pinned: false });
+    const actions = messageMenuActions({ ...props(entry), onPin: run });
+    assert.equal(
+      actions.some((row) => row.id === 'pin'),
+      allowed === true,
+    );
+    assert.equal(
+      actions.some((row) => row.id === 'unpin'),
+      false,
+    );
+  }
+  const entry = message({ can_pin: true, pinned: true });
+  const actions = messageMenuActions({ ...props(entry), onPin: run });
+  assert.equal(actions.filter((row) => row.id === 'unpin').length, 1);
+  assert.equal(actions.find((row) => row.id === 'unpin')?.image, 'pin.slash');
+  assert.equal(
+    messageMenuActions({ ...props({ ...entry, deleted: true }), onPin: run }).some(
+      (row) => row.id === 'pin' || row.id === 'unpin',
+    ),
+    false,
+  );
+});

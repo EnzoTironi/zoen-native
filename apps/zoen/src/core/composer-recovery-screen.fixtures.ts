@@ -16,6 +16,7 @@ const source = await build({
   write: false,
 });
 const views: Record<string, string[]> = {
+  'pinned-message-bar': ['PinnedMessageBar'],
   'conversation-hashtag-provider': ['ConversationHashtagProvider'],
   'quote-layout-context': ['QuoteMotionView'],
   'quote-layout-transition': ['QuoteLayoutTransition'],

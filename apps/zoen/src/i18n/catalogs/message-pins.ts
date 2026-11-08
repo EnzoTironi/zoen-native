@@ -1,0 +1,33 @@
+import { defineFeature } from '../catalog.ts';
+export const messagePins = defineFeature(
+  {
+    title: 'Pinned messages',
+    pin: 'Pin message',
+    unpin: 'Unpin message',
+    label: 'Pinned message',
+    open: 'Open pinned message: %{text}',
+    list: 'Show pinned messages',
+    empty: 'No pinned messages',
+    failed: 'Could not load pinned messages.',
+    actionFailed: 'The pin could not be confirmed. Review and try again.',
+    more: 'Load more',
+    pending: 'Awaiting confirmation',
+    unavailable: 'This message is no longer available.',
+    cannotPin: 'Only group owners and admins can pin messages.',
+  },
+  {
+    title: 'Mensagens fixadas',
+    pin: 'Fixar mensagem',
+    unpin: 'Desafixar mensagem',
+    label: 'Mensagem fixada',
+    open: 'Abrir mensagem fixada: %{text}',
+    list: 'Ver mensagens fixadas',
+    empty: 'Nenhuma mensagem fixada',
+    failed: 'Não foi possível carregar as mensagens fixadas.',
+    actionFailed: 'Não foi possível confirmar a fixação. Reveja e tente novamente.',
+    more: 'Carregar mais',
+    pending: 'Aguardando confirmação',
+    unavailable: 'Esta mensagem não está mais disponível.',
+    cannotPin: 'Somente donos e administradores do grupo podem fixar mensagens.',
+  },
+);

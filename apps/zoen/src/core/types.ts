@@ -1,3 +1,6 @@
+import type { MessagePinReview } from './generated/MessagePinReview';
+import type { MessagePinPage } from './generated/MessagePinPage';
+import type { MessagePinResult } from './generated/MessagePinResult';
 import type { SpaceInvitePage } from './generated/SpaceInvitePage';
 import type { ManagedRecoveryPageDto } from './generated/ManagedRecoveryPageDto';
 import type { ManagedEnrollmentDto } from './generated/ManagedEnrollmentDto';
@@ -140,6 +143,9 @@ type Results = {
   send_message: TimelineEntry;
   delete_messages: string[];
   message_info: MessageInfo;
+  message_pin_review: MessagePinReview;
+  message_pins: MessagePinPage;
+  set_message_pin: MessagePinResult;
   forward_batch_status: ForwardBatchReview | null;
   forward_batch_review: ForwardBatchReview;
   set_forward_batch_options: ForwardBatchReview;

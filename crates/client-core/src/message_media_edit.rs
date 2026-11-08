@@ -50,10 +50,10 @@ impl Client {
     }
 }
 impl Engine {
-    /// Incremental confirmation must not apply a remote edit on top of a later optimistic edit.
-    pub(crate) fn media_edit_needs_replay(&self, event: &Event) -> bool {
+    /// Reviewed annotation echoes must replay their original base before later optimistic changes.
+    pub(crate) fn reviewed_annotation_needs_replay(&self, event: &Event) -> bool {
         match &event.body {
-            EventBody::MessageAnnotated { note: Annotation::ReplaceMedia { .. }, .. } => true,
+            EventBody::MessageAnnotated { note: Annotation::ReplaceMedia { .. } | Annotation::Pin { .. }, .. } => true,
             EventBody::MessageAnnotated { target, note: Annotation::Edit { .. } | Annotation::Delete } => {
                 self.state.spaces.get(&event.space).is_some_and(|space| space.entries.iter().any(|entry| entry.id() == target && matches!(&entry.body, EntryBody::Message { marks, .. } if marks.replacement().is_some())))
             }

@@ -34,6 +34,13 @@ export function messageMenuActions(props: MessageActionsProps | null): MessageMe
     live || entry.thread_replies > 0,
   );
   add('info', t('messageInfo.title'), 'info.circle', props.onInfo, live);
+  add(
+    entry.pinned ? 'unpin' : 'pin',
+    t(entry.pinned ? 'messagePins.unpin' : 'messagePins.pin'),
+    entry.pinned ? 'pin.slash' : 'pin',
+    props.onPin,
+    live && entry.can_pin === true,
+  );
   add('forward', t('chat.forward'), 'arrowshape.turn.up.right', props.onForward, live);
   add(
     'selectMessages',

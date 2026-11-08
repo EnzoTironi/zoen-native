@@ -97,6 +97,8 @@ impl Engine {
                 card: None,
             };
             dto.deleted = true;
+            dto.pinned = false;
+            dto.can_pin = false;
             dto.text_revision = None;
             dto.media = None;
             dto.voice = None;

@@ -26,6 +26,10 @@ pub enum Annotation {
         emoji: String,
     },
     Unreact,
+    /// Shared pin state; older decoders retain the entire annotation as Unsupported.
+    Pin {
+        change: MessagePinChange,
+    },
 }
 
 impl Annotation {
@@ -55,4 +59,15 @@ pub struct MediaChange {
     pub expected_revision: String,
     pub text: String,
     pub replacement: MediaReplacement,
+}
+
+/// Exact operation over a previously reviewed message and pin revision.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct MessagePinChange {
+    pub operation_id: String,
+    pub expected_message_revision: String,
+    pub expected_pin_revision: String,
+    pub pinned: bool,
 }

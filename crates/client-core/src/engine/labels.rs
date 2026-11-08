@@ -149,6 +149,13 @@ pub(crate) fn event_label(b: &EventBody) -> String {
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
         EventBody::MessagesDeletedForSelf { .. } => t("Exclusão privada", "Private deletion"),
         EventBody::MessageAnnotated { note, .. } => match note {
+            types::Annotation::Pin { change } => {
+                if change.pinned {
+                    t("Mensagem fixada", "Message pinned")
+                } else {
+                    t("Mensagem desafixada", "Message unpinned")
+                }
+            }
             types::Annotation::ReplaceMedia { .. } => t("Mídia editada", "Media edited"),
             types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),
             types::Annotation::Delete => t("Mensagem apagada", "Message deleted"),

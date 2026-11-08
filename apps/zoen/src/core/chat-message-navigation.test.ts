@@ -304,3 +304,19 @@ test('reopening the account retires the previous Chat return control', async () 
     await f.close();
   }
 });
+
+test('pinned bar shares measured chat navigation instead of pushing another conversation', async () => {
+  const { f } = await fixture();
+  try {
+    const viewport = find(renderChatScreen(f.current()), 'ConversationViewport')!;
+    const bar = find(viewport.props.overlay, 'PinnedMessageBar')!;
+    assert.equal(bar.props.space, f.current().id);
+    const revealPinned = bar.props.onReveal;
+    assert.ok(typeof revealPinned === 'function');
+    await f.act(() => revealPinned('source'));
+    assert.equal(f.current().highlightedMessageId, 'source');
+    assert.deepEqual(f.errors, []);
+  } finally {
+    await f.close();
+  }
+});

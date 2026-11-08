@@ -115,7 +115,9 @@ impl State {
         else {
             return;
         };
-        if let Annotation::ReplaceMedia { edit } = note {
+        if let Annotation::Pin { change } = note {
+            crate::message_pins::projection::record_pin(marks, event, change);
+        } else if let Annotation::ReplaceMedia { edit } = note {
             // apply_checked admitted the complete replacement, including current source revision.
             *text = edit.text.clone();
             *attaches = Some(edit.replacement.item_id.clone());
