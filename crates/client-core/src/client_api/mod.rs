@@ -6,6 +6,7 @@
 
 mod app_edit_dispatch;
 mod app_resource_dispatch;
+pub(crate) mod backup_command;
 mod chat_preferences_dispatch;
 mod command;
 mod content_dispatch;

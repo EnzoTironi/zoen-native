@@ -14,20 +14,18 @@ impl Client {
             AddPlanLine, AgentActivity, AgentProfile, Agents, AppBinaryCreate, AppBinaryCreateFor,
             AppBinaryRead, AppBinaryResult, AppBinarySave, AppCallTool, AppDeviceAllowed,
             AppDeviceGrants, AppDocumentCopy, AppDocumentRead, AppDocumentSave, AppResource,
-            AppSpecs, AttachmentReferenceValidate, BackupCreateRecoveryKey,
-            BackupEnableRecoveryKey, BackupNow, BackupPassword, BackupStatus, BackupTurnOff,
-            BlockPerson, BlockedPeople, DecideRequest, DecideToolRequest, Devices, EditPlanLine,
-            GrantAppDevice, HistoryStatus, InstallApp, Item, ItemAt, ItemDiscussion, Items,
-            LinkCodeCheck, LinkDevice, LinkProgress, LinkRequest, LinkWait, LoadOlder, LogEvents,
-            LogEventsPage, Mentions, NativeSurfaceItems, Page, PageApply, PageAt, PageCommit,
-            PageCreate, PageExportVersion, PageImportMarkdown, PageMarkdown, PlanPage,
-            PreviewDecisions, Profile, RaiseBudget, ReceiveHistory, RecentAttachments,
-            RegisterPush, RemovePlanLine, Requests, RestoreBackupPassword,
-            RestoreBackupRecoveryKey, RestorePlanVersion, RestoreVersion, RevokeAppDevice,
-            RevokeStanding, Search, SearchMessages, SendHistory, SetTrust, SiteCreate, SitePrepare,
-            SitePublish, SiteRead, SiteReview, SiteSave, SiteStatus, SiteToolReview,
-            StageImageGeneration, StandingDecisions, TogglePlanLine, UnblockPerson, Undo,
-            UnlinkDevice, UpdateHandle, UpdateProfile, VerifyLog,
+            AppSpecs, AttachmentReferenceValidate, BlockPerson, BlockedPeople, DecideRequest,
+            DecideToolRequest, Devices, EditPlanLine, GrantAppDevice, HistoryStatus, InstallApp,
+            Item, ItemAt, ItemDiscussion, Items, LinkCodeCheck, LinkDevice, LinkProgress,
+            LinkRequest, LinkWait, LoadOlder, LogEvents, LogEventsPage, Mentions,
+            NativeSurfaceItems, Page, PageApply, PageAt, PageCommit, PageCreate, PageExportVersion,
+            PageImportMarkdown, PageMarkdown, PlanPage, PreviewDecisions, Profile, RaiseBudget,
+            ReceiveHistory, RecentAttachments, RegisterPush, RemovePlanLine, Requests,
+            RestoreBackupPassword, RestoreBackupRecoveryKey, RestorePlanVersion, RestoreVersion,
+            RevokeAppDevice, RevokeStanding, Search, SearchMessages, SendHistory, SetTrust,
+            SiteCreate, SitePrepare, SitePublish, SiteRead, SiteReview, SiteSave, SiteStatus,
+            SiteToolReview, StageImageGeneration, StandingDecisions, TogglePlanLine, UnblockPerson,
+            Undo, UnlinkDevice, UpdateHandle, UpdateProfile, VerifyLog,
         };
         if let Some(result) = self.dispatch_message_info(&command) {
             return result;
@@ -344,7 +342,6 @@ impl Client {
                 before,
                 limit,
             } => self.client_log_events_page(space_id, before, limit),
-            BackupStatus {} => encode(&self.backup_status()),
             LinkRequest { relay_url } => {
                 encode(&self.link_request(relay_url, account_vault(&vault)?)?)
             }
@@ -378,22 +375,7 @@ impl Client {
                     .load_older(space_id, transfer_timeout(timeout_ms)?)
                     .await?,
             ),
-            BackupCreateRecoveryKey {} => {
-                let _ = account_vault(&vault)?;
-                encode(&self.backup_create_recovery_key()?)
-            }
-            BackupEnableRecoveryKey { recovery_key } => encode(
-                &self
-                    .backup_enable_recovery_key(recovery_key, account_vault(&vault)?)
-                    .await?,
-            ),
-            BackupPassword { password } => encode(
-                &self
-                    .backup_turn_on_password(password, account_vault(&vault)?)
-                    .await?,
-            ),
-            BackupNow {} => encode(&self.backup_now(account_vault(&vault)?).await?),
-            BackupTurnOff {} => encode(&self.backup_turn_off(account_vault(&vault)?).await?),
+            Command::Backup(command) => command.execute(self, vault).await,
             RestoreBackupPassword {
                 relay_url,
                 handle,

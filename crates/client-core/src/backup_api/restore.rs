@@ -213,6 +213,7 @@ impl Client {
                 },
                 last_backup_ms: header.created_ms,
                 bytes: sealed.len() as u64,
+                in_progress: false,
             };
             if let Ok(j) = serde_json::to_string(&status) {
                 e.store.set_meta(STATUS_META, &j)?;

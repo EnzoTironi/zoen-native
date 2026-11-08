@@ -1,68 +1,46 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- React Native Text supports role="status"; HTML output is not a native component. */
 import { t, formatLocale } from '../i18n';
-import { useRef, useState } from 'react';
 import { Stack, usePreventRemove } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
-import { useClient } from '../core/provider';
-import { useCoreQuery } from '../core/query';
+import { useBackup } from '../backup/use-backup';
 import { useTheme } from '../theme';
 import { useDialogs } from '../components/dialogs';
 import { EmptyState, Field, NativeButton, Surface } from '../components/primitives';
 
 export default function Backup() {
-  const { store, mode } = useClient();
-  const { data, error, retry } = useCoreQuery(mode === 'account' ? { op: 'backup_status' } : null);
+  const { session, state, accountRequired } = useBackup();
+  const { data, key, saved, password, repeat, method, failure, status } = state;
+  const busy = state.pending || !!data?.in_progress || state.phase !== 'ready';
+  const error = state.phase === 'failed' ? t('access.backupFailed') : null;
+  const ticket = session.ticket(state);
+  const retry = () => {
+    void session.load(ticket);
+  };
   const { colors } = useTheme();
   const { confirm, inform } = useDialogs();
-  const [key, setKey] = useState('');
-  const [saved, setSaved] = useState(false);
-  const [password, setPassword] = useState('');
-  const [repeat, setRepeat] = useState('');
-  const [method, setMethod] = useState<'recovery' | 'password'>('recovery');
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [leaving, setLeaving] = useState(false);
-  const confirming = useRef(false);
-  usePreventRemove(!leaving && (!!key || !!password || busy), ({ repeat: leave }) => {
-    if (busy) {
-      void inform(t('access.backupInProgress'), t('access.waitBeforeLeaving'));
-      return;
-    }
-    if (confirming.current) return;
-    confirming.current = true;
-    void confirm({
-      title: t('access.leaveBackupTitle'),
-      message: key ? t('access.recoveryKeyWillHide') : t('access.passwordWillDiscard'),
-      confirmLabel: t('access.leaveSetup'),
-      cancelLabel: t('access.stayHere'),
-    })
-      .then((accepted) => {
-        if (accepted) {
-          setLeaving(true);
-          leave();
-        }
-      })
-      .finally(() => {
-        confirming.current = false;
-      });
-  });
-  async function perform(action: () => Promise<void>) {
-    if (busy) return;
-    setBusy(true);
-    setFailure(null);
-    setStatus(null);
-    try {
-      await action();
-    } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : t('access.backupFailed'));
-    } finally {
-      retry();
-      setBusy(false);
-    }
-  }
-  if (mode === 'demo')
+  usePreventRemove(
+    !state.leaving && (!!key || !!password || state.pending || !!data?.in_progress),
+    ({ repeat: leave }) => {
+      if (state.pending || data?.in_progress) {
+        void inform(t('access.backupInProgress'), t('access.waitBeforeLeaving'));
+        return;
+      }
+      void session
+        .leave(
+          ticket,
+          () =>
+            confirm({
+              title: t('access.leaveBackupTitle'),
+              message: key ? t('access.recoveryKeyWillHide') : t('access.passwordWillDiscard'),
+              confirmLabel: t('access.leaveSetup'),
+              cancelLabel: t('access.stayHere'),
+            }),
+          leave,
+        )
+        .catch(() => {});
+    },
+  );
+  if (accountRequired)
     return (
       <EmptyState title={t('access.yourAccountBackup')} detail={t('access.signInForBackup')} />
     );
@@ -78,11 +56,13 @@ export default function Backup() {
       </Text>
       <Surface>
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}>
-          {data
-            ? data.enabled
-              ? t('access.backupEnabled')
-              : t('access.backupDisabled')
-            : t('access.checkingBackup')}
+          {data?.in_progress
+            ? t('access.backupInProgress')
+            : data
+              ? data.enabled
+                ? t('access.backupEnabled')
+                : t('access.backupDisabled')
+              : t('access.checkingBackup')}
         </Text>
         {data?.enabled ? (
           <>
@@ -99,33 +79,27 @@ export default function Backup() {
                 : t('access.firstBackupPending')}
             </Text>
             <NativeButton
+              testID="backup-now"
               label={busy ? t('access.wait') : t('access.backupNow')}
               disabled={busy}
               onPress={() => {
-                void perform(async () => {
-                  await store.driver.request({ op: 'backup_now' });
-                  setStatus(t('access.backupSentProtected'));
-                });
+                void session.upload(ticket);
               }}
             />
             <NativeButton
               secondary
+              testID="backup-disable"
               label={t('access.disableDeleteBackup')}
               disabled={busy}
               onPress={() => {
-                void perform(async () => {
-                  if (
-                    !(await confirm({
-                      title: t('access.deleteServerBackupTitle'),
-                      message: t('access.deleteServerBackupExplanation'),
-                      confirmLabel: t('access.deleteBackup'),
-                      destructive: true,
-                    }))
-                  )
-                    return;
-                  await store.driver.request({ op: 'backup_turn_off' });
-                  setStatus(t('access.backupDeleted'));
-                });
+                void session.disable(ticket, () =>
+                  confirm({
+                    title: t('access.deleteServerBackupTitle'),
+                    message: t('access.deleteServerBackupExplanation'),
+                    confirmLabel: t('access.deleteBackup'),
+                    destructive: true,
+                  }),
+                );
               }}
             />
           </>
@@ -138,16 +112,18 @@ export default function Backup() {
           </Text>
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
             <NativeButton
+              testID="backup-method-recovery"
               label={t('access.recoveryKey')}
               secondary={method !== 'recovery'}
               disabled={busy || !!key}
-              onPress={() => setMethod('recovery')}
+              onPress={() => session.change(ticket, { method: 'recovery' })}
             />
             <NativeButton
+              testID="backup-method-password"
               label={t('access.backupPassword')}
               secondary={method !== 'password'}
               disabled={busy || !!key}
-              onPress={() => setMethod('password')}
+              onPress={() => session.change(ticket, { method: 'password' })}
             />
           </View>
           {method === 'recovery' ? (
@@ -165,25 +141,23 @@ export default function Backup() {
                     lineHeight: 28,
                   }}
                 >
-                  {key.match(/.{1,4}/g)?.join(' ')}
+                  {key}
                 </Text>
                 <NativeButton
                   secondary
+                  testID="backup-copy"
                   label={t('access.copyRecoveryKey')}
+                  disabled={state.pending || !!data?.in_progress}
                   onPress={() => {
-                    void Clipboard.setStringAsync(key, { android: { isSensitive: true } })
-                      .then((copied) => {
-                        if (!copied) throw new Error(t('access.copyFailed'));
-                        setStatus(t('access.keyCopiedStoreSafely'));
-                      })
-                      .catch(() => setFailure(t('access.copyKeyFailed')));
+                    void session.copy(ticket);
                   }}
                 />
                 <Pressable
+                  testID="backup-key-saved"
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: saved }}
                   disabled={busy}
-                  onPress={() => setSaved((value) => !value)}
+                  onPress={() => session.change(ticket, { saved: !saved })}
                   style={{
                     paddingVertical: 14,
                     flexDirection: 'row',
@@ -197,30 +171,21 @@ export default function Backup() {
                   </Text>
                 </Pressable>
                 <NativeButton
+                  testID="backup-enable"
                   label={busy ? t('access.protectingBackup') : t('access.enableBackup')}
                   disabled={busy || !saved}
                   onPress={() => {
-                    void perform(async () => {
-                      await store.driver.request({
-                        op: 'backup_enable_recovery_key',
-                        recovery_key: key,
-                      });
-                      setKey('');
-                      setSaved(false);
-                      setStatus(t('access.backupEnabledSent'));
-                    });
+                    void session.enable(ticket);
                   }}
                 />
               </>
             ) : (
               <NativeButton
+                testID="backup-generate"
                 label={t('access.generateKey')}
                 disabled={busy}
                 onPress={() => {
-                  void perform(async () => {
-                    setKey(await store.driver.request({ op: 'backup_create_recovery_key' }));
-                    setSaved(false);
-                  });
+                  void session.generate(ticket);
                 }}
               />
             )
@@ -229,7 +194,7 @@ export default function Backup() {
               <Field
                 label={t('access.newBackupPassword')}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(password) => session.change(ticket, { password })}
                 secureTextEntry
                 autoComplete="new-password"
                 textContentType="newPassword"
@@ -240,7 +205,7 @@ export default function Backup() {
               <Field
                 label={t('access.repeatPassword')}
                 value={repeat}
-                onChangeText={setRepeat}
+                onChangeText={(repeat) => session.change(ticket, { repeat })}
                 secureTextEntry
                 autoComplete="new-password"
                 textContentType="newPassword"
@@ -252,15 +217,11 @@ export default function Backup() {
                 {t('access.passwordGuidance')}
               </Text>
               <NativeButton
+                testID="backup-password-enable"
                 label={busy ? t('access.protectingBackup') : t('access.enableWithPassword')}
                 disabled={busy || password.length < 12 || password !== repeat}
                 onPress={() => {
-                  void perform(async () => {
-                    await store.driver.request({ op: 'backup_password', password });
-                    setPassword('');
-                    setRepeat('');
-                    setStatus(t('access.backupEnabledSent'));
-                  });
+                  void session.password(ticket);
                 }}
               />
             </>
@@ -273,12 +234,20 @@ export default function Backup() {
           accessibilityLiveRegion="polite"
           style={{ color: colors.secondary, lineHeight: 23 }}
         >
-          {status}
+          {t(
+            status === 'uploaded'
+              ? 'access.backupSentProtected'
+              : status === 'enabled'
+                ? 'access.backupEnabledSent'
+                : status === 'disabled'
+                  ? 'access.backupDeleted'
+                  : 'access.keyCopiedStoreSafely',
+          )}
         </Text>
       ) : null}
       {failure || error ? (
         <Text selectable accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 23 }}>
-          {failure ?? error}
+          {failure ? t('access.backupFailed') : error}
         </Text>
       ) : null}
       {error ? (

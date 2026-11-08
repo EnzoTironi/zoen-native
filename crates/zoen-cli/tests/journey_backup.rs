@@ -7,6 +7,8 @@
 #[path = "common/backup_store.rs"]
 mod backup_store;
 mod common;
+#[path = "../src/file_vault.rs"]
+mod file_vault;
 use common::*;
 use types::EventBody;
 
@@ -132,3 +134,5 @@ include!("journey_backup/enrollment.rs");
 include!("journey_backup/storage.rs");
 include!("journey_backup/password_recovery.rs");
 include!("journey_backup/mls_recovery.rs");
+
+include!("journey_backup/scoped_controls.rs");
