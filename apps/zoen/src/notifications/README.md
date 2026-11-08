@@ -176,8 +176,13 @@ by the same Core preview (including thread messages); the existing message-link
 resolver rechecks the current account, membership, deletion and canonical thread
 before revealing it. Legacy notes without a message ID open the conversation;
 the event counter is never guessed to be a message ID. Remote push still cannot
-supply navigation data. Cold-start notification responses are read once and stale
-callbacks are discarded. A remote payload cannot supply an arbitrary URL.
+supply navigation data. Cold-start notification responses are read once per listener lifetime. A temporarily
+unready canonical account returns an explicit deferral, leaving the response in the
+native SDK until the ready-account listener reads it again; accepted navigation
+or a ready account rejecting a target acknowledges it. Failed navigation is not
+acknowledged. Stale listeners cannot consume a later response. This is the SDK's
+in-process last response, not a new persistent queue or a guarantee across process
+loss. Explicit account cleanup still clears it through the existing cleanup port. A remote payload cannot supply an arbitrary URL.
 
 `+native-intent` accepts documented `zoen://app`, `chat`, `message`, `join` and `agent` links
 and HTTPS links on `tryzoen.com`. Capability invitations reach a preview screen

@@ -127,7 +127,8 @@ export function installNotificationHandler(
 
 export function listenNotificationEvents(
   wake: (payload: PushWake) => void,
-  tap: (data: unknown) => void,
+  // Returning false leaves the latest response in the native SDK for a ready owner to retry.
+  tap: (data: unknown) => boolean | void,
 ) {
   let active = true;
   const received = Notifications.addNotificationReceivedListener((notification) => {
@@ -158,7 +159,16 @@ export function listenNotificationEvents(
         return;
       }
     }
-    tap(content.data);
+    let handled = false;
+    try {
+      handled = tap(content.data) !== false;
+    } catch {
+      // A failed navigation is not an acknowledgement of the user's intent.
+    }
+    if (!handled) {
+      if (initialIdentifier === identifier) initialIdentifier = undefined;
+      return;
+    }
     void Notifications.clearLastNotificationResponseAsync()
       .finally(() => {
         if (initial && initialIdentifier === identifier) initialIdentifier = undefined;
