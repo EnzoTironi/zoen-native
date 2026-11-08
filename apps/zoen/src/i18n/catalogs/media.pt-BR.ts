@@ -196,6 +196,7 @@ export const mediaPtBR = {
   openContactLabel: 'Abrir contato %{name}',
   closeContact: 'Fechar',
   copyContactPhone: 'Copiar %{phone}',
+  saveContact: 'Adicionar aos Contatos',
   shareContact: 'Compartilhar contato',
   contactCouldNotBeOpened: 'Não foi possível abrir este contato.',
   contactActionFailed: 'Não foi possível concluir esta ação.',

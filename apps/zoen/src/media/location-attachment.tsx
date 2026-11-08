@@ -23,8 +23,8 @@ type Props = {
   isCurrent(): boolean;
 };
 export function LocationAttachment(props: Props) {
-  const { store } = useClient();
-  const scope = documentScope(store.getSnapshot(), store.sessionEpoch);
+  const client = useClient();
+  const scope = documentScope(client, client.store.sessionEpoch);
   return (
     <LocationAttachmentView
       key={JSON.stringify([scope, props.spaceId, props.messageId, props.source])}

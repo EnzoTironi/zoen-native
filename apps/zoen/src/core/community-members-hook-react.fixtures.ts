@@ -195,6 +195,7 @@ export async function memberHookReactFixture() {
     return null;
   }
   return {
+    ports,
     store,
     driver,
     renderContent: root.render,

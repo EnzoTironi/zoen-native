@@ -190,6 +190,7 @@ export const mediaEn = {
   openContactLabel: 'Open contact %{name}',
   closeContact: 'Close',
   copyContactPhone: 'Copy %{phone}',
+  saveContact: 'Add to Contacts',
   shareContact: 'Share contact',
   contactCouldNotBeOpened: 'This contact could not be opened.',
   contactActionFailed: 'This action could not be completed.',
