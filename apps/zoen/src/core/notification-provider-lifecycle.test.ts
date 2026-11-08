@@ -146,7 +146,7 @@ function fixture(initial: State, platform = 'ios', failFirstRegistration = false
     'fixture:i18n': { t: (key: string) => key },
     'fixture:dialogs': { useDialogs: () => ({ inform: async () => {} }) },
     'fixture:client': {
-      useClient: () => ({ store, snapshot: current.snapshot, mode: current.mode }),
+      useClient: () => ({ store, ...current }),
     },
     'fixture:system': system,
   };

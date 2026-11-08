@@ -312,10 +312,15 @@ async fn reviewed_batch_delivers_once_after_offline_confirmation_and_relay_resta
         .await;
     drop(bob);
     proxy.shutdown().await;
+    // Stop the actual old relay, not just its proxy: this single-node restart
+    // profile has no forwarding bus for a second still-healthy partition owner.
+    assert_eq!(world.stop_nodes()?, 1);
     world.start_relay();
-    let bob = Open::online(&world, "bob")
-        .await
-        .map_err(|error| format!("Bob after relay restart: {error}"))?;
+    let bob = match Open::online(&world, "bob").await {
+        Ok(bob) => bob,
+        // World preserves synthetic homes/logs on assertion failure for diagnosis.
+        Err(error) => panic!("Bob after relay restart: {error}"),
+    };
     let replay: serde_json::Value = serde_json::from_str(&bob.0.client_request(confirm).await?)?;
     assert_eq!(replay["batch_id"], accepted["batch_id"]);
     assert!(replay["error"].is_null());
