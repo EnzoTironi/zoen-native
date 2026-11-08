@@ -48,6 +48,7 @@ struct ZoenPushNote: Equatable, Sendable {
   let spaceID: String
   let deviceID: String
   let sequence: String
+  let messageID: String?
 }
 
 /// Fetch progress and presentation derived from the same authenticated snapshot.
@@ -72,6 +73,7 @@ struct ZoenPushSnapshot: Decodable, Sendable {
     let unread: UInt64
     let event_count: String
     let last_author: Author?
+    let last_message_id: String?
     let last_preview: String
     let members: [Member]
   }
@@ -119,7 +121,11 @@ struct ZoenPushSnapshot: Decodable, Sendable {
       let body = chat.kind == "Direct" || chat.last_author == nil
         ? chat.last_preview : "\(chat.last_author!.name): \(chat.last_preview)"
       return ZoenPushNote(identifier: "zoen-local-\(account.device_id)-\(chat.id)-\(chat.event_count)",
-        title: title, body: body, spaceID: chat.id, deviceID: account.device_id, sequence: chat.event_count)
+        title: title, body: body, spaceID: chat.id, deviceID: account.device_id, sequence: chat.event_count,
+        messageID: chat.last_message_id.flatMap { id in
+          let bytes = id.utf8
+          return (1...128).contains(bytes.count) && bytes.allSatisfy { (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 95 || $0 == 45 } ? id : nil
+        })
     }
   }
 }

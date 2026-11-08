@@ -59,11 +59,12 @@ impl Engine {
             None
         };
         let private_error = self.private_message_view_error();
-        let (last_preview, last_preview_is_markdown, last_author, last_delivery) =
+        let (last_preview, last_preview_is_markdown, last_author, last_delivery, last_message_id) =
             match s.integrity_error.as_ref().or(private_error.as_ref()) {
                 Some(err) => (
                     tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"),
                     false,
+                    None,
                     None,
                     None,
                 ),
@@ -112,6 +113,7 @@ impl Engine {
             members,
             counterpart,
             last_preview,
+            last_message_id,
             last_preview_is_markdown,
             last_author,
             last_at_ms: if self

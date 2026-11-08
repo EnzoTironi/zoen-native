@@ -149,11 +149,15 @@ export function nativeLinkPath(path: string): string {
 export function validLocalNotification(
   data: unknown,
   deviceId: string,
-): { spaceId: string } | null {
+): { spaceId: string; messageId?: string } | null {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
   const value = data as Record<string, unknown>;
+  const keys = Object.keys(value).sort().join(',');
   if (
-    Object.keys(value).sort().join(',') !== 'device_id,event_seq,space_id,zoen_local' ||
+    (keys !== 'device_id,event_seq,space_id,zoen_local' &&
+      keys !== 'device_id,event_seq,message_id,space_id,zoen_local') ||
+    ('message_id' in value &&
+      (typeof value.message_id !== 'string' || !id.test(value.message_id))) ||
     value.zoen_local !== 1 ||
     value.device_id !== deviceId ||
     typeof value.space_id !== 'string' ||
@@ -163,5 +167,8 @@ export function validLocalNotification(
     BigInt(value.event_seq) > 18446744073709551615n
   )
     return null;
-  return { spaceId: value.space_id };
+  return {
+    spaceId: value.space_id,
+    ...(typeof value.message_id === 'string' ? { messageId: value.message_id } : {}),
+  };
 }

@@ -171,7 +171,12 @@ authenticated core; it cannot choose a route or grant access.
 Local notification content comes only from current authenticated snapshots after
 sync, excludes muted/archived spaces and own messages, and uses deterministic
 identifiers. Taps accept only the current device's strict local metadata and a
-current member space. Cold-start notification responses are read once and stale
+current member space. New local notes also carry the exact message ID produced
+by the same Core preview (including thread messages); the existing message-link
+resolver rechecks the current account, membership, deletion and canonical thread
+before revealing it. Legacy notes without a message ID open the conversation;
+the event counter is never guessed to be a message ID. Remote push still cannot
+supply navigation data. Cold-start notification responses are read once and stale
 callbacks are discarded. A remote payload cannot supply an arbitrary URL.
 
 `+native-intent` accepts documented `zoen://app`, `chat`, `message`, `join` and `agent` links

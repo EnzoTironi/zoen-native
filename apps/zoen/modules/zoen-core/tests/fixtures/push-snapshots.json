@@ -61,7 +61,8 @@
           {
             "id": "identity-synthetic"
           }
-        ]
+        ],
+        "last_message_id": "message-synthetic-42"
       },
       {
         "id": "group",
@@ -201,7 +202,8 @@
       "body": "Olá 🌤️ — texto sintético",
       "spaceId": "direct",
       "deviceId": "device-synthetic",
-      "sequence": "18446744073709551615"
+      "sequence": "18446744073709551615",
+      "messageId": "message-synthetic-42"
     },
     {
       "identifier": "zoen-local-device-synthetic-group-18446744073709551615",

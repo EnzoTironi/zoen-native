@@ -379,3 +379,16 @@ test('a superseded token lookup failure does not overwrite a successful rotation
   assert.equal(coordinator.getSnapshot().failure, null);
   assert.equal(coordinator.getSnapshot().busy, false);
 });
+
+test('new local note preserves only a canonical bounded message address and keeps legacy notes usable', () => {
+  const before = notificationSnapshot();
+  before.conversations[0]!.unread = 0;
+  before.conversations[0]!.event_count = '0';
+  const after = notificationSnapshot();
+  after.conversations[0]!.last_message_id = 'message-canonical';
+  assert.equal(localNotes(before, after)[0]?.messageId, 'message-canonical');
+  after.conversations[0]!.last_message_id = 'https://untrusted.example';
+  assert.equal(localNotes(before, after)[0]?.messageId, undefined);
+  delete after.conversations[0]!.last_message_id;
+  assert.equal(localNotes(before, after)[0]?.messageId, undefined);
+});

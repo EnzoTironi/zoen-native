@@ -10,7 +10,7 @@ import {
 import { AppState, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useClient } from '../core/provider';
-import { accountScope } from '../core/account-scope';
+import { accountScope, accountScopeKey } from '../core/account-scope';
 import { useDialogs } from '../components/dialogs';
 import { PushCoordinator } from './coordinator';
 import { validLocalNotification } from './links';
@@ -36,25 +36,18 @@ import {
 const Context = createContext<PushCoordinator | null>(null);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { store, snapshot, mode } = useClient();
+  const client = useClient();
+  const { store, snapshot, mode } = client;
   const dialogs = useDialogs();
   const sessionEpoch = store.sessionEpoch;
   const deviceId = mode === 'account' ? (snapshot?.account?.device_id ?? null) : null;
   const jobs = useMemo(() => (deviceId ? new NotificationJobs() : null), [deviceId]);
   const identityId = mode === 'account' ? (snapshot?.account?.identity_id ?? null) : null;
   const relay = mode === 'account' ? snapshot?.account?.relay_url : undefined;
+  const scope = accountScopeKey(accountScope(store, client));
   const coordinator = useMemo(() => {
     const current = () => {
-      const state = store.getSnapshot();
-      const account = state.snapshot?.account;
-      return (
-        state.mode === 'account' &&
-        store.sessionEpoch === sessionEpoch &&
-        identityId !== null &&
-        deviceId !== null &&
-        account?.identity_id === identityId &&
-        account.device_id === deviceId
-      );
+      return !!scope && accountScopeKey(accountScope(store)) === scope;
     };
     return new PushCoordinator(
       {
@@ -76,7 +69,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       },
       nativePushConfiguration(),
     );
-  }, [store, identityId, deviceId, sessionEpoch]);
+  }, [store, identityId, deviceId, scope]);
 
   useEffect(
     () =>
@@ -108,14 +101,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       )
         return null;
       const target = validLocalNotification(data, deviceId);
-      return (
+      const chat =
         target &&
         state.snapshot?.conversations.find(
           (chat) =>
             chat.id === target.spaceId &&
             chat.members.some((member) => member.id === owner.identity),
-        )
-      );
+        );
+      return chat && target ? { chat, target } : null;
     };
     const clearHandler = installNotificationHandler(async (data) =>
       current() ? allowLocalNotification(store, data, deviceId) : false,
@@ -131,15 +124,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         void store.refresh();
       },
       (data) => {
-        const chat = canOpen(data);
-        if (!chat) return;
+        const destination = canOpen(data);
+        if (!destination) return;
         try {
           store.assertExternalNavigationAllowed();
         } catch {
           void dialogs.inform(t('drawing.pending'), t('drawing.closeFirst')).catch(() => {});
           return;
         }
-        router.push({ pathname: '/chat/[id]', params: { id: chat.id } });
+        const { chat, target } = destination;
+        router.push(
+          target.messageId
+            ? {
+                pathname: '/message/[space]/[message]',
+                params: { space: chat.id, message: target.messageId },
+              }
+            : { pathname: '/chat/[id]', params: { id: chat.id } },
+        );
       },
     );
     let before = store.getSnapshot().snapshot;
