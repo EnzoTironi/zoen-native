@@ -1,3 +1,4 @@
+import { messagePins } from './catalogs/message-pins.ts';
 import { attachmentTabs } from './catalogs/attachment-tabs.ts';
 import { imageReview } from './catalogs/image-review.ts';
 import { ownerPolicy } from './catalogs/owner-policy.ts';
@@ -51,6 +52,7 @@ import {
 
 // Feature owners only add their catalog import and assembly entry here.
 const catalogs = {
+  messagePins,
   spaceInvite,
   community,
   ownerPolicy,

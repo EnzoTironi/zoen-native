@@ -376,6 +376,7 @@ impl Client {
                     .await?,
             ),
             Command::Backup(command) => command.execute(self, vault).await,
+            Command::MessagePins(command) => command.execute(self),
             RestoreBackupPassword {
                 relay_url,
                 handle,

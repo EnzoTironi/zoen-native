@@ -12,6 +12,8 @@ mod final_event_loss;
 mod invite_creation;
 #[path = "journey_message_deletion/message_info.rs"]
 mod message_info;
+#[path = "journey_message_deletion/pinned_messages.rs"]
+mod pinned_messages;
 #[path = "journey_message_deletion/thread_sources.rs"]
 mod thread_sources;
 // The cursor-repair journey uses the proxy's full evidence API. This

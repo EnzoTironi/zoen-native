@@ -6,6 +6,8 @@ export type MessageContextAction =
   | 'copyLink'
   | 'select'
   | 'info'
+  | 'pin'
+  | 'unpin'
   | 'selectMessages'
   | 'edit'
   | 'recover'

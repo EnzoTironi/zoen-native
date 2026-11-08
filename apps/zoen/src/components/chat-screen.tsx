@@ -1,3 +1,4 @@
+import { PinnedMessageBar } from '../pins/pinned-message-bar';
 import { ConversationReturnButton } from './conversation-return-button';
 import { ConversationHashtagProvider } from './conversation-hashtag-provider';
 import { openChatQuote } from './open-chat-quote';
@@ -306,6 +307,13 @@ export function renderChatScreen(context: ReturnType<typeof useChatController>) 
                 />
               </ConversationRail>
               <View onLayout={({ nativeEvent }) => setNoticeHeight(nativeEvent.layout.height)}>
+                <PinnedMessageBar
+                  space={id}
+                  onReveal={async (message) => {
+                    setScrollTarget(message);
+                    await reveal(message);
+                  }}
+                />
                 {cards.error ? (
                   <Pressable
                     accessibilityRole={cards.retryable ? 'button' : 'text'}

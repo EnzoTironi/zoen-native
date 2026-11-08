@@ -367,6 +367,11 @@ export function useMessageActions({
           onReply={() => {
             if (selected) reply(selected);
           }}
+          onPin={
+            selected && !selected.deleted && selected.can_pin && mode === 'account'
+              ? () => messageInfoAction(store, spaceId, selected, current, infoEpoch, 'pin')()
+              : undefined
+          }
           onInfo={
             selected && !selected.deleted && mode === 'account'
               ? () => messageInfoAction(store, spaceId, selected, current, infoEpoch)()

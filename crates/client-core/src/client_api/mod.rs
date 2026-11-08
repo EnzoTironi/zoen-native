@@ -15,6 +15,7 @@ mod draft_dispatch;
 mod forwarding_command;
 mod forwarding_dispatch;
 mod managed_agent_command;
+mod message_pin_command;
 mod private_media_command;
 mod search;
 pub(crate) mod space_invite_command;
@@ -87,6 +88,9 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
         .with_out_dir(path);
     Command::export_all(&config)?;
     crate::MessageInfo::export_all(&config)?;
+    crate::message_pins::MessagePinReview::export_all(&config)?;
+    crate::message_pins::MessagePinResult::export_all(&config)?;
+    crate::message_pins::MessagePinPage::export_all(&config)?;
     crate::app_current_share::AppShareContext::export_all(&config)?;
     crate::app_current_share::AppShareResult::export_all(&config)?;
     crate::app_edit_requests::AppEditRequestResult::export_all(&config)?;

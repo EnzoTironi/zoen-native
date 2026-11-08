@@ -11,7 +11,15 @@ export type TimelineEntry = {
 /**
  * Stable logical event identity of the currently visible source text.
  */
-text_revision?: string, id: string, seq: string, author: Persona, at_ms: string, kind: EntryKind, 
+text_revision?: string, 
+/**
+ * Current shared pin projection; absent in legacy serialized timelines.
+ */
+pinned?: boolean, 
+/**
+ * Native projected permission for the current reader, not a client-side grant.
+ */
+can_pin?: boolean, id: string, seq: string, author: Persona, at_ms: string, kind: EntryKind, 
 /**
  * Signed attachment presentation and explicit album membership. Legacy messages omit it.
  */

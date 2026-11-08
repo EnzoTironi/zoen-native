@@ -152,6 +152,7 @@ pub(crate) struct Entry {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct MessageMarks {
     pub text_revision: Option<String>,
+    pub(crate) pin: Option<Box<crate::message_pins::projection::MessagePinMarks>>,
     pub(crate) media_edit: Option<Box<MediaEditMarks>>,
     pub edited: bool,
     pub deleted: bool,
@@ -217,7 +218,7 @@ impl MessageMarks {
                 self.edited = true;
                 return Some(text.trim().to_string());
             }
-            A::ReplaceMedia { .. } => return None,
+            A::ReplaceMedia { .. } | A::Pin { .. } => return None,
             A::Delete => {
                 self.deleted = true;
                 self.reactions.clear();

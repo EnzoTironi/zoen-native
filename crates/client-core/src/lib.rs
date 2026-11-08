@@ -104,6 +104,7 @@ pub mod inbox_folders;
 pub mod message_media_edit;
 pub use universal_pages::UniversalSearchPage;
 mod message_info;
+pub mod message_pins;
 pub use message_info::{MessageInfo, MessageInfoScope};
 mod message_deletion;
 mod message_edit;

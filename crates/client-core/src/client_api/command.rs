@@ -806,4 +806,6 @@ pub(super) enum Command {
     SpaceInvite(super::space_invite_command::SpaceInviteCommand),
     #[serde(untagged)]
     Backup(super::backup_command::BackupCommand),
+    #[serde(untagged)]
+    MessagePins(super::message_pin_command::MessagePinCommand),
 }

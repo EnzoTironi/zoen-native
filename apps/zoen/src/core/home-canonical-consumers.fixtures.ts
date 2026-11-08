@@ -309,6 +309,7 @@ export function renderScreen(
     if (path.endsWith('/components/conversation-timeline-message'))
       return { ConversationTimelineMessage: 'ConversationMessage' };
     if (path.endsWith('/saved-messages/presentation')) return { conversationTitle };
+    if (path.endsWith('/pins/pinned-message-bar')) return { PinnedMessageBar: 'PinnedMessageBar' };
     if (path.endsWith('/components/chat-header')) return { ChatHeader: 'ChatHeader' };
     if (path.endsWith('/chat-date-navigation')) return { ChatDateNavigation: 'ChatDateNavigation' };
     if (path.endsWith('/miniapps/rail')) return { MiniappRail: 'MiniappRail' };

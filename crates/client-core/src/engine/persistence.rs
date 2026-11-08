@@ -250,6 +250,20 @@ impl Engine {
         body: EventBody,
     ) -> R<Event> {
         self.saved_messages_admit(space, author, &body)?;
+        if let EventBody::MessageAnnotated {
+            target,
+            note: types::Annotation::Pin { change },
+        } = &body
+        {
+            if !self.state.pin_change_valid(space, author, target, change) {
+                return Err(CoreError::Forbidden {
+                    reason: t(
+                        "fixação inválida ou sem permissão",
+                        "invalid or unauthorized message pin",
+                    ),
+                });
+            }
+        }
         if !self
             .state
             .private_message_deletion_valid(space, author, &body)

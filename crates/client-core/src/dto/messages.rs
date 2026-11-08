@@ -41,6 +41,16 @@ pub struct TimelineEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "client-types", ts(optional))]
     pub text_revision: Option<String>,
+    /// Current shared pin projection; absent in legacy serialized timelines.
+    #[uniffi(default = false)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "client-types", ts(optional = nullable))]
+    pub pinned: bool,
+    /// Native projected permission for the current reader, not a client-side grant.
+    #[uniffi(default = false)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "client-types", ts(optional = nullable))]
+    pub can_pin: bool,
     pub id: String,
     pub seq: u64,
     pub author: Persona,
