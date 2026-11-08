@@ -89,27 +89,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       store.getSnapshot().mode === 'account' &&
       store.getSnapshot().snapshot?.account?.device_id === deviceId;
     const current = () => sameDevice() && store.sessionEpoch === sessionEpoch;
-    const canOpen = (data: unknown) => {
-      const state = store.getSnapshot();
-      const owner = accountScope(store, state);
-      if (
-        !owner ||
-        owner.identity !== identityId ||
-        owner.device !== deviceId ||
-        owner.relay !== relay ||
-        owner.epoch !== sessionEpoch
-      )
-        return null;
-      const target = validLocalNotification(data, deviceId);
-      const chat =
-        target &&
-        state.snapshot?.conversations.find(
-          (chat) =>
-            chat.id === target.spaceId &&
-            chat.members.some((member) => member.id === owner.identity),
-        );
-      return chat && target ? { chat, target } : null;
-    };
     const clearHandler = installNotificationHandler(async (data) =>
       current() ? allowLocalNotification(store, data, deviceId) : false,
     );
@@ -124,15 +103,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         void store.refresh();
       },
       (data) => {
-        const destination = canOpen(data);
-        if (!destination) return;
+        const state = store.getSnapshot();
+        const owner = accountScope(store, state);
+        if (
+          !owner ||
+          owner.identity !== identityId ||
+          owner.device !== deviceId ||
+          owner.relay !== relay ||
+          owner.epoch !== sessionEpoch
+        )
+          return false;
+        const target = validLocalNotification(data, deviceId);
+        const chat =
+          target &&
+          state.snapshot?.conversations.find(
+            (chat) =>
+              chat.id === target.spaceId &&
+              chat.members.some((member) => member.id === owner.identity),
+          );
+        // A ready account may discard malformed, foreign or no-longer-authorized targets.
+        if (!chat || !target) return true;
         try {
           store.assertExternalNavigationAllowed();
         } catch {
           void dialogs.inform(t('drawing.pending'), t('drawing.closeFirst')).catch(() => {});
-          return;
+          return true;
         }
-        const { chat, target } = destination;
         router.push(
           target.messageId
             ? {
@@ -141,6 +137,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               }
             : { pathname: '/chat/[id]', params: { id: chat.id } },
         );
+        return true;
       },
     );
     let before = store.getSnapshot().snapshot;

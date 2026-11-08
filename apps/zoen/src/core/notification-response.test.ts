@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import vm from 'node:vm';
-import { readFileSync } from 'node:fs';
-import { transformSync } from 'esbuild';
-import type * as NotificationSystem from '../notifications/system';
-
-const source = readFileSync(new URL('../notifications/system.ts', import.meta.url), 'utf8');
-const { code } = transformSync(source, { loader: 'ts', format: 'cjs' });
+import { notificationSystemFixture } from './notification-system.fixtures.ts';
+import { deferred } from './store.fixtures.ts';
 
 for (const initialFirst of [false, true]) {
   test(`one local tap is handled once (initial response first: ${initialFirst})`, async () => {
@@ -28,13 +23,9 @@ for (const initialFirst of [false, true]) {
         cleared += 1;
       },
     };
-    const module = { exports: {} as typeof NotificationSystem };
-    vm.runInNewContext(code, {
-      module,
-      require: (name: string) => (name === 'expo-notifications' ? notifications : {}),
-    });
+    const system = notificationSystemFixture(notifications);
     let taps = 0;
-    const stop = module.exports.listenNotificationEvents(
+    const stop = system.listenNotificationEvents(
       () => {},
       () => {
         taps += 1;
@@ -51,3 +42,93 @@ for (const initialFirst of [false, true]) {
     stop();
   });
 }
+
+for (const refused of ['deferred', 'throws'] as const)
+  test(`an unhandled ${refused} response stays in the native SDK for a replacement listener`, async () => {
+    const response = {
+      actionIdentifier: 'default',
+      notification: { request: { identifier: 'cold', trigger: null, content: { data: {} } } },
+    };
+    let pending: typeof response | null = response;
+    let cleared = 0,
+      attempts = 0;
+    const system = notificationSystemFixture({
+      DEFAULT_ACTION_IDENTIFIER: 'default',
+      addNotificationReceivedListener: () => ({ remove() {} }),
+      addNotificationResponseReceivedListener: () => ({ remove() {} }),
+      getLastNotificationResponseAsync: async () => pending,
+      clearLastNotificationResponseAsync: async () => {
+        cleared++;
+        pending = null;
+      },
+    });
+    const stop = system.listenNotificationEvents(
+      () => {},
+      () => {
+        attempts++;
+        if (refused === 'throws') throw Error('navigation not ready');
+        return false;
+      },
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, 1);
+    assert.equal(cleared, 0);
+    assert.equal(pending, response);
+    stop();
+    const replacement = system.listenNotificationEvents(
+      () => {},
+      () => {
+        attempts++;
+        return true;
+      },
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, 2);
+    assert.equal(cleared, 1);
+    assert.equal(pending, null);
+    replacement();
+  });
+
+test('a late initial response from a retired listener cannot consume the current tap', async () => {
+  const response = {
+    actionIdentifier: 'default',
+    notification: { request: { identifier: 'current', trigger: null, content: { data: {} } } },
+  };
+  const old = deferred<typeof response | null>();
+  let reads = 0,
+    cleared = 0,
+    oldTaps = 0,
+    currentTaps = 0;
+  const system = notificationSystemFixture({
+    DEFAULT_ACTION_IDENTIFIER: 'default',
+    addNotificationReceivedListener: () => ({ remove() {} }),
+    addNotificationResponseReceivedListener: () => ({ remove() {} }),
+    getLastNotificationResponseAsync: () =>
+      ++reads === 1 ? old.promise : Promise.resolve(response),
+    clearLastNotificationResponseAsync: async () => {
+      cleared++;
+    },
+  });
+  const previous = system.listenNotificationEvents(
+    () => {},
+    () => {
+      oldTaps++;
+      return true;
+    },
+  );
+  previous();
+  const current = system.listenNotificationEvents(
+    () => {},
+    () => {
+      currentTaps++;
+      return true;
+    },
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  old.resolve(response);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(oldTaps, 0);
+  assert.equal(currentTaps, 1);
+  assert.equal(cleared, 1);
+  current();
+});

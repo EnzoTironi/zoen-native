@@ -12,7 +12,7 @@ export const listenPushToken = (_listener: (token: unknown) => void) => () => {}
 export const installNotificationHandler =
   (_allowLocal: (data: unknown) => boolean | Promise<boolean>) => () => {};
 export const listenNotificationEvents =
-  (_wake: (payload: PushWake) => void, _tap: (data: unknown) => void) => () => {};
+  (_wake: (payload: PushWake) => void, _tap: (data: unknown) => boolean | void) => () => {};
 export const showLocalNote = async (_note: LocalNote) => {};
 export const nativeNotificationPresentation = () => false;
 export const requestNativeNotes = async (_scope: NativeNoteScope) => {};
