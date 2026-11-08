@@ -750,7 +750,6 @@ pub(super) enum Command {
         before: Option<String>,
         limit: u32,
     },
-    BackupStatus {},
     LinkRequest {
         relay_url: String,
     },
@@ -778,15 +777,6 @@ pub(super) enum Command {
         space_id: String,
         timeout_ms: u32,
     },
-    BackupCreateRecoveryKey {},
-    BackupEnableRecoveryKey {
-        recovery_key: String,
-    },
-    BackupPassword {
-        password: String,
-    },
-    BackupNow {},
-    BackupTurnOff {},
     RestoreBackupPassword {
         relay_url: String,
         handle: String,
@@ -814,4 +804,6 @@ pub(super) enum Command {
     ManagedAgent(super::managed_agent_command::ManagedAgentCommand),
     #[serde(untagged)]
     SpaceInvite(super::space_invite_command::SpaceInviteCommand),
+    #[serde(untagged)]
+    Backup(super::backup_command::BackupCommand),
 }

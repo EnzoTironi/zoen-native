@@ -8,4 +8,8 @@ mode: string,
 /**
  * When the last backup reached the server (ms since 1970; 0 = never).
  */
-last_backup_ms: string, bytes: string, };
+last_backup_ms: string, bytes: string, 
+/**
+ * Live admission on this Client, never restored as an authoritative work item.
+ */
+in_progress?: boolean, };

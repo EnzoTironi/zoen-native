@@ -28,6 +28,11 @@ pub struct BackupStatusDto {
     /// When the last backup reached the server (ms since 1970; 0 = never).
     pub last_backup_ms: i64,
     pub bytes: u64,
+    /// Live admission on this Client, never restored as an authoritative work item.
+    #[serde(default)]
+    #[uniffi(default = false)]
+    #[cfg_attr(feature = "client-types", ts(optional = nullable))]
+    pub in_progress: bool,
 }
 
 fn invalid(reason: impl Into<String>) -> CoreError {
@@ -183,7 +188,10 @@ impl Client {
     }
 
     fn save_status(&self, s: &BackupStatusDto) -> Result<(), CoreError> {
-        let j = serde_json::to_string(s).map_err(|e| invalid(e.to_string()))?;
+        // Runtime admission is not persisted with the completed backup receipt.
+        let j = serde_json::json!({ "enabled": s.enabled, "mode": s.mode,
+            "last_backup_ms": s.last_backup_ms, "bytes": s.bytes })
+        .to_string();
         self.lock().store.set_meta(STATUS_META, &j)?;
         Ok(())
     }
@@ -220,6 +228,7 @@ impl Client {
             body.to_string().into_bytes(),
         )
         .await?;
+        self.check_backup_creds(c)?;
         if !vault.save(VAULT_BACKUP.into(), k.to_vec())
             || !vault.save(VAULT_BACKUP_GENERATION.into(), generation.to_vec())
         {
@@ -247,6 +256,7 @@ impl Client {
                 "The password needs at least 8 characters.",
             )));
         }
+        let _write = self.backup_write_guard()?;
         let c = self.backup_creds()?;
         let b = backup::blind(&password)?;
         let generation = backup::new_backup_key()?;
@@ -286,12 +296,13 @@ impl Client {
             &vault,
         )
         .await?;
+        self.check_backup_creds(&c)?;
         self.save_status(&BackupStatusDto {
             enabled: true,
             mode: "password".into(),
             ..Default::default()
         })?;
-        self.backup_now(vault).await
+        self.backup_now_locked(vault).await
     }
 
     /// Turns on the encrypted backup protected by a 64-digit recovery key, which this
@@ -312,6 +323,7 @@ impl Client {
         recovery_key: String,
         vault: Arc<dyn SecretVault>,
     ) -> Result<BackupStatusDto, CoreError> {
+        let _write = self.backup_write_guard()?;
         let keys = backup::recovery_keys(&recovery_key)?;
         let c = self.backup_creds()?;
         self.put_vault(
@@ -323,12 +335,13 @@ impl Client {
             &vault,
         )
         .await?;
+        self.check_backup_creds(&c)?;
         self.save_status(&BackupStatusDto {
             enabled: true,
             mode: "recovery_key".into(),
             ..Default::default()
         })?;
-        self.backup_now(vault).await
+        self.backup_now_locked(vault).await
     }
 
     /// Seals this device's history and keys and sends them to the server.
@@ -336,61 +349,13 @@ impl Client {
         &self,
         vault: Arc<dyn SecretVault>,
     ) -> Result<BackupStatusDto, CoreError> {
-        let k: [u8; 32] = vault
-            .load(VAULT_BACKUP.into())
-            .and_then(|b| b.try_into().ok())
-            .ok_or_else(|| invalid(t("O backup está desligado.", "Backup is off.")))?;
-        let generation: [u8; 32] = vault
-            .load(VAULT_BACKUP_GENERATION.into())
-            .and_then(|b| b.try_into().ok())
-            .ok_or_else(|| {
-                invalid(t(
-                    "Configure o backup novamente neste aparelho.",
-                    "Set up backup again on this device.",
-                ))
-            })?;
-        let c = self.backup_creds()?;
-        let secret = |name: &str| -> Result<String, CoreError> {
-            vault
-                .load(name.into())
-                .map(hex::encode)
-                .ok_or_else(|| invalid("missing key"))
-        };
-        let sealed = {
-            let e = self.lock();
-            let acct = e.account().cloned().ok_or_else(|| invalid("no account"))?;
-            let header = Header {
-                version: 1,
-                identity: acct.identity.clone(),
-                relay_url: acct.relay_url.clone(),
-                identity_secret: secret(VAULT_IDENTITY)?,
-                agreement_secret: secret(VAULT_AGREEMENT)?,
-                created_ms: crate::engine::now_ms(),
-            };
-            let db = e.backup_snapshot()?;
-            backup::seal_payload(&k, &header, &db)?
-        };
-        let bytes = sealed.len() as u64;
-        let upload = [BACKUP_UPLOAD_MAGIC.as_slice(), &generation, &sealed].concat();
-        signed(
-            &http()?,
-            &c,
-            reqwest::Method::PUT,
-            "/v1/backup/blob",
-            "blob",
-            upload,
-        )
-        .await?;
-        let mut s = self.backup_status();
-        s.enabled = true;
-        s.last_backup_ms = crate::engine::now_ms();
-        s.bytes = bytes;
-        self.save_status(&s)?;
-        Ok(s)
+        let _write = self.backup_write_guard()?;
+        self.backup_now_locked(vault).await
     }
 
     /// Turns the backup off and deletes it from the server.
     pub async fn backup_turn_off(&self, vault: Arc<dyn SecretVault>) -> Result<(), CoreError> {
+        let _write = self.backup_write_guard()?;
         let c = self.backup_creds()?;
         signed(
             &http()?,
@@ -401,6 +366,7 @@ impl Client {
             Vec::new(),
         )
         .await?;
+        self.check_backup_creds(&c)?;
         vault.delete(VAULT_BACKUP.into());
         vault.delete(VAULT_BACKUP_GENERATION.into());
         self.lock().store.meta_delete(STATUS_META)?;
@@ -446,13 +412,16 @@ impl Client {
 
     /// Whether the backup is on, how, and when it last ran.
     pub fn backup_status(&self) -> BackupStatusDto {
-        self.lock()
+        let mut status: BackupStatusDto = self
+            .lock()
             .store
             .meta(STATUS_META)
             .ok()
             .flatten()
             .and_then(|j| serde_json::from_str(&j).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        status.in_progress = self.backup_write.try_lock().is_err();
+        status
     }
 }
 
@@ -520,3 +489,9 @@ mod pin_tests {
 mod structural_tests;
 
 mod restore;
+
+mod scope;
+mod upload;
+
+#[cfg(test)]
+mod scope_tests;

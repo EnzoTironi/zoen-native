@@ -58,6 +58,7 @@ mod backup_api;
 pub mod blob_transport;
 mod call_transport_api;
 mod client_api;
+mod client_lifecycle;
 pub mod relay_output_transport;
 pub use backup_api::BackupStatusDto;
 #[cfg(feature = "client-types")]
@@ -169,6 +170,7 @@ pub struct Client {
     net: Mutex<Option<net::Net>>,
     history_receive: link_api::HistoryControl,
     link_pickup: link_pickup::PickupControl,
+    backup_write: tokio::sync::Mutex<()>,
 }
 
 impl Drop for Client {
@@ -190,27 +192,6 @@ impl Client {
 
 #[uniffi::export]
 impl Client {
-    /// Opens (or creates) the database at `path` (":memory:" in tests). `locale` is the
-    /// device language (BCP-47, e.g. "en-US", "pt-BR"): agent output, demo data and money
-    /// formatting follow it. Anything that isn't Portuguese falls back to English.
-    #[uniffi::constructor]
-    pub fn open(path: String, locale: String) -> Result<Arc<Self>, CoreError> {
-        let lang = i18n::Lang::from_tag(&locale);
-        let _language = i18n::enter(lang);
-        Ok(Arc::new(Self {
-            inner: Arc::new(Mutex::new(Engine::open(&path)?)),
-            lang,
-            net: Mutex::new(None),
-            history_receive: link_api::HistoryControl::default(),
-            link_pickup: link_pickup::PickupControl::default(),
-        }))
-    }
-
-    /// Language the core is speaking ("en" or "pt-BR").
-    pub fn language(&self) -> String {
-        self.lang.tag().to_string()
-    }
-
     /// Cria o elenco e a história da demo se o banco estiver vazio. Devolve `true` se semeou.
     pub fn seed_demo_if_empty(&self) -> Result<bool, CoreError> {
         let _language = crate::i18n::enter(self.lang);
